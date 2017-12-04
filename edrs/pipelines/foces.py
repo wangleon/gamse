@@ -13,6 +13,8 @@ from ..ccdproc      import save_fits
 from .reduction     import Reduction
 
 class FOCES(Reduction):
+    '''Pipleline for FOCES
+    '''
 
     def __init__(self):
         super(FOCES, self).__init__()
@@ -21,8 +23,6 @@ class FOCES(Reduction):
         '''
         Correct overscan for FOCES FITS images.
         
-        Notes
-        ------
         The overscan is corrected for each FITS image listed in the
         observational log. The FOCES CCD has two overscan regions, one on the
         left and the other one on the right side. To correct the overscan, only
@@ -196,15 +196,12 @@ def make_log(rawdata_path):
     Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
-    Parameters
-    -----------
-    rawdata_path : string
-        Path for the raw FITS files.
-
-    Notes
-    -------
     An ascii file will be generated after running. The name of the ascii file is
     `YYYY-MM-DD.log`.
+
+    Args:
+        rawdata_path (str): Path to the raw FITS files.
+
     '''
     from ..utils import obslog
 
@@ -305,15 +302,11 @@ def get_primary_header(input_lst):
     Return a list of header records with length of 80 characters.
     The order and datatypes of the records follow the FOCES FITS standards.
 
-    Parameters
-    ----------
-    input_lst : *tuple*
-        a tuple containing the keywords and their values
+    Args:
+        input_lst (tuple): A tuple containing the keywords and their values
 
-    Returns
-    -------
-    header_lst : *list*
-        a list containing the records
+    Returns:
+        list: A list containing the records
 
     '''
     lst = [

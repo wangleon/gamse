@@ -7,17 +7,11 @@ def read_config():
     '''
     Read the config file ended with `.cfg` in the current directory.
 
-    Returns
-    ---------
-    : config object or None
-        A config object.
-    
-    Notes
-    ------
-    Default config file is `reduction.cfg`. If the file does not exist,
-    find a file ended with `.cfg`. If such file does not exist, return
-    *None*.
+    Default config file is `reduction.cfg`. If the file does not exist, find a
+    file ended with `.cfg`. If such file does not exist, return *None*.
 
+    Returns:
+        :class:`ConfigParser`: A :class:`ConfigParser` instance.
     '''
 
     # scan the .cfg files

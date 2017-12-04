@@ -182,17 +182,12 @@ def sort_log(log, keyword):
     '''
     Sort the observational log by given keyword.
 
-    Parameters
-    -----------
-    log : list
-        list composed of LogItem objects
-    keyword :
-        keyword
+    Args:
+        log (list): list composed of :class:`LogItem` objects
+        keyword (str): Keyword
 
-    Returns
-    -------
-    new_log : list
-        a new list composed of LogItem objects
+    Returns:
+        list: a new list composed of :class:`LogItem` objects
     '''
     new_dict = {}
     for logitem in log:
@@ -203,7 +198,16 @@ def sort_log(log, keyword):
         new_log.append(new_dict[key])
     return new_log
 
-def get_input_fileids(log,string):
+def get_input_fileids(log, string):
+    '''Get the fileids of the input.
+
+    Args:
+        log (:class:`Log`): A :class:`Log` instance
+        string (str): The input string
+    Returns:
+        list: The list of file IDs
+    '''
+
     if len(string.strip())==0:
         return []
 
@@ -215,6 +219,14 @@ def get_input_fileids(log,string):
     return [fileid_lst[n] for n in lst]
 
 def parse_num_seq(string):
+    '''Convert the number sequence to list of numbers
+
+    Args:
+        string (str): The input string
+    Returns:
+        list: The list of integer numbers
+
+    '''
     lst = []
     g1 = string.strip().split(',')
     for rec in g1:

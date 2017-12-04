@@ -9,9 +9,7 @@ Table of Contents
    ccdproc
    echelle
    fits_output
-   foces_fits
-   pipeline/foces
-   pipeline/foces/*
+   pipelines/*
 
 Modules
 -------
@@ -20,4 +18,5 @@ Modules
    :glob:
 
    modules/utils/*
-   pipelines/*
+   modules/echelle/*
+   modules/pipelines/*
