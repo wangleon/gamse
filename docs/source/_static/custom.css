@@ -1,0 +1,49 @@
+body {
+    letter-spacing: 0;
+    font-size: 14px;
+    line-height: 21px;
+}
+
+.footnote-reference {
+    font-size: 6px;
+    vertical-align: super;
+    text-decoration: none !important;
+}
+
+table.docutils {
+    background-color: #eee;
+}
+
+table.footnote {
+    margin: 0;
+    background-color: white;
+
+}
+
+pre {
+    font-family: Courier;
+    background-color: #eee;
+}
+
+cite {
+    font-family: Courier;
+    background-color: #eee;
+    font-style: normal;
+    padding: 0 5px;
+}
+
+.field-name {
+    width: 85px;
+}
+
+td.field-body p {
+    font-style: italic;
+}
+
+td.field-body strong {
+    font-style: normal;
+}
+
+td.field-body blockquote p {
+    font-style: normal;
+}
