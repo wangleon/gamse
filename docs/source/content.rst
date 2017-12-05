@@ -17,6 +17,6 @@ Modules
    :maxdepth: 2
    :glob:
 
-   modules/utils/*
+   modules/utils
    modules/echelle/*
    modules/pipelines/*

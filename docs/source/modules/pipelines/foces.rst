@@ -1,5 +1,5 @@
 
-FOCES pipeline
+FOCES Pipeline
 ==============
 .. automodule:: edrs.pipelines.foces
     :members:

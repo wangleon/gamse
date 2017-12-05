@@ -3,7 +3,23 @@ import math
 import itertools
 import numpy as np
 
-def get_clip_mean(x,err=None,high=3,low=3,maxiter=5):
+def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
+    '''Get the mean value of an input array using the sigma-clipping method
+
+    Args:
+        x (:class:`numpy.array`): The input array
+        err (:class:`numpy.array`): Errors of the input array
+        high (float): Upper rejection threshold
+        low (float): Loweer rejection threshold
+        maxiter (int): Maximum number of iterations
+    Returns:
+        tuple: A tuple containing:
+
+            * **mean** (*float*): Mean value after the sigma-clipping
+            * **std** (*float*): Standard deviation after the sigma-clipping
+            * **mask** (:class:`numpy.array`): Mask of accepted values in the
+              input array
+    '''
     x = np.array(x)
     mask = np.zeros_like(x)<1
 
@@ -11,7 +27,7 @@ def get_clip_mean(x,err=None,high=3,low=3,maxiter=5):
     while(True):
 
         niter += 1
-        if err == None:
+        if err is None:
             mean = x[mask].mean()
             std  = x[mask].std()
         else:
@@ -35,6 +51,28 @@ def get_clip_mean(x,err=None,high=3,low=3,maxiter=5):
     return mean, std, new_mask
 
 def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
+    '''Fit the input arrays using a linear function
+
+    Args:
+        x (:class:`numpy.array`): The input X values
+        y (:class:`numpy.array`): The input Y values
+        yerr (:class:`numpy.array`): Errors of the Y array
+        maxiter (int): Maximum number of interations
+        high (float): Upper rejection threshold
+        low (float): Lower rejection threshold
+        full (bool): `True` if return all information
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **p** (:class:`numpy.array`): Parameters of the fitting
+            * **std** (*float*): Standard deviation of the fitting
+            * **mask** (:class:`numpy.array`): Mask of the accepted values in
+              the input array
+            * **func** (*func*): Function
+            * **r2** (*float*) : *R*:sup:`2`
+            * **p_std** (*tuple*): Standar deviations of the parameters
+    '''
     x = np.array(x)
     y = np.array(y)
     if yerr != None:
@@ -94,48 +132,59 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
         return p, std, mask, func
 
 def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
-    '''
-    Two-dimensional polynomial fit.
+    '''Two-dimensional polynomial fit.
 
-    Examples
-    --------
+    Args:
+        x (:class:`numpy.array`): Input X array
+        y (:class:`numpy.array`): Input Y array
+        z (:class:`numpy.array`): Input Z array
+        xorder (int): X order
+        yorder (int): Y order
+        linear (bool): Return linear solution if `True`
+    Returns:
+        :class:`numpy.array`: Coefficient array
 
-    .. code-block:: python
+    Examples:
 
-       import numpy as np
-       numdata = 100
-       x = np.random.random(numdata)
-       y = np.random.random(numdata)
-       z = 6*y**2+8*y-x-9*x*y+10*x*y**2+7+np.random.random(numdata)
-       m = polyfit2d(x, y, z, xorder=1, yorder=3)
-       # evaluate it on a grid
-       nx, ny = 20, 20
-       xx, yy = np.meshgrid(np.linspace(x.min(), x.max(), nx),
-                            np.linspace(y.min(), y.max(), ny))
-       zz = polyval2d(xx, yy, m)
+        .. code-block:: python
+    
+           import numpy as np
+           numdata = 100
+           x = np.random.random(numdata)
+           y = np.random.random(numdata)
+           z = 6*y**2+8*y-x-9*x*y+10*x*y**2+7+np.random.random(numdata)
+           m = polyfit2d(x, y, z, xorder=1, yorder=3)
+           # evaluate it on a grid
+           nx, ny = 20, 20
+           xx, yy = np.meshgrid(np.linspace(x.min(), x.max(), nx),
+                                np.linspace(y.min(), y.max(), ny))
+           zz = polyval2d(xx, yy, m)
+    
+           fig1 = plt.figure(figsize=(10,5))
+           ax1 = fig1.add_subplot(121,projection='3d')
+           ax2 = fig1.add_subplot(122,projection='3d')
+           ax1.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
+               linewidth=0, antialiased=True, alpha=0.3)
+           ax1.set_xlabel('X (pixel)')
+           ax1.set_ylabel('Y (pixel)')
+           ax1.scatter(x, y, z, linewidth=0)
+           ax2.scatter(x, y, z-polyval2d(x,y,m),linewidth=0)
+           plt.show()
 
-       fig1 = plt.figure(figsize=(10,5))
-       ax1 = fig1.add_subplot(121,projection='3d')
-       ax2 = fig1.add_subplot(122,projection='3d')
-       ax1.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
-           linewidth=0, antialiased=True, alpha=0.3)
-       ax1.set_xlabel('X (pixel)')
-       ax1.set_ylabel('Y (pixel)')
-       ax1.scatter(x, y, z, linewidth=0)
-       ax2.scatter(x, y, z-polyval2d(x,y,m),linewidth=0)
-       plt.show()
+        if `linear = True`, the fitting only consider linear solutions such as
 
-    if linear = True, the fitting only consider linear solutions such as
-    z = a*(x-x0)**2 + b*(y-y0)**2 + c.
+        .. math::
 
-    the returned coefficients are organized as an m x n array, where m is the
-    order along the y-axis, and n is the order along the x-axis
-
-        1   + x     + x^2     + ... + x^n     +
-        y   + xy    + x^2*y   + ... + x^n*y   +
-        y^2 + x*y^2 + x^2*y^2 + ... + x^n*y^2 +
-        ... + ...   + ...     + ... + ...     +
-        y^m + x*y^m + x^2*y^m + ... + x^n*y^m
+            z = a(x-x_0)^2 + b(y-y_0)^2 + c
+    
+        the returned coefficients are organized as an *m* x *n* array, where *m*
+        is the order along the y-axis, and *n* is the order along the x-axis::
+    
+            1   + x     + x^2     + ... + x^n     +
+            y   + xy    + x^2*y   + ... + x^n*y   +
+            y^2 + x*y^2 + x^2*y^2 + ... + x^n*y^2 +
+            ... + ...   + ...     + ... + ...     +
+            y^m + x*y^m + x^2*y^m + ... + x^n*y^m
 
     '''
     ncols = (xorder + 1)*(yorder + 1)
@@ -150,11 +199,18 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
     return coeff
 
 def polyval2d(x, y, m):
+    '''Get values for the 2-D polynomial values
 
+    Args:
+        x (:class:`numpy.array`): Input X array
+        y (:class:`numpy.array`): Input Y array
+        m (:class:`numpy.array`): Coefficients of the 2-D polynomial
+    Returns:
+        z (:class:`numpy.array`): Values of the 2-D polynomial
+    '''
     yorder = m.shape[0] - 1
     xorder = m.shape[1] - 1
     z = np.zeros_like(x)
     for j,i in itertools.product(range(yorder+1), range(xorder+1)):
         z += m[j,i] * x**i * y**j
     return z
-
