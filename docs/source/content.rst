@@ -6,8 +6,6 @@ Table of Contents
    :glob:
 
    index
-   ccdproc
-   echelle
    fits_output
    pipelines/*
 

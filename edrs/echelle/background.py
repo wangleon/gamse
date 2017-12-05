@@ -9,32 +9,20 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         xorder=2, yorder=2, maxiter=5, upper_clipping=3., lower_clipping=3.,
         expand_grid = True,
         fig1 = None, fig2 = None, report_img_path = None):
-    '''
-    Subtract the background for a fits image
+    '''Subtract the background for an input FITS image.
 
-    Parameters
-    ----------
-    infilename : str
-        Name of the input file
-    outfilename : str
-        Name of the output file
-    scafilename : str
-        Name of the scatter file
-    order_lst : list
-        Positions of each order
-    scan_step : int
-        Steps of scan in pixels
-    fig1 : :py:class:`matplotlib.figure` instance
-        Figure to display
-    fig2 : :py:class:`matplotlib.figure` instance
-        Figure to display
-    report_path : string
-        Path to the report directory
+    Args:
+        infilename (str): Name of the input file
+        outfilename (str): Name of the output file
+        scafilename (str): Name of the scatter file
+        order_lst (list): Positions of each order
+        scan_step (int): Steps of scan in pixels
+        fig1 (:class:`matplotlib.figure`): Figure to display
+        fig2 (:class:`matplotlib.figure`): Figure to display
+        report_path (str): Path to the report directory
 
-    Returns
-    -------
-    no returns
-
+    Returns:
+        No returns
     '''
 
     from scipy.ndimage.filters import median_filter
