@@ -16,5 +16,6 @@ Modules
    :glob:
 
    modules/utils
-   modules/echelle/*
+   modules/ccdproc
+   modules/echelle
    modules/pipelines/*

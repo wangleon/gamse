@@ -201,16 +201,17 @@ class InfoFrame(tk.Frame):
             pass
 
     def update_aperture_label(self):
+        '''Update the order information to be displayed on the top.'''
         mode     = self.master.param['mode']
         aperture = self.master.param['aperture']
         k        = self.master.param['k']
         offset   = self.master.param['offset']
 
         if mode == 'ident':
-            if None not in (k, offset):
-                order = str(k*aperture + offset)
-            else:
+            if None in (k, offset):
                 order = '?'
+            else:
+                order = str(k*aperture + offset)
             text = 'Order %s (Aperture %d)'%(order, aperture)
             self.order_label.config(text=text)
         elif mode == 'fit':
@@ -220,6 +221,9 @@ class InfoFrame(tk.Frame):
 
 
 class LineTable(tk.Frame):
+    '''Table for the input spectral lines.
+    
+    '''
     def __init__(self, master, width, height, identlist, linelist):
         self.master = master
 
@@ -378,6 +382,9 @@ class LineTable(tk.Frame):
             pass
 
 class FitparaFrame(tk.Frame):
+    '''Frame for the fitting parameters.
+    
+    '''
     def __init__(self, master, width, height):
 
         self.master = master
@@ -475,6 +482,8 @@ class FitparaFrame(tk.Frame):
         self.master.master.param['clipping'] = float(value)
 
 class CalibWindow(tk.Frame):
+    '''Frame for the wavelength calibration window.
+    '''
     def __init__(self, master, **kwargs):
         
         self.master = master
@@ -1180,7 +1189,22 @@ class CalibWindow(tk.Frame):
 
 
 def wvcalib(filename, **kwargs):
-    '''Wavelength calibration
+    '''Wavelength calibration.
+
+    Args:
+        linelist (str):
+        channel (str): Channel.
+        window_size (int): size of the window in pixel to search for the lines.
+        xorder (int): Degree of polynomial along X direction.
+        yorder (int): Degree of polynomial along Y direction.
+        maxiter (int): Maximim number of interation in polynomial fitting.
+        clipping (float): Threshold of sigma-clipping.
+        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
+            in the wavelength fitting.
+        fig_width (int): Width of figure.
+        fig_height (int): Height of figure.
+        dpi (int): DPI of figure.
+
     '''
 
     linelist_file = kwargs.pop('linelist')
@@ -1279,7 +1303,29 @@ def wvcalib(filename, **kwargs):
     return result
 
 def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
-    '''fit wavelength'''
+    '''Fit the wavelength using 2-D polynomial.
+    
+    Args:
+        identlist ():
+        npixel (int): Number of pixels for each order.
+        xorder (int): Degree of polynomial along X direction.
+        yorder (int): Degree of polynomial along Y direction.
+        maxiter (int): Maximim number of interation in polynomial fitting.
+        clipping (float): Threshold of sigma-clipping.
+
+    Returns:
+        tuple: A tuple containing:
+        
+            * coeff (:class:`numpy.array`): Coefficients array.
+            * std (*float*): Standard deviation.
+            * k (*int*): *k* in the relation between aperture numbers and
+                diffraction orders.
+            * offset (*int*): *offset* in the relation between aperture numbers
+                and diffraction orders.
+            * nuse (*int*): Number of lines used in the fitting.
+            * ntot (*int*): Number of lines found.
+        
+    '''
     # find physical order
     k, offset = find_order(identlist, npixel)
 
@@ -1381,7 +1427,7 @@ def is_identified(wavelength, identlist, aperture):
 
 def find_order(identlist, npixel):
     '''
-    find physical order: order = k*aperture + offset
+    Find physical order: order = k*aperture + offset
     longer wavelength has lower order
     '''
     aper_lst, wvc_lst = [], []
@@ -1424,7 +1470,7 @@ def find_order(identlist, npixel):
 
 def save_ident_linelist(ident_linelist,filename):
     '''
-    Write the ident line list into an ascii file
+    Write the ident line list into an ascii file.
     '''
     ident_file = open(filename,'w')
     for aperture, list1 in sorted(ident_line_lst.items()):
@@ -2009,5 +2055,3 @@ def reference_wv_self(infilename, outfilename, calib_lst):
     if os.path.exists(outfilename):
         os.remove(outfilename)
     hdu_lst.writeto(outfilename)
-    
-

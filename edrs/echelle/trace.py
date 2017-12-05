@@ -16,7 +16,13 @@ import matplotlib.colors as mcolors
 
 class ApertureLocation(object):
     '''
-    Location of an echelle order
+    Location of an echelle order.
+
+    Attributes:
+        direct (int): 0 if along Y axis; 1 if along X axis
+        
+
+
     '''
     def __init__(self, *args, **kwargs):
         for key, value in kwargs.items():
@@ -155,7 +161,11 @@ class ApertureLocation(object):
 
 class ApertureSet(object):
     '''
-    ApertureSet is a group of ApertureLocation instances
+    ApertureSet is a group of ApertureLocation instances.
+
+    Attributes:
+        dict (dict): Dict containing aperture numbers and :class:`ApertureLocation` instances
+        current (dict): 
     '''
     def __init__(self, *args, **kwargs):
         self.dict = {}
@@ -187,7 +197,10 @@ class ApertureSet(object):
 
     def save_txt(self, filename):
         '''
-        Save the order set into an ascii file
+        Save the order set into an ascii file.
+        
+        Args:
+            filename (str): Path to the output ascii file
         '''
         outfile = open(filename, 'w')
         outfile.write(str(self))
@@ -197,37 +210,24 @@ def find_apertures(filename, **kwargs):
     '''
     Find the positions of apertures on a CCD image.
 
-    Parameters
-    ------------
-    filename : string
-        Path to the input image FITS file
-    mask_file : string
-        Path to the mask FITS file
-    scan_step : integer
-        Steps of pixels used to scan along the main dispersion direction
-    minimum : float
-        Minimum value to filter the input image
-    seperation : integer
-        Estimated order seperations (in pixel) along the cross-dispersion
-        direction
-    filling : float
-        Fraction of detected pixels to total step of scanning
-    degree : degree
-        Degree of polynomials to fit aperture locations
-    display : boolean
-        If True, display a figure on the screen.
-    fig_file : string
-        Path to the output figure
-    result_file : string
-        Path to the output ascii file
+    Args:
+        filename (str): Path to the input image FITS file.
+        mask_file (str): Path to the mask FITS file.
+        scan_step (int): Steps of pixels used to scan along the main dispersion
+            direction.
+        minimum (float): Minimum value to filter the input image.
+        seperation (int): Estimated order seperations (in pixel) along the
+            cross-dispersion.
+        direction (int):
+        filling (float): Fraction of detected pixels to total step of scanning.
+        degree (int): Degree of polynomials to fit aperture locations.
+        display (bool): If True, display a figure on the screen.
+        fig_file (str): Path to the output figure.
+        result_file (str): Path to the output ascii file.
 
-    Returns
-    --------
-    coeff_lst : list
-        A list containing the coefficients of the locations.
+    Returns:
+        list: A list containing the coefficients of the locations.
 
-    Notes
-    --------
     '''
     from ..utils.onedarray import get_local_minima
 

@@ -8,21 +8,15 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
 def sum_extract(infilename, mskfilename, outfilename, order_lst, figure=None):
-    '''
-    Extract spectra from an individual image.
-    Parameters
-    ----------
-    infilename : string
-        Name of the input image
-    outfilename : string
-        Name of the output image
-    order_lst : list
-        List containing the locations of each order
-    figure : `matplotlib.figure` instance
-        The figure to display the 1d spectra
-    Returns
-    -------
-    no returns
+    '''Extract spectra from an individual image.
+    
+    Args:
+        infilename (str): Name of the input image
+        outfilename (str): Name of the output image
+        order_lst (list): List containing the locations of each order
+        figure (:class:`matplotlib.figure`): Figure to display the 1d spectra
+    Returns:
+        No returns
     '''
 
     data, head = fits.getdata(infilename, header=True)
