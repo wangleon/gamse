@@ -1,8 +1,8 @@
 Utilities
 =========
 
-Summary
--------
+Summaries
+---------
 .. currentmodule:: edrs.utils
 .. autosummary::
     config.read_config

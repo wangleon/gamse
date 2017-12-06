@@ -32,11 +32,15 @@ class ApertureLocation(object):
 
     def set_nodes(self, key, xdata, ydata):
         '''
-        set nodes for center, lower, or upper lines
-        xdata:
-            [x1, x2, x3, ...]
-        ydata:
-            [y1, y2, y3, ...]
+        Set nodes for center, lower, or upper lines.
+        
+        Args:
+            key (str): Keyword.
+            xdata (list): List of x coordinates [*x*:sub:`1`, *x*:sub:`2`,
+                *x*:sub:`3`, ...].
+            ydata (list): List of y coordinates [*y*:sub:`1`, *y*:sub:`2`,
+                *y*:sub:`3`, ...].
+
         '''
         # filter the None values in (xdata, ydata)
         xydata = [(x,y) for x, y in zip(xdata, ydata)

@@ -35,7 +35,7 @@ identlinetype = np.dtype({
     })
 
 class CustomToolbar(NavigationToolbar2TkAgg):
-    '''A class for customized matplotlib toolbar'''
+    '''A class for customized matplotlib toolbar.'''
     def __init__(self, canvas, master):
         self.toolitems = (
             ('Home', 'Reset original view', 'home', 'home'),
@@ -52,6 +52,8 @@ class CustomToolbar(NavigationToolbar2TkAgg):
         pass
 
 class PlotFrame(tk.Frame):
+    '''The frame for plotting spectrum in the :class:`CalibWindow`.
+    '''
     def __init__(self, master, width, height, dpi, identlist, linelist):
 
         tk.Frame.__init__(self, master, width=width, height=height)
@@ -83,6 +85,8 @@ class PlotFrame(tk.Frame):
         self.pack()
 
 class InfoFrame(tk.Frame):
+    '''The frame for buttons and tables on the right side of the :class:`CalibWindow`.
+    '''
     def __init__(self, master, width, height, linelist, identlist):
 
         self.master = master
@@ -221,7 +225,7 @@ class InfoFrame(tk.Frame):
 
 
 class LineTable(tk.Frame):
-    '''Table for the input spectral lines.
+    '''A table for the input spectral lines embedded in the :class:`InfoFrame`.
     
     '''
     def __init__(self, master, width, height, identlist, linelist):
@@ -329,7 +333,7 @@ class LineTable(tk.Frame):
         self.master.master.plot_frame.canvas.get_tk_widget().focus()
         
     def on_click_item(self, event):
-        '''event response function for clicking lines'''
+        '''Event response function for clicking lines.'''
 
         identlist = self.master.master.identlist
         aperture = self.master.master.param['aperture']
@@ -382,7 +386,7 @@ class LineTable(tk.Frame):
             pass
 
 class FitparaFrame(tk.Frame):
-    '''Frame for the fitting parameters.
+    '''Frame for the fitting parameters embedded in the :class:`InfoFrame`.
     
     '''
     def __init__(self, master, width, height):
@@ -1316,14 +1320,12 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
     Returns:
         tuple: A tuple containing:
         
-            * coeff (:class:`numpy.array`): Coefficients array.
-            * std (*float*): Standard deviation.
-            * k (*int*): *k* in the relation between aperture numbers and
-                diffraction orders.
-            * offset (*int*): *offset* in the relation between aperture numbers
-                and diffraction orders.
-            * nuse (*int*): Number of lines used in the fitting.
-            * ntot (*int*): Number of lines found.
+            * **coeff** (:class:`numpy.array`): Coefficients array.
+            * **std** (*float*): Standard deviation.
+            * **k** (*int*): *k* in the relation between aperture numbers and diffraction orders.
+            * **offset** (*int*): *offset* in the relation between aperture numbers and diffraction orders.
+            * **nuse** (*int*): Number of lines used in the fitting.
+            * **ntot** (*int*): Number of lines found.
         
     '''
     # find physical order

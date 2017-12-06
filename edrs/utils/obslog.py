@@ -129,10 +129,10 @@ def read_log(filename):
     '''Read observing log from an ascii file.
 
     Args:
-        filename (str): Name of the observing log file
+        filename (str): Name of the observing log file.
 
     Returns:
-        :class:`Log`: The observing log
+        :class:`Log`: The observing log.
     
     '''
 
@@ -183,11 +183,11 @@ def sort_log(log, keyword):
     Sort the observational log by given keyword.
 
     Args:
-        log (list): list composed of :class:`LogItem` objects
-        keyword (str): Keyword
+        log (list): A list containing :class:`LogItem` instances.
+        keyword (str): Keyword by which the items are sorted.
 
     Returns:
-        list: a new list composed of :class:`LogItem` objects
+        list: A new list containing :class:`LogItem` instances.
     '''
     new_dict = {}
     for logitem in log:
@@ -219,12 +219,14 @@ def get_input_fileids(log, string):
     return [fileid_lst[n] for n in lst]
 
 def parse_num_seq(string):
-    '''Convert the number sequence to list of numbers
+    '''
+    Convert the number sequence to list of numbers
 
     Args:
-        string (str): The input string
+        string (str): The input string to be parsed.
+
     Returns:
-        list: The list of integer numbers
+        list: A list of integer numbers.
 
     '''
     lst = []

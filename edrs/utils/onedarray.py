@@ -5,28 +5,24 @@ def get_edge_bin(array):
     '''
     Detect the edge indcies of a binary 1-D array.
 
-    Parameters
-    -----------
-    array : *list* or * Numpy 1-d array*
-        a list or Numpy 1d array, with binary (0/1) or boolean (True/False)
-        elements
+    Args:
+        array (:class:`numpy.array`): A list or Numpy 1d array, with binary
+            (0/1) or boolean (True/False) values.
 
-    Returns
-    --------
-    *list*
-        containing starting and ending indices of the non-zero blocks
+    Returns:
+        list: A list containing starting and ending indices of the non-zero
+            blocks.
 
-    Examples
-    ---------
-    .. code-block:: python
+    Examples:
 
-        >>> a = [0,1,1,0,0,0,1,0,1]
-        >>> get_edge_bin(a)
-        [(1, 3), (6, 7), (8, 9)]
-        >>> b = [True, False, True, True, False, False]
-        >>> get_edge_bin(b)
-        [(0, 1), (2, 4)]
+        .. code-block:: python
 
+            >>> a = [0,1,1,0,0,0,1,0,1]
+            >>> get_edge_bin(a)
+            [(1, 3), (6, 7), (8, 9)]
+            >>> b = [True, False, True, True, False, False]
+            >>> get_edge_bin(b)
+            [(0, 1), (2, 4)]
     '''
     array1 = np.int64(array)
     array1 = np.insert(array1, 0, 0)
@@ -34,23 +30,20 @@ def get_edge_bin(array):
     tmp = array1 - np.roll(array1, 1)
     i1_lst = np.nonzero(tmp == 1)[0] - 1
     i2_lst = np.nonzero(tmp ==-1)[0] - 1
-    return zip(i1_lst, i2_lst)
+    return list(zip(i1_lst, i2_lst))
 
 def get_local_minima(x, window=None):
     '''
-    Get the local minima of a 1d array.
-    
-    Parameters
-    ----------
-    x : *list* or *Numpy 1d array*
-        a list or Numpy 1d array
-	
-    Returns
-    -------
-    index : *Numpy 1d array*
-	    a Numpy 1d array containing the indices of all local minima
-    x[index] : *Numpy 1d array*
-	    a Numpy 1d array containing the values of all local minima
+    Get the local minima of a 1d array in a window.
+
+    Args:
+        x (:class:`numpy.array`): A list or Numpy 1d array.
+        window (int): An odd integer as the length of searching window.
+    Returns:
+        tuple: A tuple containing:
+
+            * **index** (:class:`numpy.array`): a numpy 1d array containing the indices of all local minima.
+            * **x[index]** (:class:`numpy.array`): a numpy 1d array containing the values of all local minima.
 
     '''
     x = np.array(x)
@@ -75,38 +68,28 @@ def get_local_minima(x, window=None):
         index_lst = np.array(index_lst)
         return index_lst, x[index_lst]
 
-
 def implete_none(lst):
     '''
     Replace the None elemnets at the beginning and the end of list by auto
     increment integers.
     
-    Parameters
-    ----------
-    lst : *list* 
-        a list contaning the None elements
-
-    Returns
-    -------
-    newlst : *list*
-	    a list containing auto increment integers
-	
-    Notes
-    -----
-    Convert the first and last few None elements to auto increment integers.
+    Convert the first and last few `None` elements to auto increment integers.
     These integers are determined by the first and last integers in the input
     array.
-    While the None elements between two integers in the input list will be
-    remained.
+    While the `None` elements between two integers in the input list will
+    remain.
 
+    Args:
+        lst (list): A list contaning None values.
+    Returns:
+        newlst (list): A list containing auto increment integers.
+	
+    Examples:
+        .. code-block:: python
 
-    Examples
-    --------
-    .. code-block:: python
-
-        >>> a = [None,None,3,4,None,5,6,None,None]
-        >>> implete_none(a)
-        [1, 2, 3, 4, None, 5, 6, 7, 8]
+            >>> a = [None,None,3,4,None,5,6,None,None]
+            >>> implete_none(a)
+            [1, 2, 3, 4, None, 5, 6, 7, 8]
 
     '''
     # filter the None values
@@ -135,24 +118,15 @@ def derivative(*args, **kwargs):
     '''
     Get the first derivative of (x, y).
 
-    Parameters
-    -----------
-    x : 1d Numpy array or list
-        x-values of the input array
-    y : 1d Numpy array or list (optional)
-        If y is not given, the first argument will be taken as y, and the
+    Args:
+        x (list or :class:`numpy.array`): X-values of the input array.
+        y (list or :class:`numpy.array`): Y-values of the input array.
+        points (int): Number of points used to calculate derivative (optional, default is 3).
+    Returns:
+        :class:`numpy.array`: Derivative of the input array.
+    Notes:
+        If **y** is not given, the first argument will be taken as *y*, and the
         differential of the input array will be returned.
-    points : integer (optional, default is 3)
-        Number of points used to calculate derivative.
-
-    Returns
-    ---------
-
-    Notes
-    ------
-
-    Examples
-    --------
     '''
     if len(args) == 1:
         y = np.array(args[0], dtype=np.float64)
