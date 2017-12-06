@@ -10,10 +10,9 @@ def save_fits(*args):
     '''
     Save the fits file.
 
-    Note
-    -----
-    This function is a wrapper of `astropy.io.fits.writeto()`. If the output
-    file exists, it will be removed without any warnings.
+    A wrapper of `astropy.io.fits.writeto()`. If the output file exists, it will
+    be removed without any warnings.
+    
     '''
     if os.path.exists(args[0]):
         os.remove(args[0])
@@ -30,6 +29,24 @@ def combine_fits(filename_lst,dst_filename,
         maxiter    = None,
         key_exptime= 'EXPTIME'
         ):
+    '''Combine multiple FITS images.
+
+    Args:
+        filename_lst (list): A list containing names of files to be combined.
+        dst_filename (str): Name of the output FITS file.
+        mode (str): Combine mode. `'mean'` or `'sum'`.
+        header (bool): Whether the FITS headers are kept in the output file.
+        upper_clip (float): Upper threshold of the sigma-clipping. Default is
+            None.
+        lower_cli (float): Lower threshold of the sigma-cipping. Default is
+            None.
+        nite (int): Number of iterations.
+        maxiter (maxiter): Maximum number of iterations.
+        key_exptime (str): Keyword of the exposuretime.
+    Returns:
+        No returns
+
+    '''
 
     clip = not (upper_clip == None and lower_clip == None)
 

@@ -13,7 +13,6 @@ setup(
     packages     = [
                     'edrs',
                     'edrs/utils',
-                    'edrs/ccdproc',
                     'edrs/echelle',
                     'edrs/pipelines',
                    ],
