@@ -156,6 +156,9 @@ class XinglongHRS(Reduction):
         self.input_surfix = self.output_surfix
 
     def bias(self):
+        '''Bias corrrection.
+
+        '''
         self.output_surfix = self.config.get('reduction','bias.surfix')
 
         if self.config.getboolean('reduction', 'bias.skip'):
@@ -163,7 +166,8 @@ class XinglongHRS(Reduction):
             self.input_surfix = self.output_surfix
             return True
 
-        bias_id_lst = parse_num_seq(self.config.get('reduction','fileid.bias'))
+        bias_id_lst = self.find_bias()
+
         infile_lst = [os.path.join(self.paths['midproc'],
                         '%s%s.fits'%(item.fileid, self.input_surfix))
                         for item in self.log if item.frameid in bias_id_lst]

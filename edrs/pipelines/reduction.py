@@ -165,9 +165,50 @@ class Reduction(object):
         logger.info('Save the variation of overscan figure: "%s"'%figpath)
         plt.close(fig)
 
+
+    def find_bias(self):
+        '''Find bias frames.
+
+        First search the config file. If there's no "fileid.bias" option in the
+        "reduction", scan the log file and find items with "objectname" containg
+        "bias".
+
+        Returns:
+            list: A list containing the IDs of bias frames.
+        '''
+        
+        if self.config.has_option('reduction', 'fileid.bias'):
+            # bias frames have been given in config
+            string = self.config.get('reduction','fileid.bias')
+            bias_id_lst = parse_num_seq(string)
+        else:
+            # find bias in log
+            bias_id_lst = []
+            for item in self.log:
+                if self.log.nchannel == 1:
+                    if item.objectname.lower().strip()=='bias':
+                        bias_id_lst.append(item.frameid)
+                else:
+                    for objtname in item.objectname:
+                        if objtname.lower().strip()=='bias':
+                            bias_id_lst.append(item.frameid)
+        return bias_id_lst
+
     def bias(self):
         '''
-        Subtract bias.
+        Bias correction.
+
+        .. csv-table:: Accepted options in config file
+           :header: "Option", "Type", "Description"
+           :widths: 20, 10, 50
+
+           "**bias.skip**",          "*bool*",    "Skip this step if *yes*"
+           "**bias.surfix**",        "*string*",  "Surfix of the corrected files"
+           "**bias.file**",          "*string*",  "Name of bias file"
+           "**bias.cosmic_clip**",   "*float*",   "Upper clippign threshold to remove cosmic-rays"
+           "**bias.smooth_method**", "*string*",  "Method of smoothing, including *Gauss*"
+           "**bias.smooth_sigma**",  "*integer*", "Sigma of the smoothing filter"
+           "**bias.smooth_mode**",   "*string*",  "Mode of the smoothing"
 
         To calculate the correct bias level for every individual pixel position
         several individual steps are performed. In the beginning a datacube
@@ -196,7 +237,8 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
-        bias_id_lst = parse_num_seq(self.config.get('reduction','fileid.bias'))
+        bias_id_lst = self.find_bias()
+
         infile_lst = [os.path.join(self.paths['midproc'],
                         '%s%s.fits'%(item.fileid, self.input_surfix))
                         for item in self.log if item.frameid in bias_id_lst]

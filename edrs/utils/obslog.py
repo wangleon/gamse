@@ -16,6 +16,9 @@ class Log(object):
     '''
     Class for observing log.
 
+    Attributes:
+        nchannels (int): Number of fiber channels.
+        item_list (list): List containing :class:`LogItem` instances.
     Examples:
         Initialization
     
@@ -69,9 +72,10 @@ class Log(object):
             for item in self.item_list:
                 pass
 
+
 class _LogIterator(object):
     '''
-    Iterator class for Log.
+    Iterator class for :class:`Log`.
     '''
     def __init__(self, item_list):
         self.item_list = item_list
