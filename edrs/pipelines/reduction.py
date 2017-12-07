@@ -18,8 +18,20 @@ from ..utils.config  import read_config
 from ..utils.obslog  import read_log, parse_num_seq
 from ..ccdproc       import save_fits
 
-
 class Reduction(object):
+    '''General echelle reduction.
+
+    Attributes:
+        config (:class:`configparser.ConfigParser`): Config of the reduction.
+        log (:class:`stella.utils.obslog.Log`): Observing log.
+        paths (tuple): Tuple containing paths.
+        input_surfix (str): Surfix of filenames before each step.
+        output_surfix (str): Surfix of filenames after each step.
+        mask_surfix (str): Surfix of mask filenames.
+
+        
+
+    '''
 
     def __init__(self):
 
@@ -32,7 +44,7 @@ class Reduction(object):
 
     def reduce(self):
         '''
-        Main loop of the reduction procedure
+        Main loop of the reduction procedure.
         '''
         # initiliaze file surfix
         self.input_surfix  = ''
@@ -157,8 +169,6 @@ class Reduction(object):
         '''
         Subtract bias.
 
-        Notes
-        -----
         To calculate the correct bias level for every individual pixel position
         several individual steps are performed. In the beginning a datacube
         containing all the individual bias frames is created. The group of bias

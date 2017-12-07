@@ -42,8 +42,10 @@ def get_local_minima(x, window=None):
     Returns:
         tuple: A tuple containing:
 
-            * **index** (:class:`numpy.array`): a numpy 1d array containing the indices of all local minima.
-            * **x[index]** (:class:`numpy.array`): a numpy 1d array containing the values of all local minima.
+            * **index** (:class:`numpy.array`): a numpy 1d array containing 
+              indices of all local minima.
+            * **x[index]** (:class:`numpy.array`): a numpy 1d array containing
+              values of all local minima.
 
     '''
     x = np.array(x)

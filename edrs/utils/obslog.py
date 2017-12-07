@@ -92,15 +92,15 @@ def read_logitem(string, names, types, nchannels=1, column_separator='|',
     '''Read log items.
 
     Args:
-        string (str): Input string
-        names (list): A list of names
-        types (list): A list of type strings
-        nchannels (int, optional): Number of channels. Default is 1
-        column_separator (str, optional): Separator of columns. Default is "|"
-        channel_separator (str, optional): Separator of channels in `objectname` column. Default is ";"
+        string (str): Input string.
+        names (list): A list of names.
+        types (list): A list of type strings.
+        nchannels (int): Number of channels.
+        column_separator (str): Separator of columns.
+        channel_separator (str): Separator of channels in "bjectname" column.
     
     Returns:
-        :class:`LogItem`: A :class:`LogItem` instance
+        :class:`LogItem`: A :class:`LogItem` instance.
 
     '''
     logitem = LogItem()
