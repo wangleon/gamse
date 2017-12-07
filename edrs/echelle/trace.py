@@ -21,8 +21,6 @@ class ApertureLocation(object):
     Attributes:
         direct (int): 0 if along Y axis; 1 if along X axis
         
-
-
     '''
     def __init__(self, *args, **kwargs):
         for key, value in kwargs.items():
@@ -564,17 +562,12 @@ def find_apertures(filename, **kwargs):
 
 def load_aperture_set(filename):
     '''
-    Reads an ApertureSet instance from an ascii file.
-    
-    Parameters
-    ----------
-    filename : string
-        name of an ascii file
-        
-    Returns
-    -------
-    aperture_list : ApertureSet instance
-        order set
+    Reads an ApertureSet instance from an Ascii file.
+
+    Args:
+        filename (str): Name of the ASCII file.
+    Returns:
+        :class:`ApertureSet`: An :class:`ApertureSet` instance.
     '''
 
     aperture_set = ApertureSet()

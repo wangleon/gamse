@@ -7,6 +7,7 @@ Summaries
 .. autosummary::
     save_fits
     combine_fits
+    savitzky_golay_2d
 
 .. automodule:: edrs.ccdproc
    :members:

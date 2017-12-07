@@ -19,24 +19,19 @@ def mosaic_flat_interact(filename_lst, outfile,
     '''
     Display an interacitve interface to mosaic the flat images
 
-    Parameters
-    ----------
-    filename_lst : list
-        A list containing all the filenames of flat images as strings.
-    outfile : string
-        Filename of the final flat image.
-    mosaic_file : str
-        Filename of the ascii file recording the coefficients of boundaries.
-    reg_file : str
-        Filename of the .reg file.
-    disp_axis : integer
-        Main dispersion axis of the input image.
-        0: echelle orders are along Y axis
-        1: echelle orders are along X axis
-
-    Notes
-    ------
-
+    Args:
+        filename_lst (list): A list containing filenames of flat images.
+        outfile (str): Filename of the output image.
+        mosaic_file (str): Name of the ascii file recording the coefficients of
+            the mosaic boundaries.
+        reg_file (str): Name of the `.reg` file to be displayed in SAO-DS9.
+        disp_axis (integer): Main dispersion axis of the input image. 0 means
+            the echelle orders are along the *y* axis. 1 means along *x* axis.
+        mask_surfix (str): Surfix of the filenames of masks.
+    Returns:
+        No returns.
+    See Also:
+        :func:`mosaic_flat_auto`
     '''
     import matplotlib.pyplot as plt
 
@@ -325,23 +320,22 @@ def detect_gap(
         ):
     '''
     Detect the curve of gap between two orders along x-xias.
+
     This is realized by calculating the cross-correlation function and detect
     the position of the maximum value.
 
-    Parameters
-    -----------
-    data : numpy array
-        Data image as a numpy 2d-array.
-    x0 : integer
-        Starting coordinate.
-    ccf_ulimit : integer
-        Upper limit to **x0** of the data segment used to calculate CCF.
-    ccf_llimit : integer
-        Lower limit to **x0** of the data segment used to calculate CCF.
-    step : integer
-        Step of searching the gap.
-    order : integer
-        Order of polynomial used to fit the boundary.
+    Args:
+        data (2-d :class:`numpy.array`): Data image as a numpy 2d-array.
+        x0 (int): Starting coordinate.
+        ccf_ulimit (int): Upper limit to **x0** of the data segment used to
+            calculate CCF.
+        ccf_llimit (int): Lower limit to **x0** of the data segment used to
+            calculate CCF.
+        step (int): Step of searching the gap.
+        order (int): Degree of polynomial used to fit the boundary.
+    Returns:
+        :class:`numpy.array`: Cofficients of the polynomial.
+
 
     '''
     from scipy.interpolate import InterpolatedUnivariateSpline
@@ -407,20 +401,15 @@ def load_mosaic(filename):
     '''
     Read mosaic boundary information from an existing ascii file.
 
-    Parameters
-    -----------
-    filename : string
-        Filename of the mosaic file
+    Args:
+        filename (str): Name of the mosaic file.
+    Returns:
+        tuple: A tuple containing:
 
-    Returns
-    --------
-    coeff_lst : list
-        A list containing coefficients of polynomials for the boundaries
-    select_area : dict
-        A dict
+            * **coeff_lst** (*list*): A list containing coefficients of
+                polynomials for the boundaries
+            * **select_area** (*dict*): A dict containing the selected areas.
 
-    Notes
-    -------
     '''
     coeff_lst = []
     select_area = {}
@@ -474,6 +463,19 @@ def load_mosaic(filename):
 
 
 def mosaic_flat_auto(filename_lst, outfile, order_set_lst, max_count):
+    '''
+    Mosaic flat images automatically.
+
+    Args:
+        filename_lst (list): A list containing filenames of flat images.
+        outfile (str): Filename of the output image.
+        order_set_lst (list): List of :class:`ordersets`.
+        max_count (float): Maximum count.
+    Returns:
+        No returns.
+    See Also:
+        :func:`mosaic_flat_interact`
+    '''
 
     from ..echelle.trace import select_ref_tracefile, align_orders
 
