@@ -80,12 +80,14 @@ def main():
         logger.info('Start reducing %s data'%instrument)
         from edrs.pipelines import reduce_echelle
         reduce_echelle(instrument=instrument)
-
     elif sys.argv[1] == 'plot' and len(sys.argv)>=3:
         from edrs.echelle import plot
         plot.plot(sys.argv[2])
     elif sys.argv[1] == 'list' and len(sys.argv)>=3:
         foces.make_log(sys.argv[2])
+    else:
+        print('Unknow argument: %s'%sys.argv[1])
+        exit()
 
 if __name__=='__main__':
     log_fmt = ' '.join(['*',
