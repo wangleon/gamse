@@ -17,7 +17,7 @@ class Log(object):
     Class for observing log.
 
     Attributes:
-        nchannels (int): Number of fiber channels.
+        nchannels (integer): Number of fiber channels.
         item_list (list): List containing :class:`LogItem` instances.
     Examples:
         Initialization
@@ -133,13 +133,16 @@ def read_log(filename):
     '''Read observing log from an ascii file.
 
     Args:
-        filename (str): Name of the observing log file.
+        filename (string): Name of the observing log file.
 
     Returns:
-        :class:`Log`: The observing log.
-    
+        tuple: A tuple containing:
+        
+            * **log** (*:class:`Log`*): The observing log.
+            * **frame_lst** (*tuple*): Frame list.
     '''
 
+    frame_lst = {}
     log = Log()
     infile = open(filename)
     for row in infile:
@@ -188,7 +191,7 @@ def sort_log(log, keyword):
 
     Args:
         log (list): A list containing :class:`LogItem` instances.
-        keyword (str): Keyword by which the items are sorted.
+        keyword (string): Keyword by which the items are sorted.
 
     Returns:
         list: A new list containing :class:`LogItem` instances.
@@ -207,7 +210,7 @@ def get_input_fileids(log, string):
 
     Args:
         log (:class:`Log`): A :class:`Log` instance
-        string (str): The input string
+        string (string): The input string
     Returns:
         list: The list of file IDs
     '''
@@ -227,7 +230,7 @@ def parse_num_seq(string):
     Convert the number sequence to list of numbers
 
     Args:
-        string (str): The input string to be parsed.
+        string (string): The input string to be parsed.
 
     Returns:
         list: A list of integer numbers.

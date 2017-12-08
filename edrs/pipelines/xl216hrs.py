@@ -21,6 +21,12 @@ class XinglongHRS(Reduction):
         # copy some keywords from the log to the Reduction instance
         self.nchannels = self.log.nchannels
 
+    def config_ccd(self):
+        '''Set CCD images configurations.
+        '''
+        self.ccd_config
+
+
     def overscan(self):
         '''
         '''

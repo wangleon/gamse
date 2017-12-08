@@ -24,12 +24,16 @@ class Reduction(object):
     Attributes:
         config (:class:`configparser.ConfigParser`): Config of the reduction.
         log (:class:`stella.utils.obslog.Log`): Observing log.
-        paths (tuple): Tuple containing paths.
-        input_surfix (str): Surfix of filenames before each step.
-        output_surfix (str): Surfix of filenames after each step.
-        mask_surfix (str): Surfix of mask filenames.
+        paths (tuple): A tuple containing following paths:
 
-        
+            * *'rawdata'*: Path to raw images.
+            * *'midproc'*: Path to mid-process files.
+            * *'report'*: Path to report file.
+            * *'report_img'*: Path to images used in report.
+
+        input_surfix (string): Surfix of filenames before each step.
+        output_surfix (string): Surfix of filenames after each step.
+        mask_surfix (string): Surfix of mask filenames.
 
     '''
 
@@ -64,7 +68,7 @@ class Reduction(object):
 
     def load_config(self):
         '''
-        Load config file
+        Load config file and check the paths.
         '''
         self.config = read_config()
 
@@ -128,7 +132,7 @@ class Reduction(object):
 
     def plot_overscan_variation(self, t_lst, overscan_lst):
         '''
-        Plot the variation of overscan
+        Plot the variation of overscan.
         '''
         
         # Quality check plot of the mean overscan value over time 
@@ -660,7 +664,7 @@ class Reduction(object):
 
     def combine_trace(self):
         '''
-        Combine trace frames
+        Combine trace frames.
         '''
 
         trace_file   = self.config.get('reduction', 'trace.file')
@@ -767,7 +771,7 @@ class Reduction(object):
 
     def trace(self):
         '''
-        Find the order locations
+        Find the order locations.
 
         Notes
         -----
