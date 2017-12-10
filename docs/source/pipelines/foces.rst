@@ -339,9 +339,31 @@ It is read by Python built-in
 `ConfigParser <https://docs.python.org/2/library/configparser.html>`_ module and
 passed to EDRS2.
 
+Usage of FOCES Pipeline
+-----------------------
+
+Generation of Observing Log
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The first step is to create a reduction directory and create link to the raw
+data in this directory.
+For example, the raw images (`***.fits`) are saved in `~/data/foces/2015-03-04`,
+then the command is:
+
+.. code-block:: bash
+
+    ln -s ~/data/foces/2015-03-04 rawdata
+
+Then, run the following command to generate the obseving log file.
+EDRS2 will 
+
+.. code-block:: bash
+
+    edrs2 list
+
 
 Flat Fielding
---------------
+^^^^^^^^^^^^^
 
 Flats with different exposure times are mosaiced together to generate the final
 flat image.

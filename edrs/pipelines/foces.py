@@ -8,9 +8,9 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
-from ..utils.obslog import parse_num_seq
-from ..ccdproc      import save_fits
-from .reduction     import Reduction
+from ..utils    import obslog
+from ..ccdproc  import save_fits
+from .reduction import Reduction
 
 class FOCES(Reduction):
     '''Pipleline for FOCES
@@ -191,7 +191,7 @@ class FOCES(Reduction):
 
 
 
-def make_log(rawdata_path):
+def make_log(path):
     '''
     Scan the raw data, and generated a log file containing the detail
     information for each frame.
@@ -200,68 +200,66 @@ def make_log(rawdata_path):
     `YYYY-MM-DD.log`.
 
     Args:
-        rawdata_path (str): Path to the raw FITS files.
+        path (string): Path to the raw FITS files.
 
     '''
-    from ..utils import obslog
 
     # scan the raw files
-    fname_lst = sorted(os.listdir(rawdata_path))
-    log = []
+    fname_lst = sorted(os.listdir(path))
+    log = obslog.Log()
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
         fileid  = fname[0:-5]
         obsdate = None
         exptime = None
-        filepath = os.path.join(rawdata_path,fname)
-        data,head = fits.getdata(filepath,header=True)
-        data = data[:,20:-20]
+        data, head = fits.getdata(os.path.join(path, fname), header=True)
+        scidata = data[:,20:-20]
         obsdate = head['UTC-STA']
         exptime = head['EXPTIME']
         try:
-            objtname = head['OBJECT']
+            objectname = head['OBJECT']
         except:
-            objtname = 'Unknown'
+            objectname = 'Unknown'
 
         # determine the fraction of saturated pixels permillage
-        mask_sat = (data>=63000)
-        prop = float(mask_sat.sum())/data.size*1e3
+        mask_sat = (scidata>=63000)
+        prop = float(mask_sat.sum())/scidata.size*1e3
 
         # find the brightness index in the central region
-        h,w = data.shape
-        data1 = data[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
-        bri_index = np.median(data1,axis=1).mean()
+        h, w = scidata.shape
+        data1 = scidata[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
+        brightness = np.median(data1,axis=1).mean()
 
-        logitem = obslog.LogItem(
-                      fileid     = fileid,
-                      obsdate    = obsdate,
-                      exptime    = exptime,
-                      objtname   = objtname,
-                      saturation = prop,
-                      brightness = bri_index,
-                  )
-        log.append(logitem)
+        item = obslog.LogItem(
+                   fileid     = fileid,
+                   obsdate    = obsdate,
+                   exptime    = exptime,
+                   objectname = objectname,
+                   saturation = prop,
+                   brightness = brightness,
+                   )
+        log.add_item(item)
 
-    log = obslog.sort_log(log, 'obsdate')
+    log.sort('obsdate')
 
     # make info list
     all_info_lst = []
-    columns = ['frameid','fileid','objtname','exptime','obsdate','saturation',
-               'brightness']
+    columns = ['frameid (i)', 'fileid (s)', 'objectname (s) ', 'exptime (f)',
+               'obsdate (s)', 'saturation (f)', 'brightness (f)']
     prev_frameid = -1
-    for logitem in log:
-        frameid = int(logitem.fileid.split('_')[1])
+    for item in log:
+        frameid = int(item.fileid.split('_')[1])
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(frameid, prev_frameid))
         info_lst = [
                     str(frameid),
-                    str(logitem.fileid),
-                    str(logitem.objtname),
-                    '%8.3f'%logitem.exptime,
-                    str(logitem.obsdate),
-                    '%.3f'%logitem.saturation,
-                    '%.1f'%logitem.brightness,
+                    str(item.fileid),
+                    str(item.objectname),
+                    '%.3f'%item.exptime,
+                    str(item.obsdate),
+                    '%.3f'%item.saturation,
+                    '%.1f'%item.brightness,
                 ]
         prev_frameid = frameid
         all_info_lst.append(info_lst)
@@ -283,18 +281,18 @@ def make_log(rawdata_path):
             info_lst[i] = fmt%(info_lst[i])
 
     # write the obslog into an ascii file
-    date = log[0].fileid.split('_')[0]
-    outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
-    outfile = open(outfilename,'w')
+    #date = log[0].fileid.split('_')[0]
+    #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
+    #outfile = open(outfilename,'w')
     string = '# '+', '.join(columns)
-    outfile.write(string+os.linesep)
+    #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:
         string = ' | '.join(info_lst)
         string = ' '+string
-        outfile.write(string+os.linesep)
+        #outfile.write(string+os.linesep)
         print(string)
-    outfile.close()
+    #outfile.close()
 
 
 def get_primary_header(input_lst):

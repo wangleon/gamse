@@ -1664,3 +1664,13 @@ class Reduction(object):
                     outfilename = os.path.join(self.paths['midproc'],
                                               '%s%s.fits'%(item.fileid, self.output_surfix))
                     reference_wv_self(infilename, outfilename, calib_lst[item.frameid])
+
+
+def get_instrument(path):
+    '''Find the telescope and instrument by checking the raw FITS files.
+
+    Args:
+        path (string): Path to the raw files.
+    Returns:
+        string: Name of the instrument.
+    '''
