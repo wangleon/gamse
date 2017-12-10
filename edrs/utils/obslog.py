@@ -51,6 +51,17 @@ class Log(object):
         '''Add a :class:`LogItem` instance into the observing log.'''
         self.item_list.append(item)
 
+    def sort(self, key):
+        '''Sort the items by the given keyword.
+
+        Args:
+            key (string): Keyword to sort.
+        '''
+
+        new_item_list = sorted(self.item_list,
+                               key=lambda item: getattr(item, key))
+        self.item_list = new_item_list
+
     def get_frameid_lst(self, objectname=None, exptime=None, channel=None):
         '''Get a list of frameids from given conditions.'''
         if self.nchannels > 1:
@@ -184,26 +195,6 @@ def read_log(filename):
     logger.info('Observational log file "%s" loaded'%filename)
 
     return log
-
-def sort_log(log, keyword):
-    '''
-    Sort the observational log by given keyword.
-
-    Args:
-        log (list): A list containing :class:`LogItem` instances.
-        keyword (string): Keyword by which the items are sorted.
-
-    Returns:
-        list: A new list containing :class:`LogItem` instances.
-    '''
-    new_dict = {}
-    for logitem in log:
-        key = getattr(logitem, keyword)
-        new_dict[key] = logitem
-    new_log = []
-    for key in sorted(new_dict.keys()):
-        new_log.append(new_dict[key])
-    return new_log
 
 def get_input_fileids(log, string):
     '''Get the fileids of the input.
