@@ -213,3 +213,75 @@ class CCDImage(object):
     def __init__(self):
         self.data_region_lst = []
 
+def array_to_table(array):
+    '''Convert the non-zeros elements of a Numpy array to a stuctured array.
+
+    Args:
+        array (:class:`numpy.array`): Input Numpy array.
+    Returns:
+        :class:`numpy.dtype`: Numpy stuctured array.
+    See also:
+        :func:`table_to_array`
+    Examples:
+        Below shows an example of converting a numpy 2-d array `a` to a
+        structured array `t`.
+        The first few coloumns (`axis_0`, `axis_1`, ... `axis_n-1`) in `t`
+        correspond to the coordinates of the *n*-dimensional input array, and
+        the last column (`value`) are the elements of the input array.
+        The reverse process is :func:`table_to_array`
+
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> from edrs.ccdproc import array_to_table
+
+            >>> a = np.arange(12).reshape(3,4)
+            >>> a
+            array([[ 0,  1,  2,  3],
+                   [ 4,  5,  6,  7],
+                   [ 8,  9, 10, 11]])
+            >>> t = array_to_table(a)
+            >>> t
+            array([(0, 1,  1), (0, 2,  2), (0, 3,  3), (1, 0,  4), (1, 1,  5),
+                   (1, 2,  6), (1, 3,  7), (2, 0,  8), (2, 1,  9), (2, 2, 10),
+                   (2, 3, 11)], 
+                  dtype=[('axis_0', '<i2'), ('axis_1', '<i2'), ('value', '<i8')])
+
+    '''
+    dimension = len(array.shape)
+    types = [('axis_%d'%i, np.int16) for i in range(dimension)]
+    types.append(('value', array.dtype.type))
+    names, formats = list(zip(*types))
+    custom = np.dtype({'names': names, 'formats': formats})
+    
+    table = []
+    ind = np.nonzero(array)
+    for coord, value in zip(zip(*ind), array[ind]):
+        row = list(coord)
+        row.append(value)
+        row = np.array(tuple(row), dtype=custom)
+        table.append(row)
+    table = np.array(table, dtype=custom)
+    return(table)
+
+def table_to_array(table, shape):
+    '''Convert a structured array to Numpy array.
+
+    This is the reverse process of :func:`array_to_table`.
+    For the elements of which coordinates are not listed in the table, zeros are
+    filled.
+
+    Args:
+        table (:class:`numpy.dtype`): Numpy structured array.
+        shape (tuple): Shape of output array.
+    Returns:
+        :class:`numpy.array`: Numpy array.
+    See also:
+        :func:`array_to_table`
+    '''
+
+    array = np.zeros(shape, dtype=table.dtype[-1].type)
+    coords = [table[col] for col in table.dtype.names[0:-1]]
+    array[coords] = table['value']
+
+    return array
