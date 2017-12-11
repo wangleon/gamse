@@ -9,11 +9,11 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
 from ..utils    import obslog
-from ..ccdproc  import save_fits
+from ..ccdproc  import save_fits, array_to_table
 from .reduction import Reduction
 
 class FOCES(Reduction):
-    '''Pipleline for FOCES
+    '''Reduction pipleline for FOCES.
     '''
 
     def __init__(self):
@@ -23,11 +23,14 @@ class FOCES(Reduction):
         '''
         Correct overscan for FOCES FITS images.
         
-        The overscan is corrected for each FITS image listed in the
-        observational log. The FOCES CCD has two overscan regions, one on the
-        left and the other one on the right side. To correct the overscan, only
-        the mean value of the left region is used. Afterwards the mean value is
-        subtracted of every individual pixel. 
+        The overscan is corrected for each FITS image listed in the observing
+        log.
+        FOCES images has two overscan regions, lying in the left and right
+        sides of the CCD.
+        However, only the one on the left region is used to correct the overscan
+        level.
+        The mean values along the *y*-axies are calculated and smoothed.
+        Then are subtracted for every pixel in the science region.
         '''
 
         # find output surfix for fits
@@ -42,11 +45,10 @@ class FOCES(Reduction):
         ovr1_lst, ovr1_std_lst = [], []
         ovr2_lst, ovr2_std_lst = [], []
         
-        # keywords for mask
-        saturation_adu = self.config.getint('reduction','saturation')
+        # saturated CCD count
+        saturation_adu = 65535
     
-        # loop over all files (bias, dark, ThAr, flat...)
-        # to correct for the overscan
+        # loop over all files to correct for the overscan
 
         count = 0
         for item in self.log:
@@ -69,12 +71,12 @@ class FOCES(Reduction):
             ovr_lst1 = overdata1.mean(dtype=np.float64, axis=1)
             ovr_lst2 = overdata2.mean(dtype=np.float64, axis=1)
             # only used the upper ~1/2 regions for culculating mean of overscan
-            valid_y1, valid_y2 = int(h*0.5),h
+            vy1, vy2 = h//2, h
             # find the mean and standard deviation for left & right overscan
-            ovrmean1 = ovr_lst1[valid_y1:valid_y2].mean(dtype=np.float64)
-            ovrmean2 = ovr_lst2[valid_y1:valid_y2].mean(dtype=np.float64)
-            ovrstd1  = ovr_lst1[valid_y1:valid_y2].std(dtype=np.float64, ddof=1)
-            ovrstd2  = ovr_lst2[valid_y1:valid_y2].std(dtype=np.float64, ddof=1)
+            ovrmean1 = ovr_lst1[vy1:vy2].mean(dtype=np.float64)
+            ovrmean2 = ovr_lst2[vy1:vy2].mean(dtype=np.float64)
+            ovrstd1  = ovr_lst1[vy1:vy2].std(dtype=np.float64, ddof=1)
+            ovrstd2  = ovr_lst2[vy1:vy2].std(dtype=np.float64, ddof=1)
     
             # plot the overscan regions
             if count%5 == 0:
@@ -84,10 +86,9 @@ class FOCES(Reduction):
             ax2 = fig.add_axes([0.55, 0.83-(count%5)*0.185, 0.42, 0.15])
             ax1.plot(ovr_lst1, 'r-', alpha=0.3)
             ax2.plot(ovr_lst2, 'b-', alpha=0.3)
-            ax1.plot(np.arange(valid_y1, valid_y2),
-                     ovr_lst1[valid_y1:valid_y2], 'r-', alpha=0.7)
-            ax2.plot(np.arange(valid_y1, valid_y2),
-                     ovr_lst2[valid_y1:valid_y2], 'b-', alpha=0.7)
+            y = np.arange(vy1, vy2)
+            ax1.plot(y, ovr_lst1[vy1:vy2], 'r-', alpha=0.7)
+            ax2.plot(y, ovr_lst2[vy1:vy2], 'b-', alpha=0.7)
             x1,x2 = 0, ovr_lst1.size-1
             ax1.plot([x1,x2],[ovrmean1,         ovrmean1],         'm-')
             ax1.plot([x1,x2],[ovrmean1-ovrstd1, ovrmean1-ovrstd1], 'm:')
@@ -122,17 +123,14 @@ class FOCES(Reduction):
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
     
-            # find and store saturated pixels in the image region.
-            # we define a pixel to be saturated when it contains 
-            # >63000 CCD-Counts (The hardware limit is 65535)
+            # find saturated pixels and saved them in FITS files
             mask_sat   = (data[:,20:2068]>=saturation_adu)
-            mask       = np.int16(mask_sat)
+            mask       = np.int16(mask_sat)*4
+            mask_table = array_to_table(mask)
             mask_fname = os.path.join(self.paths['midproc'],
                          '%s%s.fits'%(item.fileid, self.mask_surfix))
-            # save the mask. headers are not saved in mask fits. otherwise
-            # np.int16(maskdata) is needed to convert the mask data to int16
-            # after reading.
-            save_fits(mask_fname, mask*4)
+            # save the mask.
+            save_fits(mask_fname, mask_table)
     
             # subtract overscan
             new_data = data[:,20:2068] - ovrmean1
@@ -143,7 +141,7 @@ class FOCES(Reduction):
             head['HIERARCH EDRS OVERSCAN']        = True
             head['HIERARCH EDRS OVERSCAN METHOD'] = 'mean'
             head['HIERARCH EDRS OVERSCAN AXIS-1'] = '1:20'
-            head['HIERARCH EDRS OVERSCAN AXIS-2'] = '%d:%d'%(valid_y1,valid_y2)
+            head['HIERARCH EDRS OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
             head['HIERARCH EDRS OVERSCAN MEAN']   = ovrmean1
             head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
     
@@ -188,8 +186,6 @@ class FOCES(Reduction):
         logger.info('Overscan corrected. Change surfix: %s -> %s'%
                     (self.input_surfix, self.output_surfix))
         self.input_surfix = self.output_surfix
-
-
 
 def make_log(path):
     '''

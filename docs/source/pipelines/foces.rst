@@ -300,12 +300,10 @@ in the background correction, scanning intervals in order location...).
 Below is an example::
 
     [reduction]
-    reduction_id = FOCES_20150304_A
-    data_path    = rawdata
-    mid_path     = midproc
-    report_path  = report
-    result_path  = result
-    saturation   = 63000
+    path.data    = rawdata
+    path.midproc = midproc
+    path.report  = report
+    path.result  = result
 
     bias    = 2-6
     thar    = 1, 47, 48
@@ -344,7 +342,6 @@ Usage of FOCES Pipeline
 
 Generation of Observing Log
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
 The first step is to create a reduction directory and create link to the raw
 data in this directory.
 For example, the raw images (`***.fits`) are saved in `~/data/foces/2015-03-04`,
@@ -355,11 +352,33 @@ then the command is:
     ln -s ~/data/foces/2015-03-04 rawdata
 
 Then, run the following command to generate the obseving log file.
-EDRS2 will 
+EDRS2 will print all items on the screen.
 
 .. code-block:: bash
 
-    edrs2 list
+    edrs2 list rawdata
+
+To generate an observing log file, just redirect the output to a specific file:
+
+.. code-block:: bash
+
+    edrs2 list rawdata > 2015-03-04.log
+
+Check the Config File
+^^^^^^^^^^^^^^^^^^^^^
+Make sure there is a configuration file (`XXX.cfg`) in the reduction directory.
+
+The config file must have a `reduction` section and should contain the following
+options::
+
+    [reduction]
+    path.data    = rawdata
+    path.midproc = midproc
+    path.report  = report
+    path.result  = result
+
+Overscan
+^^^^^^^^
 
 
 Flat Fielding
