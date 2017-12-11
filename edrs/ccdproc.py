@@ -278,10 +278,37 @@ def table_to_array(table, shape):
         :class:`numpy.array`: Numpy array.
     See also:
         :func:`array_to_table`
+    Examples:
+        Below shows an example of converting a numpy 2-d array `a` to a
+        structured array `t` using :func:`array_to_table`, and then converting
+        `t` back to `a` using :func:`table_to_array`.
+
+        .. code-block:: python
+
+            >>> import numpy as np
+            >>> from edrs.ccdproc import array_to_table
+
+            >>> a = np.arange(12).reshape(3,4)
+            >>> a
+            array([[ 0,  1,  2,  3],
+                   [ 4,  5,  6,  7],
+                   [ 8,  9, 10, 11]])
+            >>> t = array_to_table(a)
+            >>> t
+            array([(0, 1,  1), (0, 2,  2), (0, 3,  3), (1, 0,  4), (1, 1,  5),
+                   (1, 2,  6), (1, 3,  7), (2, 0,  8), (2, 1,  9), (2, 2, 10),
+                   (2, 3, 11)], 
+                  dtype=[('axis_0', '<i2'), ('axis_1', '<i2'), ('value', '<i8')])
+            >>> a = table_to_array(a, (3,4))
+            >>> a
+            array([[ 0,  1,  2,  3],
+                   [ 4,  5,  6,  7],
+                   [ 8,  9, 10, 11]])
+
     '''
 
     array = np.zeros(shape, dtype=table.dtype[-1].type)
-    coords = [table[col] for col in table.dtype.names[0:-1]]
+    coords = (table[col] for col in table.dtype.names[0:-1])
     array[coords] = table['value']
 
     return array
