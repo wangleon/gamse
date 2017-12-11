@@ -1666,11 +1666,3 @@ class Reduction(object):
                     reference_wv_self(infilename, outfilename, calib_lst[item.frameid])
 
 
-def get_instrument(path):
-    '''Find the telescope and instrument by checking the raw FITS files.
-
-    Args:
-        path (string): Path to the raw files.
-    Returns:
-        string: Name of the instrument.
-    '''

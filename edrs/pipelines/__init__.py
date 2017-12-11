@@ -4,6 +4,21 @@ import astropy.io.fits as fits
 from .reduction import Reduction
 
 def reduce_echelle(instrument):
+    '''Automatically select the instrument and reduce echelle spectra
+    accordingly.
+
+    Available instruments include:
+        
+        * *FOCES*: FOCES on 2.2m Fraunhofer Telescope on Wendelstein
+          Observatory.
+        * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station.
+
+    Args:
+        instrument (string): Name of the instrument.
+    Returns:
+        No returns.
+
+    '''
     if instrument == 'FOCES':
         from .foces import FOCES
         reduction = FOCES()
