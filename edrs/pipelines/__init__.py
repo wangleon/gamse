@@ -2,6 +2,9 @@ import os
 import astropy.io.fits as fits
 
 from .reduction import Reduction
+from ..utils.config import read_config, find_config
+
+instrument_lst =  ['FOCES', 'Xinglong216HRS']
 
 def reduce_echelle(instrument):
     '''Automatically select the instrument and reduce echelle spectra
@@ -61,3 +64,22 @@ def get_instrument(path):
     else:
         print('Cannot recognize the instrument')
         return ''
+
+def find_rawdata():
+    '''Find the path to the raw images.
+
+    Args:
+        No args.
+    Returns:
+        string or None: Path to the raw images. Return *None* if path not found.
+    '''
+
+    if os.path.exists('rawdata'):
+        return 'rawdata'
+    else:
+        config_file = find_config('./')
+        config = read_config(config_file)
+        if config.has_option('reduction', 'path.data'):
+            return config.get_option('reduction', 'path.data')
+        else:
+            return None

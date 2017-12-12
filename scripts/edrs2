@@ -74,7 +74,10 @@ def main():
         print_help()
         exit()
 
-    elif sys.argv[1] == 'reduce':
+    from edrs import pipelines
+    from edrs.pipelines import find_rawdata, get_instrument
+
+    if sys.argv[1] == 'reduce':
         record_system_info()
         instrument = sys.argv[2]
         logger.info('Start reducing %s data'%instrument)
@@ -83,9 +86,12 @@ def main():
     elif sys.argv[1] == 'plot' and len(sys.argv)>=3:
         from edrs.echelle import plot
         plot.plot(sys.argv[2])
-    elif sys.argv[1] == 'list' and len(sys.argv)>=3:
-        from edrs.pipelines import get_instrument, make_log
-        rawpath = sys.argv[2]
+    elif sys.argv[1] == 'list':
+        from edrs.pipelines import make_log
+        rawpath = find_rawdata()
+        if rawpath is None:
+            print('Rawdata not found')
+            exit()
         instrument = get_instrument(rawpath)
         make_log(instrument, rawpath)
     else:

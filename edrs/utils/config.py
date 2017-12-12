@@ -33,3 +33,19 @@ def read_config():
         logger.error('There are %d config files (*.cfg)'%len(filename_lst))
         return None
 
+def find_config(path):
+    '''Find the config file in the given directory.
+
+    Args:
+        path (string): Path to the searching directory.
+    Returns:
+        string or None: Path to the config file with filename ended with `.cfg`.
+            If not found, return *None*.
+    '''
+    cfg_lst = [fname for fname in sorted(os.path.listdir(path))
+                        if fname[-4:]=='.cfg']
+    if len(cfg_lst)==1:
+        return cfg_lst[0]
+    else:
+        print('Error: Multi config file found')
+        return None
