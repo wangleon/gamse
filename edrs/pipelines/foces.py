@@ -55,7 +55,7 @@ class FOCES(Reduction):
             self.input_surfix = self.output_surfix
             return True
 
-        self.report_file.write('<h2>Overscan</h2>'+os.linesep)
+        self.report_file.write('    <h2>Overscan</h2>'+os.linesep)
         t_lst, frameid_lst, fileid_lst = [], [], []
         ovr1_lst, ovr1_std_lst = [], []
         ovr2_lst, ovr2_std_lst = [], []
@@ -95,7 +95,7 @@ class FOCES(Reduction):
     
             # plot the overscan regions
             if count%5 == 0:
-                fig = plt.figure(figsize=(8,6), dpi=150)
+                fig = plt.figure(figsize=(12,8), dpi=150)
 
             ax1 = fig.add_axes([0.10, 0.83-(count%5)*0.185, 0.42, 0.15])
             ax2 = fig.add_axes([0.55, 0.83-(count%5)*0.185, 0.42, 0.15])
@@ -137,7 +137,9 @@ class FOCES(Reduction):
                 fig.savefig(figpath)
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
-                self.report_file.write('<img src="images/%s">'%figname+os.linesep)
+                self.report_file.write(
+                    '        <img src="images/%s">'%figname+os.linesep
+                    )
     
             # find saturated pixels and saved them in FITS files
             mask_sat   = (data[:,20:2068]>=saturation_adu)

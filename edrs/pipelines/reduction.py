@@ -227,8 +227,8 @@ class Reduction(object):
                     if item.objectname.lower().strip()=='bias':
                         bias_id_lst.append(item.frameid)
                 else:
-                    for objtname in item.objectname:
-                        if objtname.lower().strip()=='bias':
+                    for name in item.objectname:
+                        if name.lower().strip()=='bias':
                             bias_id_lst.append(item.frameid)
         return bias_id_lst
 
@@ -272,6 +272,8 @@ class Reduction(object):
             logger.info('Skip [bias] according to the config file')
             self.input_surfix = self.output_surfix
             return True
+
+        self.report_file.write('    <h2>Bias Correction</h2>'+os.linesep)
 
         bias_id_lst = self.find_bias()
 
@@ -341,7 +343,7 @@ class Reduction(object):
 
             logger.info('Smoothing bias: %s'%smooth_method)
 
-            if smooth_method in ['gauss','gaussian']:
+            if smooth_method.lower().strip() == 'gaussian':
                 # perform 2D gaussian smoothing
 
                 smooth_sigma = self.config.getint('reduction',
@@ -385,21 +387,22 @@ class Reduction(object):
 
         # finally all files are corrected for the bias
         for item in self.log:
-            if item.frameid not in bias_id_lst:
-                infile  = '%s%s.fits'%(item.fileid, self.input_surfix)
-                outfile = '%s%s.fits'%(item.fileid, self.output_surfix)
-                inpath  = os.path.join(self.paths['midproc'], infile)
-                outpath = os.path.join(self.paths['midproc'], outfile)
-                data, head = fits.getdata(inpath, header=True)
-                data_new = data - bias_data
-                # write information into FITS header
-                head['HIERARCH EDRS BIAS'] = True
-                # save the bias corrected data
-                save_fits(outpath, data_new, head)
-                info = ['Correct bias for item no. %d.'%item.frameid,
-                        'Save bias corrected file: "%s"'%outpath]
-                logger.info((os.linesep+'  ').join(info))
-                print('Correct bias: {} => {}'.format(infile, outfile))
+            if item.frameid in bias_id_lst:
+                continue
+            infile  = '%s%s.fits'%(item.fileid, self.input_surfix)
+            outfile = '%s%s.fits'%(item.fileid, self.output_surfix)
+            inpath  = os.path.join(self.paths['midproc'], infile)
+            outpath = os.path.join(self.paths['midproc'], outfile)
+            data, head = fits.getdata(inpath, header=True)
+            data_new = data - bias_data
+            # write information into FITS header
+            head['HIERARCH EDRS BIAS'] = True
+            # save the bias corrected data
+            save_fits(outpath, data_new, head)
+            info = ['Correct bias for item no. %d.'%item.frameid,
+                    'Save bias corrected file: "%s"'%outpath]
+            logger.info((os.linesep+'  ').join(info))
+            print('Correct bias: {} => {}'.format(infile, outfile))
         
         
         
@@ -483,6 +486,7 @@ class Reduction(object):
 
         # save the figure
         figpath = os.path.join(self.paths['report_img'], 'bias_variation.png')
+        self.report_file.write('        <img src="images/bias_variation.png">'+os.linesep)
         fig.savefig(figpath)
         logger.info('Plot variation of bias with time in figure: "%s"'%figpath)
         plt.close(fig)
@@ -614,18 +618,20 @@ class Reduction(object):
             for tick in ax.yaxis.get_major_ticks():
                 tick.label1.set_fontsize(9)
 
+        # save the first figure
+        figpath1 = os.path.join(self.paths['report_img'], 'bias_smooth.png')
+        self.report_file.write('        <img src="images/bias_smooth.png">'+os.linesep)
+        fig1.savefig(figpath1)
+        logger.info('Plot smoothed bias in figure: "%s"'%figpath1)
+        plt.close(fig1)
 
         # save the second figure
         figpath2 = os.path.join(self.paths['report_img'],'bias_smooth_hist.png')
+        self.report_file.write('        <img src="images/bias_smooth_hist.png">'+os.linesep)
         fig2.savefig(figpath2)
         logger.info('Plot histograms of smoothed bias in figure: "%s"'%figpath2)
         plt.close(fig2)
     
-        # save the first figure
-        figpath1 = os.path.join(self.paths['report_img'], 'bias_smooth.png')
-        fig1.savefig(figpath1)
-        logger.info('Plot smoothed bias in figure: "%s"'%figpath1)
-        plt.close(fig1)
 
     def combine_flat(self, flatname):
         '''
