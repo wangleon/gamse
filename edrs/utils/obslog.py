@@ -260,6 +260,7 @@ def find_log(path):
     filename_lst = [fname for fname in sorted(os.listdir(path))
                         if len(fname)>4 and fname[-4:]=='.log' and
                         fname != 'edrs.log']
+
     if len(filename_lst)==1:
         return os.path.join(path, filename_lst[0])
     elif len(filename_lst)==0:

@@ -15,7 +15,7 @@ import matplotlib.dates  as mdates
 from mpl_toolkits.mplot3d import Axes3D
 
 from ..utils.config  import read_config
-from ..utils.obslog  import read_log, parse_num_seq
+from ..utils.obslog  import read_log, parse_num_seq, find_log
 from ..ccdproc       import save_fits
 
 class Reduction(object):
@@ -57,6 +57,20 @@ class Reduction(object):
         # read steps from config file
         steps_string = self.config.get('reduction', 'steps')
 
+        self.report_file = open(
+                os.path.join(self.paths['report'], 'index.html'), 'w')
+        self.report_file.write(
+            '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'+
+            ' "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'+
+            os.linesep+
+            '<html xmlns="http://www.w3.org/1999/xhtml">'+os.linesep+
+            '<head>'+os.linesep+
+            '    <meta http-equiv="content-type" content="text/html; charset=utf-8" />'+os.linesep+
+            '    <title>Reduction Report</title>'+os.linesep+
+            '</head>'+os.linesep+
+            '<body>'+os.linesep+
+            '    <h1>Reduction Report</h1>'+os.linesep)
+
         # main loop
         step_lst = [v.strip() for v in steps_string.split(',') ]
         logger.info('Reduction steps = %s'%(','.join(step_lst)))
@@ -66,9 +80,25 @@ class Reduction(object):
             else:
                 logger.error('Unknown step: %s'%step)
 
+        self.report_file.write(
+            '</body>'+os.linesep+
+            '</html>'
+            )
+
     def load_config(self):
         '''
         Load config file and check the paths.
+
+        .. csv-table:: Accepted options in config file
+           :header: "Option", "Type", "Description"
+           :widths: 20, 10, 50
+
+           "**obslog_file**",     "*string*", "(*optional*) Name of the observing log file."
+           "**path.data**",       "*string*", "Path to the raw images."
+           "**path.midproc**",    "*string*", "Path to the mid-process files."
+           "**path.report**",     "*string*", "Path to the report file."
+           "**path.report_img**", "*string*", "(*optional*) Path to the images of report file."
+
         '''
         self.config = read_config()
 
@@ -123,7 +153,11 @@ class Reduction(object):
         '''
         Read the observing log file.
         '''
-        obslog_file = self.config.get('reduction','obslog_file')
+        if self.config.has_option('reduction', 'obslog_file'):
+            obslog_file = self.config.get('reduction','obslog_file')
+        else:
+            obslog_file = find_log(os.curdir)
+
         logger.info('obslog_file = "%s"'%obslog_file)
         if not os.path.exists(obslog_file):
             logger.error('Cannot find observing log file: %s'%obslog_file)
@@ -206,13 +240,13 @@ class Reduction(object):
            :header: "Option", "Type", "Description"
            :widths: 20, 10, 50
 
-           "**bias.skip**",          "*bool*",    "Skip this step if *yes*"
-           "**bias.surfix**",        "*string*",  "Surfix of the corrected files"
-           "**bias.file**",          "*string*",  "Name of bias file"
-           "**bias.cosmic_clip**",   "*float*",   "Upper clippign threshold to remove cosmic-rays"
-           "**bias.smooth_method**", "*string*",  "Method of smoothing, including *Gauss*"
-           "**bias.smooth_sigma**",  "*integer*", "Sigma of the smoothing filter"
-           "**bias.smooth_mode**",   "*string*",  "Mode of the smoothing"
+           "**bias.skip**",          "*bool*",    "Skip this step if *yes* and **mode** = *'debug'*."
+           "**bias.surfix**",        "*string*",  "Surfix of the corrected files."
+           "**bias.file**",          "*string*",  "Name of bias file."
+           "**bias.cosmic_clip**",   "*float*",   "Upper clippign threshold to remove cosmic-rays."
+           "**bias.smooth_method**", "*string*",  "Method of smoothing, including *Gauss*."
+           "**bias.smooth_sigma**",  "*integer*", "Sigma of the smoothing filter."
+           "**bias.smooth_mode**",   "*string*",  "Mode of the smoothing."
 
         To calculate the correct bias level for every individual pixel position
         several individual steps are performed. In the beginning a datacube
@@ -230,8 +264,6 @@ class Reduction(object):
         #. smooth the mean-bias-file with a 2d gaussian filter
         #. final_bias = mean_bias - smooth_bias
           
-        .. image:: images/bias.png
-        
         '''
         # find output surfix for fits
         self.output_surfix = self.config.get('reduction','bias.surfix')

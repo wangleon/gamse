@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 from ..utils    import obslog
 from ..ccdproc  import save_fits, array_to_table
@@ -26,11 +27,24 @@ class FOCES(Reduction):
         The overscan is corrected for each FITS image listed in the observing
         log.
         FOCES images has two overscan regions, lying in the left and right
-        sides of the CCD.
-        However, only the one on the left region is used to correct the overscan
-        level.
+        sides of the CCD, respectively.
+        The ADUs in the right side are always higher than those in the left
+        side.
+        Therefore, only the one on the left region is used to correct the
+        overscan level.
         The mean values along the *y*-axies are calculated and smoothed.
         Then are subtracted for every pixel in the science region.
+
+        .. csv-table:: Accepted options in config file
+           :header: "Option", "Type", "Description"
+           :widths: 20, 10, 50
+
+           "**overscan.skip**",    "*bool*",   "Skip this step if *yes* and **mode** = *'debug'*."
+           "**overscan.surfix**",  "*string*", "Surfix of the corrected files."
+           "**overscan.plot**",    "*bool*",   "Plot the overscan levels if *yes*."
+           "**overscan.var_fig**", "*string*", "Filename of the overscan variation figure."
+
+
         '''
 
         # find output surfix for fits
@@ -41,6 +55,7 @@ class FOCES(Reduction):
             self.input_surfix = self.output_surfix
             return True
 
+        self.report_file.write('<h2>Overscan</h2>'+os.linesep)
         t_lst, frameid_lst, fileid_lst = [], [], []
         ovr1_lst, ovr1_std_lst = [], []
         ovr2_lst, ovr2_std_lst = [], []
@@ -103,7 +118,7 @@ class FOCES(Reduction):
             y1 = min(y11,y21)
             y2 = max(y12,y22)
             ax1.text(0.95*x1+0.05*x2, 0.2*y1+0.8*y2,
-                     '%s (%s)'%(item.fileid, item.objtname), fontsize=9)
+                     '%s (%s)'%(item.fileid, item.objectname), fontsize=9)
             for ax in [ax1, ax2]:
                 ax.set_xlim(x1,x2)
                 ax.set_ylim(y1,y2)
@@ -117,11 +132,12 @@ class FOCES(Reduction):
             if count%5==4:
                 ax1.set_xlabel('Y (pixel)')
                 ax2.set_xlabel('Y (pixel)')
-                figpath = os.path.join(self.paths['report_img'],
-                                       'overscan_%02d.png'%(int(count/5)+1))
+                figname = 'overscan_%02d.png'%(int(count/5)+1)
+                figpath = os.path.join(self.paths['report_img'], figname)
                 fig.savefig(figpath)
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
+                self.report_file.write('<img src="images/%s">'%figname+os.linesep)
     
             # find saturated pixels and saved them in FITS files
             mask_sat   = (data[:,20:2068]>=saturation_adu)
@@ -280,7 +296,7 @@ def make_log(path):
     #date = log[0].fileid.split('_')[0]
     #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
     #outfile = open(outfilename,'w')
-    string = '# '+', '.join(columns)
+    string = '% columns = '+', '.join(columns)
     #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:
