@@ -107,12 +107,13 @@ def read_logitem(string, names, types, nchannels=1, column_separator='|',
     '''Read log items.
 
     Args:
-        string (str): Input string.
+        string (string): Input string.
         names (list): A list of names.
         types (list): A list of type strings.
-        nchannels (int): Number of channels.
-        column_separator (str): Separator of columns.
-        channel_separator (str): Separator of channels in "bjectname" column.
+        nchannels (integer): Number of channels.
+        column_separator (string): Separator of columns.
+        channel_separator (string): Separator of channels in "objectname"
+            column.
     
     Returns:
         :class:`LogItem`: A :class:`LogItem` instance.
@@ -242,3 +243,29 @@ def parse_num_seq(string):
         else:
             continue
     return lst
+
+def find_log(path):
+    '''Find the log file in the given directory.
+
+    The name of the observing log file should terminate in `.log`, but should
+    not be `edrs.log`, which is used for the name of the running log of EDRS.
+
+    Args:
+        path (string): Searching directory.
+    Returns:
+        string or None: Name of the log file. Return *None* if not found or more
+            than one file found.
+    
+    '''
+    filename_lst = [fname for fname in sorted(os.listdir(path))
+                        if len(fname)>4 and fname[-4:]=='.log' and
+                        fname != 'edrs.log']
+    if len(filename_lst)==1:
+        return os.path.join(path, filename_lst[0])
+    elif len(filename_lst)==0:
+        print('Error: Log file not found')
+        return None
+    else:
+        print('Error: More than 1 log file found')
+        return None
+
