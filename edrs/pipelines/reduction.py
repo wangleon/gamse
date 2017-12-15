@@ -885,14 +885,17 @@ class Reduction(object):
             mask = table_to_array(mask_table, data.shape)
             mask = (mask&4 == 4)
 
-            result_file = os.path.join(self.paths['midproc'],
-                                       '%s_trace.txt'%tracename)
+            trace_result_file = os.path.join(self.paths['midproc'],
+                                            '%s_trace.txt'%tracename)
+            reg_file    = os.path.join(self.paths['midproc'],
+                                       '%s_trace.reg'%tracename)
             fig_file  = os.path.join(self.paths['report_img'],
                                      'trace_%s.png'%tracename)
 
             kwargs.update({'mask'       : mask,
                            'filename'   : trace_file,
-                           'result_file': result_file,
+                           'trace_file' : trace_result_file,
+                           'reg_file'   : reg_file,
                            'fig_file'   : fig_file,
                            })
             # find the orders
@@ -928,8 +931,10 @@ class Reduction(object):
                 mask = (mask&4 == 4)
 
                 # determine the result file and figure file
-                result_file = os.path.join(self.paths['midproc'],
-                            '%s_trace.txt'%flatname)
+                trace_result_file = os.path.join(self.paths['midproc'],
+                                   '%s_trace.txt'%flatname)
+                reg_file  = os.path.join(self.paths['midproc'],
+                                         '%s_trace.reg'%flatname)
                 fig_file  = os.path.join(self.paths['report_img'],
                             'trace_%s.png'%flatname)
                 # find the apertures
@@ -939,7 +944,8 @@ class Reduction(object):
                 else:
                     kwargs.update({'mask'       : mask,
                                    'filename'   : flatpath,
-                                   'result_file': result_file,
+                                   'trace_file' : trace_result_file,
+                                   'reg_file'   : reg_file,
                                    'fig_file'   : fig_file,
                                    })
                     aperture_set = find_apertures(data, **kwargs)

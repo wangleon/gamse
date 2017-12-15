@@ -264,7 +264,7 @@ class ApertureSet(object):
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         filling=0.3, degree=3, display=True, filename=None, fig_file=None,
-        result_file=None):
+        trace_file=None, reg_file=None):
     '''
     Find the positions of apertures on a CCD image.
 
@@ -283,7 +283,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         filename (string): Name of the input file. Only used to display a title
             in the screen.
         fig_file (string): Path to the output figure.
-        result_file (string): Path to the output ascii file.
+        trace_file (string): Path to the output ascii file.
+        reg_file (string): Name of region file that can be loaded in SAO-DS9.
     Returns:
         :class:`ApertureSet`: Aperture locations.
 
@@ -583,10 +584,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
         aperture_set[aperture] = aperture_loc
 
-    # write the order set into an ascii file
-    if result_file is not None:
-        aperture_set.save_txt(result_file)
-        aperture_set.save_reg(result_file+'.reg')
+    # write the order set into ascii and reg file
+    if trace_file is not None:
+        aperture_set.save_txt(trace_file)
+    if reg_file is not None:
+        aperture_set.save_reg(reg_file)
 
     fig.canvas.draw()
     fig.savefig(fig_file)
