@@ -61,7 +61,7 @@ class FOCES(Reduction):
         ovr2_lst, ovr2_std_lst = [], []
         
         # saturated CCD count
-        saturation_adu = 65535
+        saturation_adu = 63000
     
         # loop over all files to correct for the overscan
 

@@ -163,7 +163,7 @@ class ApertureLocation(object):
 
 class ApertureSet(object):
     '''
-    ApertureSet is a group of ApertureLocation instances.
+    ApertureSet is a group of :class:`ApertureLocation` instances.
 
     Attributes:
         dict (dict): Dict containing aperture numbers and :class:`ApertureLocation` instances
@@ -208,64 +208,37 @@ class ApertureSet(object):
         outfile.write(str(self))
         outfile.close()
 
-def find_apertures(data, mask, scan_step, minimum, seperation, **kwargs):
+def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
+        filling=0.3, degree=3, display=True, fig_file=None, result_file=None):
     '''
     Find the positions of apertures on a CCD image.
 
     Args:
         data (:class:`numpy.array`): Image data.
-        mask (:class:`numpy.array`): Saturation mask.
-        scan_step (int): Steps of pixels used to scan along the main dispersion
-            direction.
+        mask (:class:`numpy.array`): Saturation mask with the same shape as
+            **data**. The saturated pixels are marke as 1.
+        scan_step (integer): Steps of pixels used to scan along the main
+            dispersion direction.
         minimum (float): Minimum value to filter the input image.
-        seperation (int): Estimated order seperations (in pixel) along the
+        seperation (integer): Estimated order seperations (in pixel) along the
             cross-dispersion.
-        direction (int):
         filling (float): Fraction of detected pixels to total step of scanning.
-        degree (int): Degree of polynomials to fit aperture locations.
-        display (bool): If True, display a figure on the screen.
-        fig_file (str): Path to the output figure.
-        result_file (str): Path to the output ascii file.
-
+        degree (integer): Degree of polynomials to fit aperture locations.
+        display (bool): If *True*, display a figure on the screen.
+        fig_file (string): Path to the output figure.
+        result_file (string): Path to the output ascii file.
     Returns:
-        list: A list containing the coefficients of the locations.
+        :class:`ApertureSet`: Aperture locations.
 
     '''
     from ..utils.onedarray import get_local_minima
 
-    if os.path.exists(filename):
-        data, head = fits.getdata(filename, header=True)
-    else:
-        logger.error('File: %s does not exist'%filename)
-        raise ValueError
-
-    mask_file    = kwargs.pop('mask_file', None)
-    minimum      = kwargs.pop('minimum', 1e-3)
-    scan_step    = kwargs.pop('scan_step', 50)
-    seperation   = kwargs.pop('seperation', 20)
-    filling      = kwargs.pop('filling', 0.3)
-    display      = kwargs.pop('display', True)
-    degree       = kwargs.pop('degree', 3)
-    fig_file     = kwargs.pop('fig_file', None)
-    result_file  = kwargs.pop('result_file', None)
-
-    # initialize the mask
-    if mask_file is not None and os.path.exists(mask_file):
-        mask_data = fits.getdata(mask_file)
-        logger.info('Read mask from existing file: %s'%mask_file)
-    else:
-        mask_data = np.zeros_like(data, dtype=np.int16)
-        logger.info('Initialize mask from data array')
-
-    # find saturation pixels
-    sat_mask = (mask_data&4 == 4)
+    sat_mask = mask
 
     h, w = data.shape
 
-    # filter the negative pixels and replace them with the minimum value
-    mask = data > 0
-    substitute = data[mask].min()
-    logdata = np.log10(np.maximum(data,minimum))
+    # filter the pixels smallerthan minimum
+    logdata = np.log10(np.maximum(data, minimum))
 
     # initialize the color list
     colors = 'rgbcmyk'
@@ -295,7 +268,7 @@ def find_apertures(data, mask, scan_step, minimum, seperation, **kwargs):
             ax1.set_xlim(x1, x2)
             ax1.set_ylim(y1, y2)
             fig.canvas.draw()
-    fig.suptitle('Trace for %s'%os.path.basename(filename))
+    #fig.suptitle('Trace for %s'%os.path.basename(filename))
     fig.canvas.mpl_connect('scroll_event',on_scroll)
     fig.canvas.draw()
     if display:

@@ -16,7 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from ..utils.config  import read_config
 from ..utils.obslog  import read_log, parse_num_seq, find_log
-from ..ccdproc       import save_fits, table_to_array
+from ..ccdproc       import save_fits, table_to_array, array_to_table
 
 class Reduction(object):
     '''General echelle reduction.
@@ -646,7 +646,12 @@ class Reduction(object):
 
     def combine_flat(self, flatname):
         '''
-        Combine flat fielding frames for each flat subgroup
+        Combine flat fielding frames for each flat subgroup.
+
+        Args:
+            flatname (string): Name of the flat group.
+        Returns:
+            No returns.
         '''
 
         id_lst = self.flat_groups[flatname]
@@ -682,8 +687,11 @@ class Reduction(object):
             # load mask data
             maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
             maskpath = os.path.join(self.paths['midproc'], maskname)
-            mdata = fits.getdata(maskpath)
-            mdata = np.int16(mdata)
+            mtable = fits.getdata(maskpath)
+            if mtable.size==0:
+                mdata = np.zeros_like(data, dtype=np.int16)
+            else:
+                mdata = table_to_array(mtable, data.shape)
             # find saturation pixels
             sat_mask = (mdata&4 == 4)
             # get new all saturation mask
@@ -705,10 +713,11 @@ class Reduction(object):
         print('save %s'%outfile)
 
         # save the mask for each individual flat frame
-        mask_data = np.int16(all_sat_mask)*4
+        mdata = np.int16(all_sat_mask)*4
+        mtable = array_to_table(mdata)
         outfile = '%s%s.fits'%(flatname, self.mask_surfix)
         outpath = os.path.join(self.paths['midproc'], outfile)
-        save_fits(outpath, mask_data)
+        save_fits(outpath, mtable)
         logger.info('Save mask image for combined flat: "%s"'%outpath)
 
     def combine_trace(self):
@@ -832,11 +841,10 @@ class Reduction(object):
 
            **trace.skip**,       *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
            **trace.file**,       *string*,  "Name of the trace file."
-           **trace.scale**,      *string*,  "Logrithm or linear scale."
-           **trace.minimum**,    *float*,   "Minimum count."
-           **trace.scan_step**,  *integer*, "Scan step in pixel."
-           **trace.seperation**, *float*,   "Seperation."
-           **trace.filling**,    *float*,   "Count values to fill the pixels with counts lower than **trace.minimum**."
+           **trace.scan_step**,  *integer*, "Steps of pixels used to scan along the main dispersion direction."
+           **trace.minimum**,    *float*,   "Minimum value to filter the input image."
+           **trace.seperation**, *float*,   "Estimated order seperations (in pixel) along the cross-dispersion."
+           **trace.filling**,    *float*,   "Fraction of detected pixels to total step of scanning."
            **trace.display**,    *bool*,    "Display a figure on screen if *yes*."
            **trace.degree**,     *integer*, "Degree of polynomial used to describe the positions of orders."
         '''
@@ -848,7 +856,6 @@ class Reduction(object):
 
         # find the parameters for order tracing
         kwargs = {
-            'trace_file': self.config.get('reduction', 'trace.file'),
             'minimum'   : self.config.getfloat('reduction', 'trace.minimum'),
             'scan_step' : self.config.getint('reduction', 'trace.scan_step'),
             'seperation': self.config.getfloat('reduction', 'trace.seperation'),
@@ -875,7 +882,7 @@ class Reduction(object):
             mask_file = os.path.join(self.paths['midproc'],
                                      '%s%s.fits'%(tracename, self.mask_surfix))
             mask_table = fits.getdata(mask_file)
-            mask = table_to_array(mask_table)
+            mask = table_to_array(mask_table, data.shape)
             mask = (mask&4 == 4)
 
             result_file = os.path.join(self.paths['midproc'],
@@ -905,15 +912,18 @@ class Reduction(object):
                 logger.info('Begin processing flat component: %s'%flatname)
                 flatpath = os.path.join(self.paths['midproc'],
                                         '%s.fits'%flatname)
-                if not os.path.exists(flatpath):
-                    # combine flat for this sub-group
-                    self.combine_flat(flatname)
+
+                # combine flat for this sub-group
+                self.combine_flat(flatname)
 
                 data = fits.getdata(flatpath)
                 mask_file = os.path.join(self.paths['midproc'],
                             '%s%s.fits'%(flatname, self.mask_surfix))
                 mask_table = fits.getdata(mask_file)
-                mask = table_to_array(mask_table)
+                if mask_table.size==0:
+                    mask = np.zeros_like(data, dtype=np.int16)
+                else:
+                    mask = table_to_array(mask_table, data.shape)
                 mask = (mask&4 == 4)
 
                 # determine the result file and figure file
