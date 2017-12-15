@@ -16,7 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from ..utils.config  import read_config
 from ..utils.obslog  import read_log, parse_num_seq, find_log
-from ..ccdproc       import save_fits
+from ..ccdproc       import save_fits, table_to_array
 
 class Reduction(object):
     '''General echelle reduction.
@@ -494,9 +494,16 @@ class Reduction(object):
     def plot_bias_smooth(self, bias, bias_smooth):
         '''
         Plot the bias, smoothed bias, and residual after smoothing.
-        A figure will be generated in the report directory of the reduction. The
-        name of the figure is given in the config file.
+
+        A figure will be generated in the report directory of the reduction.
+        The name of the figure is given in the config file.
+
+        Args:
+            bias (:class:`numpy.array`): Bias array.
+            bias_smooth (:class:`numpy.array`): Smoothed bias array.
+
         '''
+        h, w = bias.shape
         # calculate the residual between bias and smoothed bias data
         bias_res = bias - bias_smooth
 
@@ -547,8 +554,8 @@ class Reduction(object):
             message = ['Parameters for gaussian fitting of the histograms',
                        'y, x, A, center, sigma']
             for iy, ix in [(iy, ix) for iy in range(3) for ix in range(3)]:
-                yc = iy*500 + 500
-                xc = ix*500 + 500
+                yc = iy*(h//4) + h//4
+                xc = ix*(w//4) + w//4
                 x1, x2 = xc-200, xc+200
                 y1, y2 = yc-200, yc+200
                 ax1.plot([x1,x2], [y1,y1], 'm-', alpha=alpha)
@@ -620,14 +627,18 @@ class Reduction(object):
 
         # save the first figure
         figpath1 = os.path.join(self.paths['report_img'], 'bias_smooth.png')
-        self.report_file.write('        <img src="images/bias_smooth.png">'+os.linesep)
+        self.report_file.write(
+            ' '*8 + '<img src="images/bias_smooth.png" alt="smoothed bias">' +
+            os.linesep)
         fig1.savefig(figpath1)
         logger.info('Plot smoothed bias in figure: "%s"'%figpath1)
         plt.close(fig1)
 
         # save the second figure
         figpath2 = os.path.join(self.paths['report_img'],'bias_smooth_hist.png')
-        self.report_file.write('        <img src="images/bias_smooth_hist.png">'+os.linesep)
+        self.report_file.write(
+            ' '*8 + '<img src="images/bias_smooth_hist.png" ' +
+            'alt="histogram of smoothed bias">' + os.linesep)
         fig2.savefig(figpath2)
         logger.info('Plot histograms of smoothed bias in figure: "%s"'%figpath2)
         plt.close(fig2)
@@ -811,11 +822,23 @@ class Reduction(object):
         '''
         Find the order locations.
 
-        Notes
-        -----
-        An ascii file in which the order locations are saved. The ascii file
-        contains several keywords and their values, and the polynomial
-        coefficients of each found order.
+        An ascii file in which the order locations are saved.
+        The ascii file contains several keywords and their values, and the
+        polynomial coefficients of each found order.
+
+        .. csv-table:: Accepted options in config file
+           :header: "Option", "Type", "Description"
+           :widths: 20, 10, 50
+
+           **trace.skip**,       *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
+           **trace.file**,       *string*,  "Name of the trace file."
+           **trace.scale**,      *string*,  "Logrithm or linear scale."
+           **trace.minimum**,    *float*,   "Minimum count."
+           **trace.scan_step**,  *integer*, "Scan step in pixel."
+           **trace.seperation**, *float*,   "Seperation."
+           **trace.filling**,    *float*,   "Count values to fill the pixels with counts lower than **trace.minimum**."
+           **trace.display**,    *bool*,    "Display a figure on screen if *yes*."
+           **trace.degree**,     *integer*, "Degree of polynomial used to describe the positions of orders."
         '''
         if self.config.getboolean('reduction', 'trace.skip'):
             logger.info('Skip [trace] according to the config file')
@@ -825,14 +848,13 @@ class Reduction(object):
 
         # find the parameters for order tracing
         kwargs = {
-            'trace_file'  : self.config.get('reduction', 'trace.file'),
-            'minimum'     : self.config.getfloat('reduction', 'trace.minimum'),
-            'scan_step'   : self.config.getint('reduction', 'trace.scan_step'),
-            'seperation'  : self.config.getfloat('reduction', 'trace.seperation'),
-            'filling'     : self.config.getfloat('reduction', 'trace.filling'),
-            'display'     : self.config.getboolean('reduction', 'trace.display'),
-            'degree'      : self.config.getint('reduction', 'trace.degree'),
-            'saturation'  : self.config.getint('reduction', 'saturation'),
+            'trace_file': self.config.get('reduction', 'trace.file'),
+            'minimum'   : self.config.getfloat('reduction', 'trace.minimum'),
+            'scan_step' : self.config.getint('reduction', 'trace.scan_step'),
+            'seperation': self.config.getfloat('reduction', 'trace.seperation'),
+            'filling'   : self.config.getfloat('reduction', 'trace.filling'),
+            'display'   : self.config.getboolean('reduction', 'trace.display'),
+            'degree'    : self.config.getint('reduction', 'trace.degree'),
             }
 
         # initialize order_set_lst, containing the order locations from
@@ -846,21 +868,27 @@ class Reduction(object):
             self.combine_trace()
 
             # determine the result file and figure file
+            data = fits.getdata(trace_file)
+
             basename = os.path.basename(trace_file)
             tracename = basename[0:-5]
             mask_file = os.path.join(self.paths['midproc'],
                                      '%s%s.fits'%(tracename, self.mask_surfix))
+            mask_table = fits.getdata(mask_file)
+            mask = table_to_array(mask_table)
+            mask = (mask&4 == 4)
+
             result_file = os.path.join(self.paths['midproc'],
                                        '%s_trace.txt'%tracename)
             fig_file  = os.path.join(self.paths['report_img'],
                                      'trace_%s.png'%tracename)
 
-            kwargs.update({'mask_file'  : mask_file,
+            kwargs.update({'mask'       : mask,
                            'result_file': result_file,
                            'fig_file'   : fig_file,
                            })
             # find the orders
-            aperture_set = find_apertures(trace_file, **kwargs)
+            aperture_set = find_apertures(data, **kwargs)
 
             logger.info('Found %d orders in "%s.fits"'%(
                         len(aperture_set), trace_file))
@@ -881,8 +909,13 @@ class Reduction(object):
                     # combine flat for this sub-group
                     self.combine_flat(flatname)
 
+                data = fits.getdata(flatpath)
                 mask_file = os.path.join(self.paths['midproc'],
                             '%s%s.fits'%(flatname, self.mask_surfix))
+                mask_table = fits.getdata(mask_file)
+                mask = table_to_array(mask_table)
+                mask = (mask&4 == 4)
+
                 # determine the result file and figure file
                 result_file = os.path.join(self.paths['midproc'],
                             '%s_trace.txt'%flatname)
@@ -893,11 +926,11 @@ class Reduction(object):
                 if False:
                     aperture_set = load_aperture_set(result_file)
                 else:
-                    kwargs.update({'mask_file'  : mask_file,
+                    kwargs.update({'mask'       : mask,
                                    'result_file': result_file,
                                    'fig_file'   : fig_file,
                                    })
-                    aperture_set = find_apertures(flatpath, **kwargs)
+                    aperture_set = find_apertures(data, **kwargs)
 
                 logger.info('Found %d apertures in "%s.fits"'%(
                             len(aperture_set), flatname))
@@ -914,7 +947,6 @@ class Reduction(object):
             logger.info('Skip [flat] according to the config file')
             #self.input_surfix = self.output_surfix
             return True
-
 
         flat_file = self.config.get('reduction','flat.file')
 

@@ -208,13 +208,13 @@ class ApertureSet(object):
         outfile.write(str(self))
         outfile.close()
 
-def find_apertures(filename, **kwargs):
+def find_apertures(data, mask, scan_step, minimum, seperation, **kwargs):
     '''
     Find the positions of apertures on a CCD image.
 
     Args:
-        filename (str): Path to the input image FITS file.
-        mask_file (str): Path to the mask FITS file.
+        data (:class:`numpy.array`): Image data.
+        mask (:class:`numpy.array`): Saturation mask.
         scan_step (int): Steps of pixels used to scan along the main dispersion
             direction.
         minimum (float): Minimum value to filter the input image.
