@@ -308,7 +308,7 @@ def table_to_array(table, shape):
     '''
 
     array = np.zeros(shape, dtype=table.dtype[-1].type)
-    coords = (table[col] for col in table.dtype.names[0:-1])
+    coords = tuple(table[col] for col in table.dtype.names[0:-1])
     array[coords] = table['value']
 
     return array
