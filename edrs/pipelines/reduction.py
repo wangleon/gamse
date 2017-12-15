@@ -891,6 +891,7 @@ class Reduction(object):
                                      'trace_%s.png'%tracename)
 
             kwargs.update({'mask'       : mask,
+                           'filename'   : trace_file,
                            'result_file': result_file,
                            'fig_file'   : fig_file,
                            })
@@ -937,6 +938,7 @@ class Reduction(object):
                     aperture_set = load_aperture_set(result_file)
                 else:
                     kwargs.update({'mask'       : mask,
+                                   'filename'   : flatpath,
                                    'result_file': result_file,
                                    'fig_file'   : fig_file,
                                    })
