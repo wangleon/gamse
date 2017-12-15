@@ -145,7 +145,14 @@ def derivative(*args, **kwargs):
         der[-1] = (-a[::-1]*y[-3:]).sum() / (-a[::-1]*x[-3:]).sum()
         return der
 
-def pairwise(iterable_array):
-    a, b = tee(iterable_array)
+def pairwise(array):
+    '''Return pairwises of an iterable arrary.
+
+    Args:
+        array (list or :class:`numpy.array`): The input iterable array.
+    Returns:
+        :class:`zip`: zip objects.
+    '''
+    a, b = tee(array)
     next(b, None)
     return zip(a, b)

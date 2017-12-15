@@ -14,12 +14,15 @@ import scipy.optimize    as opt
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
+from ..utils.onedarray import pairwise
+
 class ApertureLocation(object):
     '''
     Location of an echelle order.
 
     Attributes:
-        direct (int): 0 if along Y axis; 1 if along X axis
+        direction (integer): 0 if along Y axis; 1 if along X axis
+        position (:class:`numpy.polynomial`): Polynomial of aperture location
         
     '''
     def __init__(self, *args, **kwargs):
@@ -47,11 +50,11 @@ class ApertureLocation(object):
 
         # sort the nodes according to x coordinates
         xnodes, ynodes = np.array(xnodes), np.array(ynodes)
-        if self.direct == 0:
+        if self.direction == 0:
             # order is along y axis
             xnodes = xnodes[ynodes.argsort()]
             ynodes = np.sort(ynodes)
-        elif self.direct == 1:
+        elif self.direction == 1:
             # order is along x axis
             ynodes = ynodes[xnodes.argsort()]
             xnodes = np.sort(xnodes)
@@ -65,6 +68,14 @@ class ApertureLocation(object):
         '''
         Fit the polynomial iteratively with sigma-clipping method and get the
         coefficients.
+
+        Args:
+            key (string): Either 'center', 'upper', or 'lowr'.
+            degree (integer): Degree of polynomial used to fit the position.
+            clipping (float): Upper and lower threshold in the sigma-clipping
+                method.
+            maxiter (integer): Maximum number of iteration of the polynomial
+                fitting.
         '''
 
         h, w = self.shape
@@ -75,10 +86,10 @@ class ApertureLocation(object):
         xfit = np.array(xnodes, dtype=np.float32)/w
         yfit = np.array(ynodes, dtype=np.float32)/h
 
-        if self.direct == 0:
+        if self.direction == 0:
             # order is along y axis
             xfit, yfit = yfit, xfit
-        elif self.direct == 1:
+        elif self.direction == 1:
             # order is along x axis
             xfit, yfit = xfit, yfit
 
@@ -122,7 +133,7 @@ class ApertureLocation(object):
 
     def __str__(self):
 
-        string  = '%8s = %d'%('direct', self.direct)+os.linesep
+        string  = '%8s = %d'%('direct', self.direction)+os.linesep
         string += '%8s = %s'%('shape',  str(self.shape))+os.linesep
 
         strlst = ['%+15.10e'%c for c in self.position.coef]
@@ -155,11 +166,11 @@ class ApertureLocation(object):
         '''Update attributes'''
 
         # udpate direction attribute
-        if hasattr(self, 'direct'):
-            if self.direct in ['x','X']:
-                self.direct = 1
-            elif self.direct in ['y','Y']:
-                self.direct = 0
+        if hasattr(self, 'direction'):
+            if self.direction in ['x','X']:
+                self.direction = 1
+            elif self.direction in ['y','Y']:
+                self.direction = 0
 
 class ApertureSet(object):
     '''
@@ -199,17 +210,61 @@ class ApertureSet(object):
 
     def save_txt(self, filename):
         '''
-        Save the order set into an ascii file.
+        Save the aperture set into an ascii file.
         
         Args:
-            filename (str): Path to the output ascii file
+            filename (string): Name of the output ascii file.
         '''
         outfile = open(filename, 'w')
         outfile.write(str(self))
         outfile.close()
 
+    def save_reg(self, filename):
+        '''
+        Save the aperture set into a reg file that can be loaded in SAO-DS9.
+
+        Args:
+            filename (string): Name of the output reg file.
+        '''
+        outfile = open(filename, 'w')
+        outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
+        outfile.write('global color=green dashlist=8 3 width=1 ')
+        outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
+        outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
+        outfile.write('source=1'+os.linesep)
+        outfile.write('physical'+os.linesep)
+
+        for aper, aper_loc in sorted(self.items()):
+            outfile.write('# aperture %3d'%aper + os.linesep)
+
+            if aper_loc.direction == 1:
+                x = -6
+                y = aper_loc.position(x)
+                outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
+                                x+1, y+1, aper)+os.linesep)
+
+                x = aper_loc.shape[aper_loc.direction]-1+6
+                y = aper_loc.position(x)
+                outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
+                                x+1, y+1, aper)+os.linesep)
+
+                x = aper_loc.shape[aper_loc.direction]/2.
+                y = aper_loc.position(x)
+                outfile.write('# text(%7.2f, %7.2f) text={Aperture %3d} '%(x
+                                +1, y+1+5, aper)+os.linesep)
+
+                x = np.linspace(0, aper_loc.shape[aper_loc.direction]-1, 50)
+                y = aper_loc.position(x)
+                for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
+                    outfile.write('line(%7.2f,%7.2f,%7.2f,%7.2f)'%(
+                        x1+1, y1+1, x2+1, y2+1)+os.linesep)
+
+        outfile.close()
+            
+
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
-        filling=0.3, degree=3, display=True, fig_file=None, result_file=None):
+        filling=0.3, degree=3, display=True, filename=None, fig_file=None,
+        result_file=None):
     '''
     Find the positions of apertures on a CCD image.
 
@@ -225,6 +280,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (integer): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
+        filename (string): Name of the input file. Only used to display a title
+            in the screen.
         fig_file (string): Path to the output figure.
         result_file (string): Path to the output ascii file.
     Returns:
@@ -268,7 +325,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             ax1.set_xlim(x1, x2)
             ax1.set_ylim(y1, y2)
             fig.canvas.draw()
-    #fig.suptitle('Trace for %s'%os.path.basename(filename))
+    if filename is not None:
+        fig.suptitle('Trace for %s'%os.path.basename(filename))
     fig.canvas.mpl_connect('scroll_event',on_scroll)
     fig.canvas.draw()
     if display:
@@ -416,6 +474,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
     ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], 'g-')
     ax2.set_yscale('log')
+    ax2.set_xlabel('Y')
+    ax2.set_ylabel('Count')
     ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
 
     #for x1,y_lst in nodes_lst.items():
@@ -495,7 +555,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         ax1.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
 
         # initialize aperture position instance
-        aperture_loc = ApertureLocation(direct='x', shape=(h,w))
+        aperture_loc = ApertureLocation(direction='x', shape=(h,w))
         aperture_loc.set_position(poly)
 
         # generate a curve using for find saturation pixels
@@ -526,6 +586,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     # write the order set into an ascii file
     if result_file is not None:
         aperture_set.save_txt(result_file)
+        aperture_set.save_reg(result_file+'.reg')
 
     fig.canvas.draw()
     fig.savefig(fig_file)
