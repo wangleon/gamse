@@ -12,14 +12,14 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     '''Subtract the background for an input FITS image.
 
     Args:
-        infilename (str): Name of the input file.
-        outfilename (str): Name of the output file.
-        scafilename (str): Name of the scatter light file.
+        infilename (string): Name of the input file.
+        outfilename (string): Name of the output file.
+        scafilename (string): Name of the scatter light file.
         order_lst (list): Positions of each order.
-        scan_step (int): Steps of scan in pixels.
+        scan_step (integer): Steps of scan in pixels.
         fig1 (:class:`matplotlib.figure`): Figure to display.
         fig2 (:class:`matplotlib.figure`): Figure to display.
-        report_img_path (str): Path to the report directory.
+        report_img_path (string): Path to the report directory.
 
     Returns:
         No returns.

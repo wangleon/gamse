@@ -21,13 +21,13 @@ def mosaic_flat_interact(filename_lst, outfile,
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
-        outfile (str): Filename of the output image.
-        mosaic_file (str): Name of the ascii file recording the coefficients of
-            the mosaic boundaries.
-        reg_file (str): Name of the `.reg` file to be displayed in SAO-DS9.
+        outfile (string): Filename of the output image.
+        mosaic_file (string): Name of the ascii file recording the coefficients
+            of the mosaic boundaries.
+        reg_file (string): Name of the `.reg` file to be displayed in SAO-DS9.
         disp_axis (integer): Main dispersion axis of the input image. 0 means
             the echelle orders are along the *y* axis. 1 means along *x* axis.
-        mask_surfix (str): Surfix of the filenames of masks.
+        mask_surfix (string): Surfix of the filenames of masks.
     Returns:
         No returns.
     See Also:
@@ -326,13 +326,13 @@ def detect_gap(
 
     Args:
         data (2-d :class:`numpy.array`): Data image as a numpy 2d-array.
-        x0 (int): Starting coordinate.
-        ccf_ulimit (int): Upper limit to **x0** of the data segment used to
+        x0 (integer): Starting coordinate.
+        ccf_ulimit (integer): Upper limit to **x0** of the data segment used to
             calculate CCF.
-        ccf_llimit (int): Lower limit to **x0** of the data segment used to
+        ccf_llimit (integer): Lower limit to **x0** of the data segment used to
             calculate CCF.
-        step (int): Step of searching the gap.
-        order (int): Degree of polynomial used to fit the boundary.
+        step (integer): Step of searching the gap.
+        order (integer): Degree of polynomial used to fit the boundary.
     Returns:
         :class:`numpy.array`: Cofficients of the polynomial.
 
@@ -402,7 +402,7 @@ def load_mosaic(filename):
     Read mosaic boundary information from an existing ascii file.
 
     Args:
-        filename (str): Name of the mosaic file.
+        filename (string): Name of the mosaic file.
     Returns:
         tuple: A tuple containing:
 
@@ -468,7 +468,7 @@ def mosaic_flat_auto(filename_lst, outfile, order_set_lst, max_count):
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
-        outfile (str): Filename of the output image.
+        outfile (string): Filename of the output image.
         order_set_lst (list): List of :class:`ordersets`.
         max_count (float): Maximum count.
     Returns:
@@ -601,7 +601,7 @@ def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''
-    Save boundaries data in a .reg file
+    Save boundaries data in a `.reg` file
     '''
     outfile = open(filename, 'w')
     outfile.write('# Region file format: DS9 version 4.1'+os.linesep)

@@ -177,7 +177,8 @@ class ApertureSet(object):
     ApertureSet is a group of :class:`ApertureLocation` instances.
 
     Attributes:
-        dict (dict): Dict containing aperture numbers and :class:`ApertureLocation` instances
+        dict (dict): Dict containing aperture numbers and
+            :class:`ApertureLocation` instances
         current (dict): 
     '''
     def __init__(self, *args, **kwargs):
@@ -601,7 +602,7 @@ def load_aperture_set(filename):
     Reads an ApertureSet instance from an Ascii file.
 
     Args:
-        filename (str): Name of the ASCII file.
+        filename (string): Name of the ASCII file.
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
     '''
