@@ -416,7 +416,7 @@ def make_log(rawdata_path):
 
     # scan the raw files
     fname_lst = sorted(os.listdir(rawdata_path))
-    log = []
+    log = obslog.Log()
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
@@ -445,21 +445,21 @@ def make_log(rawdata_path):
         data1 = data[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
         bri_index = np.median(data1,axis=1).mean()
 
-        logitem = obslog.LogItem(
-                      fileid     = fileid,
-                      obsdate    = obsdate,
-                      exptime    = exptime,
-                      objtname   = objtname,
-                      saturation = prop,
-                      brightness = bri_index,
-                  )
-        log.append(logitem)
+        item = obslog.LogItem(
+                   fileid     = fileid,
+                   obsdate    = obsdate,
+                   exptime    = exptime,
+                   objtname   = objtname,
+                   saturation = prop,
+                   brightness = bri_index,
+                   )
+        log.add_item(item)
 
-    log = obslog.sort_log(log, 'obsdate')
+    log.sort('obsdate')
 
     # make info list
     all_info_lst = []
-    columns = ['frameid','fileid','objtname','exptime','obsdate','saturation',
+    columns = ['frameid','fileid','objectname','exptime','obsdate','saturation',
                'brightness']
     prev_frameid = -1
     for logitem in log:
@@ -495,15 +495,15 @@ def make_log(rawdata_path):
             info_lst[i] = fmt%(info_lst[i])
 
     # write the obslog into an ascii file
-    date = log[0].fileid.split('_')[0]
-    outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
-    outfile = open(outfilename,'w')
+    #date = log[0].fileid.split('_')[0]
+    #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
+    #outfile = open(outfilename,'w')
     string = '# '+', '.join(columns)
-    outfile.write(string+os.linesep)
+    #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:
         string = ' | '.join(info_lst)
         string = ' '+string
-        outfile.write(string+os.linesep)
+        #outfile.write(string+os.linesep)
         print(string)
-    outfile.close()
+    #outfile.close()

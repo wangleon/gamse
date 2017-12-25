@@ -45,6 +45,9 @@ def make_log(instrument, path):
     if instrument == 'FOCES':
         from .foces import make_log
         make_log(path)
+    elif instrument == 'Xinglong216HRS':
+        from .xl216hrs import make_log
+        make_log(path)
     else:
         print('Cannot recognize the instrument name: %s'%instrument)
         exit()
@@ -59,7 +62,7 @@ def get_instrument(path):
     '''
     fname_lst = [name for name in os.listdir(path) if name[-5:]=='.fits']
     head = fits.getheader(os.path.join(path, fname_lst[0]))
-    if head['INSTRUME']=='FOCES':
+    if 'INSTRUME' in head and head['INSTRUME']=='FOCES':
         return 'FOCES'
     else:
         print('Cannot recognize the instrument')

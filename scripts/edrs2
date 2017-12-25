@@ -89,6 +89,8 @@ def main():
             exit()
         # find the instrument name
         instrument = get_instrument(rawpath)
+        if instrument == '':
+            instrument = sys.argv[2]
 
         # reduce the spectra
         from edrs.pipelines import reduce_echelle
@@ -108,6 +110,8 @@ def main():
             exit()
         # find the instrument name
         instrument = get_instrument(rawpath)
+        if instrument == '':
+            instrument = sys.argv[2]
         # print the log
         from edrs.pipelines import make_log
         make_log(instrument, rawpath)

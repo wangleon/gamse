@@ -135,8 +135,18 @@ class Reduction(object):
             os.mkdir(self.paths['report_img'])
             logger.info('Create a new directory: "%s"'%self.paths['report_img'])
 
-        # find flat groups. a flat group is a series of flat frames that have
-        # the same exposure time.
+    def find_flat_groups():
+        '''Find flat groups.
+        
+        A flat group is a series of flat frames that have the same exposure
+        times.
+        Temperatures of flat lamps are often much lower than that of celestial
+        objects, and therefore flat fieldings are always well illuminated in the
+        red part than the blue part of the spectrum.
+        Flat images with different exposure times are often obtained during an
+        observing run to illuminate different part of the CCD.
+        '''
+
         flat_groups = {}
         for option in sorted(self.config.options('reduction')):
             if re.match('fileid\.flat\w*', option) is not None:
