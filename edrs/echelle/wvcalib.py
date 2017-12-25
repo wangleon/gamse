@@ -30,8 +30,10 @@ from ..utils.regression import polyfit2d, polyval2d
 
 
 identlinetype = np.dtype({
-    'names':  ['channel','aperture','order','pixel','wavelength','snr','mask','residual','method'],
-    'formats':['S1', np.int16, np.int16, np.float32, np.float64, np.float32,np.int16, np.float64, 'S1'],
+    'names':  ['channel','aperture','order','pixel','wavelength','snr','mask',
+               'residual','method'],
+    'formats':['S1', np.int16, np.int16, np.float32, np.float64, np.float32,
+               np.int16, np.float64, 'S1'],
     })
 
 class CustomToolbar(NavigationToolbar2TkAgg):
