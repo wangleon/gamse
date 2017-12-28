@@ -9,9 +9,9 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..ccdproc      import save_fits
-from ..utils.obslog import parse_num_seq
-from .reduction     import Reduction
+from ..utils    import obslog
+from ..ccdproc  import save_fits
+from .reduction import Reduction
 
 class XinglongHRS(Reduction):
 
@@ -408,14 +408,21 @@ def get_local_minima2(x, window):
     return index_lst, x[index_lst]
 
 
-def make_log(rawdata_path):
+def make_log(path):
     '''
+    Scan the raw data, and generated a log file containing the detail
+    information for each frame.
+
+    An ascii file will be generated after running. The name of the ascii file is
+    `YYYY-MM-DD.log`.
+
+    Args:
+        path (string): Path to the raw FITS files.
 
     '''
-    from ..utils import obslog
 
     # scan the raw files
-    fname_lst = sorted(os.listdir(rawdata_path))
+    fname_lst = sorted(os.listdir(path))
     log = obslog.Log()
     for fname in fname_lst:
         if fname[-5:] != '.fits':
@@ -423,7 +430,7 @@ def make_log(rawdata_path):
         fileid  = fname[0:-5]
         obsdate = None
         exptime = None
-        filepath = os.path.join(rawdata_path,fname)
+        filepath = os.path.join(path,fname)
         data,head = fits.getdata(filepath,header=True)
         naxis1 = head['NAXIS1']
         cover  = head['COVER']
@@ -434,7 +441,7 @@ def make_log(rawdata_path):
         data = data[y1:y2,x1:x2]
         obsdate = head['DATE-STA']
         exptime = head['EXPTIME']
-        objtname = head['OBJECT']
+        objectname = head['OBJECT']
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (data>=65535)
@@ -449,7 +456,7 @@ def make_log(rawdata_path):
                    fileid     = fileid,
                    obsdate    = obsdate,
                    exptime    = exptime,
-                   objtname   = objtname,
+                   objectname = objectname,
                    saturation = prop,
                    brightness = bri_index,
                    )
@@ -459,8 +466,8 @@ def make_log(rawdata_path):
 
     # make info list
     all_info_lst = []
-    columns = ['frameid','fileid','objectname','exptime','obsdate','saturation',
-               'brightness']
+    columns = ['frameid (i)', 'fileid (s)', 'objectname (s)', 'exptime (f)',
+               'obsdate (s)', 'saturation (f)', 'brightness (f)']
     prev_frameid = -1
     for logitem in log:
         frameid = int(logitem.fileid[8:])
@@ -469,7 +476,7 @@ def make_log(rawdata_path):
         info_lst = [
                     str(frameid),
                     str(logitem.fileid),
-                    str(logitem.objtname),
+                    str(logitem.objectname),
                     '%8.3f'%logitem.exptime,
                     str(logitem.obsdate),
                     '%.3f'%logitem.saturation,
