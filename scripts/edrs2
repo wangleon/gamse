@@ -87,10 +87,12 @@ def main():
         if rawpath is None:
             print('Rawdata not found')
             exit()
+
         # find the instrument name
-        instrument = get_instrument(rawpath)
-        if instrument == '':
+        if len(sys.argv)>=3:
             instrument = sys.argv[2]
+        else:
+            instrument = get_instrument(rawpath)
 
         # reduce the spectra
         from edrs.pipelines import reduce_echelle
@@ -108,10 +110,13 @@ def main():
         if rawpath is None:
             print('Rawdata not found')
             exit()
+
         # find the instrument name
-        instrument = get_instrument(rawpath)
-        if instrument == '':
+        if len(sys.argv)>=3:
             instrument = sys.argv[2]
+        else:
+            instrument = get_instrument(rawpath)
+
         # print the log
         from edrs.pipelines import make_log
         make_log(instrument, rawpath)
