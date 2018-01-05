@@ -9,7 +9,6 @@ Summaries
     obslog.LogItem
     obslog.Log
     obslog.read_log
-    obslog.sort_log
     obslog.get_input_fileids
     obslog.parse_num_seq
     onedarray.derivative

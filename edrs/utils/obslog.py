@@ -47,6 +47,27 @@ class Log(object):
     def __iter__(self):
         return _LogIterator(self.item_list)
 
+    def find_nchannels(self, channel_separator=';'):
+        '''Find the number of channels by checking the column of "objectname".
+
+        After finding the number of channles, if nchannels > 1, the objectname
+        in each logitem will be splitted into a list of names.
+
+        Args:
+            channel_separator (string): Separator of channels in "objectname"
+                column.
+        '''
+        max_nchannel = 1
+        for item in self.item_list:
+            nchannel = item.objectname.split(channel_separator)
+            max_nchannel = max(max_channel, nchannel)
+        self.nchannels = max_nchannel
+
+        if self.nchannels > 1:
+            for item in self.item_list:
+                item.objectname = [v.strip() for v in
+                                   item.objectname.split(channel_separator)]
+
     def add_item(self, item):
         '''Add a :class:`LogItem` instance into the observing log.'''
         self.item_list.append(item)
@@ -102,18 +123,14 @@ class _LogIterator(object):
         else:
             raise StopIteration()
 
-def read_logitem(string, names, types, nchannels=1, column_separator='|',
-                 channel_separator=';'):
+def read_logitem(string, names, types, column_separator='|'):
     '''Read log items.
 
     Args:
         string (string): Input string.
         names (list): A list of names.
         types (list): A list of type strings.
-        nchannels (integer): Number of channels.
         column_separator (string): Separator of columns.
-        channel_separator (string): Separator of channels in "objectname"
-            column.
     
     Returns:
         :class:`LogItem`: A :class:`LogItem` instance.
@@ -132,10 +149,6 @@ def read_logitem(string, names, types, nchannels=1, column_separator='|',
             value = float(value)
         else:
             value = value.strip()
-
-        # parse object names for multi channels
-        if name == 'objectname' and nchannels > 1:
-            value = [v.strip() for v in value.split(channel_separator)]
 
         setattr(logitem, name, value)
 
@@ -184,15 +197,12 @@ def read_log(filename):
                     val = float(val)
                 setattr(log, key, val)
         else:
-            # parse log items
-            if hasattr(log, 'nchannels'):
-                nchannels = log.nchannels
-            else:
-                nchannels = 1
-            logitem = read_logitem(row, names, types, nchannels=nchannels)
+            logitem = read_logitem(row, names, types)
             log.add_item(logitem)
 
     infile.close()
+    log.find_nchannels()
+
     logger.info('Observational log file "%s" loaded'%filename)
 
     return log
