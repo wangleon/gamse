@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ..utils    import obslog
-from ..ccdproc  import save_fits
+from ..ccdproc  import save_fits, array_to_table
 from .reduction import Reduction
 
 class XinglongHRS(Reduction):
@@ -54,7 +54,7 @@ class XinglongHRS(Reduction):
             return True
 
         # keywords for mask
-        saturation_adu = self.config.getint('reduction','saturation')
+        saturation_adu = 65535
 
         # loop over all files (bias, dark, ThAr, flat...)
         # to correct for the overscan
@@ -132,11 +132,12 @@ class XinglongHRS(Reduction):
             x1 = head['CRVAL1']
             x2 = x1 + head['NAXIS1'] - head['COVER']
             mask_sat   = (data[y1:y2,x1:x2]>=saturation_adu)
-            mask       = np.int16(mask_sat)
+            mask       = np.int16(mask_sat)*4
+            mask_table = array_to_table(mask)
             mask_fname = os.path.join(self.paths['midproc'],
                          '%s%s.fits'%(item.fileid, self.mask_surfix))
 
-            save_fits(mask_fname, mask*4)
+            save_fits(mask_fname, mask_table)
 
             # subtract overscan
             new_data = np.zeros((y2-y1, x2-x1), dtype=np.float64)
@@ -174,13 +175,19 @@ class XinglongHRS(Reduction):
 
         bias_id_lst = self.find_bias()
 
+        if len(bias_id_lst) == 0:
+            # no bias frame found. quit this method.
+            # update surfix
+            logger.info('No bias found.')
+            return True
+
         infile_lst = [os.path.join(self.paths['midproc'],
                         '%s%s.fits'%(item.fileid, self.input_surfix))
                         for item in self.log if item.frameid in bias_id_lst]
 
         # import and stack all bias files in a data cube
         tmp = [fits.getdata(filename, header=True) for filename in infile_lst]
-        all_data, all_head = zip(*tmp)
+        all_data, all_head = list(zip(*tmp))
         all_data = np.array(all_data)
 
         if self.config.has_option('reduction', 'bias.cosmic_clip'):
@@ -296,6 +303,7 @@ class XinglongHRS(Reduction):
         logger.info('Bias corrected. Change surfix: %s -> %s'%
                     (self.input_surfix, self.output_surfix))
         self.input_surfix = self.output_surfix
+        return True
 
 
     def trace2(self):
@@ -505,7 +513,7 @@ def make_log(path):
     #date = log[0].fileid.split('_')[0]
     #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
     #outfile = open(outfilename,'w')
-    string = '# '+', '.join(columns)
+    string = '% columns = '+', '.join(columns)
     #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:

@@ -135,7 +135,7 @@ class Reduction(object):
             os.mkdir(self.paths['report_img'])
             logger.info('Create a new directory: "%s"'%self.paths['report_img'])
 
-    def find_flat_groups():
+    def find_flat_groups(self):
         '''Find flat groups.
         
         A flat group is a series of flat frames that have the same exposure
@@ -173,6 +173,8 @@ class Reduction(object):
             logger.error('Cannot find observing log file: %s'%obslog_file)
             exit()
         self.log = read_log(obslog_file)
+
+        self.find_flat_groups()
 
     def plot_overscan_variation(self, t_lst, overscan_lst):
         '''
@@ -233,7 +235,7 @@ class Reduction(object):
             # find bias in log
             bias_id_lst = []
             for item in self.log:
-                if self.log.nchannel == 1:
+                if self.log.nchannels == 1:
                     if item.objectname.lower().strip()=='bias':
                         bias_id_lst.append(item.frameid)
                 else:

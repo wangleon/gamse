@@ -31,7 +31,8 @@ def reduce_echelle(instrument):
         reduction = XinglongHRS()
         reduction.reduce()
     else:
-        pass
+        print('Unknown Instrument: %s'%instrument)
+
 
 def make_log(instrument, path):
     '''Scan the path to the raw FITS files and generate an observing log.
