@@ -47,26 +47,10 @@ class Log(object):
     def __iter__(self):
         return _LogIterator(self.item_list)
 
-    def find_nchannels(self, channel_separator=';'):
+    def find_nchannels(self):
         '''Find the number of channels by checking the column of "objectname".
-
-        After finding the number of channles, if nchannels > 1, the objectname
-        in each logitem will be splitted into a list of names.
-
-        Args:
-            channel_separator (string): Separator of channels in "objectname"
-                column.
         '''
-        max_nchannel = 1
-        for item in self.item_list:
-            nchannel = item.objectname.split(channel_separator)
-            max_nchannel = max(max_channel, nchannel)
-        self.nchannels = max_nchannel
-
-        if self.nchannels > 1:
-            for item in self.item_list:
-                item.objectname = [v.strip() for v in
-                                   item.objectname.split(channel_separator)]
+        self.nchannels = max([len(item.objectname) for item in self.item_list])
 
     def add_item(self, item):
         '''Add a :class:`LogItem` instance into the observing log.'''
@@ -123,14 +107,19 @@ class _LogIterator(object):
         else:
             raise StopIteration()
 
-def read_logitem(string, names, types, column_separator='|'):
+def read_logitem(string, names, types, column_separator='|',
+    channel_separator=';'):
     '''Read log items.
+
+    The objectname in each item is splitted into a list of names.
 
     Args:
         string (string): Input string.
         names (list): A list of names.
         types (list): A list of type strings.
         column_separator (string): Separator of columns.
+        channel_separator (string): Separator of channels in "objectname"
+            column.
     
     Returns:
         :class:`LogItem`: A :class:`LogItem` instance.
@@ -139,7 +128,7 @@ def read_logitem(string, names, types, column_separator='|'):
     logitem = LogItem()
 
     g = string.split(column_separator)
-    for i,value in enumerate(g):
+    for i, value in enumerate(g):
         if i >= len(names):
             continue
         name = names[i]
@@ -149,6 +138,10 @@ def read_logitem(string, names, types, column_separator='|'):
             value = float(value)
         else:
             value = value.strip()
+
+        # parse object names for multi-channels
+        if name == 'objectname':
+            value = [v.strip() for v in value.split(channel_separator)]
 
         setattr(logitem, name, value)
 
