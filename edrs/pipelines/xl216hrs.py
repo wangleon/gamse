@@ -305,32 +305,6 @@ class XinglongHRS(Reduction):
         self.input_surfix = self.output_surfix
         return True
 
-
-    def trace2(self):
-        
-        if self.config.getboolean('reduction', 'trace.skip'):
-            logger.info('Skip [trace] according to the config file')
-            return True
-
-        # find the parameters for order tracing
-        trace_file   = self.config.get('reduction', 'trace.file')
-        scale        = self.config.get('reduction', 'trace.scale')
-        scan_step    = self.config.getint('reduction', 'trace.scan_step')
-        minimum      = self.config.getfloat('reduction', 'trace.minimum')
-        animation    = self.config.getboolean('reduction', 'trace.animation')
-        degree       = self.config.getint('reduction', 'trace.degree')
-        clipping     = self.config.getfloat('reduction', 'trace.clipping')
-        maxiter      = self.config.getint('reduction', 'trace.maxiter')
-        saturation   = self.config.getint('reduction', 'saturation')
-
-        find_orders('midproc/flat_red.fits',
-                    scale     = scale,
-                    scan_step = scan_step,
-                    animation = animation,
-                    minimum   = minimum,
-                    )
-
-
 def find_orders(filename, **kwargs):
     import astropy.io.fits as fits
     from scipy.ndimage.filters import median_filter
