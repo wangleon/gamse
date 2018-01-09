@@ -160,7 +160,7 @@ class Reduction(object):
                             if i != ichannel])==0:
                     # this frame is a single channel flat
                     if name.lower().strip()=='flat':
-                        flatname = 'flat_%.3f'%item.exptime
+                        flatname = 'flat_%s_%.3f'%(channel, item.exptime)
                     else:
                         flatname = name.replace(' ','_')
 
@@ -683,18 +683,18 @@ class Reduction(object):
         plt.close(fig2)
     
 
-    def combine_flat(self, flatname):
+    def combine_flat(self, item_list, flatname):
         '''
-        Combine flat fielding frames for each flat subgroup.
+        Combine flat fielding frames.
 
         Args:
-            flatname (string): Name of the flat group.
+            item_list (list): List of flat items.
+            flatname (string): Name of the input flat set.
         Returns:
             No returns.
         '''
 
-        id_lst = self.flat_groups[flatname]
-        nfile = len(id_lst)
+        nfile = len(item_list)
     
         # create a header object for combined flat
         newhead = fits.Header()
@@ -703,9 +703,7 @@ class Reduction(object):
     
         # combine flat
         ifile = 0
-        for item in self.log:
-            if item.frameid not in id_lst:
-                continue
+        for item in item_list:
             ifile += 1
             # load image data
             basename = '%s%s.fits'%(item.fileid, self.input_surfix)
@@ -914,98 +912,109 @@ class Reduction(object):
 
             if channel in trace_lst:
                 if len(trace_lst[channel]) > 1:
-                    filename_lst = []
-                    for item in trace_lst[channel]:
-                        basename = '%s%s.fits'%(item.fileid, self.input_surfix)
-                        filename = os.path.join(self.paths['midproc'], basename)
-                        filename_lst.append(filename)
-                    dst_filename = os.path.join(self.paths['midproc'], 'trace_%s.fits'%channel)
+                    filename_lst = [os.path.join(self.paths['midproc'],
+                                    '%s%s.fits'%(item.fileid, self.input_surfix))
+                                    for item in trace_lst[channel]
+                                    ]
+                    tracename = 'trace_%s'%channel
+                    dst_filename = os.path.join(self.paths['midproc'],
+                                   '%s.fits'%tracename)
                     combine_fits(filename_lst, dst_filename, mode='sum')
                     data = fits.getdata(dst_filename)
+
+                    mask = np.zeros_like(data, dtype=np.bool)
+                    for item in trace_lst[channel]:
+                        mask_file = os.path.join(
+                                    self.paths['midproc'],
+                                    '%s%s.fits'%(item.fileid, self.mask_surfix)
+                                    )
+                        mask_table = fits.getdata(mask_file)
+                        imask = table_to_array(mask_table, data.shape)
+                        imask = (imask&4 == 4)
+                        mask = (mask|imask)
                 else:
                     item = trace_lst[channel][0]
-                    basename = '%s%s.fits'%(item.fileid, self.input_surfix)
-                    filename = os.path.join(self.paths['midproc'], basename)
+                    tracename = item.fileid
+                    filename = os.path.join(
+                                self.paths['midproc'],
+                                '%s%s.fits'%(item.fileid, self.input_surfix)
+                                )
                     data = fits.getdata(filename)
-            else:
-                pass
-                # no trace file for this channel. use flat instead.
-
-
-        if self.config.has_option('reduction', 'fileid.trace'):
-            # if there's "fileid.trace" keyword in the "reduction" section of
-            # the config file, combine the file listed.
-
-            self.combine_trace()
-
-            # determine the result file and figure file
-            data = fits.getdata(trace_file)
-
-            basename = os.path.basename(trace_file)
-            tracename = basename[0:-5]
-            mask_file = os.path.join(self.paths['midproc'],
-                                     '%s%s.fits'%(tracename, self.mask_surfix))
-            mask_table = fits.getdata(mask_file)
-            mask = table_to_array(mask_table, data.shape)
-            mask = (mask&4 == 4)
-
-            trace_result_file = os.path.join(self.paths['midproc'],
-                                            '%s_trace.txt'%tracename)
-            reg_file    = os.path.join(self.paths['midproc'],
-                                       '%s_trace.reg'%tracename)
-            fig_file  = os.path.join(self.paths['report_img'],
-                                     'trace_%s.png'%tracename)
-
-            kwargs.update({'mask'       : mask,
-                           'filename'   : trace_file,
-                           'trace_file' : trace_result_file,
-                           'reg_file'   : reg_file,
-                           'fig_file'   : fig_file,
-                           })
-            # find the orders
-            aperture_set = find_apertures(data, **kwargs)
-
-            logger.info('Found %d orders in "%s.fits"'%(
-                        len(aperture_set), trace_file))
-
-            aperture_set_lst[tracename] = aperture_set
-
-        else:
-            # there's no "fileid.trace" keyword in config file, trace the
-            # orders using flat file.
-
-            logger.info('Cannot find trace images. Use flat images instead')
-
-            for flatname in sorted(self.flat_groups.keys()):
-                logger.info('Begin processing flat component: %s'%flatname)
-                flatpath = os.path.join(self.paths['midproc'],
-                                        '%s.fits'%flatname)
-
-                # combine flat for this sub-group
-                self.combine_flat(flatname)
-
-                data = fits.getdata(flatpath)
-                mask_file = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(flatname, self.mask_surfix))
-                mask_table = fits.getdata(mask_file)
-                if mask_table.size==0:
-                    mask = np.zeros_like(data, dtype=np.int16)
-                else:
+                    mask_file = os.path.join(
+                                self.paths['midproc'],
+                                '%s%s.fits'%(item.fileid, self.mask_surfix)
+                                )
+                    mask_table = fits.getdata(mask_file)
                     mask = table_to_array(mask_table, data.shape)
-                mask = (mask&4 == 4)
+                    mask = (mask&4 == 4)
 
-                # determine the result file and figure file
-                trace_result_file = os.path.join(self.paths['midproc'],
-                                   '%s_trace.txt'%flatname)
-                reg_file  = os.path.join(self.paths['midproc'],
-                                         '%s_trace.reg'%flatname)
-                fig_file  = os.path.join(self.paths['report_img'],
-                            'trace_%s.png'%flatname)
-                # find the apertures
+                trace_result_file = os.path.join(
+                                        self.paths['midproc'],
+                                        '%s_trc.txt'%tracename
+                                    )
+                reg_file = os.path.join(
+                                self.paths['midproc'],
+                                '%s_trc.reg'%tracename
+                            )
+                fig_file = os.path.join(
+                            self.paths['report_img'],
+                            'trace_%s.png'%tracename
+                            )
 
-                if False:
-                    aperture_set = load_aperture_set(result_file)
-                else:
+                kwargs.update({'mask'       : mask,
+                               'filename'   : trace_file,
+                               'trace_file' : trace_result_file,
+                               'reg_file'   : reg_file,
+                               'fig_file'   : fig_file,
+                               })
+                aperture_set = find_apertures(data, **kwargs)
+
+                logger.info('Found %d orders in "%s.fits"'%(
+                            len(aperture_set), trace_file))
+
+                aperture_set_lst[tracename] = aperture_set
+
+            else:
+                # no trace file for this channel. use flat instead.
+                logger.info('Cannot find trace images for channel %s. Use flat images instead'%channel)
+
+                for flatname, item_lst in sorted(self.flat_groups[channel].items()):
+                    logger.info('Begin processing flat component: %s'%flatname)
+                    flatpath = os.path.join(
+                                self.paths['midproc'],
+                                '%s.fits'%flatname
+                                )
+
+                    # combine flat for this sub-group
+                    self.combine_flat(item_lst, flatname)
+
+                    data = fits.getdata(flatpath)
+                    mask_file = os.path.join(
+                                self.paths['midproc'],
+                                '%s%s.fits'%(flatname, self.mask_surfix)
+                                )
+                    mask_table = fits.getdata(mask_file)
+                    if mask_table.size==0:
+                        mask = np.zeros_like(data, dtype=np.int16)
+                    else:
+                        mask = table_to_array(mask_table, data.shape)
+                    mask = (mask&4 == 4)
+
+                    # determine the result file and figure file
+                    trace_result_file = os.path.join(
+                                        self.paths['midproc'],
+                                        '%s_trc.txt'%flatname
+                                        )
+                    reg_file = os.path.join(
+                                self.paths['midproc'],
+                                '%s_trc.reg'%flatname
+                                )
+                    fig_file = os.path.join(
+                                self.paths['report_img'],
+                                'trace_%s.png'%flatname
+                                )
+                    # find the apertures
+
                     kwargs.update({'mask'       : mask,
                                    'filename'   : flatpath,
                                    'trace_file' : trace_result_file,
@@ -1014,9 +1023,9 @@ class Reduction(object):
                                    })
                     aperture_set = find_apertures(data, **kwargs)
 
-                logger.info('Found %d apertures in "%s.fits"'%(
-                            len(aperture_set), flatname))
-                aperture_set_lst[flatname] = aperture_set
+                    logger.info('Found %d apertures in "%s.fits"'%(
+                                len(aperture_set), flatname))
+                    aperture_set_lst[flatname] = aperture_set
 
         self.aperture_set_lst = aperture_set_lst
 
