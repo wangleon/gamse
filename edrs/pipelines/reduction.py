@@ -874,7 +874,7 @@ class Reduction(object):
 
         .. csv-table:: Accepted options in config file
            :header: "Option", "Type", "Description"
-           :widths: 20, 10, 50
+           :widths: 20, 10, 80
 
            **trace.skip**,       *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
            **trace.file**,       *string*,  "Name of the trace file."
@@ -1038,7 +1038,7 @@ class Reduction(object):
 
         .. csv-table:: Accepted options in config file
            :header: "Option", "Type", "Description"
-           :widths: 20, 10, 50
+           :widths: 25, 10, 70
 
            **flat.skip**,            *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
            **flat.surfix**,          *string*,  "Surfix of the flat correceted files."
