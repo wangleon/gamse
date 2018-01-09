@@ -147,16 +147,27 @@ class Reduction(object):
         observing run to illuminate different part of the CCD.
         '''
 
-        flat_groups = {}
-        for option in sorted(self.config.options('reduction')):
-            if re.match('fileid\.flat\w*', option) is not None:
-                # this option is a sub flat
-                flatname = option[len('fileid.'):]
-                # find the input file list and output filename
-                string = self.config.get('reduction', option)
-                id_lst = parse_num_seq(string)
-                flat_groups[flatname] = id_lst
-                logger.info('Flat group (%s) IDs: %s'%(option, string))
+        # initialize flat_groups at different channels
+        flat_groups = {chr(ich+65): {} for ich in range(self.nchannels)}
+
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
+            for item in self.log:
+                name = item.objectname[ichannel]
+                g = name.split()
+                if len(g)>0 and g[0].lower().strip()=='flat' and \
+                    max([len(v) for i, v in enumerate(item.objectname)
+                            if i != ichannel])==0:
+                    # this frame is a single channel flat
+                    if name.lower().strip()=='flat':
+                        flatname = 'flat_%.3f'%item.exptime
+                    else:
+                        flatname = name.replace(' ','_')
+
+                    if flatname not in flat_groups[channel]:
+                        flat_groups[channel][flatname] = []
+                    flat_groups[channel][flatname].append(item)
+        
         self.flat_groups = flat_groups
 
     def load_log(self):
@@ -174,6 +185,10 @@ class Reduction(object):
             exit()
         self.log = read_log(obslog_file)
 
+        # copy some keywords from the log to the Reduction instance
+        self.nchannels = self.log.nchannels
+
+        # find flat groups
         self.find_flat_groups()
 
     def plot_overscan_variation(self, t_lst, overscan_lst):
@@ -219,30 +234,42 @@ class Reduction(object):
     def find_bias(self):
         '''Find bias frames.
 
-        First search the config file. If there's no "fileid.bias" option in the
-        "reduction", scan the log file and find items with "objectname" containg
-        "bias".
+        Scan the log file and find items with "objectname" containg "bias".
 
         Returns:
             list: A list containing the IDs of bias frames.
         '''
         
-        if self.config.has_option('reduction', 'fileid.bias'):
-            # bias frames have been given in config
-            string = self.config.get('reduction','fileid.bias')
-            bias_id_lst = parse_num_seq(string)
-        else:
-            # find bias in log
-            bias_id_lst = []
-            for item in self.log:
-                if self.log.nchannels == 1:
-                    if item.objectname.lower().strip()=='bias':
-                        bias_id_lst.append(item.frameid)
-                else:
-                    for name in item.objectname:
-                        if name.lower().strip()=='bias':
-                            bias_id_lst.append(item.frameid)
+        # find bias in log
+        bias_id_lst = []
+        for item in self.log:
+            for name in item.objectname:
+                if name.lower().strip() == 'bias':
+                    bias_id_lst.append(item.frameid)
         return bias_id_lst
+
+    def find_trace(self):
+        '''Find trace frames.
+
+        Scan the log file and find items with "objectname" containg "bias".
+
+        Returns:
+            dict: A dict containing the items of trace frames in each channel.
+        '''
+        trace_lst = {}
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
+            
+            for item in self.log:
+                if item.objectname[ichannel].lower().strip() == 'trace' and \
+                    max([len(v) for i, v in enumerate(item.objectname)
+                            if i != ichannel])==0:
+                    # this frame is a single channle trace image
+                    if channel not in trace_lst:
+                        trace_lst[channel] = []
+                    trace_lst[channel].append(item)
+
+        return trace_lst
 
     def bias(self):
         '''
@@ -876,9 +903,34 @@ class Reduction(object):
             'degree'    : self.config.getint('reduction', 'trace.degree'),
             }
 
-        # initialize order_set_lst, containing the order locations from
-        # different tracing files (either trace or flat image)
-        aperture_set_lst = {}
+        trace_lst = self.find_trace()
+
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel + 65)
+            print(ichannel, channel)
+            # initialize aperture_set_lst, containing the order locations from
+            # different tracing files (either trace or flat image)
+            aperture_set_lst = {}
+
+            if channel in trace_lst:
+                if len(trace_lst[channel]) > 1:
+                    filename_lst = []
+                    for item in trace_lst[channel]:
+                        basename = '%s%s.fits'%(item.fileid, self.input_surfix)
+                        filename = os.path.join(self.paths['midproc'], basename)
+                        filename_lst.append(filename)
+                    dst_filename = os.path.join(self.paths['midproc'], 'trace_%s.fits'%channel)
+                    combine_fits(filename_lst, dst_filename, mode='sum')
+                    data = fits.getdata(dst_filename)
+                else:
+                    item = trace_lst[channel][0]
+                    basename = '%s%s.fits'%(item.fileid, self.input_surfix)
+                    filename = os.path.join(self.paths['midproc'], basename)
+                    data = fits.getdata(filename)
+            else:
+                pass
+                # no trace file for this channel. use flat instead.
+
 
         if self.config.has_option('reduction', 'fileid.trace'):
             # if there's "fileid.trace" keyword in the "reduction" section of

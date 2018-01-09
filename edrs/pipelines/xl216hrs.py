@@ -18,8 +18,6 @@ class XinglongHRS(Reduction):
     def __init__(self):
         super(XinglongHRS, self).__init__()
 
-        # copy some keywords from the log to the Reduction instance
-        self.nchannels = self.log.nchannels
 
     def config_ccd(self):
         '''Set CCD images configurations.
