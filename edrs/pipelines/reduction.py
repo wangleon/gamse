@@ -282,7 +282,7 @@ class Reduction(object):
            "**bias.skip**",          "*bool*",    "Skip this step if *yes* and **mode** = *'debug'*."
            "**bias.surfix**",        "*string*",  "Surfix of the corrected files."
            "**bias.file**",          "*string*",  "Name of bias file."
-           "**bias.cosmic_clip**",   "*float*",   "Upper clippign threshold to remove cosmic-rays."
+           "**bias.cosmic_clip**",   "*float*",   "Upper clipping threshold to remove cosmic-rays."
            "**bias.smooth_method**", "*string*",  "Method of smoothing, including *Gauss*."
            "**bias.smooth_sigma**",  "*integer*", "Sigma of the smoothing filter."
            "**bias.smooth_mode**",   "*string*",  "Mode of the smoothing."
@@ -903,12 +903,14 @@ class Reduction(object):
 
         trace_lst = self.find_trace()
 
+        aperture_set_lst = {}
+
         for ichannel in range(self.nchannels):
             channel = chr(ichannel + 65)
             print(ichannel, channel)
             # initialize aperture_set_lst, containing the order locations from
             # different tracing files (either trace or flat image)
-            aperture_set_lst = {}
+            aperture_set_lst[channel] = {}
 
             if channel in trace_lst:
                 if len(trace_lst[channel]) > 1:
@@ -972,7 +974,7 @@ class Reduction(object):
                 logger.info('Found %d orders in "%s.fits"'%(
                             len(aperture_set), trace_file))
 
-                aperture_set_lst[tracename] = aperture_set
+                aperture_set_lst[channel][tracename] = aperture_set
 
             else:
                 # no trace file for this channel. use flat instead.
@@ -1025,13 +1027,27 @@ class Reduction(object):
 
                     logger.info('Found %d apertures in "%s.fits"'%(
                                 len(aperture_set), flatname))
-                    aperture_set_lst[flatname] = aperture_set
+
+                    aperture_set_lst[channel][flatname] = aperture_set
 
         self.aperture_set_lst = aperture_set_lst
 
     def flat(self):
         '''
-        Flat fielding correction
+        Flat fielding correction.
+
+        .. csv-table:: Accepted options in config file
+           :header: "Option", "Type", "Description"
+           :widths: 20, 10, 50
+
+           **flat.skip**,            *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
+           **flat.surfix**,          *string*,  "Surfix of the flat correceted files."
+           **flat.cosmic_clip**,     *float*,   "Upper clipping threshold to remove cosmis-rays."
+           **flat.file**,            *string*,  "Name of the trace file."
+           **flat.mosaic_method**,   *string*,  "Method of mosaic."
+           **flat.mosaic_file**,     *string*,  "Name of the mosaic file."
+           **flat.mosaic_reg_file**, *string*,  "Name of the mosaic .reg file."
+           **flat.mosaic_maxcount**, *integer*, "Maximum count of the flat mosaic."
         '''
 
         if self.config.getboolean('reduction', 'flat.skip'):
