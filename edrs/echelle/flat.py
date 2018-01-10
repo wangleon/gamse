@@ -464,14 +464,14 @@ def load_mosaic(filename):
     return coeff_lst, select_area
 
 
-def mosaic_flat_auto(filename_lst, outfile, order_set_lst, max_count):
+def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     '''
     Mosaic flat images automatically.
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
         outfile (string): Filename of the output image.
-        order_set_lst (list): List of :class:`ordersets`.
+        aperture_set_lst (list): List of :class:`ApertureSet`.
         max_count (float): Maximum count.
     Returns:
         No returns.
@@ -479,124 +479,126 @@ def mosaic_flat_auto(filename_lst, outfile, order_set_lst, max_count):
         :func:`mosaic_flat_interact`
     '''
 
-    from ..echelle.trace import select_ref_tracefile, align_orders
+    from ..echelle.trace import select_ref_tracefile, align_apertures
 
-    # select the reference flat
-    ref_flatname = select_ref_tracefile(order_set_lst)
+    for channel, aperset_lst in sorted(aperture_set_lst.items()):
 
-    # align all the orders in different flats
-    order_set_lst = align_orders(order_set_lst, ref_flatname)
-    print(order_set_lst)
+        print(channel, aperset_lst)
 
-    # search for minimum and maximum order
-    min_order_lst, max_order_lst = [], []
+        # select the reference flat
+        ref_flatname = select_ref_tracefile(aperset_lst)
 
-    # find the minimum and maximum order number
-    min_order = min([min(order_set.dict.keys())
-                    for order_set in order_set_lst.values()])
-    max_order = max([max(order_set.dict.keys())
-                    for order_set in order_set_lst.values()])
-    logger.info('Order range: %d - %d (%d orders)'%(
-                    min_order, max_order, max_order - min_order + 1))
+        # align all the orders in different flats
+        aperset_lst = align_apertures(aperset_lst, ref_flatname)
 
+        # search for minimum and maximum aperture
+        min_aperture_lst, max_aperture_lst = [], []
 
-    # now mosaic an entire order list
-    comp_key = 'median' # can be changed to ['max'|'mean'|'median']
-    order_select_lst = {}
-    select_flat_lst = []
-    for order in xrange(min_order, max_order+1):
-        # search all flat files and find the one with maxium flux
-        max_flatname = None
-        max_flux     = -999.
-        for flatname, order_set in sorted(order_set_lst.iteritems()):
-            if order not in order_set:
-                continue
-            order_loc = order_set[order]
+        # find the minimum and maximum aperture number
+        min_aper = min([min(aper_set.dict.keys())
+                    for aper_set in aperset_lst.values()])
+        max_aper = max([max(aper_set.dict.keys())
+                        for aper_set in aperset_lst.values()])
+        logger.info('Aperture range: %d - %d (%d aperture)'%(
+                    min_aper, max_aper, max_aper - min_aper + 1))
 
-            if order_loc.nsat > 0:
+        # now mosaic an entire order list
+        comp_key = 'median' # can be changed to ['max'|'mean'|'median']
+        apeture_select_lst = {}
+        select_flat_lst = []
+        for aperture in range(min_aper, max_aper+1):
+            # search all flat files and find the one with maxium flux
+            max_flatname = None
+            max_flux     = -999.
+            for flatname, aperture_set in sorted(aperture_set_lst.items()):
+                if aperture not in aperture_set:
+                    continue
+                aperture_loc = aperture_set[aperture]
+
+            if aperture_loc.nsat > 0:
                 # skip the one with saturation pixels
                 continue
-            if order_loc.max > max_count:
+            if aperture_loc.max > max_count:
                 # skip orders with peak flux larger than max_count
                 continue
-            if getattr(order_loc, comp_key) > max_flux:
-                max_flux = getattr(order_loc, comp_key)
+            if getattr(aperture_loc, comp_key) > max_flux:
+                max_flux = getattr(aperture_loc, comp_key)
                 max_flatname = flatname
 
-        order_select_lst[order] = max_flatname
+        aperture_select_lst[aperture] = max_flatname
         logger.debug('"%s" is selected for order %d with %s=%f'%(
-                      max_flatname, order, comp_key, max_flux))
+                      max_flatname, aperture, comp_key, max_flux))
         if max_flatname not in select_flat_lst:
             select_flat_lst.append(max_flatname)
 
-    # write selected filename in running log
-    message_lst = ['selected flat names:']
-    message_lst.append('order flatname')
-    for order, flatname in order_select_lst.items():
-        message_lst.append('  %2d %s'%(order, flatname))
-    logger.info(os.linesep.join(message_lst))
+        # write selected filename in running log
+        message_lst = ['selected flat names:']
+        message_lst.append('order flatname')
+        for aperture, flatname in aperture_select_lst.items():
+            message_lst.append('  %2d %s'%(aperture, flatname))
+        logger.info(os.linesep.join(message_lst))
 
-    # find mask
+        # find mask
 
-    # read data
-    prev_shape = None
-    flatdata_lst, maskdata_lst = {}, {}
-    for filename in filename_lst:
-        flatname = os.path.basename(filename)[0:-5]
-        data = fits.getdata(filename)
-        flatdata_lst[flatname] = data
-        maskdata_lst[flatname] = np.zeros_like(data, dtype=np.bool)
-        shape = data.shape
-        if prev_shape is not None and shape != prev_shape:
-            logger.error(
-                'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
-                flatname, shape[0], shape[1], prev_shape[0], prev_shape[1])
-                )
-        prev_shape = shape
+        # read data
+        prev_shape = None
+        flatdata_lst, maskdata_lst = {}, {}
+        for filename in filename_lst:
+            flatname = os.path.basename(filename)[0:-5]
+            data = fits.getdata(filename)
+            flatdata_lst[flatname] = data
+            maskdata_lst[flatname] = np.zeros_like(data, dtype=np.bool)
+            shape = data.shape
+            if prev_shape is not None and shape != prev_shape:
+                logger.error(
+                    'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
+                    flatname, shape[0], shape[1], prev_shape[0], prev_shape[1])
+                    )
+            prev_shape = shape
 
-    print(order_select_lst)
-    for order in xrange(min_order, max_order+1):
-        flatname = order_select_lst[order]
-        if order == min_order:
-            maskdata_lst[flatname][:,:] = True
-        elif flatname != prev_flatname:
-            prev_order_loc = order_set_lst[prev_flatname][order-1]
-            this_order_loc = order_set_lst[flatname][order]
-            h, w = this_order_loc.shape
+        print(aperture_select_lst)
+        for aperture in range(min_aperture, max_aperture+1):
+            flatname = aperture_select_lst[order]
+            if aperture == min_aperture:
+                maskdata_lst[flatname][:,:] = True
+            elif flatname != prev_flatname:
+                prev_aperture_loc = aperture_set_lst[prev_flatname][aperture-1]
+                this_aperture_loc = aperture_set_lst[flatname][aperture]
+                h, w = this_aperture_loc.shape
 
-            # upper coeff of previous order
-            upper_coeff = np.array(prev_order_loc.coeff_upper)
-            # lower coeff of this order
-            lower_coeff = np.array(this_order_loc.coeff_lower)
+                # upper coeff of previous order
+                upper_coeff = np.array(prev_order_loc.coeff_upper)
+                # lower coeff of this order
+                lower_coeff = np.array(this_order_loc.coeff_lower)
 
-            # if length of coefficients of above polynomials are not equal,
-            # add zeros in front of the coefficients
-            n_upper = len(upper_coeff)
-            n_lower = len(lower_coeff)
-            if n_upper < n_lower:
-                for i in range(abs(n_upper-n_lower)):
-                    upper_coeff = np.insert(upper_coeff, 0, 0.0)
-            elif n_upper > n_lower:
-                for i in range(abs(n_upper-n_lower)):
-                    lower_coeff = np.insert(lower_coeff, 0, 0.0)
-            # find the coefficients of the boundary polynomial
-            bound_coeff = (upper_coeff + lower_coeff)/2.
-            cut_bound = np.polyval(bound_coeff,np.arange(w)/float(w))*h
+                # if length of coefficients of above polynomials are not equal,
+                # add zeros in front of the coefficients
+                n_upper = len(upper_coeff)
+                n_lower = len(lower_coeff)
+                if n_upper < n_lower:
+                    for i in range(abs(n_upper-n_lower)):
+                        upper_coeff = np.insert(upper_coeff, 0, 0.0)
+                elif n_upper > n_lower:
+                    for i in range(abs(n_upper-n_lower)):
+                        lower_coeff = np.insert(lower_coeff, 0, 0.0)
+                # find the coefficients of the boundary polynomial
+                bound_coeff = (upper_coeff + lower_coeff)/2.
+                cut_bound = np.polyval(bound_coeff,np.arange(w)/float(w))*h
 
-            yy, xx = np.mgrid[:h:,:w:]
-            m = yy > np.round(cut_bound)
-            maskdata_lst[prev_flatname][m] = False
-            maskdata_lst[flatname][m] = True
+                yy, xx = np.mgrid[:h:,:w:]
+                m = yy > np.round(cut_bound)
+                maskdata_lst[prev_flatname][m] = False
+                maskdata_lst[flatname][m] = True
 
-        prev_flatname = flatname
+            prev_flatname = flatname
 
-    mos_flatdata = np.zeros(shape, dtype=np.float32)
-    for flatname, maskdata in sorted(maskdata_lst.iteritems()):
-        flatdata = flatdata_lst[flatname]
-        mos_flatdata += flatdata*maskdata
+        mos_flatdata = np.zeros(shape, dtype=np.float32)
+        for flatname, maskdata in sorted(maskdata_lst.iteritems()):
+            flatdata = flatdata_lst[flatname]
+            mos_flatdata += flatdata*maskdata
 
-    # save the mosaic flat as FITS file
-    save_fits(outfile, mos_flatdata)
+        # save the mosaic flat as FITS file
+        save_fits(outfile, mos_flatdata)
 
 def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
     mos_data = np.zeros(shape)

@@ -1105,7 +1105,7 @@ class Reduction(object):
                 elif mosaic_method == 'auto':
                     mosaic_flat_auto(filename_lst  = filename_lst,
                                      outfile       = flat_file,
-                                     order_set_lst = self.order_set_lst,
+                                     aperture_set_lst = self.aperture_set_lst,
                                      max_count     = max_count,
                                      )
                 else:

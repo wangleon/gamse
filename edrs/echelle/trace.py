@@ -641,43 +641,39 @@ def select_ref_tracefile(aperture_set_lst):
     '''
     Select the reference flat image.
 
-    Parameters
-    ----------
-    order_set_lst : 
-        Order set list
-
-    Notes
-    ------
     The reference flat shall be the brightest non-saturated flat image.
     If all flats are saturated, choose the image with the least saturated
-    orders.
+    apertures.
+
+    Args:
+        aperture_set_lst (list): list of Aperture sets
+
     '''
 
-    tracename_lst = sorted(order_set_lst.keys())
+    tracename_lst = sorted(aperture_set_lst.keys())
     # flat_name_lst: flat_1, flat_2, ... flat_N
     # n_sat_lst:          0,      0, ...      5
     # median_lst:      1000,   2000, ...   9000
     n_sat_lst  = []
     median_lst = []
-    for tracename, order_set in sorted(order_set_lst.iteritems()):
+    for tracename, aper_set in sorted(aperture_set_lst.items()):
+        print(tracename)
 
-        n_sat_orders = 0
-        median_count_lst = []
+        # count the numberof saturated apertures for this trace file
+        n_sat_apers = len([aper for aper, aper_loc in sorted(aper_set.items())
+                            if aper_loc.nsat>0])
+        # list the median values of all apertures for this trace file
+        median_count_lst = [aper_loc.median for aper, aper_loc in sorted(aper_set.items())]
 
-        # loop every order
-        for order, order_loc in sorted(order_set.dict.iteritems()):
-            if order_loc.nsat > 0:
-                n_sat_orders += 1
-            median_count_lst.append(order_loc.median)
         # find median of all orders for this flat
         median_median = np.median(median_count_lst)
 
-        n_sat_lst.append(n_sat_orders)
+        n_sat_lst.append(n_sat_apers)
         median_lst.append(median_median)
 
     # write to log file
-    message = 'flatname,   n_sat_orders,   median_count:'+os.linesep
-    message += os.linesep.join(['  %-12s %3d %9.2f'%(tracename,n_sat,median)
+    message = 'flatname,   n_sat_apertures, median_count:'+os.linesep
+    message += os.linesep.join(['  %-20s %3d %9.2f'%(tracename,n_sat,median)
                     for tracename, n_sat, median
                     in zip(tracename_lst, n_sat_lst, median_lst)])
     logger.info(message)
@@ -706,80 +702,80 @@ def select_ref_tracefile(aperture_set_lst):
 
     return tracename_lst[iname]
 
-def align_orders(order_set_lst, ref_tracename):
+def align_apertures(aperture_set_lst, ref_tracename):
     '''
     Align echelle orders
     '''
-    new_order_set_lst = {}
+    new_aperture_set_lst = {}
 
-    tracename_lst = sorted(order_set_lst.keys())
+    tracename_lst = sorted(aperture_set_lst.keys())
 
     if ref_tracename not in tracename_lst:
         logger.error("Can't find referenced trace file '%s'"%ref_tracename)
 
     # generate the reference Y for each order in reference flat
-    ref_order_lst = {}
-    ref_order_set = order_set_lst[ref_tracename]
+    ref_aperture_lst = {}
+    ref_aperture_set = aperture_set_lst[ref_tracename]
     # add reference orderset to new_order_set_lst
-    new_order_set_lst[ref_tracename] = order_set_lst[ref_tracename]
+    new_aperture_set_lst[ref_tracename] = aperture_set_lst[ref_tracename]
 
-    for order, order_loc in sorted(ref_order_set.dict.iteritems()):
-        h, w = order_loc.shape
+    for aperture, aperture_loc in sorted(ref_aperture_set.items()):
+        h, w = aperture_loc.shape
         anchor_x = np.linspace(0, w-1, 5, dtype=np.float32)[1:-1]
-        ref_order_lst[order] = order_loc.get_polyval('center', anchor_x)
+        ref_aperture_lst[aperture] = aperture_loc.position(anchor_x)
 
     # determine the offset between the flat image and the referenced flat
-    for tracename, order_set in sorted(order_set_lst.iteritems()):
+    for tracename, aperture_set in sorted(aperture_set_lst.items()):
         # skip the reference trace file
         if tracename == ref_tracename:
             continue
         offset_lst = {}
-        for order, order_loc in sorted(order_set.dict.iteritems()):
-            h, w  = order_loc.shape
+        for aperture, aperture_loc in sorted(aperture_set.items()):
+            h, w  = aperture_loc.shape
             anchor_x = np.linspace(0, w-1, 5, dtype=np.float32)[1:-1]
-            y = order_loc.get_polyval('center', anchor_x)
-            for order_ref, y_ref in sorted(ref_order_lst.iteritems()):
+            y = aperture_loc.position(anchor_x)
+            for aperture_ref, y_ref in sorted(ref_aperture_lst.items()):
                 diff = (np.abs(y-y_ref)).mean()
                 if diff < 1:
-                    offset = order - order_ref
-                    offset_lst[order] = offset
+                    offset = aperture - aperture_ref
+                    offset_lst[aperture] = offset
                     break
             # if did not find, leave this order blanck
 
         # write short offsets to running log
         message_lst = []
-        prev_order, prev_offset = None, None
-        for order, offset in sorted(offset_lst.iteritems()):
-            # o1 is the staring order of this offset
-            if prev_order is None or prev_offset is None:
-                o1 = order
-            elif order != prev_order + 1 or offset != prev_offset:
-                message_lst.append((o1,prev_order,prev_offset))
-                o1 = order
-            prev_order = order
-            prev_offset = offset_lst[order]
-        message_lst.append((o1, prev_order, prev_offset))
+        prev_aperture, prev_offset = None, None
+        for aperture, offset in sorted(offset_lst.items()):
+            # a1 is the staring order of this offset
+            if prev_aperture is None or prev_offset is None:
+                a1 = aperture
+            elif aperture != prev_aperture + 1 or offset != prev_offset:
+                message_lst.append((a1,prev_aperture,prev_offset))
+                a1 = aperture
+            prev_aperture = aperture
+            prev_offset = offset_lst[aperture]
+        message_lst.append((a1, prev_aperture, prev_offset))
 
-        string = ','.join(['%d-%d: %d'%(o1,o2,offset)
-                            for o1, o2, offset in message_lst])
+        string = ','.join(['%d-%d: %d'%(a1, a2, offset)
+                            for a1, a2, offset in message_lst])
         logger.info('Order offsets for %s = %s'%(tracename, string))
 
         # determine the final offset
-        maxorder = -1
+        maxaperture = -1
         maxoffset = None
-        for o1, o2, offset in message_lst:
-            noffset = o2 - o1 + 1
-            if noffset > maxorder:
-                maxorder = noffset
+        for a1, a2, offset in message_lst:
+            noffset = a2 - a1 + 1
+            if noffset > maxaperture:
+                maxaperture = noffset
                 maxoffset = offset
         logger.info('Found offset for %s = %s'%(tracename, maxoffset))
 
         # now align all order with the final offset
-        new_order_set = OrderSet()
-        for order, order_loc in sorted(order_set.dict.iteritems()):
-            new_order_set[order - maxoffset] = order_loc
-        new_order_set_lst[tracename] = new_order_set
+        new_aperture_set = ApertureSet()
+        for aperture, aperture_loc in sorted(aperture_set.items()):
+            new_aperture_set[aperture - maxoffset] = aperture_loc
+        new_aperture_set_lst[tracename] = new_aperture_set
 
-    # now all orders are aligned
+    # now all apertures are aligned
 
-    return new_order_set_lst
+    return new_aperture_set_lst
