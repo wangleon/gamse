@@ -741,7 +741,7 @@ class Reduction(object):
         data_mean = data_sum/float(nfile)
         mexptime  = total_exptime/float(nfile)
         newhead['HIERARCH EDRS FLAT MEANEXPTIME'] = mexptime
-        #newhead['EXPTIME'] = exptime
+        newhead['EXPTIME'] = mexptime
     
         outfile = '%s.fits'%flatname
         outpath = os.path.join(self.paths['midproc'], outfile)
@@ -988,7 +988,7 @@ class Reduction(object):
                                 )
 
                     # combine flat for this sub-group
-                    self.combine_flat(item_lst, flatname)
+                    #self.combine_flat(item_lst, flatname)
 
                     data = fits.getdata(flatpath)
                     mask_file = os.path.join(
@@ -1023,7 +1023,12 @@ class Reduction(object):
                                    'reg_file'   : reg_file,
                                    'fig_file'   : fig_file,
                                    })
-                    aperture_set = find_apertures(data, **kwargs)
+
+                    if True:
+                        #temporarily added for debug
+                        aperture_set = load_aperture_set(trace_result_file)
+                    else:
+                        aperture_set = find_apertures(data, **kwargs)
 
                     logger.info('Found %d apertures in "%s.fits"'%(
                                 len(aperture_set), flatname))
@@ -1052,65 +1057,68 @@ class Reduction(object):
 
         if self.config.getboolean('reduction', 'flat.skip'):
             logger.info('Skip [flat] according to the config file')
-            #self.input_surfix = self.output_surfix
+            self.input_surfix = self.output_surfix
             return True
 
         flat_file = self.config.get('reduction','flat.file')
 
-        if len(self.flat_groups) == 1:
-    
-            # only 1 type of flat
-            flatname = self.flat_groups.keys()[0]
-            infile  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
-   
-            if infile != flat_file:
-                # copy the flat
-                shutil.copyfile(infile, flat_file)
-                logger.info('Copy "%s" to "%s" as flat'%(infile, flat_file))
-            else:
-                logger.info('Flat file: %s'%flat_file)
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
 
-        elif len(self.flat_groups) > 1:
-            # mosaic flat
+            flat_file = os.path.join(
+                        self.paths['midproc'],
+                        'flat_%s.fits'%channel)
 
-            from ..echelle.flat import mosaic_flat_auto, mosaic_flat_interact
+            if len(self.flat_groups[channel]) == 1:
+                # only 1 type of flat
+                flatname = self.flat_groups[channel].keys()[0]
+                infile  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                if infile != flat_file:
+                    # copy the flat
+                    shutil.copyfile(infile, flat_file)
+                    logger.info('Copy "%s" to "%s" as flat'%(infile, flat_file))
+                else:
+                    logger.info('Flat file: %s'%flat_file)
+            elif len(self.flat_groups[channel]) > 1:
+                # mosaic flat
 
-            # get filename from config file
-            mosaic_method = self.config.get('reduction','flat.mosaic_method')
-            mosaic_file   = self.config.get('reduction','flat.mosaic_file')
-            reg_file      = self.config.get('reduction','flat.mosaic_reg_file')
-            max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
+                from ..echelle.flat import mosaic_flat_auto, mosaic_flat_interact
 
-            # prepare input list
-            filename_lst = [os.path.join(self.paths['midproc'],
-                            '%s.fits'%flatname)
-                            for flatname in sorted(self.flat_groups.keys())]
+                # get filename from config file
+                mosaic_method = self.config.get('reduction','flat.mosaic_method')
+                mosaic_file   = self.config.get('reduction','flat.mosaic_file')
+                reg_file      = self.config.get('reduction','flat.mosaic_reg_file')
+                max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
 
-            if mosaic_method == 'interact':
-                mosaic_flat_interact(filename_lst = filename_lst,
-                                     outfile      = flat_file,
-                                     mosaic_file  = mosaic_file,
-                                     reg_file     = reg_file,
-                                     disp_axis    = 0,
-                                     mask_surfix  = self.mask_surfix,
+                # prepare input list
+                filename_lst = [os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                                for flatname in sorted(self.flat_groups[channel].keys())]
+
+                if mosaic_method == 'interact':
+                    mosaic_flat_interact(filename_lst = filename_lst,
+                                         outfile      = flat_file,
+                                         mosaic_file  = mosaic_file,
+                                         reg_file     = reg_file,
+                                         disp_axis    = 1,
+                                         mask_surfix  = self.mask_surfix,
+                                         )
+                elif mosaic_method == 'auto':
+                    mosaic_flat_auto(filename_lst  = filename_lst,
+                                     outfile       = flat_file,
+                                     order_set_lst = self.order_set_lst,
+                                     max_count     = max_count,
                                      )
-            elif mosaic_method == 'auto':
-                mosaic_flat_auto(filename_lst  = filename_lst,
-                                 outfile       = flat_file,
-                                 order_set_lst = self.order_set_lst,
-                                 max_count     = max_count,
-                                 )
-            else:
-                logger.error('Unknown flat mosaic method: %s'%mosaic_method)
+                else:
+                    logger.error('Unknown flat mosaic method: %s'%mosaic_method)
 
-            # write to the running log
-            message = ['Mosaic flat images:']
-            for filename in filename_lst:
-                message.append('"%s"'%filename)
-            message.append('Final flat image:     "%s"'%flat_file)
-            message.append('Mosaic boundary file: "%s"'%mosaic_file)
-            message.append('Mosaic region   file: "%s"'%reg_file)
-            logger.info((os.linesep+'  ').join(message))
+                # write to the running log
+                message = ['Mosaic flat images:']
+                for filename in filename_lst:
+                    message.append('"%s"'%filename)
+                message.append('Final flat image:     "%s"'%flat_file)
+                message.append('Mosaic boundary file: "%s"'%mosaic_file)
+                message.append('Mosaic region   file: "%s"'%reg_file)
+                logger.info((os.linesep+'  ').join(message))
 
     def trace2(self):
         '''

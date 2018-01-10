@@ -7,7 +7,9 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 
-from ..ccdproc import save_fits
+import matplotlib.pyplot as plt
+
+from ..ccdproc import save_fits, array_to_table, table_to_array
 from ..utils.onedarray import pairwise
 
 def mosaic_flat_interact(filename_lst, outfile,
@@ -73,51 +75,48 @@ def mosaic_flat_interact(filename_lst, outfile,
             
         if disp_axis == 0:
             # dispersion along Y axis
-            xsection = data[int(n_disp/2.),:]
+            xsection = data[n_disp//2,:]
         elif disp_axis == 1:
             # dispersion along X axis
-            xsection = data[:,int(n_disp/2.)]
+            xsection = data[:,n_disp//2]
 
         data_lst[filename] = data
         head_lst[filename] = head
         xsection_lst[filename] = xsection
 
     # plot
-    fig = plt.figure(figsize=(12,7), dpi=150)
+    fig = plt.figure(figsize=(15,10), dpi=150, tight_layout=True)
 
     # initialize the parameters used in the mosaic boundaries
     # suppose n boundaries are identified by hand. there are n+1 areas.
 
     fig.bound_lst = np.zeros((1,n_disp),dtype=np.int32)
     # fig.bound_lst is a numpy array with n+1 x yrows
+    # [
+    #   [0, 0, 0, ... ... 0]
+    # ]
 
     fig.boundcoeff_lst = []
     # fig.boundcoeff_lst is a list with n elements containing the coefficients
     # of the boundaries line polynomials
 
-    fig.nodes = np.array([0, n_disp])
+    fig.nodes = np.array([0])
     # fig.nodes is a numpy 1-d array with n+1 elements indicating the pixel
     # number of the boundary lines at center column of the main dispersion
     # direction. The first element is always 0, and the last element is always
     # n_disp (number of pixels along the dispersion direction).
 
-    #fig.select_area = []
-    fig.select_lst = []
-    # fig.select_area is a list composed of m (rows) x n+1 (columns), where
-    # [ [False, False, True,  False, ... False],
-    #   [True,  False, False, False, ... False],
-    #   [False, True,  False, True,  ... False],
-    #   [False, False, False, False, ... True ]]
-    # m is the number of flats, n+1 is the number of areas.
-    # the i-th, j-th element is True means the i-th flat and j-th area is used
-    # to mosaic the final flat.
+    fig.select_lst = [None]
 
     ax_lst = {}
     for i in range(nflat):
         ax = fig.add_subplot(nflat+1, 1, i+1)
         # allocate filename to each ax
+        filename = filename_lst[i]
         ax_lst[filename] = ax
+        ax.filename = filename
     ax = fig.add_subplot(nflat+1, 1, nflat+1)
+    ax.filename = None
 
     def replot():
         for i, filename in enumerate(filename_lst):
@@ -136,9 +135,13 @@ def mosaic_flat_interact(filename_lst, outfile,
                 for x in fig.nodes:
                     ax.axvline(x,color='k',ls='--')
                 # draw selected flat cross section with solid lines
-                for j, (xfrom, xto) in enumerate(pairwise(fig.nodes)):
+                for j, xfrom in enumerate(fig.nodes):
+                    if j == len(fig.nodes)-1:
+                        xto = n_xdisp
+                    else:
+                        xto = fig.nodes[j+1]
                     select = fig.select_lst[j]
-                    if select is not None and select == filename:
+                    if select is not None and select==filename:
                         ax.plot(np.arange(xfrom,xto), xsection[xfrom:xto],
                                 color=color, ls='-')
             ax.set_xlim(0, n_xdisp-1)
@@ -155,15 +158,20 @@ def mosaic_flat_interact(filename_lst, outfile,
         ax = fig.get_axes()[-1]
         ax.cla()
         for i in range(nflat):
-            if len(fig.nodes)>2:
+            filename = filename_lst[i]
+            if len(fig.nodes)>1:
                 # draw mosaic flat boundaries
-                for x in fig.nodes[1:-1]:
+                for x in fig.nodes[1:]:
                     ax.axvline(x,color='k',ls='--')
                 # draw selected flat cross sections
-                for j, (xfrom, xto) in enumerate(pairwise(fig.nodes)):
+                for j, xfrom in enumerate(fig.nodes):
+                    if j == len(fig.nodes)-1:
+                        xto = n_xdisp
+                    else:
+                        xto = fig.nodes[j+1]
                     select = fig.select_lst[j]
-                    if select is not None:
-                        xsection = xsection_lst[select]
+                    if select is not None and select==filename:
+                        xsection = xsection_lst[filename]
                         ax.plot(np.arange(xfrom,xto),xsection[xfrom:xto],
                                 color='k',ls='-')
         ax.set_xlim(0, n_xdisp-1)
@@ -204,19 +212,18 @@ def mosaic_flat_interact(filename_lst, outfile,
                 bound = np.int32(np.round(np.polyval(coeff, norm_y)*n_xdisp))
                 # the node in the central column is bound[int(yrows/2.]]
                 # now find the index of this node in the fig.nodes
-                ii = np.searchsorted(fig.nodes, bound[int(n_disp/2.)])
+                ii = np.searchsorted(fig.nodes, bound[n_disp//2])
                 # insert this boundary line into fig.bound_lst
                 fig.bound_lst = np.insert(fig.bound_lst,ii,np.array([bound]),axis=0)
                 # because ii is got from fig.nodes, of which the first element
                 # is always 0. so the index in fig.boundcoeff_lst should be ii-1
                 fig.boundcoeff_lst.insert(ii-1,coeff)
                 # fig.nodes are the pixels of the central column in fig.bound_lst
-                fig.nodes = fig.bound_lst[:,int(n_disp/2.)]
+                fig.nodes = fig.bound_lst[:,n_disp//2]
+                print(fig.nodes)
 
                 # re-initialize the selected areas
-                fig.select_area = []
-                for i in range(nflat):
-                    fig.select_area.append(np.zeros(len(fig.nodes))>0)
+                fig.select_lst = [None for v in fig.nodes]
 
             elif event.key == 'd':
                 # when press 'd', delete a boundary
@@ -226,10 +233,8 @@ def mosaic_flat_interact(filename_lst, outfile,
                         if i>0 and abs(p-event.xdata) < n_xdisp/100.:
                             fig.bound_lst   = np.delete(fig.bound_lst,i,axis=0)
                             fig.boundcoeff_lst.pop(i-1)
-                            fig.nodes       = fig.bound_lst[:,int(n_disp/2.)]
-                            fig.select_area = []
-                            for j in range(nflat):
-                                fig.select_area.append(np.zeros(len(fig.nodes))>0)
+                            fig.nodes       = fig.bound_lst[:,n_disp//2]
+                            fig.select_lst.pop(i)
                             break
             else:
                 pass
@@ -239,47 +244,44 @@ def mosaic_flat_interact(filename_lst, outfile,
     replot()
     fig.canvas.mpl_connect('button_press_event', onclick)
     fig.canvas.mpl_connect('key_press_event', onpress)
-    plt.show(block=False)
-    _ = raw_input('Press [Enter] to continue ')
+    plt.show()
+    #_ = raw_input('Press [Enter] to continue ')
 
     # check final mosaic flat
-    all_area = np.zeros(fig.nodes.size, dtype=np.int32)
-    for i in range(nflat):
-        all_area += fig.select_area[i]
-    if all_area.all() != np.ones(fig.nodes.size,dtype=np.int32).all():
+    if None in fig.select_lst:
         logger.error('Mosaic flat is not completed')
         raise ValueError
 
     # calculate mosaic flat and its mask
-    flat = np.zeros((yrows,xrows))
+    flat = np.zeros((h,w))
     flat_mask = np.zeros_like(flat, dtype=np.int16)
     for i in range(fig.nodes.size):
-        xfrom = fig.bound_lst[i]
+        yfrom = fig.bound_lst[i]
         if i == fig.nodes.size - 1:
-            xto = np.zeros(yrows,dtype=np.int32) + xrows
+            yto = np.repeat(h,w)
         else:
-            xto = fig.bound_lst[i+1]
-        xfrom = xfrom.reshape((-1,1))
-        xto   = xto.reshape((-1,1))
-        for j in range(nflat):
-            if fig.select_area[j][i]:
-                y,x = np.mgrid[:yrows,:xrows]
-                m1 = x >= xfrom
-                m2 = x < xto
-                m = np.logical_and(m1,m2)
-                filename = filename_lst[j]
-                colorflat,head = fits.getdata(filename,header=True)
-                # now get the filename for mask
-                mask_filename = '%s%s.fits'%(filename[0:-5],mask_surfix)
-                # read data from mask file
-                colorflat_mask = fits.getdata(mask_filename)
-                # make sure the dispersion axis is y
-                if disp_axis == 0:
-                    colorflat = np.transpose(colorflat)
-                    colorflat_mask = np.transpose(colorflat_mask)
-                #flat += m*colorflat/head['EXPTIME']
-                flat += m*colorflat
-                flat_mask += m*colorflat_mask
+            yto = fig.bound_lst[i+1]
+        #xfrom = xfrom.reshape((-1,1))
+        #xto   = xto.reshape((-1,1))
+        yfrom = yfrom.reshape((1,-1))
+        yto   = yto.reshape((1,-1))
+
+        filename = fig.select_lst[i]
+        y,x = np.mgrid[:h,:w]
+        m = (y >= yfrom)*(y < yto)
+        colorflat,head = fits.getdata(filename,header=True)
+        # now get the filename for mask
+        mask_filename = '%s%s.fits'%(filename[0:-5],mask_surfix)
+        # read data from mask file
+        mtable = fits.getdata(mask_filename)
+        colorflat_mask  = table_to_array(mtable, colorflat.shape)
+        # make sure the dispersion axis is y
+        if disp_axis == 0:
+            colorflat = np.transpose(colorflat)
+            colorflat_mask = np.transpose(colorflat_mask)
+        #flat += m*colorflat/head['EXPTIME']
+        flat += m*colorflat
+        flat_mask += m*colorflat_mask
     header = fits.Header()
     #header['EXPTIME'] = 1.0
     if disp_axis == 0:
@@ -287,7 +289,8 @@ def mosaic_flat_interact(filename_lst, outfile,
         flat_mask = np.transpose(flat_mask)
     save_fits(outfile,flat,header)
     outfile_mask = '%s%s.fits'%(outfile[0:-5],mask_surfix)
-    save_fits(outfile_mask, flat_mask)
+    mtable = array_to_table(flat_mask)
+    save_fits(outfile_mask, mtable)
 
     # save boundary coefficients into an ascii file
     outfile1 = open(mosaic_file,'w')
@@ -295,10 +298,8 @@ def mosaic_flat_interact(filename_lst, outfile,
         string = ' '.join(['%+12.10e'%v for v in coeff])
         outfile1.write('boundary %s%s'%(string, os.linesep))
     # save the selected areas for each filename
-    for ifile, filename in enumerate(filename_lst):
-        string1 = 'file %s'%filename
-        string2 = ' '.join(['%1d'%v for v in fig.select_area[ifile]])
-        outfile1.write('select %s %s%s'%(string1, string2, os.linesep))
+    for filename in fig.select_lst:
+        outfile1.write('select %s'%filename+os.linesep)
     outfile1.close()
 
     # save boundaries data in a .reg file
@@ -319,7 +320,7 @@ def detect_gap(
         order      = 4, 
         ):
     '''
-    Detect the curve of gap between two orders along x-xias.
+    Detect the curve of gap between two orders along Y-xias.
 
     This is realized by calculating the cross-correlation function and detect
     the position of the maximum value.
@@ -339,10 +340,10 @@ def detect_gap(
 
     '''
     from scipy.interpolate import InterpolatedUnivariateSpline
-    from scipy.optimize    import fmin_powell
+    from scipy.optimize    import minimize
 
     h, w = data.shape
-    row0, row1 = int(h/2.),int(h/2.)
+    row0, row1 = h//2, h//2
     xpoint = x0
     x1 = int(xpoint - ccf_ulimit)
     x2 = int(xpoint + ccf_llimit)
@@ -369,8 +370,8 @@ def detect_gap(
         except:
             row1 = row2
             continue
-        f = InterpolatedUnivariateSpline(np.arange(data2.size),data2)
-        shift_lst = np.arange(-10,10)
+        f = InterpolatedUnivariateSpline(np.arange(data2.size),data2,k=3)
+        shift_lst = np.arange(-10, 10, dtype=np.float32)
         corre_lst = []
         n1 = math.sqrt((data1**2).sum())
         # calculate cross-correlation function
@@ -380,9 +381,10 @@ def detect_gap(
             n2 = math.sqrt((data3**2).sum())
             corre_lst.append(corr/n2)
         corre_lst = np.array(corre_lst)/n1
-        f2 = InterpolatedUnivariateSpline(shift_lst,-corre_lst)
+        f2 = InterpolatedUnivariateSpline(shift_lst,-corre_lst,k=3)
         # find the maximum value of cross correlation function
-        shift = fmin_powell(f2,0.0,disp=False)
+        result = minimize(f2, 0.0, method='BFGS')
+        shift = result.x
         xpoint += shift
         row1 = row2
         if -w/2 < xpoint < w*1.5:
@@ -394,7 +396,7 @@ def detect_gap(
     # normalize x and y axis
     xfit = ynode_lst/h
     yfit = xnode_lst/w
-    coeff = np.polyfit(xift,yfit,deg=order)
+    coeff = np.polyfit(xfit,yfit,deg=order)
     return coeff
 
 def load_mosaic(filename):
@@ -620,13 +622,13 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
         # orders are along X axis
         n_disp, n_xdisp = w, h
 
-    pseudo_x  = np.linsapce(0.5, n_disp-0.5, npoints)
+    pseudo_x  = np.linspace(0.5, n_disp-0.5, npoints)
     pseudo_xr = np.roll(pseudo_x, -1)
     for coeff in coeff_lst:
         pseudo_y  = np.polyval(coeff, pseudo_x/n_disp)*n_xdisp
-        pesudo_yr = np.roll(pseudo_y, -1)
-        for x1, y1, x2, y2 in zip(pseudo_x, pseudo_y, pseudo_xr, pseudo_yr):
-            if disp_axis == 1:
+        pseudo_yr = np.roll(pseudo_y, -1)
+        for x1, y1, x2, y2 in list(zip(pseudo_x, pseudo_y, pseudo_xr, pseudo_yr))[0:-1]:
+            if disp_axis == 0:
                 x1, y1, x2, y2 = y1, x1, y2, x2
             outfile.write('line(%.1f,%.1f,%.1f,%.1f) # line=0 0%s'%(
                            x1+1,y1+1,x2+1,y2+1, os.linesep))
