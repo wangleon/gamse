@@ -131,6 +131,25 @@ class ApertureLocation(object):
     def set_position(self, poly):
         setattr(self, 'position', poly)
 
+    def get_center(self):
+        '''Get coordinate of the center pixel.
+
+        Args:
+            No args
+        Returns:
+            float: coordinate of the center pixel.
+        '''
+        h, w = self.shape
+        if self.direct == 0:
+            # aperture along Y direction
+            center = self.position(h/2.)
+        elif self.direct == 1:
+            # aperture along X direction
+            center = self.position(w/2.)
+        else:
+            print('Cannot recognize direction: '+self.direct)
+        return center
+
     def __str__(self):
         h, w = self.shape
         if self.direct == 0:
@@ -189,7 +208,7 @@ class ApertureLocation(object):
             elif self.direct in ['y','Y']:
                 self.direct = 0
 
-    def distance(self, aperloc):
+    def get_distance(self, aperloc):
         '''Calculate the distance to another :class:`ApertureLocation` instance.
         
         Args:
@@ -202,18 +221,7 @@ class ApertureLocation(object):
         if self.direct != aperloc.direct:
             print('ApertureLocations have different directions')
             return None
-        h1, w1 = self.shape
-        h2, w2 = aperloc.shape
-        if self.direct == 0:
-            # aperture along Y direction
-            centerpix1 = self.position(h1/2.)
-            centerpix2 = aperloc.position(h2/2.)
-        elif self.direct == 1:
-            # aperture along X direction
-            centerpix1 = self.position(w1/2.)
-            centerpix2 = aperloc.position(w2/2.)
-        return centerpix1 - centerpix2
-
+        return self.get_center() - aperloc.get_center()
 
 class ApertureSet(object):
     '''
@@ -249,8 +257,32 @@ class ApertureSet(object):
         string = ''
         for aperture, aperture_loc in sorted(self.dict.items()):
             string += 'APERTURE LOCATION %d%s'%(aperture, os.linesep)
-            string += str(aperture_loc)
+            string += aperture_loc.to_string()
         return string
+
+    def add_aperture(self, aperture_loc):
+        '''Add an :class:`ApertureLocation` instance into this set.
+
+        Args:
+            aperture_loc (:class:`ApertureLocation`): The added
+                :class:`ApertureLocation` instance
+        Returns:
+            No returns
+        '''
+        n = len(self.dict)
+        if n == 0:
+            self.dict[0] = aperture_loc
+        else:
+            maxi = max(self.dict.keys())
+            self.dict[maxi+1] = aperture_loc
+
+    def sort(self):
+        '''Sort the apertures according to their positions inside this instance.
+        '''
+        aperloc_lst = sorted([aper_loc for aper, aper_loc in self.dict.items()],
+                        key=lambda aper_loc: aper_loc.get_center())
+        for i in range(len(aperloc_lst)):
+            self.dict[i] = aperloc_lst[i]
 
     def save_txt(self, filename):
         '''
