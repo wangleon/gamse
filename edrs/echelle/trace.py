@@ -207,11 +207,11 @@ class ApertureLocation(object):
         if self.direct == 0:
             # aperture along Y direction
             centerpix1 = self.position(h1/2.)
-            centerpix2 = self.position(h2/2.)
+            centerpix2 = aperloc.position(h2/2.)
         elif self.direct == 1:
             # aperture along X direction
             centerpix1 = self.position(w1/2.)
-            centerpix2 = self.position(w2/2.)
+            centerpix2 = aperloc.position(w2/2.)
         return centerpix1 - centerpix2
 
 

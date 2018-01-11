@@ -485,11 +485,39 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
 
         print(channel, aperset_lst)
 
-        for tracename, aperset in aperset_lst.items():
+
+        all_aperloc_lst = []
+        # all_aperloc_lst  = [
+        #  [tracename1: aper_loc, tracename2: aper_loc],
+        #  [tracename1: aper_loc, tracename2: aper_loc],
+        #  [tracename1: aper_loc, tracename2: aper_loc],
+        # ]
+
+        for itrace, (tracename, aperset) in enumerate(aperset_lst.items()):
             print(tracename, len(aperset))
             for o in aperset:
                 aper_loc = aperset[o]
                 print(o, aper_loc, aper_loc.mean, aper_loc.nsat)
+                if itrace == 0:
+                    all_aperloc_lst.append({tracename: aper_loc})
+                else:
+                    insert = False
+                    for ilist, list1 in enumerate(all_aperloc_lst):
+                        if tracename in list1:
+                            continue
+                        for _tracename, _aperloc in list1.items():
+                            distance = aper_loc.distance(_aperloc)
+                            if abs(distance)<3:
+                                all_aperloc_lst[ilist][tracename] = aper_loc
+                                insert = True
+                                break
+                        if insert:
+                            break
+            for list1 in all_aperloc_lst:
+                for tracename, aperloc in list1.items():
+                    print(tracename, aperloc)
+                print('-----')
+        
 
         # select the reference flat
         ref_flatname = select_ref_tracefile(aperset_lst)
