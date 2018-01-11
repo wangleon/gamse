@@ -189,6 +189,32 @@ class ApertureLocation(object):
             elif self.direct in ['y','Y']:
                 self.direct = 0
 
+    def distance(self, aperloc):
+        '''Calculate the distance to another :class:`ApertureLocation` instance.
+        
+        Args:
+            aperloc (:class:`ApertureLocation`): Another
+                :class:`ApertureLocation` instance.
+        Returns:
+            float: The distance between the centeral positions.
+
+        '''
+        if self.direct != aperloc.direct:
+            print('ApertureLocations have different directions')
+            return None
+        h1, w1 = self.shape
+        h2, w2 = aperloc.shape
+        if self.direct == 0:
+            # aperture along Y direction
+            centerpix1 = self.position(h1/2.)
+            centerpix2 = self.position(h2/2.)
+        elif self.direct == 1:
+            # aperture along X direction
+            centerpix1 = self.position(w1/2.)
+            centerpix2 = self.position(w2/2.)
+        return centerpix1 - centerpix2
+
+
 class ApertureSet(object):
     '''
     ApertureSet is a group of :class:`ApertureLocation` instances.
