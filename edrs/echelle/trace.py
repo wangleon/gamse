@@ -86,10 +86,10 @@ class ApertureLocation(object):
         xfit = np.array(xnodes, dtype=np.float32)/w
         yfit = np.array(ynodes, dtype=np.float32)/h
 
-        if self.direction == 0:
+        if self.direct == 0:
             # order is along y axis
             xfit, yfit = yfit, xfit
-        elif self.direction == 1:
+        elif self.direct == 1:
             # order is along x axis
             xfit, yfit = xfit, yfit
 
@@ -132,8 +132,25 @@ class ApertureLocation(object):
         setattr(self, 'position', poly)
 
     def __str__(self):
+        h, w = self.shape
+        if self.direct == 0:
+            # aperture along Y direction
+            axis = 'y'
+            centerpix = self.position(h/2.)
+            coord = (centerpix, h/2.)
+        elif self.direct == 1:
+            # aperture along X direction
+            axis = 'x'
+            centerpix = self.position(w/2.)
+            coord = (w/2., centerpix)
+        return 'Echelle aperture centered at (%4d, %4d) along %s axis'%(
+                coord[0], coord[1], axis)
 
-        string  = '%8s = %d'%('direct', self.direction)+os.linesep
+    def to_string(self):
+        '''Convert Aperture information to string.
+        '''
+
+        string  = '%8s = %d'%('direct', self.direct)+os.linesep
         string += '%8s = %s'%('shape',  str(self.shape))+os.linesep
 
         strlst = ['%+15.10e'%c for c in self.position.coef]
@@ -166,11 +183,11 @@ class ApertureLocation(object):
         '''Update attributes'''
 
         # udpate direction attribute
-        if hasattr(self, 'direction'):
-            if self.direction in ['x','X']:
-                self.direction = 1
-            elif self.direction in ['y','Y']:
-                self.direction = 0
+        if hasattr(self, 'direct'):
+            if self.direct in ['x','X']:
+                self.direct = 1
+            elif self.direct in ['y','Y']:
+                self.direct = 0
 
 class ApertureSet(object):
     '''
@@ -261,7 +278,27 @@ class ApertureSet(object):
                         x1+1, y1+1, x2+1, y2+1)+os.linesep)
 
         outfile.close()
-            
+
+    def __iter__(self):
+        return _ApertureSetIterator(self.dict)
+
+class _ApertureSetIterator(object):
+    '''
+    Interator class for :class:`ApertureSet`.
+    '''
+    def __init__(self, item_dict):
+        self.item_dict = item_dict
+        self.n = len(self.item_dict)
+        self.i = 0
+    def __iter__(self):
+        return self
+    def __next__(self):
+        if self.i < self.n:
+            i = self.i
+            self.i += 1
+            return list(self.item_dict.keys())[i]
+        else:
+            raise StopIteration()
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         filling=0.3, degree=3, display=True, filename=None, fig_file=None,
@@ -613,7 +650,7 @@ def load_aperture_set(filename):
 
     # read input file
     infile = open(filename)
-    order = None
+    aperture = None
     for row in infile:
         row = row.strip()
         if len(row)==0 or row[0] in '#!;':
@@ -632,7 +669,7 @@ def load_aperture_set(filename):
                 poly = Chebyshev(coef=value, domain=[0, n-1])
                 aperture_loc.set_position(poly)
             else:
-                setattr(aperture_set[aperture],key,eval(value))
+                setattr(aperture_set[aperture], key, eval(value))
     infile.close()
 
     return aperture_set

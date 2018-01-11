@@ -485,6 +485,12 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
 
         print(channel, aperset_lst)
 
+        for tracename, aperset in aperset_lst.items():
+            print(tracename, len(aperset))
+            for o in aperset:
+                aper_loc = aperset[o]
+                print(o, aper_loc, aper_loc.mean, aper_loc.nsat)
+
         # select the reference flat
         ref_flatname = select_ref_tracefile(aperset_lst)
 
