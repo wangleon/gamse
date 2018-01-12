@@ -1065,9 +1065,8 @@ class Reduction(object):
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
 
-            flat_file = os.path.join(
-                        self.paths['midproc'],
-                        'flat_%s.fits'%channel)
+            flat_file = os.path.join(self.paths['midproc'],
+                                     'flat_%s.fits'%channel)
 
             if len(self.flat_groups[channel]) == 1:
                 # only 1 type of flat
@@ -1105,7 +1104,7 @@ class Reduction(object):
                 elif mosaic_method == 'auto':
                     mosaic_flat_auto(filename_lst  = filename_lst,
                                      outfile       = flat_file,
-                                     aperture_set_lst = self.aperture_set_lst,
+                                     aperture_set_lst = self.aperture_set_lst[channel],
                                      max_count     = max_count,
                                      )
                 else:

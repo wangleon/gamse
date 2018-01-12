@@ -478,161 +478,125 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     See Also:
         :func:`mosaic_flat_interact`
     '''
-
-    from ..echelle.trace import select_ref_tracefile, align_apertures
-
-    for channel, aperset_lst in sorted(aperture_set_lst.items()):
-
-        print(channel, aperset_lst)
+    from ..echelle.trace import ApertureSet
 
 
-        all_aperloc_lst = []
-        # all_aperloc_lst  = [
-        #  [tracename1: aper_loc, tracename2: aper_loc],
-        #  [tracename1: aper_loc, tracename2: aper_loc],
-        #  [tracename1: aper_loc, tracename2: aper_loc],
-        # ]
+    all_aperloc_lst = []
+    # all_aperloc_lst  = [
+    #  [tracename1: aper_loc, tracename2: aper_loc],
+    #  [tracename1: aper_loc, tracename2: aper_loc],
+    #  [tracename1: aper_loc, tracename2: aper_loc],
+    # ]
 
-        for itrace, (tracename, aperset) in enumerate(aperset_lst.items()):
-            print(tracename, len(aperset))
-            for o in aperset:
-                aper_loc = aperset[o]
-                print(o, aper_loc, aper_loc.mean, aper_loc.nsat)
-                if itrace == 0:
-                    all_aperloc_lst.append({tracename: aper_loc})
-                else:
-                    insert = False
-                    for ilist, list1 in enumerate(all_aperloc_lst):
-                        if tracename in list1:
-                            continue
-                        for _tracename, _aperloc in list1.items():
-                            distance = aper_loc.distance(_aperloc)
-                            if abs(distance)<3:
-                                all_aperloc_lst[ilist][tracename] = aper_loc
-                                insert = True
-                                break
-                        if insert:
+    for itrace, (tracename, aperset) in enumerate(aperture_set_lst.items()):
+        print(tracename, len(aperset))
+        for o in aperset:
+            aper_loc = aperset[o]
+            if itrace == 0:
+                # append all the apertures in the first trace file into the
+                # aperloc list
+                all_aperloc_lst.append({tracename: aper_loc})
+            else:
+                insert = False
+                for ilist, list1 in enumerate(all_aperloc_lst):
+                    # one aperture should no contain more than 1 apertures
+                    # from the same trace file.
+                    if tracename in list1:
+                        continue
+                    # calculate the relative distances.
+                    for _tracename, _aperloc in list1.items():
+                        distance = aper_loc.get_distance(_aperloc)
+                        if abs(distance)<3:
+                            # append this aperture to an existing aperture
+                            all_aperloc_lst[ilist][tracename] = aper_loc
+                            insert = True
                             break
-            for list1 in all_aperloc_lst:
-                for tracename, aperloc in list1.items():
-                    print(tracename, aperloc)
-                print('-----')
-        
+                    # if already addedto an existing aperture, skip the rest
+                    # apertures
+                    if insert:
+                        break
 
-        # select the reference flat
-        ref_flatname = select_ref_tracefile(aperset_lst)
+                # if this aperture does not belong to any existing aperture,
+                # append it as a new aperture
+                if not insert:
+                    all_aperloc_lst.append({tracename: aper_loc})
 
-        # align all the orders in different flats
-        aperset_lst = align_apertures(aperset_lst, ref_flatname)
+    mosaic_aperset = ApertureSet()
+    for list1 in all_aperloc_lst:
+        # pick up the best trace file for each aperture
+        nosat_lst = {tracename: aper_loc
+                    for tracename, aper_loc in list1.items()
+                    if aper_loc.nsat == 0 and aper_loc.max<max_count}
 
-        # search for minimum and maximum aperture
-        min_aperture_lst, max_aperture_lst = [], []
+        if len(nosat_lst)>0:
+            # if there's aperture without saturated pixels, find the one
+            # with largest median values
+            nosat_sort_lst = sorted(nosat_lst.items(),
+                                key=lambda item: item[1].median)
+            pick_tracename, pick_aperloc = nosat_sort_lst[-1]
+        else:
+            # all apertures are saturated. Then find the aperture that has
+            # the least number of saturated pixels.
+            sat_sort_lst = sorted(list1.items(), key=lambda item: item[1].nsat)
+            pick_tracename, pick_aperloc = sat_sort_lst[0]
 
-        # find the minimum and maximum aperture number
-        min_aper = min([min(aper_set.dict.keys())
-                    for aper_set in aperset_lst.values()])
-        max_aper = max([max(aper_set.dict.keys())
-                        for aper_set in aperset_lst.values()])
-        logger.info('Aperture range: %d - %d (%d aperture)'%(
-                    min_aper, max_aper, max_aper - min_aper + 1))
+        setattr(pick_aperloc, 'tracename', pick_tracename)
+        mosaic_aperset.add_aperture(pick_aperloc)
+    mosaic_aperset.sort()
+    for aper, aper_loc in mosaic_aperset.items():
+        print(aper, aper_loc, aper_loc.tracename, aper_loc.nsat, aper_loc.max)
 
-        # now mosaic an entire order list
-        comp_key = 'median' # can be changed to ['max'|'mean'|'median']
-        apeture_select_lst = {}
-        select_flat_lst = []
-        for aperture in range(min_aper, max_aper+1):
-            # search all flat files and find the one with maxium flux
-            max_flatname = None
-            max_flux     = -999.
-            for flatname, aperture_set in sorted(aperture_set_lst.items()):
-                if aperture not in aperture_set:
-                    continue
-                aperture_loc = aperture_set[aperture]
-
-            if aperture_loc.nsat > 0:
-                # skip the one with saturation pixels
-                continue
-            if aperture_loc.max > max_count:
-                # skip orders with peak flux larger than max_count
-                continue
-            if getattr(aperture_loc, comp_key) > max_flux:
-                max_flux = getattr(aperture_loc, comp_key)
-                max_flatname = flatname
-
-        aperture_select_lst[aperture] = max_flatname
-        logger.debug('"%s" is selected for order %d with %s=%f'%(
-                      max_flatname, aperture, comp_key, max_flux))
-        if max_flatname not in select_flat_lst:
-            select_flat_lst.append(max_flatname)
-
-        # write selected filename in running log
-        message_lst = ['selected flat names:']
-        message_lst.append('order flatname')
-        for aperture, flatname in aperture_select_lst.items():
-            message_lst.append('  %2d %s'%(aperture, flatname))
-        logger.info(os.linesep.join(message_lst))
-
-        # find mask
-
-        # read data
-        prev_shape = None
-        flatdata_lst, maskdata_lst = {}, {}
+    # read flat data and check the shape consistency
+    prev_shape = None
+    flatdata_lst, maskdata_lst = {}, {}
+    for tracename in aperture_set_lst:
         for filename in filename_lst:
-            flatname = os.path.basename(filename)[0:-5]
-            data = fits.getdata(filename)
-            flatdata_lst[flatname] = data
-            maskdata_lst[flatname] = np.zeros_like(data, dtype=np.bool)
-            shape = data.shape
-            if prev_shape is not None and shape != prev_shape:
-                logger.error(
-                    'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
-                    flatname, shape[0], shape[1], prev_shape[0], prev_shape[1])
+            if os.path.basename(filename)[0:-5]==tracename:
+                data = fits.getdata(filename)
+                flatdata_lst[tracename] = data
+                maskdata_lst[tracename] = np.zeros_like(data, dtype=np.bool)
+                shape = data.shape
+                if prev_shape is not None and shape != prev_shape:
+                    logger.error(
+                        'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
+                        tracename, shape[0], shape[1], prev_shape[0], prev_shape[1])
                     )
-            prev_shape = shape
+                prev_shape = shape
+    
+    for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
+        tracename = aper_loc.tracename
+        if aper == 0:
+            maskdata_lst[tracename][:,:] = True
+        elif tracename != prev_tracename:
+            prev_aper_loc = mosaic_aperset[iaper-1]
 
-        print(aperture_select_lst)
-        for aperture in range(min_aperture, max_aperture+1):
-            flatname = aperture_select_lst[order]
-            if aperture == min_aperture:
-                maskdata_lst[flatname][:,:] = True
-            elif flatname != prev_flatname:
-                prev_aperture_loc = aperture_set_lst[prev_flatname][aperture-1]
-                this_aperture_loc = aperture_set_lst[flatname][aperture]
-                h, w = this_aperture_loc.shape
-
-                # upper coeff of previous order
-                upper_coeff = np.array(prev_order_loc.coeff_upper)
-                # lower coeff of this order
-                lower_coeff = np.array(this_order_loc.coeff_lower)
-
-                # if length of coefficients of above polynomials are not equal,
-                # add zeros in front of the coefficients
-                n_upper = len(upper_coeff)
-                n_lower = len(lower_coeff)
-                if n_upper < n_lower:
-                    for i in range(abs(n_upper-n_lower)):
-                        upper_coeff = np.insert(upper_coeff, 0, 0.0)
-                elif n_upper > n_lower:
-                    for i in range(abs(n_upper-n_lower)):
-                        lower_coeff = np.insert(lower_coeff, 0, 0.0)
-                # find the coefficients of the boundary polynomial
-                bound_coeff = (upper_coeff + lower_coeff)/2.
-                cut_bound = np.polyval(bound_coeff,np.arange(w)/float(w))*h
-
+            h, w = aper_loc.shape
+            if aper_loc.direct == 0:
+                # aperture along Y axis
+                center_line = aper_loc.position(np.arange(h))
+                prev_center_line = prev_aper_loc.position(np.arange(h))
+                cut_bound = (center_line + prev_center_line)/2.
+                yy, xx = np.mgrid[:h:,:w:]
+                m = xx > np.round(cut_bound)
+            elif aper_loc.direct == 1:
+                # aperture along X axis
+                center_line = aper_loc.position(np.arange(w))
+                prev_center_line = prev_aper_loc.position(np.arange(w))
+                cut_bound = (center_line + prev_center_line)/2.
                 yy, xx = np.mgrid[:h:,:w:]
                 m = yy > np.round(cut_bound)
-                maskdata_lst[prev_flatname][m] = False
-                maskdata_lst[flatname][m] = True
+            maskdata_lst[prev_tracename][m] = False
+            maskdata_lst[tracename][m] = True
 
-            prev_flatname = flatname
+        prev_tracename = tracename
 
-        mos_flatdata = np.zeros(shape, dtype=np.float32)
-        for flatname, maskdata in sorted(maskdata_lst.iteritems()):
-            flatdata = flatdata_lst[flatname]
-            mos_flatdata += flatdata*maskdata
+    mos_flatdata = np.zeros(shape, dtype=np.float32)
+    for tracename, maskdata in sorted(maskdata_lst.items()):
+        flatdata = flatdata_lst[tracename]
+        mos_flatdata += flatdata*maskdata
 
-        # save the mosaic flat as FITS file
-        save_fits(outfile, mos_flatdata)
+    # save the mosaic flat as FITS file
+    save_fits(outfile, mos_flatdata)
 
 def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
     mos_data = np.zeros(shape)
