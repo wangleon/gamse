@@ -313,23 +313,23 @@ class ApertureSet(object):
         for aper, aper_loc in sorted(self.items()):
             outfile.write('# aperture %3d'%aper + os.linesep)
 
-            if aper_loc.direction == 1:
+            if aper_loc.direct == 1:
                 x = -6
                 y = aper_loc.position(x)
                 outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
                                 x+1, y+1, aper)+os.linesep)
 
-                x = aper_loc.shape[aper_loc.direction]-1+6
+                x = aper_loc.shape[aper_loc.direct]-1+6
                 y = aper_loc.position(x)
                 outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
                                 x+1, y+1, aper)+os.linesep)
 
-                x = aper_loc.shape[aper_loc.direction]/2.
+                x = aper_loc.shape[aper_loc.direct]/2.
                 y = aper_loc.position(x)
                 outfile.write('# text(%7.2f, %7.2f) text={Aperture %3d} '%(x
                                 +1, y+1+5, aper)+os.linesep)
 
-                x = np.linspace(0, aper_loc.shape[aper_loc.direction]-1, 50)
+                x = np.linspace(0, aper_loc.shape[aper_loc.direct]-1, 50)
                 y = aper_loc.position(x)
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
                     outfile.write('line(%7.2f,%7.2f,%7.2f,%7.2f)'%(

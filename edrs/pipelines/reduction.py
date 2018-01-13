@@ -1062,6 +1062,13 @@ class Reduction(object):
 
         flat_file = self.config.get('reduction','flat.file')
 
+        mosaic_aperset_lst = {}
+        # mosaic_aperset_lst = {
+        #   'A': ApertureSet instance,
+        #   'B': ApertureSet instace,
+        #   ...
+        # }
+
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
 
@@ -1070,8 +1077,12 @@ class Reduction(object):
 
             flat_file = os.path.join(self.paths['midproc'],
                                      'flat_%s.fits'%channel)
+            trc_file = os.path.join(self.paths['midproc'],
+                                     'flat_%s_trc.txt'%channel)
+            reg_file = os.path.join(self.paths['midproc'],
+                                     'flat_%s_trc.reg'%channel)
 
-            if len(self.flat_groups[channel]) == 1:
+            if len(flat_group) == 1:
                 # only 1 type of flat
                 flatname = flat_group.keys()[0]
                 infile  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
@@ -1081,22 +1092,23 @@ class Reduction(object):
                     logger.info('Copy "%s" to "%s" as flat'%(infile, flat_file))
                 else:
                     logger.info('Flat file: %s'%flat_file)
-            elif len(self.flat_groups[channel]) > 1:
+            elif len(flat_group) > 1:
                 # mosaic flat
 
                 from ..echelle.flat import mosaic_flat_auto, mosaic_flat_interact
 
                 # get filename from config file
                 mosaic_method = self.config.get('reduction','flat.mosaic_method')
-                mosaic_file   = self.config.get('reduction','flat.mosaic_file')
-                reg_file      = self.config.get('reduction','flat.mosaic_reg_file')
+                #mosaic_file   = self.config.get('reduction','flat.mosaic_file')
+                #reg_file      = self.config.get('reduction','flat.mosaic_reg_file')
                 max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
 
                 # prepare input list
                 filename_lst = [os.path.join(self.paths['midproc'], '%s.fits'%flatname)
-                                for flatname in sorted(self.flat_groups[channel].keys())]
+                                for flatname in sorted(flat_group.keys())]
 
                 if mosaic_method == 'interact':
+                    # deprecated
                     mosaic_flat_interact(filename_lst = filename_lst,
                                          outfile      = flat_file,
                                          mosaic_file  = mosaic_file,
@@ -1105,11 +1117,17 @@ class Reduction(object):
                                          mask_surfix  = self.mask_surfix,
                                          )
                 elif mosaic_method == 'auto':
-                    mosaic_flat_auto(filename_lst     = filename_lst,
-                                     outfile          = flat_file,
-                                     aperture_set_lst = aperset_lst,
-                                     max_count        = max_count,
+                    mosaic_aperset = mosaic_flat_auto(
+                                        filename_lst     = filename_lst,
+                                        outfile          = flat_file,
+                                        aperture_set_lst = aperset_lst,
+                                        max_count        = max_count,
                                      )
+                    mosaic_aperset_lst[channel] = mosaic_aperset
+
+                    # save mosaiced aperset to .txt and .reg files
+                    mosaic_aperset.save_txt(trc_file)
+                    mosaic_aperset.save_reg(reg_file)
                 else:
                     logger.error('Unknown flat mosaic method: %s'%mosaic_method)
 
@@ -1117,9 +1135,9 @@ class Reduction(object):
                 message = ['Mosaic flat images:']
                 for filename in filename_lst:
                     message.append('"%s"'%filename)
-                message.append('Final flat image:     "%s"'%flat_file)
-                message.append('Mosaic boundary file: "%s"'%mosaic_file)
-                message.append('Mosaic region   file: "%s"'%reg_file)
+                #message.append('Final flat image:     "%s"'%flat_file)
+                #message.append('Mosaic boundary file: "%s"'%mosaic_file)
+                #message.append('Mosaic region   file: "%s"'%reg_file)
                 logger.info((os.linesep+'  ').join(message))
 
     def trace2(self):

@@ -598,6 +598,8 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     # save the mosaic flat as FITS file
     save_fits(outfile, mos_flatdata)
 
+    return mosaic_aperset
+
 def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
     mos_data = np.zeros(shape)
 
