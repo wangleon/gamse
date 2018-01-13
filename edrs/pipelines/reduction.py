@@ -1065,12 +1065,15 @@ class Reduction(object):
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
 
+            flat_group = self.flat_groups[channel]
+            aperset_lst = self.aperture_set_lst[channel]
+
             flat_file = os.path.join(self.paths['midproc'],
                                      'flat_%s.fits'%channel)
 
             if len(self.flat_groups[channel]) == 1:
                 # only 1 type of flat
-                flatname = self.flat_groups[channel].keys()[0]
+                flatname = flat_group.keys()[0]
                 infile  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
                 if infile != flat_file:
                     # copy the flat
@@ -1102,10 +1105,10 @@ class Reduction(object):
                                          mask_surfix  = self.mask_surfix,
                                          )
                 elif mosaic_method == 'auto':
-                    mosaic_flat_auto(filename_lst  = filename_lst,
-                                     outfile       = flat_file,
-                                     aperture_set_lst = self.aperture_set_lst[channel],
-                                     max_count     = max_count,
+                    mosaic_flat_auto(filename_lst     = filename_lst,
+                                     outfile          = flat_file,
+                                     aperture_set_lst = aperset_lst,
+                                     max_count        = max_count,
                                      )
                 else:
                     logger.error('Unknown flat mosaic method: %s'%mosaic_method)

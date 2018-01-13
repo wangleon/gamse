@@ -471,7 +471,7 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     Args:
         filename_lst (list): A list containing filenames of flat images.
         outfile (string): Filename of the output image.
-        aperture_set_lst (list): List of :class:`ApertureSet`.
+        aperture_set_lst (list): Dict of :class:`ApertureSet`.
         max_count (float): Maximum count.
     Returns:
         No returns.
