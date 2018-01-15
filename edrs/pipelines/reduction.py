@@ -880,7 +880,7 @@ class Reduction(object):
            **trace.file**,       *string*,  "Name of the trace file."
            **trace.scan_step**,  *integer*, "Steps of pixels used to scan along the main dispersion direction."
            **trace.minimum**,    *float*,   "Minimum value to filter the input image."
-           **trace.seperation**, *float*,   "Estimated order seperations (in pixel) along the cross-dispersion."
+           **trace.seperation**, *integer*,   "Estimated order seperations (in pixel) along the cross-dispersion."
            **trace.filling**,    *float*,   "Fraction of detected pixels to total step of scanning."
            **trace.display**,    *bool*,    "Display a figure on screen if *yes*."
            **trace.degree**,     *integer*, "Degree of polynomial used to describe the positions of orders."
@@ -895,7 +895,7 @@ class Reduction(object):
         kwargs = {
             'minimum'   : self.config.getfloat('reduction', 'trace.minimum'),
             'scan_step' : self.config.getint('reduction', 'trace.scan_step'),
-            'seperation': self.config.getfloat('reduction', 'trace.seperation'),
+            'seperation': self.config.getint('reduction', 'trace.seperation'),
             'filling'   : self.config.getfloat('reduction', 'trace.filling'),
             'display'   : self.config.getboolean('reduction', 'trace.display'),
             'degree'    : self.config.getint('reduction', 'trace.degree'),
@@ -1024,7 +1024,7 @@ class Reduction(object):
                                    'fig_file'   : fig_file,
                                    })
 
-                    if True:
+                    if False:
                         #temporarily added for debug
                         aperture_set = load_aperture_set(trace_result_file)
                     else:

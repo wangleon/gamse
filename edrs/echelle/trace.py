@@ -410,7 +410,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax1.set_ylim(h-1,0)
     ax1.set_xlabel('X')
     ax1.set_ylabel('Y')
-    # define a scroll function
+    # define a scroll function, which is used for mouse manipulation on pop-up
+    # window
     def on_scroll(event):
         if event.inaxes == ax1:
             x1, x2 = ax1.get_xlim()
@@ -429,7 +430,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     if display:
         plt.show(block=False)
 
-    x0 = int(w/2.)
+    x0 = w//2
     x_lst = {-1:[], 1:[]}
     x1 = x0
     direction = -1
@@ -470,13 +471,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             mask = new_mask
         return p, mask
 
+    message = ['   x    slope    offset    zoom']
     while(True):
+        # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
         flux1 = logdata[:,x1]
         linflux1 = data[:,x1]
         flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
         if icol == 0:
-            # will be used when turning the direction
+            # will be used when changing the direction
             flux1_center = flux1
 
         # find peaks with Y precision of 1./density pixels
@@ -488,6 +491,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         fmax = -fmax
 
         if icol == 0:
+            # the middle column
             for y,f in zip(ymax,fmax):
                 peak_lst.append((y,f))
                 nodes_lst[x1].append(y)
@@ -500,6 +504,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             # aperture alignment of each selected column, described by
             # (slope, shift)
             (slope, shift, zoom), mask = find_shift(flux0, flux1)
+            message.append('%4d  %8.5f  %8.5f  %8.5f'%(x1, slope, shift, zoom))
             slope_lst[direction].append(slope)
             shift_lst[direction].append(shift)
             for y, f in zip(ymax, fmax):
@@ -511,7 +516,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
                 nodes_lst[x1].append(y)
 
             # find ysta & yend, the start and point pixel after aperture
-            # aligment
+            # alignment
             ysta, yend = 0., h-1.
             for slope, shift in zip(slope_lst[direction][::-1],
                                     shift_lst[direction][::-1]):
@@ -549,6 +554,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             flux0 = flux1
             icol += 1
             continue
+
+    logger.debug((os.linesep+' '*4).join(message))
 
     # filter the consecutive zero elements at the beginning and the end
     i_nonzero = np.nonzero(csec_nlst)[0]
@@ -599,6 +606,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     f1, f2 = ax2.get_ylim()
 
     # find central positions along Y axis for all apertures
+    message = []
     mid_lst = []
     for y in peaky:
         f = csec_lst[y]
@@ -607,11 +615,18 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             i1 -= 1
         while(cutn[i2]>0):
             i2 += 1
-        n = cutn[max(i1,y-2):min(i2,y+2)].sum()
+        #n = cutn[max(i1,y-2):min(i2,y+2)].sum()
+        ii1 = max(i1,y-int(seperation/2))
+        ii2 = min(i2,y+int(seperation/2))
+        n = cutn[ii1:ii2].sum()
+        message.append('%4d %4d %4d %4d %4d %4d %4d'%(y, i1, ii1, i2, ii2, n, csec_nlst[y]))
         if n > csec_nlst[y]*filling:
             ax2.plot([csec_ylst[y],csec_ylst[y]],
                      [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1.0)
             mid_lst.append(csec_ylst[y])
+            message[-1] += ' %d'%csec_ylst[y]
+        ax2.axvline(csec_ylst[y], color='k', ls='--')
+    logger.debug((os.linesep+'   ').join(message))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -652,7 +667,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         ax1.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
 
         # initialize aperture position instance
-        aperture_loc = ApertureLocation(direction='x', shape=(h,w))
+        aperture_loc = ApertureLocation(direct='x', shape=(h,w))
         aperture_loc.set_position(poly)
 
         # generate a curve using for find saturation pixels
@@ -687,6 +702,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         aperture_set.save_reg(reg_file)
 
     fig.canvas.draw()
+    ax2.set_xlim(600, 830)
     fig.savefig(fig_file)
     plt.close(fig)
 

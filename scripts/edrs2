@@ -131,7 +131,7 @@ if __name__=='__main__':
                         '%(name)s - %(lineno)d - %(funcName)s():'+os.linesep,
                         ' %(message)s'+os.linesep+'-'*80,
                         ])
-    logging.basicConfig(filename='edrs.log',level=logging.INFO,
+    logging.basicConfig(filename='edrs.log',level=logging.DEBUG,
             format=log_fmt, datefmt='%Y-%m-%dT%H:%M:%S')
     logger = logging.getLogger(__name__)
     main()
