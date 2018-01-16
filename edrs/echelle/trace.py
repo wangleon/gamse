@@ -477,7 +477,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         nodes_lst[x1] = []
         flux1 = logdata[:,x1]
         linflux1 = data[:,x1]
-        flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
+        #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
+        core = np.hanning(seperation)
+        core /= core.sum()
+        flux1 = np.convolve(flux1, core, mode='same')
         if icol == 0:
             # will be used when changing the direction
             flux1_center = flux1
@@ -535,6 +538,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             csec_lst[i1:i2] += fnew
             csec_nlst[i1:i2] += 1
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
+            # for debug purpose
+            #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -596,6 +601,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     for y,f in zip(peak_yintlst,peak_flst):
         cutn[y-csec_i1] += 1
         cutf[y-csec_i1] += f
+        # for debug purpose
+        #ax2.axvline(csec_ylst[y-csec_i1], color='y', ls='--', alpha=0.2)
     # remove those element equal to one
     onemask = cutn == 1
     cutf[onemask] = 0
@@ -606,27 +613,38 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     f1, f2 = ax2.get_ylim()
 
     # find central positions along Y axis for all apertures
-    message = []
+    message = ['Aperture Detection Information for "%s"'%filename,
+               'ymax, i1, i2, n, n_xsec, select?, peak (if selected)']
     mid_lst = []
     for y in peaky:
         f = csec_lst[y]
-        i1,i2 = y,y
+        # search for the maximum value of cutn around y
+        i1, i2 = y-int(seperation/2), y+int(seperation/2)
+        ymax = cutn[i1:i2].argmax() + i1
+
+        i1, i2 = ymax, ymax
         while(cutn[i1]>0):
             i1 -= 1
         while(cutn[i2]>0):
             i2 += 1
-        #n = cutn[max(i1,y-2):min(i2,y+2)].sum()
-        ii1 = max(i1,y-int(seperation/2))
-        ii2 = min(i2,y+int(seperation/2))
+        ii1 = max(i1,ymax-int(seperation/2))
+        ii2 = min(i2,ymax+int(seperation/2))
+        #ii1 = max(i1,ymax-3)
+        #ii2 = min(i2,ymax+3)
         n = cutn[ii1:ii2].sum()
-        message.append('%4d %4d %4d %4d %4d %4d %4d'%(y, i1, ii1, i2, ii2, n, csec_nlst[y]))
         if n > csec_nlst[y]*filling:
             ax2.plot([csec_ylst[y],csec_ylst[y]],
                      [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1.0)
             mid_lst.append(csec_ylst[y])
-            message[-1] += ' %d'%csec_ylst[y]
-        ax2.axvline(csec_ylst[y], color='k', ls='--')
-    logger.debug((os.linesep+'   ').join(message))
+            select = 'yes'
+        else:
+            select = 'no'
+        message.append('%4d %4d %4d %4d %4d %3s %4d'%(
+            csec_ylst[ymax], csec_ylst[ii1], csec_ylst[ii2], n, csec_nlst[y],
+            select, csec_ylst[y]))
+        # for debug purpose
+        #ax2.axvline(csec_ylst[y], color='k', ls='--')
+    logger.debug((os.linesep+' '*4).join(message))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -702,7 +720,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         aperture_set.save_reg(reg_file)
 
     fig.canvas.draw()
-    ax2.set_xlim(600, 830)
+    # for debug purpose
+    #ax2.set_xlim(3500, 3700)
     fig.savefig(fig_file)
     plt.close(fig)
 
