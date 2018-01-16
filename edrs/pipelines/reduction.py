@@ -155,19 +155,39 @@ class Reduction(object):
             for item in self.log:
                 name = item.objectname[ichannel]
                 g = name.split()
-                if len(g)>0 and g[0].lower().strip()=='flat' and \
-                    max([len(v) for i, v in enumerate(item.objectname)
-                            if i != ichannel])==0:
-                    # this frame is a single channel flat
-                    if name.lower().strip()=='flat':
-                        flatname = 'flat_%s_%.3f'%(channel, item.exptime)
-                    else:
-                        flatname = name.replace(' ','_')
+                if len(g)>0 and g[0].lower().strip()=='flat':
+                    # the object name of the channel matches "flat ???"
 
-                    if flatname not in flat_groups[channel]:
-                        flat_groups[channel][flatname] = []
-                    flat_groups[channel][flatname].append(item)
-        
+                    # check the lengthes of names for other channels
+                    # if this list has no elements (only one fiber) or has no
+                    # names, this frame is a single-channel flat
+                    other_lst = [len(v) for i, v in enumerate(item.objectname)
+                                 if i != ichannel]
+                    if len(other_lst) == 0 or max(other_lst)==0:
+                        # this frame is a single channel flat
+
+                        # find a proper name for this flat
+                        if name.lower().strip()=='flat':
+                            # no special names given, use "flat_A_15.000"
+                            flatname = 'flat_%s_%.3f'%(channel, item.exptime)
+                        else:
+                            # flatname is given. replace space with "_"
+                            # remove "flat" before the objectname. e.g.,
+                            # "Flat Red" becomes "Red" 
+                            char = name[4:].strip()
+                            # add a channel string
+                            flatname = 'flat_%s_%s'%(channel, char.replace(' ','_'))
+
+                        # add flatname to flat_groups
+                        if flatname not in flat_groups[channel]:
+                            flat_groups[channel][flatname] = []
+                        flat_groups[channel][flatname].append(item)
+
+                    else:
+                        # this frame is not a single chanel flat. Skip
+                        pass
+
+        # put the flat_groups into class attributes
         self.flat_groups = flat_groups
 
     def load_log(self):
@@ -256,18 +276,44 @@ class Reduction(object):
         Returns:
             dict: A dict containing the items of trace frames in each channel.
         '''
+        message = ['Finding Traces', 'channel frameid fileid']
+        find_trace = False
+
         trace_lst = {}
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
             
             for item in self.log:
-                if item.objectname[ichannel].lower().strip() == 'trace' and \
-                    max([len(v) for i, v in enumerate(item.objectname)
-                            if i != ichannel])==0:
-                    # this frame is a single channle trace image
-                    if channel not in trace_lst:
-                        trace_lst[channel] = []
-                    trace_lst[channel].append(item)
+                name = item.objectname[ichannel]
+                g =  name.split()
+                if len(g)>0 and g[0].lower().strip() == 'trace':
+                    # object name matches "trace ???"
+                    
+                    # check the lengthes of names for other channels
+                    # if this list has no elements (only one fiber) or has no
+                    # names, this frame is a single-channel trace
+                    other_lst = [len(v) for i, v in enumerate(item.objectname)
+                                 if i != ichannel]
+                    if len(other_lst) == 0 or max(other_lst)==0:
+                        # this frame is a single channle trace
+
+                        # this frame is a single channle trace image
+                        if channel not in trace_lst:
+                            trace_lst[channel] = []
+                        trace_lst[channel].append(item)
+
+                        find_trace = True
+                        message.append('%s %3d %s'%(
+                            channel, item.frameid, item.fileid))
+                    else:
+                        # this frame is not a single chanel trace. Skip
+                        pass
+
+        # write messages into running log
+        if find_trace:
+            logger.info((os.linesep+' '*3).join(message))
+        else:
+            logger.info('No trace file found')
 
         return trace_lst
 
@@ -981,14 +1027,18 @@ class Reduction(object):
                 logger.info('Cannot find trace images for channel %s. Use flat images instead'%channel)
 
                 for flatname, item_lst in sorted(self.flat_groups[channel].items()):
+                    print(flatname)
                     logger.info('Begin processing flat component: %s'%flatname)
                     flatpath = os.path.join(
                                 self.paths['midproc'],
                                 '%s.fits'%flatname
                                 )
 
-                    # combine flat for this sub-group
-                    #self.combine_flat(item_lst, flatname)
+                    print(item_lst)
+                    self.combine_flat(item_lst, flatname)
+                    #item = item_lst[0]
+                    #infile = '%s%s.fits'%(item.fileid, self.input_surfix)
+                    #shutil.copyfile()
 
                     data = fits.getdata(flatpath)
                     mask_file = os.path.join(
