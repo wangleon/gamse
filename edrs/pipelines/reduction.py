@@ -733,6 +733,9 @@ class Reduction(object):
         '''
         Combine flat fielding frames.
 
+        If there's only one file to be combined, just copy it to the destinated
+        filename.
+
         Args:
             item_list (list): List of flat items.
             flatname (string): Name of the input flat set.
@@ -741,67 +744,94 @@ class Reduction(object):
         '''
 
         nfile = len(item_list)
-    
-        # create a header object for combined flat
-        newhead = fits.Header()
-        newhead['HIERARCH EDRS FLAT TYPE']  = 'mean'
-        newhead['HIERARCH EDRS FLAT NFILE'] = nfile
-    
-        # combine flat
-        ifile = 0
-        for item in item_list:
-            ifile += 1
-            # load image data
+
+        # find the name of the output flat file
+        out_flatfile = '%s.fits'%flatname
+        out_flatpath = os.path.join(self.paths['midproc'], out_flatfile)
+
+        # find the name of the output mask file
+        out_maskfile = '%s%s.fits'%(flatname, self.mask_surfix)
+        out_maskpath = os.path.join(self.paths['midproc'], out_maskfile)
+
+        if nfile == 0:
+            logger.info('No file to be combined')
+            return False
+        elif nfile == 1:
+            # only one file. Do not need combine. Directly copy to output file
+            item = item_list[0]
+
+            # deal with the fits file
             basename = '%s%s.fits'%(item.fileid, self.input_surfix)
             filename = os.path.join(self.paths['midproc'], basename)
-            data, head = fits.getdata(filename, header=True)
+            shutil.copyfile(filename, out_flatpath)
+            logger.info('Copy "%s" to flat image: "%s"'%(
+                        filename, out_flatpath))
 
-            # if this one is the first input image, initialize the final
-            # data array, the mask, and the total exposure time.
-            if ifile == 1:
-                data_sum = np.zeros_like(data, dtype=np.float64)
-                all_sat_mask = np.zeros_like(data, dtype=np.bool)
-                total_exptime = 0.
-
-            # add the data array and exposure time
-            data_sum += data
-            total_exptime += head['EXPTIME']
-
-            # load mask data
+            # deal with the mask file
             maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
             maskpath = os.path.join(self.paths['midproc'], maskname)
-            mtable = fits.getdata(maskpath)
-            if mtable.size==0:
-                mdata = np.zeros_like(data, dtype=np.int16)
-            else:
-                mdata = table_to_array(mtable, data.shape)
-            # find saturation pixels
-            sat_mask = (mdata&4 == 4)
-            # get new all saturation mask
-            all_sat_mask = (all_sat_mask|sat_mask)
-
-            # save the filename of each combined flat in to header
-            newhead['HIERARCH EDRS FLAT FILE %d'%ifile] = basename
+            shutil.copyfile(maskpath, out_maskpath)
+            logger.info('Copy mask of "%s" to flat mask: "%s"'%(
+                        maskpath, out_maskpath))
+        else:
+            # more than one file to be combined
     
-        # calculate the mean flat and mean exposure time
-        data_mean = data_sum/float(nfile)
-        mexptime  = total_exptime/float(nfile)
-        newhead['HIERARCH EDRS FLAT MEANEXPTIME'] = mexptime
-        newhead['EXPTIME'] = mexptime
-    
-        outfile = '%s.fits'%flatname
-        outpath = os.path.join(self.paths['midproc'], outfile)
-        save_fits(outpath, data_mean, newhead)
-        logger.info('Save combined flat image: "%s"'%outpath)
-        print('save %s'%outfile)
-
-        # save the mask for each individual flat frame
-        mdata = np.int16(all_sat_mask)*4
-        mtable = array_to_table(mdata)
-        outfile = '%s%s.fits'%(flatname, self.mask_surfix)
-        outpath = os.path.join(self.paths['midproc'], outfile)
-        save_fits(outpath, mtable)
-        logger.info('Save mask image for combined flat: "%s"'%outpath)
+            # create a header object for combined flat
+            newhead = fits.Header()
+            newhead['HIERARCH EDRS FLAT TYPE']  = 'mean'
+            newhead['HIERARCH EDRS FLAT NFILE'] = nfile
+        
+            # combine flat
+            ifile = 0
+            for item in item_list:
+                ifile += 1
+                # load image data
+                basename = '%s%s.fits'%(item.fileid, self.input_surfix)
+                filename = os.path.join(self.paths['midproc'], basename)
+                data, head = fits.getdata(filename, header=True)
+            
+                # if this one is the first input image, initialize the final
+                # data array, the mask, and the total exposure time.
+                if ifile == 1:
+                    data_sum = np.zeros_like(data, dtype=np.float64)
+                    all_sat_mask = np.zeros_like(data, dtype=np.bool)
+                    total_exptime = 0.
+            
+                # add the data array and exposure time
+                data_sum += data
+                total_exptime += head['EXPTIME']
+            
+                # load mask data
+                maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
+                maskpath = os.path.join(self.paths['midproc'], maskname)
+                mtable = fits.getdata(maskpath)
+                if mtable.size==0:
+                    mdata = np.zeros_like(data, dtype=np.int16)
+                else:
+                    mdata = table_to_array(mtable, data.shape)
+                # find saturation pixels
+                sat_mask = (mdata&4 == 4)
+                # get new all saturation mask
+                all_sat_mask = (all_sat_mask|sat_mask)
+            
+                # save the filename of each combined flat in to header
+                newhead['HIERARCH EDRS FLAT FILE %d'%ifile] = basename
+        
+            # calculate the mean flat and mean exposure time
+            data_mean = data_sum/float(nfile)
+            mexptime  = total_exptime/float(nfile)
+            newhead['HIERARCH EDRS FLAT MEANEXPTIME'] = mexptime
+            newhead['EXPTIME'] = mexptime
+        
+            save_fits(out_flatpath, data_mean, newhead)
+            logger.info('Save combined flat image: "%s"'%out_flatpath)
+            print('save %s'%out_flatfile)
+            
+            # save the mask for each individual flat frame
+            mdata = np.int16(all_sat_mask)*4
+            mtable = array_to_table(mdata)
+            save_fits(out_maskpath, mtable)
+            logger.info('Save mask image for combined flat: "%s"'%out_maskpath)
 
     def combine_trace(self):
         '''
@@ -1034,11 +1064,8 @@ class Reduction(object):
                                 '%s.fits'%flatname
                                 )
 
-                    print(item_lst)
+                    # combine flats
                     self.combine_flat(item_lst, flatname)
-                    #item = item_lst[0]
-                    #infile = '%s%s.fits'%(item.fileid, self.input_surfix)
-                    #shutil.copyfile()
 
                     data = fits.getdata(flatpath)
                     mask_file = os.path.join(
