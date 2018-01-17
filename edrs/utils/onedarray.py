@@ -38,7 +38,7 @@ def get_local_minima(x, window=None):
 
     Args:
         x (:class:`numpy.array`): A list or Numpy 1d array.
-        window (int): An odd integer as the length of searching window.
+        window (integer or :class:`numpy.array`): An odd integer as the length of searching window.
     Returns:
         tuple: A tuple containing:
 
@@ -55,12 +55,14 @@ def get_local_minima(x, window=None):
     idx = np.logical_and(tmp,ind)
     index = np.where(idx)[0]
     if window is None:
+        # window is not given
         return index, x[index]
-    else:
+    elif isinstance(window, int):
+        # window is an integer
         # window must be an odd integer
         if window%2 != 1:
             raise ValueError
-        halfwin = int(round((window-1)/2.))
+        halfwin = (window-1)//2
         index_lst = []
         for i in index:
             i1 = max(0, i-halfwin)
@@ -69,6 +71,30 @@ def get_local_minima(x, window=None):
                 index_lst.append(i)
         index_lst = np.array(index_lst)
         return index_lst, x[index_lst]
+    elif isinstance(window, np.ndarray):
+        # window is a numpy array
+        if np.issubdtype(window.dtype, int):
+            # window are integers
+            if 0 in window%2:
+                # not all of the windows are odd
+                raise ValueError
+            else:
+                halfwin_lst = (window-1)//2
+                index_lst = []
+                for i in index:
+                    halfwin = halfwin_lst[i]
+                    i1 = max(0, i-halfwin)
+                    i2 = min(i+halfwin+1, x.size)
+                    if i == x[i1:i2].argmin() + i1:
+                        index_lst.append(i)
+                index_lst = np.array(index_lst)
+                return index_lst, x[index_lst]
+        else:
+            # window are not integers
+            print('window array are not integers')
+            raise ValueError
+    else:
+        raise ValueError
 
 def implete_none(lst):
     '''
