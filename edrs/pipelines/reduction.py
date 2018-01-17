@@ -956,7 +956,7 @@ class Reduction(object):
            **trace.file**,       *string*,  "Name of the trace file."
            **trace.scan_step**,  *integer*, "Steps of pixels used to scan along the main dispersion direction."
            **trace.minimum**,    *float*,   "Minimum value to filter the input image."
-           **trace.seperation**, *integer*,   "Estimated order seperations (in pixel) along the cross-dispersion."
+           **trace.seperation**, *float*,   "Estimated order seperations (in pixel) along the cross-dispersion."
            **trace.filling**,    *float*,   "Fraction of detected pixels to total step of scanning."
            **trace.display**,    *bool*,    "Display a figure on screen if *yes*."
            **trace.degree**,     *integer*, "Degree of polynomial used to describe the positions of orders."
@@ -971,7 +971,8 @@ class Reduction(object):
         kwargs = {
             'minimum'   : self.config.getfloat('reduction', 'trace.minimum'),
             'scan_step' : self.config.getint('reduction', 'trace.scan_step'),
-            'seperation': self.config.getint('reduction', 'trace.seperation'),
+            'seperation': self.config.getfloat('reduction', 'trace.seperation'),
+            'sep_der'   : self.config.getfloat('reduction', 'trace.sep_der'),
             'filling'   : self.config.getfloat('reduction', 'trace.filling'),
             'display'   : self.config.getboolean('reduction', 'trace.display'),
             'degree'    : self.config.getint('reduction', 'trace.degree'),
