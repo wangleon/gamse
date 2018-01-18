@@ -139,15 +139,16 @@ def derivative(*args, **kwargs):
     '''
     Get the first derivative of (x, y).
 
+    If **y** is not given, the first argument will be taken as **y**, and the
+    differential of the input array will be returned.
+
     Args:
-        x (list or :class:`numpy.array`): X-values of the input array.
+        x (list or :class:`numpy.array`): X-values of the input array (optional).
         y (list or :class:`numpy.array`): Y-values of the input array.
-        points (int): Number of points used to calculate derivative (optional, default is 3).
+        points (int): Number of points used to calculate derivative (optional,
+            default is 3).
     Returns:
         :class:`numpy.array`: Derivative of the input array.
-    Notes:
-        If **y** is not given, the first argument will be taken as *y*, and the
-        differential of the input array will be returned.
     '''
     if len(args) == 1:
         y = np.array(args[0], dtype=np.float64)
@@ -155,6 +156,8 @@ def derivative(*args, **kwargs):
     elif len(args) == 2:
         x = np.array(args[0], dtype=np.float64)
         y = np.array(args[1], dtype=np.float64)
+    else:
+        raise ValueError
     npts = x.size
     points = kwargs.pop('points', 3)
     if points == 3:
@@ -163,6 +166,8 @@ def derivative(*args, **kwargs):
         der[0]  = (a*y[0:3]).sum() / (a*x[0:3]).sum()
         der[-1] = (-a[::-1]*y[-3:]).sum() / (-a[::-1]*x[-3:]).sum()
         return der
+    else:
+        raise ValueError
 
 def pairwise(array):
     '''Return pairwises of an iterable arrary.
