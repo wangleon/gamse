@@ -59,17 +59,19 @@ class Reduction(object):
 
         self.report_file = open(
                 os.path.join(self.paths['report'], 'index.html'), 'w')
-        self.report_file.write(
+
+        # write report header
+        text = [
             '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"'+
-            ' "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'+
-            os.linesep+
-            '<html xmlns="http://www.w3.org/1999/xhtml">'+os.linesep+
-            '<head>'+os.linesep+
-            '    <meta http-equiv="content-type" content="text/html; charset=utf-8" />'+os.linesep+
-            '    <title>Reduction Report</title>'+os.linesep+
-            '</head>'+os.linesep+
-            '<body>'+os.linesep+
-            '    <h1>Reduction Report</h1>'+os.linesep)
+            ' "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">',
+            '<html xmlns="http://www.w3.org/1999/xhtml">',
+            '<head>',
+            '    <meta http-equiv="content-type" content="text/html; charset=utf-8" />',
+            '    <title>Reduction Report</title>',
+            '</head>',
+            '<body>',
+            '    <h1>Reduction Report</h1>']
+        self.report_file.write(os.linesep.join(text))
 
         # main loop
         step_lst = [v.strip() for v in steps_string.split(',') ]
@@ -80,10 +82,9 @@ class Reduction(object):
             else:
                 logger.error('Unknown step: %s'%step)
 
-        self.report_file.write(
-            '</body>'+os.linesep+
-            '</html>'
-            )
+        # write message footer
+        text = ['</body>', '</html>']
+        self.report_file.write(os.linesep.join(text))
 
     def load_config(self):
         '''
