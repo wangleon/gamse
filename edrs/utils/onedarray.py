@@ -38,7 +38,8 @@ def get_local_minima(x, window=None):
 
     Args:
         x (:class:`numpy.array`): A list or Numpy 1d array.
-        window (integer or :class:`numpy.array`): An odd integer as the length of searching window.
+        window (integer or :class:`numpy.array`): An odd integer or a list of
+            odd integers as the lengthes of searching window.
     Returns:
         tuple: A tuple containing:
 
@@ -57,44 +58,36 @@ def get_local_minima(x, window=None):
     if window is None:
         # window is not given
         return index, x[index]
-    elif isinstance(window, int):
-        # window is an integer
-        # window must be an odd integer
-        if window%2 != 1:
+    else:
+        # window is given
+        if isinstance(window, int):
+            # window is an integer
+            window = np.repeat(window, len(x))
+        elif isinstance(window, np.ndarray):
+            # window is a numpy array
+            if np.issubdtype(window.dtype, int):
+                pass
+            else:
+                # window are not integers
+                print('window array are not integers')
+                raise ValueError
+        else:
             raise ValueError
-        halfwin = (window-1)//2
+
+        if 0 in window%2:
+            # not all of the windows are odd
+            raise ValueError
+
+        halfwin_lst = (window-1)//2
         index_lst = []
         for i in index:
+            halfwin = halfwin_lst[i]
             i1 = max(0, i-halfwin)
-            i2 = min(i+halfwin+1, x.size)
+            i2 = min(i+halfwin+1, len(x))
             if i == x[i1:i2].argmin() + i1:
                 index_lst.append(i)
         index_lst = np.array(index_lst)
         return index_lst, x[index_lst]
-    elif isinstance(window, np.ndarray):
-        # window is a numpy array
-        if np.issubdtype(window.dtype, int):
-            # window are integers
-            if 0 in window%2:
-                # not all of the windows are odd
-                raise ValueError
-            else:
-                halfwin_lst = (window-1)//2
-                index_lst = []
-                for i in index:
-                    halfwin = halfwin_lst[i]
-                    i1 = max(0, i-halfwin)
-                    i2 = min(i+halfwin+1, x.size)
-                    if i == x[i1:i2].argmin() + i1:
-                        index_lst.append(i)
-                index_lst = np.array(index_lst)
-                return index_lst, x[index_lst]
-        else:
-            # window are not integers
-            print('window array are not integers')
-            raise ValueError
-    else:
-        raise ValueError
 
 def implete_none(lst):
     '''
