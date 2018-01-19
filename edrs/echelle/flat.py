@@ -488,8 +488,15 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     #  [tracename1: aper_loc, tracename2: aper_loc],
     # ]
 
+    tracename_lst = []
+
     for itrace, (tracename, aperset) in enumerate(aperture_set_lst.items()):
         print(tracename, len(aperset))
+
+        # add tracename ot tracename list
+        if tracename not in tracename_lst:
+            tracename_lst.append(tracename)
+
         for o in aperset:
             aper_loc = aperset[o]
             if itrace == 0:
@@ -511,7 +518,7 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
                             all_aperloc_lst[ilist][tracename] = aper_loc
                             insert = True
                             break
-                    # if already addedto an existing aperture, skip the rest
+                    # if already added to an existing aperture, skip the rest
                     # apertures
                     if insert:
                         break
@@ -521,8 +528,30 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
                 if not insert:
                     all_aperloc_lst.append({tracename: aper_loc})
 
+    # sort the tracename list
+    tracename_lst.sort()
+
+    # prepare the information written to running log
+    message = ['Aperture Information for Different Flat Files:']
+    _msg1 = ['%-20s'%tracename for tracename in tracename_lst]
+    _msg2 = ['center, N (sat), max' for tracename in tracename_lst]
+    message.append('| '+(' | '.join(_msg1))+' |')
+    message.append('| '+(' | '.join(_msg2))+' |')
+
+
     mosaic_aperset = ApertureSet()
     for list1 in all_aperloc_lst:
+        # add information to running log
+        _msg = []
+        for tracename in tracename_lst:
+            if tracename in list1:
+                aper_loc = list1[tracename]
+                _msg.append('%4d %4d %10.1f'%(
+                    aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
+            else:
+                _msg.append(' '*20)
+        message.append('| '+(' | '.join(_msg))+' |')
+
         # pick up the best trace file for each aperture
         nosat_lst = {tracename: aper_loc
                     for tracename, aper_loc in list1.items()
@@ -542,9 +571,17 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
 
         setattr(pick_aperloc, 'tracename', pick_tracename)
         mosaic_aperset.add_aperture(pick_aperloc)
+
+    logger.info((os.linesep+' '*3).join(message))
     mosaic_aperset.sort()
+
+    message = ['Flat Mosaic Information',
+                'aper, yposition, flatname, N (sat), Max (count)']
     for aper, aper_loc in mosaic_aperset.items():
-        print(aper, aper_loc, aper_loc.tracename, aper_loc.nsat, aper_loc.max)
+        message.append('%4d %5d %-15s %4d %10.1f'%(
+            aper, aper_loc.get_center(), aper_loc.tracename, aper_loc.nsat,
+            aper_loc.max))
+    logger.info((os.linesep+' '*3).join(message))
 
     # read flat data and check the shape consistency
     prev_shape = None
