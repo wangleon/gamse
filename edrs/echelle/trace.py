@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.ticker as tck
 
-from ..utils.onedarray import pairwise
+from ..utils.onedarray import pairwise, derivative
 
 class ApertureLocation(object):
     '''
@@ -341,6 +341,83 @@ class ApertureSet(object):
     def __iter__(self):
         return _ApertureSetIterator(self.dict)
 
+    def get_local_seperation(self, aper):
+        '''
+        Get the local seperation in pixels per aperture number in the center
+        of the aperture set.
+
+        Args:
+            aper (integer): Aperture number.
+        Returns:
+            float: Local seperation in pixels per aperture number.
+        '''
+
+        aper_lst, center_lst = [], []
+        for _aper, _aper_loc in sorted(self.items()):
+            aper_lst.append(_aper)
+            center_lst.append(_aper_loc.get_center())
+
+        seperation_lst = derivative(aper_lst, center_lst)
+        i = aper_lst.index(aper)
+        return seperation_lst[i]
+
+
+    def find_aper_offset(self, aperset):
+        '''
+        Find the aperture offset between this instance and the input
+        :class:`ApertureSet` instance.
+        
+        The offset means that the Aperture *n* aperture of this
+        :class:`ApertureSet` almost has the same position as the Aperture
+        *n* + *offset* in the input :class:`ApertureSet`.
+        '''
+        # fint the smalleset common aper number.
+        for aper in self:
+            if aper in aperset:
+                break
+
+        # calculate the approximate distance between these two common apertures
+        diff_cen = self[aper].get_center() - aperset[aper].get_center()
+        # calculate the approximate aperture difference
+        sep1 = self.get_local_seperation(aper)
+        sep2 = aperset.get_local_seperation(aper)
+
+        sep = (sep1 + sep2)/2.
+        offset0 = int(round(diff_cen/sep))
+
+        # find the offset list
+        o1 = -offset0
+        o2 = 3*offset0
+        # in case o1 > o2, exchange o1 and o2
+        o1, o2 = min(o1,o2), max(o1, o2)
+        # the minimum search offset is -3, and the maximum search offset is 3
+        o1, o2 = min(o1, -3), max(o2, 3)
+        offset_lst = range(o1, o2)
+
+        # find the center dict for every aperture for both this aperset and the
+        # input aperset
+        center_lst1 = {_aper: _aper_loc.get_center()
+                        for _aper, _aper_loc in self.items()}
+        center_lst2 = {_aper: _aper_loc.get_center()
+                        for _aper, _aper_loc in aperset.items()}
+
+        # search the offset
+        median_diff_lst = []
+        for offset in offset_lst:
+            diff_lst = []
+            for aper in sorted(center_lst1):
+                if aper in center_lst1 and aper+offset in center_lst2:
+                    diff = center_lst1[aper] - center_lst2[aper+offset]
+                    diff_lst.append(diff)
+            # use the median value of the diff_lst
+            median_diff = np.median(diff_lst)
+            median_diff_lst.append(median_diff)
+
+        # find the offset with least absolute value of median diff
+        i = np.abs(median_diff_lst).argmin()
+        return offset_lst[i]
+
+
 class _ApertureSetIterator(object):
     '''
     Interator class for :class:`ApertureSet`.
@@ -387,13 +464,13 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         :class:`ApertureSet`: Aperture locations.
 
     '''
-    from ..utils.onedarray import get_local_minima
+    from ..utils.onedarray import get_local_minima, derivative
 
     sat_mask = mask
 
     h, w = data.shape
 
-    # filter the pixels smallerthan minimum
+    # filter the pixels smaller than the input "minimum" value
     logdata = np.log10(np.maximum(data, minimum))
 
     # initialize the color list
@@ -448,7 +525,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     csec_i2 = h + h//2
 
     csec_lst    = np.zeros(csec_i2 - csec_i1)
-    csec_nlst   = np.zeros(csec_i2 - csec_i1)
+    csec_nlst   = np.zeros(csec_i2 - csec_i1, dtype=np.int32)
     csec_maxlst = np.zeros(csec_i2 - csec_i1)
 
     # two-direction slope and shift list
@@ -597,6 +674,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     i_nonzero = np.nonzero(csec_nlst)[0]
     istart, iend = i_nonzero[0], i_nonzero[-1]
     csec_ylst = np.arange(csec_lst.size) + csec_i1
+    # now csec_ylst starts from -h//2
 
     # set the zero elements to 1, preparing for the division
     csec_nlst = np.maximum(csec_nlst, 1)
@@ -619,7 +697,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     peaky += istart
 
     message = ['Detected peaks in stacked cross-section for "%s"'%filename,
-               '']
+               'peak  window']
     for _peak in peaky:
         message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
     logger.debug((os.linesep+' '*3).join(message))
@@ -640,7 +718,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     peak_flst = peak_lst[:,1]
     peak_yintlst = np.int32(np.round(peak_ylst))
     cutf = np.zeros_like(csec_lst)
-    cutn = np.zeros_like(csec_lst)
+    cutn = np.zeros_like(csec_lst, dtype=np.int32)
     for y,f in zip(peak_yintlst,peak_flst):
         cutn[y-csec_i1] += 1
         cutf[y-csec_i1] += f
@@ -652,12 +730,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     cutn[onemask] = 0
     cuty = np.arange(cutn.size) + csec_i1
 
-    ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    f1, f2 = ax2.get_ylim()
+    #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
+    ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='r')
 
     # find central positions along Y axis for all apertures
     message = ['Aperture Detection Information for "%s"'%filename,
-               'ymax, i1, i2, n, n_xsec, select?, peak (if selected)']
+               'y, ymax, i1, i2, n, n_xsec, select?, peak']
     mid_lst = []
     for y in peaky:
         f = csec_lst[y]
@@ -667,31 +745,68 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         i1, i2 = y-int(sep/2), y+int(sep/2)
         ymax = cutn[i1:i2].argmax() + i1
 
-        i1, i2 = ymax, ymax
-        while(cutn[i1]>0):
-            i1 -= 1
-        while(cutn[i2]>0):
-            i2 += 1
-        ii1 = max(i1,ymax-int(sep/2))
-        ii2 = min(i2,ymax+int(sep/2))
-        #ii1 = max(i1,ymax-3)
-        #ii2 = min(i2,ymax+3)
+        #i1, i2 = ymax, ymax
+        #while(cutn[i1]>0):
+        #    i1 -= 1
+        #while(cutn[i2]>0):
+        #    i2 += 1
+        #ii1 = max(i1,ymax-int(sep/2))
+        #ii2 = min(i2,ymax+int(sep/2))
+
+        ii1 = y-int(sep/3)
+        ii2 = y+int(sep/3)
         n = cutn[ii1:ii2].sum()
+
         if n > csec_nlst[y]*filling:
-            ax2.plot([csec_ylst[y],csec_ylst[y]],
-                     [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1.0)
             mid_lst.append(csec_ylst[y])
             select = 'yes'
         else:
             select = 'no'
-        message.append('%4d %4d %4d %4d %4d %3s %4d'%(
-            csec_ylst[ymax], csec_ylst[ii1], csec_ylst[ii2], n, csec_nlst[y],
-            select, csec_ylst[y]))
+
+        # debug information in running log
+        info = {
+                    'y'     : csec_ylst[y],
+                    'ymax'  : csec_ylst[ymax],
+                    'i1'    : csec_ylst[ii1],
+                    'i2'    : csec_ylst[ii2],
+                    'n'     : n,
+                    'n_xsec': csec_nlst[y],
+                    'select': select,
+                    'peak'  : csec_ylst[y],
+                }
+
+        message.append(
+            '{y:5d} {ymax:5d} {i1:5d} {i2:5d} {n:4d} {n_xsec:4d} {select:>5s} {peak:5d}'.format(**info)
+            )
+
         # for debug purpose
         #ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
     logger.debug((os.linesep+' '*4).join(message))
+
+    # check the first and last peak. If the seperation is larger than 2x of 
+    # the local seperation, remove them
+    if len(mid_lst)>3:
+        # check the last peak
+        sep = seperation + mid_lst[-1]*sep_der/1000.
+        if mid_lst[-1] - mid_lst[-2] > 2*sep:
+            logger.info('Remove the last aperture at %d for "%s" (distance=%d > 2 x %d)'%(
+                        mid_lst[-1], filename, mid_lst[-1]-mid_lst[-2], sep))
+            mid_lst.pop(-1)
+        # check the first peak
+        sep = seperation + mid_lst[0]*sep_der/1000.
+        if mid_lst[1] - mid_lst[0] > 2*sep:
+            logger.info('Remove the first aperture at %d for "%s" (distance=%d > 2 x %d)'%(
+                        mid_lst[0], filename, mid_lst[1]-mid_lst[0], sep))
+            mid_lst.pop(0)
+
+
+    # plot the aperture positions
+    f1, f2 = ax2.get_ylim()
+    for mid in mid_lst:
+        f = csec_lst[mid-csec_i1]
+        ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
 
     # set tickers for ax2
     ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
@@ -773,19 +888,23 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     fig.canvas.draw()
     fig.savefig(fig_file)
     # for debug purpose
-    ax2.set_xlim(3400, 3900)
-    ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
-    ax2.xaxis.set_minor_locator(tck.MultipleLocator(10))
-    fig.savefig(fig_file[0:-4]+'-debug.png')
+    #ax2.set_xlim(3400, 3500)
+    #ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
+    #ax2.xaxis.set_minor_locator(tck.MultipleLocator(10))
+    #fig.savefig(fig_file[0:-4]+'-debug.png')
+
     plt.close(fig)
 
+    # plot the order seperation information
+    # for debug purpose
     fig2 = plt.figure(dpi=150)
     ax2 = fig2.gca()
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    ax2.plot(center_lst[0:-1], np.diff(center_lst), 'bo')
+    ax2.plot(center_lst, derivative(center_lst), 'bo', alpha=0.6)
     ax2.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation, 'r-')
-    fig2.savefig(fig_file+'-2.png')
+    ax2.set_xlim(0, h-1)
+    fig2.savefig(fig_file[0:-4]+'-order_sep.png')
     plt.close(fig2)
 
     return aperture_set
