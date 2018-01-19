@@ -1067,7 +1067,7 @@ class Reduction(object):
                                 )
 
                     # combine flats
-                    self.combine_flat(item_lst, flatname)
+                    #self.combine_flat(item_lst, flatname)
 
                     data = fits.getdata(flatpath)
                     mask_file = os.path.join(
@@ -1103,7 +1103,7 @@ class Reduction(object):
                                    'fig_file'   : fig_file,
                                    })
 
-                    if False:
+                    if True:
                         #temporarily added for debug
                         aperture_set = load_aperture_set(trace_result_file)
                     else:
@@ -1124,22 +1124,16 @@ class Reduction(object):
            :header: "Option", "Type", "Description"
            :widths: 25, 10, 70
 
-           **flat.skip**,            *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
-           **flat.surfix**,          *string*,  "Surfix of the flat correceted files."
-           **flat.cosmic_clip**,     *float*,   "Upper clipping threshold to remove cosmis-rays."
-           **flat.file**,            *string*,  "Name of the trace file."
-           **flat.mosaic_method**,   *string*,  "Method of mosaic."
-           **flat.mosaic_file**,     *string*,  "Name of the mosaic file."
-           **flat.mosaic_reg_file**, *string*,  "Name of the mosaic .reg file."
-           **flat.mosaic_maxcount**, *integer*, "Maximum count of the flat mosaic."
+           **flat.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **flat.surfix**,          *string*,  Surfix of the flat correceted files.
+           **flat.cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
+           **flat.mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
         '''
 
         if self.config.getboolean('reduction', 'flat.skip'):
             logger.info('Skip [flat] according to the config file')
             self.input_surfix = self.output_surfix
             return True
-
-        flat_file = self.config.get('reduction','flat.file')
 
         mosaic_aperset_lst = {}
         # mosaic_aperset_lst = {
@@ -1174,50 +1168,47 @@ class Reduction(object):
             elif len(flat_group) > 1:
                 # mosaic flat
 
-                from ..echelle.flat import mosaic_flat_auto, mosaic_flat_interact
+                from ..echelle.flat import mosaic_flat_auto
 
                 # get filename from config file
-                mosaic_method = self.config.get('reduction','flat.mosaic_method')
-                #mosaic_file   = self.config.get('reduction','flat.mosaic_file')
-                #reg_file      = self.config.get('reduction','flat.mosaic_reg_file')
                 max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
 
                 # prepare input list
                 filename_lst = [os.path.join(self.paths['midproc'], '%s.fits'%flatname)
                                 for flatname in sorted(flat_group.keys())]
 
-                if mosaic_method == 'interact':
-                    # deprecated
-                    mosaic_flat_interact(filename_lst = filename_lst,
-                                         outfile      = flat_file,
-                                         mosaic_file  = mosaic_file,
-                                         reg_file     = reg_file,
-                                         disp_axis    = 1,
-                                         mask_surfix  = self.mask_surfix,
-                                         )
-                elif mosaic_method == 'auto':
-                    mosaic_aperset = mosaic_flat_auto(
-                                        filename_lst     = filename_lst,
-                                        outfile          = flat_file,
-                                        aperture_set_lst = aperset_lst,
-                                        max_count        = max_count,
-                                     )
-                    mosaic_aperset_lst[channel] = mosaic_aperset
-
-                    # save mosaiced aperset to .txt and .reg files
-                    mosaic_aperset.save_txt(trc_file)
-                    mosaic_aperset.save_reg(reg_file)
-                else:
-                    logger.error('Unknown flat mosaic method: %s'%mosaic_method)
+                mosaic_aperset = mosaic_flat_auto(
+                                    filename_lst     = filename_lst,
+                                    outfile          = flat_file,
+                                    aperture_set_lst = aperset_lst,
+                                    max_count        = max_count,
+                                 )
 
                 # write to the running log
                 message = ['Mosaic flat images:']
                 for filename in filename_lst:
                     message.append('"%s"'%filename)
-                #message.append('Final flat image:     "%s"'%flat_file)
-                #message.append('Mosaic boundary file: "%s"'%mosaic_file)
-                #message.append('Mosaic region   file: "%s"'%reg_file)
                 logger.info((os.linesep+'  ').join(message))
+
+                if ichannel > 0:
+                    # align channels
+                    ref_aperset = mosaic_aperset_lst['A']
+                    offset = mosaic_aperset.find_aper_offset(ref_aperset)
+                    msg = 'Offset = {} for channel {} relative to channel A'.format(
+                            offset, channel)
+                    logger.info(msg)
+                    mosaic_aperset.shift_aperture(offset)
+
+                mosaic_aperset_lst[channel] = mosaic_aperset
+
+                # save mosaiced aperset to .txt and .reg files
+                mosaic_aperset.save_txt(trc_file)
+                mosaic_aperset.save_reg(reg_file)
+
+            else:
+                print('Unknown flat_groups')
+                raise ValueError
+
 
     def background(self):
         '''
