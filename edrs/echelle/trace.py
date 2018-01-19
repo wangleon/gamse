@@ -281,7 +281,7 @@ class ApertureSet(object):
         '''Sort the apertures according to their positions inside this instance.
         '''
         aperloc_lst = sorted([aper_loc for aper, aper_loc in self.dict.items()],
-                        key=lambda aper_loc: aper_loc.get_center())
+                              key=lambda aper_loc: aper_loc.get_center())
         for i in range(len(aperloc_lst)):
             self.dict[i] = aperloc_lst[i]
 
@@ -417,6 +417,19 @@ class ApertureSet(object):
         i = np.abs(median_diff_lst).argmin()
         return offset_lst[i]
 
+    def shift_aperture(self, offset):
+        '''Shift the aperture number by offset.
+
+        Args:
+            offset (integer): Offset to shift.
+        Returns:
+            No returns
+        '''
+
+        new_dict = {}
+        for _aper, _aper_loc in self.dict.items():
+            new_dict[_aper+offset] = _aper_loc
+        self.dict = new_dict
 
 class _ApertureSetIterator(object):
     '''
