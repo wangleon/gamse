@@ -318,6 +318,12 @@ class Reduction(object):
 
         return trace_lst
 
+    def find_science(self):
+        '''Find science items.
+        '''
+        item_lst = [item for item in self.log if item.imagetype=='sci']
+        return item_lst
+
     def bias(self):
         '''
         Bias correction.
@@ -950,17 +956,18 @@ class Reduction(object):
         polynomial coefficients of each found order.
 
         .. csv-table:: Accepted options in config file
-           :header: "Option", "Type", "Description"
+           :header: Option, Type, Description
            :widths: 20, 10, 80
 
-           **trace.skip**,       *bool*,    "Skip this step if *yes* and **mode** = *'debug'*."
-           **trace.file**,       *string*,  "Name of the trace file."
-           **trace.scan_step**,  *integer*, "Steps of pixels used to scan along the main dispersion direction."
-           **trace.minimum**,    *float*,   "Minimum value to filter the input image."
-           **trace.seperation**, *float*,   "Estimated order seperations (in pixel) along the cross-dispersion."
-           **trace.filling**,    *float*,   "Fraction of detected pixels to total step of scanning."
-           **trace.display**,    *bool*,    "Display a figure on screen if *yes*."
-           **trace.degree**,     *integer*, "Degree of polynomial used to describe the positions of orders."
+           **trace.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **trace.file**,       *string*,  Name of the trace file.
+           **trace.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction.
+           **trace.minimum**,    *float*,   Minimum value to filter the input image.
+           **trace.seperation**, *float*,   Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
+           **trace.sep_der**,    *float*,   Estimated first derivative of seperations per 1000 pixels along the *y* axis.
+           **trace.filling**,    *float*,   Fraction of detected pixels to total step of scanning.
+           **trace.display**,    *bool*,    Display a figure on screen if *yes*.
+           **trace.degree**,     *integer*, Degree of polynomial used to describe the positions of orders.
         '''
         if self.config.getboolean('reduction', 'trace.skip'):
             logger.info('Skip [trace] according to the config file')
@@ -1121,7 +1128,7 @@ class Reduction(object):
         Flat fielding correction.
 
         .. csv-table:: Accepted options in config file
-           :header: "Option", "Type", "Description"
+           :header: Option, Type, Description
            :widths: 25, 10, 70
 
            **flat.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
@@ -1129,6 +1136,9 @@ class Reduction(object):
            **flat.cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
            **flat.mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
         '''
+
+        # find output surfix for fits
+        self.output_surfix = self.config.get('reduction','flat.surfix')
 
         if self.config.getboolean('reduction', 'flat.skip'):
             logger.info('Skip [flat] according to the config file')
@@ -1208,6 +1218,17 @@ class Reduction(object):
             else:
                 print('Unknown flat_groups')
                 raise ValueError
+
+        sci_item_lst = self.find_science()
+        for item in sci_item_lst:
+            input_file = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, self.input_surfix))
+            output_file = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, self.output_surfix))
+            shutil.copy(input_file, output_file)
+            logger.info('Correct Flat: "{}"->"{}"'.format(input_file, output_file))
+
+        self.input_surfix = self.output_surfix
 
 
     def background(self):
