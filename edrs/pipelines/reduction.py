@@ -1201,7 +1201,7 @@ class Reduction(object):
                 logger.info((os.linesep+'  ').join(message))
 
                 if ichannel > 0:
-                    # align channels
+                    # align this channel relative to channel A
                     ref_aperset = mosaic_aperset_lst['A']
                     offset = mosaic_aperset.find_aper_offset(ref_aperset)
                     msg = 'Offset = {} for channel {} relative to channel A'.format(
@@ -1234,8 +1234,25 @@ class Reduction(object):
     def background(self):
         '''
         Subtract the background for 2D images.
+
+        .. csv-table:: Accepted options in config file
+           :header: Option, Type, Description
+           :widths: 25, 10, 60
+
+           **background.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **background.surfix**,          *string*,  Surfix of the background correceted files.
+           **background.display**,         *bool*,    Display a graphics if *yes*.
+           **background.xorder**,          *integer*, Order of 2D polynomial along *x*-axis (dispersion direction).
+           **background.yorder**,          *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction).
+           **background.maxiter**,         *integer*, Maximum number of iteration of 2D polynomial fitting.
+           **background.upper_clipping**,  *float*,   Upper sigma clipping threshold.
+           **background.lower_clipping**,  *float*,   Lower sigma clipping threshold.
+           **background.expand_grid**,     *bool*,    Expand the grid to the whole image if *True*.
+
+
         '''
 
+        from ..echelle.trace import load_aperture_set
         from ..echelle.background import correct_background
         
         # find output surfix for fits
@@ -1246,34 +1263,79 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
-        order_loc_file = self.config.get('reduction', 'trace.location_file')
-        order_lst, info = load_order_locations(order_loc_file)
-    
-        display = self.config.getboolean('reduction', 'background.display')
+        # read config parameters
+        display        = self.config.getboolean('reduction', 'background.display')
+        xorder         = self.config.getint('reduction', 'background.xorder')
+        yorder         = self.config.getint('reduction', 'background.yorder')
+        maxiter        = self.config.getint('reduction', 'background.maxiter')
+        upper_clipping = self.config.getfloat('reduction', 'background.upper_clipping')
+        lower_clipping = self.config.getfloat('reduction', 'background.lower_clipping')
+        expand_grid    = self.config.getboolean('reduction', 'background.expand_grid')
 
-        # get fitting parameters
-        xorder  = self.config.getint('reduction', 'background.xorder')
-        yorder  = self.config.getint('reduction', 'background.yorder')
-        maxiter = self.config.getint('reduction', 'background.maxiter')
-        upper_clipping = self.config.getfloat('reduction',
-                                              'background.upper_clipping')
-        lower_clipping = self.config.getfloat('reduction',
-                                              'background.lower_clipping')
-        expand_grid    = self.config.getboolean('reduction',
-                                                'background.expand_grid')
+        # load aperture set for different channels
+        aperset_lst = {}
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
 
-        if display:
-            fig1 = plt.figure(figsize=(12,6), dpi=150)
-            ax11 = fig1.add_axes([0.10, 0.15, 0.35, 0.70])
-            ax12 = fig1.add_axes([0.53, 0.15, 0.35, 0.70])
-            ax13 = fig1.add_axes([0.92, 0.15, 0.02, 0.70])
-    
-            fig2 = plt.figure(figsize=(12,6), dpi=150)
-            ax21 = fig2.add_subplot(121, projection='3d')
-            ax22 = fig2.add_subplot(122, projection='3d')
-    
-            plt.show(block=False)
-    
+            trc_file = os.path.join(self.paths['midproc'],
+                                     'flat_%s_trc.txt'%channel)
+            aperset = load_aperture_set(trc_file)
+            aperset_lst[channel] = aperset
+
+        # prepare the file queue
+        infile_lst  = []
+        mskfile_lst = []
+        outfile_lst = []
+        scafile_lst = []
+        scale_lst   = [] # different files use differenet scales
+        channel_lst = []
+
+        sci_item_lst = self.find_science()
+        for item in sci_item_lst:
+            infilename  = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, self.input_surfix))
+            mskfilename = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, self.mask_surfix))
+            outfilename = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, self.output_surfix))
+            scafilename = os.path.join(self.paths['midproc'],
+                            '%s%s.fits'%(item.fileid, '_sca'))
+            channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
+                            if len(objectname)>0]
+
+            infile_lst.append(infilename)
+            mskfile_lst.append(mskfilename)
+            outfile_lst.append(outfilename)
+            scafile_lst.append(scafilename)
+            channel_lst.append(channels)
+            scale_lst.append('linear')
+
+        # correct the backgrounds
+        for i in range(len(infile_lst)):
+            infile  = infile_lst[i]
+            mskfile = mskfile_lst[i]
+            outfile = outfile_lst[i]
+            scafile = scafile_lst[i]
+            scale   = scale_lst[i]
+            channel = channel_lst[i]
+
+            correct_background(infile, mskfile, outfile, scafile,
+                               channels        = channel,
+                               apertureset_lst = aperset_lst,
+                               scale           = scale,
+                               block_mask      = 4,
+                               scan_step       = scan_step,
+                               xorder          = xorder,
+                               yorder          = yorder,
+                               maxiter         = maxiter,
+                               upper_clipping  = upper_clipping,
+                               lower_clipping  = lower_clipping,
+                               expand_grid     = expand_grid,
+                               display         = display,
+                               img_path        = self.paths['report_img'],
+                               )
+            exit()
+
     
         # prepare the file queue
         infile_lst, mskfile_lst, outfile_lst, scafile_lst = [], [], [], []

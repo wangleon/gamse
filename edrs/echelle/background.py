@@ -5,21 +5,28 @@ import astropy.io.fits as fits
 from ..ccdproc import save_fits
 
 def correct_background(infilename, mskfilename, outfilename, scafilename,
-        order_lst, scale='linear', block_mask=4, scan_step=200,
+        apertureset_lst, scale='linear', block_mask=4, scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clipping=3., lower_clipping=3.,
-        expand_grid = True,
-        fig1 = None, fig2 = None, report_img_path = None):
+        expand_grid = True, display=True, img_path = None):
+
     '''Subtract the background for an input FITS image.
 
     Args:
         infilename (string): Name of the input file.
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
-        order_lst (list): Positions of each order.
+        aperture_lst (list): Dict of ApertureSet at different channels.
+        scale (string): Scale of the image. Either 'linear' or 'log'.
+        block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
-        fig1 (:class:`matplotlib.figure`): Figure to display.
-        fig2 (:class:`matplotlib.figure`): Figure to display.
-        report_img_path (string): Path to the report directory.
+        xorder (integer): Order of 2D polynomial along *x*-axis (dispersion direction)
+        yorder (integer): Order of 2D polynomial along *y*-axis (cross-dispersion direction)
+        maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
+        upper_clipping (float): Upper sigma clipping threshold.
+        lower_clipping (float): Lower sigma clipping threshold.
+        expand_grid (bool): Expand the grid to the whole image if *True*.
+        display (bool): Display figures on the screen if *True*.
+        img_path (string): Path to the report directory.
 
     Returns:
         No returns.
@@ -40,13 +47,16 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
 
-    ax11 = fig1.get_axes()[0]
-    ax12 = fig1.get_axes()[1]
-    ax13 = fig1.get_axes()[2]
-    for ax in fig1.get_axes():
-        ax.cla()
-    title1 = fig1.suptitle('')
-    title1.set_text('Background of %s'%os.path.basename(infilename))
+    # initialize figures
+    fig1 = plt.figure(figsize=(12,6), dpi=150)
+    ax11 = fig1.add_axes([0.10, 0.15, 0.35, 0.70])
+    ax12 = fig1.add_axes([0.53, 0.15, 0.35, 0.70])
+    ax13 = fig1.add_axes([0.92, 0.15, 0.02, 0.70])
+    
+    fig2 = plt.figure(figsize=(12,6), dpi=150)
+    ax21 = fig2.add_subplot(121, projection='3d')
+    ax22 = fig2.add_subplot(122, projection='3d')
+    fig1.suptitle('Background of %s'%os.path.basename(infilename))
     ax11.imshow(data,cmap='gray')
 
     xnodes, ynodes, znodes = [], [], []
