@@ -296,16 +296,19 @@ class ApertureSet(object):
         outfile.write(str(self))
         outfile.close()
 
-    def save_reg(self, filename):
+    def save_reg(self, filename, color='green', channel=None):
         '''
         Save the aperture set into a reg file that can be loaded in SAO-DS9.
 
         Args:
             filename (string): Name of the output reg file.
+            color (string): Color of the lines.
+            channel (string): Write the channel name if not *None*.
+
         '''
         outfile = open(filename, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
-        outfile.write('global color=green dashlist=8 3 width=1 ')
+        outfile.write('global color=%s dashlist=8 3 width=1 '%color)
         outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
         outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
         outfile.write('source=1'+os.linesep)
@@ -320,16 +323,22 @@ class ApertureSet(object):
                 outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
                                 x+1, y+1, aper)+os.linesep)
 
+                # write text in the left edge
                 x = aper_loc.shape[aper_loc.direct]-1+6
                 y = aper_loc.position(x)
                 outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
                                 x+1, y+1, aper)+os.linesep)
 
+                # write text in the center
                 x = aper_loc.shape[aper_loc.direct]/2.
                 y = aper_loc.position(x)
-                outfile.write('# text(%7.2f, %7.2f) text={Aperture %3d} '%(x
-                                +1, y+1+5, aper)+os.linesep)
+                if channel is None:
+                    text = '# text(%7.2f, %7.2f) text={Aperture %3d} '%(x+1, y+1+5, aper)
+                else:
+                    text = '# text(%7.2f, %7.2f) text={Channel %s, Aperture %3d} '%(x+1, y+1+5, channel, aper)
+                outfile.write(text+os.linesep)
 
+                # write text in the right edge
                 x = np.linspace(0, aper_loc.shape[aper_loc.direct]-1, 50)
                 y = aper_loc.position(x)
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
