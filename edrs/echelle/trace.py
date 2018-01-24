@@ -22,8 +22,8 @@ class ApertureLocation(object):
     Location of an echelle order.
 
     Attributes:
-        direction (integer): 0 if along Y axis; 1 if along X axis
-        position (:class:`numpy.polynomial`): Polynomial of aperture location
+        direction (integer): 0 if along Y axis; 1 if along X axis.
+        position (:class:`numpy.polynomial`): Polynomial of aperture location.
         
     '''
     def __init__(self, *args, **kwargs):
@@ -305,6 +305,8 @@ class ApertureSet(object):
             color (string): Color of the lines.
             channel (string): Write the channel name if not *None*.
 
+        Returns:
+            No returns.
         '''
         outfile = open(filename, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
@@ -320,14 +322,14 @@ class ApertureSet(object):
             if aper_loc.direct == 1:
                 x = -6
                 y = aper_loc.position(x)
-                outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
-                                x+1, y+1, aper)+os.linesep)
+                text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
+                outfile.write(text+os.linesep)
 
                 # write text in the left edge
                 x = aper_loc.shape[aper_loc.direct]-1+6
                 y = aper_loc.position(x)
-                outfile.write('# text(%7.2f, %7.2f) text={%3d} '%(
-                                x+1, y+1, aper)+os.linesep)
+                text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
+                outfile.write(text+os.linesep)
 
                 # write text in the center
                 x = aper_loc.shape[aper_loc.direct]/2.
@@ -342,8 +344,8 @@ class ApertureSet(object):
                 x = np.linspace(0, aper_loc.shape[aper_loc.direct]-1, 50)
                 y = aper_loc.position(x)
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
-                    outfile.write('line(%7.2f,%7.2f,%7.2f,%7.2f)'%(
-                        x1+1, y1+1, x2+1, y2+1)+os.linesep)
+                    text = 'line(%7.2f,%7.2f,%7.2f,%7.2f)'%(x1+1, y1+1, x2+1, y2+1)
+                    outfile.write(text+os.linesep)
 
         outfile.close()
 
@@ -459,9 +461,8 @@ class _ApertureSetIterator(object):
             raise StopIteration()
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
-        sep_der = 0.0,
-        filling=0.3, degree=3, display=True, filename=None, fig_file=None,
-        trace_file=None, reg_file=None):
+        sep_der=0.0, filling=0.3, degree=3, display=True, filename=None,
+        fig_file=None, trace_file=None, reg_file=None):
     '''
     Find the positions of apertures on a CCD image.
 
@@ -472,18 +473,23 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         scan_step (integer): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
-        seperation (float): Estimated order seperations (in pixel) along the
-            cross-dispersion.
+        seperation (float): Estimated order seperations (in pixel)
+            along the cross-dispersion.
+        sep_der (float): Estimated differential order seperations per 1000
+            pixels. The real order seperations are estimated by **seperation**
+            + **sep_der** × *pixel* / 1000
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (integer): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
-        filename (string): Name of the input file. Only used to display a title
-            in the screen.
+        filename (string): Name of the input file. Only used to display the
+            title in the figure.
         fig_file (string): Path to the output figure.
         trace_file (string): Path to the output ascii file.
         reg_file (string): Name of region file that can be loaded in SAO-DS9.
+
     Returns:
-        :class:`ApertureSet`: Aperture locations.
+        :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
+            aperture locations.
 
     '''
     from ..utils.onedarray import get_local_minima, derivative

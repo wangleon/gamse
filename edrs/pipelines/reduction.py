@@ -57,8 +57,8 @@ class Reduction(object):
         # read steps from config file
         steps_string = self.config.get('reduction', 'steps')
 
-        self.report_file = open(
-                os.path.join(self.paths['report'], 'index.html'), 'w')
+        report_filename = os.path.join(self.paths['report'], 'index.html')
+        self.report_file = open(report_filename, 'w')
 
         # write report header
         text = [
@@ -119,19 +119,16 @@ class Reduction(object):
         # check if midproc path exist
         if not os.path.exists(self.paths['midproc']):
             os.mkdir(self.paths['midproc'])
-            logger.info('Create a new directory (midproc path: "%s")'%
-                        self.paths['midproc'])
+            logger.info('Create a new directory (midproc path: "%s")'%self.paths['midproc'])
 
         # check if report path exists
         if not os.path.exists(self.paths['report']):
             os.mkdir(self.paths['report'])
-            logger.info('Create a new directory (report path: "%s")'%
-                        self.paths['report'])
+            logger.info('Create a new directory (report path: "%s")'%self.paths['report'])
 
         # check if image subdirectory of report path exists
         if 'report_img' not in self.paths:
-            self.paths['report_img'] = os.path.join(
-                                       self.paths['report'], 'images')
+            self.paths['report_img'] = os.path.join(self.paths['report'], 'images')
         if not os.path.exists(self.paths['report_img']):
             os.mkdir(self.paths['report_img'])
             logger.info('Create a new directory: "%s"'%self.paths['report_img'])
@@ -245,8 +242,7 @@ class Reduction(object):
         # adjust rotation angle of ticks in time axis
         plt.setp(ax1.get_xticklabels(),rotation=30)
         # save figure
-        figpath = os.path.join(self.paths['report_img'],
-                    'overscan_variation.png')
+        figpath = os.path.join(self.paths['report_img'], 'overscan_variation.png')
         fig.savefig(figpath)
         logger.info('Save the variation of overscan figure: "%s"'%figpath)
         plt.close(fig)
@@ -304,8 +300,7 @@ class Reduction(object):
                         trace_lst[channel].append(item)
 
                         find_trace = True
-                        message.append('%s %3d %s'%(
-                            channel, item.frameid, item.fileid))
+                        message.append('%s %3d %s'%(channel, item.frameid, item.fileid))
                     else:
                         # this frame is not a single chanel trace. Skip
                         pass
@@ -438,17 +433,14 @@ class Reduction(object):
             if smooth_method.lower().strip() == 'gaussian':
                 # perform 2D gaussian smoothing
 
-                smooth_sigma = self.config.getint('reduction',
-                                                  'bias.smooth_sigma')
-                smooth_mode  = self.config.get('reduction',
-                                               'bias.smooth_mode')
+                smooth_sigma = self.config.getint('reduction', 'bias.smooth_sigma')
+                smooth_mode  = self.config.get('reduction',    'bias.smooth_mode')
 
                 logger.info('Smoothing bias: sigma = %f'%smooth_sigma)
                 logger.info('Smoothing bias: mode = %s'%smooth_mode)
 
                 from scipy.ndimage.filters import gaussian_filter
-                bias_smooth = gaussian_filter(bias, smooth_sigma,
-                                                mode=smooth_mode)
+                bias_smooth = gaussian_filter(bias, smooth_sigma, mode=smooth_mode)
 
                 logger.info('Smoothing bias: Update bias FITS header')
 
@@ -458,6 +450,7 @@ class Reduction(object):
                 head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
 
             else:
+                print('Unknown smoothing method: %s'%smooth_method)
                 pass
 
             # bias_data is a proxy for bias to be corrected for each frame
@@ -771,15 +764,13 @@ class Reduction(object):
             basename = '%s%s.fits'%(item.fileid, self.input_surfix)
             filename = os.path.join(self.paths['midproc'], basename)
             shutil.copyfile(filename, out_flatpath)
-            logger.info('Copy "%s" to flat image: "%s"'%(
-                        filename, out_flatpath))
+            logger.info('Copy "%s" to flat image: "%s"'%(filename, out_flatpath))
 
             # deal with the mask file
             maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
             maskpath = os.path.join(self.paths['midproc'], maskname)
             shutil.copyfile(maskpath, out_maskpath)
-            logger.info('Copy mask of "%s" to flat mask: "%s"'%(
-                        maskpath, out_maskpath))
+            logger.info('Copy mask of "%s" to flat mask: "%s"'%(maskpath, out_maskpath))
         else:
             # more than one file to be combined
     
@@ -999,22 +990,19 @@ class Reduction(object):
 
             if channel in trace_lst:
                 if len(trace_lst[channel]) > 1:
-                    filename_lst = [os.path.join(self.paths['midproc'],
-                                    '%s%s.fits'%(item.fileid, self.input_surfix))
-                                    for item in trace_lst[channel]
-                                    ]
+                    filename_lst = [os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                                    for item in trace_lst[channel]]
                     tracename = 'trace_%s'%channel
-                    dst_filename = os.path.join(self.paths['midproc'],
-                                   '%s.fits'%tracename)
-                    combine_fits(filename_lst, dst_filename, mode='sum')
-                    data = fits.getdata(dst_filename)
+                    dst_filename = os.path.join(self.paths['midproc'],'%s.fits'%tracename)
 
+                    # combine the trace files
+                    combine_fits(filename_lst, dst_filename, mode='sum')
+
+                    # read the combined image and its mask
+                    data = fits.getdata(dst_filename)
                     mask = np.zeros_like(data, dtype=np.bool)
                     for item in trace_lst[channel]:
-                        mask_file = os.path.join(
-                                    self.paths['midproc'],
-                                    '%s%s.fits'%(item.fileid, self.mask_surfix)
-                                    )
+                        mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
                         mask_table = fits.getdata(mask_file)
                         imask = table_to_array(mask_table, data.shape)
                         imask = (imask&4 == 4)
@@ -1022,42 +1010,26 @@ class Reduction(object):
                 else:
                     item = trace_lst[channel][0]
                     tracename = item.fileid
-                    filename = os.path.join(
-                                self.paths['midproc'],
-                                '%s%s.fits'%(item.fileid, self.input_surfix)
-                                )
+                    filename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
                     data = fits.getdata(filename)
-                    mask_file = os.path.join(
-                                self.paths['midproc'],
-                                '%s%s.fits'%(item.fileid, self.mask_surfix)
-                                )
+                    mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
                     mask_table = fits.getdata(mask_file)
                     mask = table_to_array(mask_table, data.shape)
                     mask = (mask&4 == 4)
 
-                trace_result_file = os.path.join(
-                                        self.paths['midproc'],
-                                        '%s_trc.txt'%tracename
-                                    )
-                reg_file = os.path.join(
-                                self.paths['midproc'],
-                                '%s_trc.reg'%tracename
-                            )
-                fig_file = os.path.join(
-                            self.paths['report_img'],
-                            'trace_%s.png'%tracename
-                            )
+                trc_file = os.path.join(self.paths['midproc'],   '%s_trc.txt'%tracename)
+                reg_file = os.path.join(self.paths['midproc'],   '%s_trc.reg'%tracename)
+                fig_file = os.path.join(self.paths['report_img'],'trace_%s.png'%tracename)
 
                 kwargs.update({'mask'       : mask,
                                'filename'   : trace_file,
-                               'trace_file' : trace_result_file,
+                               'trace_file' : trc_file,
                                'reg_file'   : reg_file,
                                'fig_file'   : fig_file,
                                })
                 aperture_set = find_apertures(data, **kwargs)
 
-                logger.info('Found %d orders in "%s.fits"'%(
-                            len(aperture_set), trace_file))
+                logger.info('Found %d orders in "%s.fits"'%(len(aperture_set), trace_file))
 
                 aperture_set_lst[channel][tracename] = aperture_set
 
@@ -1068,19 +1040,14 @@ class Reduction(object):
                 for flatname, item_lst in sorted(self.flat_groups[channel].items()):
                     print(flatname)
                     logger.info('Begin processing flat component: %s'%flatname)
-                    flatpath = os.path.join(
-                                self.paths['midproc'],
-                                '%s.fits'%flatname
-                                )
+
+                    flatpath = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
 
                     # combine flats
                     #self.combine_flat(item_lst, flatname)
 
                     data = fits.getdata(flatpath)
-                    mask_file = os.path.join(
-                                self.paths['midproc'],
-                                '%s%s.fits'%(flatname, self.mask_surfix)
-                                )
+                    mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
                     mask_table = fits.getdata(mask_file)
                     if mask_table.size==0:
                         mask = np.zeros_like(data, dtype=np.int16)
@@ -1089,23 +1056,15 @@ class Reduction(object):
                     mask = (mask&4 == 4)
 
                     # determine the result file and figure file
-                    trace_result_file = os.path.join(
-                                        self.paths['midproc'],
-                                        '%s_trc.txt'%flatname
-                                        )
-                    reg_file = os.path.join(
-                                self.paths['midproc'],
-                                '%s_trc.reg'%flatname
-                                )
-                    fig_file = os.path.join(
-                                self.paths['report_img'],
-                                'trace_%s.png'%flatname
-                                )
+                    trc_file = os.path.join(self.paths['midproc'],   '%s_trc.txt'%flatname)
+                    reg_file = os.path.join(self.paths['midproc'],   '%s_trc.reg'%flatname)
+                    fig_file = os.path.join(self.paths['report_img'],'trace_%s.png'%flatname)
+
                     # find the apertures
 
                     kwargs.update({'mask'       : mask,
                                    'filename'   : flatpath,
-                                   'trace_file' : trace_result_file,
+                                   'trace_file' : trc_file,
                                    'reg_file'   : reg_file,
                                    'fig_file'   : fig_file,
                                    })
@@ -1116,8 +1075,7 @@ class Reduction(object):
                     else:
                         aperture_set = find_apertures(data, **kwargs)
 
-                    logger.info('Found %d apertures in "%s.fits"'%(
-                                len(aperture_set), flatname))
+                    logger.info('Found %d apertures in "%s.fits"'%(len(aperture_set), flatname))
 
                     aperture_set_lst[channel][flatname] = aperture_set
 
@@ -1145,12 +1103,9 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
-        mosaic_aperset_lst = {}
-        # mosaic_aperset_lst = {
-        #   'A': ApertureSet instance,
-        #   'B': ApertureSet instace,
-        #   ...
-        # }
+        mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
+
+        reg_color_lst = ['green', 'yellow', 'red', 'blue']
 
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
@@ -1158,12 +1113,9 @@ class Reduction(object):
             flat_group = self.flat_groups[channel]
             aperset_lst = self.aperture_set_lst[channel]
 
-            flat_file = os.path.join(self.paths['midproc'],
-                                     'flat_%s.fits'%channel)
-            trc_file = os.path.join(self.paths['midproc'],
-                                     'flat_%s_trc.txt'%channel)
-            reg_file = os.path.join(self.paths['midproc'],
-                                     'flat_%s_trc.reg'%channel)
+            flat_file = os.path.join(self.paths['midproc'], 'flat_%s.fits'%channel)
+            trc_file  = os.path.join(self.paths['midproc'], 'flat_%s_trc.txt'%channel)
+            reg_file  = os.path.join(self.paths['midproc'], 'flat_%s_trc.reg'%channel)
 
             if len(flat_group) == 1:
                 # only 1 type of flat
@@ -1204,16 +1156,14 @@ class Reduction(object):
                     # align this channel relative to channel A
                     ref_aperset = mosaic_aperset_lst['A']
                     offset = mosaic_aperset.find_aper_offset(ref_aperset)
-                    msg = 'Offset = {} for channel {} relative to channel A'.format(
-                            offset, channel)
-                    logger.info(msg)
+                    logger.info('Offset = {} for channel {} relative to channel A'.format(offset, channel))
                     mosaic_aperset.shift_aperture(offset)
 
                 mosaic_aperset_lst[channel] = mosaic_aperset
 
                 # save mosaiced aperset to .txt and .reg files
                 mosaic_aperset.save_txt(trc_file)
-                mosaic_aperset.save_reg(reg_file)
+                mosaic_aperset.save_reg(reg_file, channel=channel, color=reg_color_lst[ichannel%4])
 
             else:
                 print('Unknown flat_groups')
@@ -1242,6 +1192,7 @@ class Reduction(object):
            **background.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
            **background.surfix**,          *string*,  Surfix of the background correceted files.
            **background.display**,         *bool*,    Display a graphics if *yes*.
+           **background.scan_step**,       *integer*, Steps of pixels used to scan along the main dispersion direction.
            **background.xorder**,          *integer*, Order of 2D polynomial along *x*-axis (dispersion direction).
            **background.yorder**,          *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction).
            **background.maxiter**,         *integer*, Maximum number of iteration of 2D polynomial fitting.
@@ -1265,6 +1216,7 @@ class Reduction(object):
 
         # read config parameters
         display        = self.config.getboolean('reduction', 'background.display')
+        scan_step      = self.config.getint('reduction', 'background.scan_step')
         xorder         = self.config.getint('reduction', 'background.xorder')
         yorder         = self.config.getint('reduction', 'background.yorder')
         maxiter        = self.config.getint('reduction', 'background.maxiter')
@@ -1277,8 +1229,7 @@ class Reduction(object):
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
 
-            trc_file = os.path.join(self.paths['midproc'],
-                                     'flat_%s_trc.txt'%channel)
+            trc_file = os.path.join(self.paths['midproc'], 'flat_%s_trc.txt'%channel)
             aperset = load_aperture_set(trc_file)
             aperset_lst[channel] = aperset
 
@@ -1292,14 +1243,10 @@ class Reduction(object):
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
-            infilename  = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.output_surfix))
-            scafilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, '_sca'))
+            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+            scafilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, '_sca'))
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
 
@@ -1358,14 +1305,10 @@ class Reduction(object):
     
         if len(self.flat_groups)>0:
             for flatname in sorted(self.flat_groups.keys()):
-                infilename  = os.path.join(self.paths['midproc'],
-                                '%s.fits'%flatname)
-                mskfilename = os.path.join(self.paths['midproc'],
-                                '%s%s.fits'%(flatname, self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'],
-                                '%s%s.fits'%(flatname, self.output_surfix))
-                scafilename = os.path.join(self.paths['midproc'],
-                                '%s_sca.fits'%flatname)
+                infilename  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.output_surfix))
+                scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%flatname)
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
@@ -1379,14 +1322,10 @@ class Reduction(object):
         for item in self.log:
             if item.frameid not in id_lst:
                 continue
-            infilename  = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(item.fileid, self.output_surfix))
-            scafilename = os.path.join(self.paths['midproc'],
-                            '%s_sca.fits'%item.fileid)
+            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+            scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%item.fileid)
             infile_lst.append(infilename)
             mskfile_lst.append(mskfilename)
             outfile_lst.append(outfilename)

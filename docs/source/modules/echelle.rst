@@ -7,10 +7,8 @@ Order Location and Tracing
 .. autosummary::
     ApertureLocation
     ApertureSet
-    align_orders
     find_apertures
     load_aperture_set
-    select_ref_tracefile
 
 .. automodule:: edrs.echelle.trace
    :members:

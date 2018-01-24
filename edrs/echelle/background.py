@@ -1,11 +1,18 @@
 import os
 import numpy as np
+from scipy.ndimage.filters import median_filter
 import astropy.io.fits as fits
+import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import matplotlib.cm     as cmap
+import matplotlib.ticker as tck
 
-from ..ccdproc import save_fits
+from ..utils.regression import polyfit2d, polyval2d
+from ..ccdproc import save_fits, table_to_array, array_to_table
 
 def correct_background(infilename, mskfilename, outfilename, scafilename,
-        apertureset_lst, scale='linear', block_mask=4, scan_step=200,
+        channels, apertureset_lst, scale='linear',
+        block_mask=4, scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clipping=3., lower_clipping=3.,
         expand_grid = True, display=True, img_path = None):
 
@@ -15,12 +22,15 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         infilename (string): Name of the input file.
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
+        channels (list): List of channels.
         aperture_lst (list): Dict of ApertureSet at different channels.
         scale (string): Scale of the image. Either 'linear' or 'log'.
         block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
-        xorder (integer): Order of 2D polynomial along *x*-axis (dispersion direction)
-        yorder (integer): Order of 2D polynomial along *y*-axis (cross-dispersion direction)
+        xorder (integer): Order of 2D polynomial along *x*-axis
+            (main dispersion direction)
+        yorder (integer): Order of 2D polynomial along *y*-axis
+            (cross-dispersion direction)
         maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
         upper_clipping (float): Upper sigma clipping threshold.
         lower_clipping (float): Lower sigma clipping threshold.
@@ -32,18 +42,15 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         No returns.
     '''
 
-    from scipy.ndimage.filters import median_filter
-    import matplotlib.pyplot as plt
-    import matplotlib.colors as colors
-    import matplotlib.cm     as cmap
-    import matplotlib.ticker as tck
-
-    from ..utils.regression import polyfit2d, polyval2d
-
     data, head = fits.getdata(infilename,header=True)
-    # get data mask
-    mdata = fits.getdata(mskfilename)
-    data_mask = (np.int16(mdata) & block_mask > 0)
+
+    # read data mask
+    mask_table = fits.getdata(mskfilename)
+    if mask_table.size==0:
+        mask = np.zeros_like(data, dtype=np.int16)
+    else:
+        mask = table_to_array(mask_table, data.shape)
+    data_mask = (np.int16(mask) & block_mask > 0)
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
 
@@ -61,6 +68,11 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     xnodes, ynodes, znodes = [], [], []
     h, w = data.shape
+
+    # find the minimum and maximum aperture number
+    min_aper = min([min(apertuerset_lst[ch].keys()) for ch in channels])
+    max_aper = max([max(apertuerset_lst[ch].keys()) for ch in channels])
+
     for x in np.arange(1, w, scan_step):
         order_cen = []
         for location in order_lst:
