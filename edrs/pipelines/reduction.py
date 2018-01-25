@@ -1189,16 +1189,16 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 60
 
-           **background.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
-           **background.surfix**,          *string*,  Surfix of the background correceted files.
-           **background.display**,         *bool*,    Display a graphics if *yes*.
-           **background.scan_step**,       *integer*, Steps of pixels used to scan along the main dispersion direction.
-           **background.xorder**,          *integer*, Order of 2D polynomial along *x*-axis (dispersion direction).
-           **background.yorder**,          *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction).
-           **background.maxiter**,         *integer*, Maximum number of iteration of 2D polynomial fitting.
-           **background.upper_clipping**,  *float*,   Upper sigma clipping threshold.
-           **background.lower_clipping**,  *float*,   Lower sigma clipping threshold.
-           **background.expand_grid**,     *bool*,    Expand the grid to the whole image if *True*.
+           **background.skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **background.surfix**,      *string*,  Surfix of the background correceted files.
+           **background.display**,     *bool*,    Display a graphics if *yes*.
+           **background.scan_step**,   *integer*, Steps of pixels used to scan along the main dispersion direction.
+           **background.xorder**,      *integer*, Order of 2D polynomial along *x*-axis (dispersion direction).
+           **background.yorder**,      *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction).
+           **background.maxiter**,     *integer*, Maximum number of iteration of 2D polynomial fitting.
+           **background.upper_clip**,  *float*,   Upper sigma clipping threshold.
+           **background.lower_clip**,  *float*,   Lower sigma clipping threshold.
+           **background.expand_grid**, *bool*,    Expand the grid to the whole image if *True*.
 
 
         '''
@@ -1215,14 +1215,14 @@ class Reduction(object):
             return True
 
         # read config parameters
-        display        = self.config.getboolean('reduction', 'background.display')
-        scan_step      = self.config.getint('reduction', 'background.scan_step')
-        xorder         = self.config.getint('reduction', 'background.xorder')
-        yorder         = self.config.getint('reduction', 'background.yorder')
-        maxiter        = self.config.getint('reduction', 'background.maxiter')
-        upper_clipping = self.config.getfloat('reduction', 'background.upper_clipping')
-        lower_clipping = self.config.getfloat('reduction', 'background.lower_clipping')
-        expand_grid    = self.config.getboolean('reduction', 'background.expand_grid')
+        display     = self.config.getboolean('reduction', 'background.display')
+        scan_step   = self.config.getint('reduction', 'background.scan_step')
+        xorder      = self.config.getint('reduction', 'background.xorder')
+        yorder      = self.config.getint('reduction', 'background.yorder')
+        maxiter     = self.config.getint('reduction', 'background.maxiter')
+        upper_clip  = self.config.getfloat('reduction', 'background.upper_clip')
+        lower_clip  = self.config.getfloat('reduction', 'background.lower_clip')
+        expand_grid = self.config.getboolean('reduction', 'background.expand_grid')
 
         # load aperture set for different channels
         aperset_lst = {}
@@ -1275,8 +1275,8 @@ class Reduction(object):
                                xorder          = xorder,
                                yorder          = yorder,
                                maxiter         = maxiter,
-                               upper_clipping  = upper_clipping,
-                               lower_clipping  = lower_clipping,
+                               upper_clip      = upper_clip,
+                               lower_clip      = lower_clip,
                                expand_grid     = expand_grid,
                                display         = display,
                                img_path        = self.paths['report_img'],

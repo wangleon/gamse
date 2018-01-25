@@ -13,7 +13,7 @@ from ..ccdproc import save_fits, table_to_array, array_to_table
 def correct_background(infilename, mskfilename, outfilename, scafilename,
         channels, apertureset_lst, scale='linear',
         block_mask=4, scan_step=200,
-        xorder=2, yorder=2, maxiter=5, upper_clipping=3., lower_clipping=3.,
+        xorder=2, yorder=2, maxiter=5, upper_clip=3., lower_clip=3.,
         expand_grid = True, display=True, img_path = None):
 
     '''Subtract the background for an input FITS image.
@@ -32,8 +32,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         yorder (integer): Order of 2D polynomial along *y*-axis
             (cross-dispersion direction)
         maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
-        upper_clipping (float): Upper sigma clipping threshold.
-        lower_clipping (float): Lower sigma clipping threshold.
+        upper_clip (float): Upper sigma clipping threshold.
+        lower_clip (float): Lower sigma clipping threshold.
         expand_grid (bool): Expand the grid to the whole image if *True*.
         display (bool): Display figures on the screen if *True*.
         img_path (string): Path to the report directory.
@@ -164,8 +164,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         residual = zfit - fitvalues
         mean  = residual[fitmask].mean(dtype='float64')
         sigma = residual[fitmask].std(dtype='float64')
-        m1 = residual < mean + upper_clipping*sigma
-        m2 = residual > mean - lower_clipping*sigma
+        m1 = residual < mean + upper_clip*sigma
+        m2 = residual > mean - lower_clip*sigma
         new_fitmask = m1*m2
         if new_fitmask.sum() == fitmask.sum():
             break
