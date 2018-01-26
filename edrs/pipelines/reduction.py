@@ -91,14 +91,14 @@ class Reduction(object):
         Load config file and check the paths.
 
         .. csv-table:: Accepted options in config file
-           :header: "Option", "Type", "Description"
+           :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           "**obslog_file**",     "*string*", "(*optional*) Name of the observing log file."
-           "**path.data**",       "*string*", "Path to the raw images."
-           "**path.midproc**",    "*string*", "Path to the mid-process files."
-           "**path.report**",     "*string*", "Path to the report file."
-           "**path.report_img**", "*string*", "(*optional*) Path to the images of report file."
+           **obslog_file**,     *string*, (*optional*) Name of the observing log file
+           **path.data**,       *string*, Path to the raw images
+           **path.midproc**,    *string*, Path to the mid-process files
+           **path.report**,     *string*, Path to the report file
+           **path.report_img**, *string*, (*optional*) Path to the images of report file
 
         '''
         self.config = read_config()
@@ -324,16 +324,16 @@ class Reduction(object):
         Bias correction.
 
         .. csv-table:: Accepted options in config file
-           :header: "Option", "Type", "Description"
+           :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           "**bias.skip**",          "*bool*",    "Skip this step if *yes* and **mode** = *'debug'*."
-           "**bias.surfix**",        "*string*",  "Surfix of the corrected files."
-           "**bias.file**",          "*string*",  "Name of bias file."
-           "**bias.cosmic_clip**",   "*float*",   "Upper clipping threshold to remove cosmic-rays."
-           "**bias.smooth_method**", "*string*",  "Method of smoothing, including *Gauss*."
-           "**bias.smooth_sigma**",  "*integer*", "Sigma of the smoothing filter."
-           "**bias.smooth_mode**",   "*string*",  "Mode of the smoothing."
+           **bias.skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **bias.surfix**,        *string*,  Surfix of the corrected files
+           **bias.file**,          *string*,  Name of bias file
+           **bias.cosmic_clip**,   *float*,   Upper clipping threshold to remove cosmic-rays
+           **bias.smooth_method**, *string*,  Method of smoothing, including *Gauss*
+           **bias.smooth_sigma**,  *integer*, Sigma of the smoothing filter
+           **bias.smooth_mode**,   *string*,  Mode of the smoothing
 
         To calculate the correct bias level for every individual pixel position
         several individual steps are performed. In the beginning a datacube
@@ -950,15 +950,15 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 20, 10, 80
 
-           **trace.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
-           **trace.file**,       *string*,  Name of the trace file.
-           **trace.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction.
-           **trace.minimum**,    *float*,   Minimum value to filter the input image.
-           **trace.seperation**, *float*,   Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
-           **trace.sep_der**,    *float*,   Estimated first derivative of seperations per 1000 pixels along the *y* axis.
-           **trace.filling**,    *float*,   Fraction of detected pixels to total step of scanning.
-           **trace.display**,    *bool*,    Display a figure on screen if *yes*.
-           **trace.degree**,     *integer*, Degree of polynomial used to describe the positions of orders.
+           **trace.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **trace.file**,       *string*,  Name of the trace file
+           **trace.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
+           **trace.minimum**,    *float*,   Minimum value to filter the input image
+           **trace.seperation**, *float*,   Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion
+           **trace.sep_der**,    *float*,   Estimated first derivative of seperations per 1000 pixels along the *y* axis
+           **trace.filling**,    *float*,   Fraction of detected pixels to total step of scanning
+           **trace.display**,    *bool*,    Display a figure on screen if *yes*
+           **trace.degree**,     *integer*, Degree of polynomial used to describe the positions of orders
         '''
         if self.config.getboolean('reduction', 'trace.skip'):
             logger.info('Skip [trace] according to the config file')
@@ -1089,10 +1089,10 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 70
 
-           **flat.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
-           **flat.surfix**,          *string*,  Surfix of the flat correceted files.
-           **flat.cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
-           **flat.mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
+           **flat.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **flat.surfix**,          *string*,  Surfix of the flat correceted files
+           **flat.cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays
+           **flat.mosaic_maxcount**, *integer*, Maximum count of the flat mosaic
         '''
 
         # find output surfix for fits
@@ -1189,16 +1189,16 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 60
 
-           **background.skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
-           **background.surfix**,      *string*,  Surfix of the background correceted files.
-           **background.display**,     *bool*,    Display a graphics if *yes*.
-           **background.scan_step**,   *integer*, Steps of pixels used to scan along the main dispersion direction.
-           **background.xorder**,      *integer*, Order of 2D polynomial along *x*-axis (dispersion direction).
-           **background.yorder**,      *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction).
-           **background.maxiter**,     *integer*, Maximum number of iteration of 2D polynomial fitting.
-           **background.upper_clip**,  *float*,   Upper sigma clipping threshold.
-           **background.lower_clip**,  *float*,   Lower sigma clipping threshold.
-           **background.expand_grid**, *bool*,    Expand the grid to the whole image if *True*.
+           **background.skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **background.surfix**,      *string*,  Surfix of the background correceted files
+           **background.display**,     *bool*,    Display a graphics if *yes*
+           **background.scan_step**,   *integer*, Steps of pixels used to scan along the main dispersion direction
+           **background.xorder**,      *integer*, Order of 2D polynomial along *x*-axis (dispersion direction)
+           **background.yorder**,      *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction)
+           **background.maxiter**,     *integer*, Maximum number of iteration of 2D polynomial fitting
+           **background.upper_clip**,  *float*,   Upper sigma clipping threshold
+           **background.lower_clip**,  *float*,   Lower sigma clipping threshold
+           **background.expand_grid**, *bool*,    Expand the grid to the whole image if *True*
 
 
         '''
