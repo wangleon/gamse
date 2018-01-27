@@ -11,10 +11,9 @@ from ..utils.regression import polyfit2d, polyval2d
 from ..ccdproc import save_fits, table_to_array, array_to_table
 
 def correct_background(infilename, mskfilename, outfilename, scafilename,
-        channels, apertureset_lst, scale='linear',
-        block_mask=4, scan_step=200,
+        channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clip=3., lower_clip=3.,
-        expand_grid = True, display=True, img_path = None):
+        extend=True, display=True, img_path = None):
 
     '''Subtract the background for an input FITS image.
 
@@ -22,8 +21,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         infilename (string): Name of the input file.
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
-        channels (list): List of channels.
-        aperture_lst (list): Dict of ApertureSet at different channels.
+        channels (list): List of channels as strings.
+        aperture_lst (dict): Dict of ApertureSet at different channels.
         scale (string): Scale of the image. Either 'linear' or 'log'.
         block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
@@ -34,7 +33,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
         upper_clip (float): Upper sigma clipping threshold.
         lower_clip (float): Lower sigma clipping threshold.
-        expand_grid (bool): Expand the grid to the whole image if *True*.
+        extend (bool): Extend the grid to the whole image if *True*.
         display (bool): Display figures on the screen if *True*.
         img_path (string): Path to the report directory.
 
@@ -43,6 +42,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     '''
 
     data, head = fits.getdata(infilename,header=True)
+
+    h, w = data.shape
 
     # read data mask
     mask_table = fits.getdata(mskfilename)
@@ -67,58 +68,63 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     ax11.imshow(data,cmap='gray')
 
     xnodes, ynodes, znodes = [], [], []
-    h, w = data.shape
 
     # find the minimum and maximum aperture number
     min_aper = min([min(apertuerset_lst[ch].keys()) for ch in channels])
     max_aper = max([max(apertuerset_lst[ch].keys()) for ch in channels])
 
     for x in np.arange(1, w, scan_step):
-        order_cen = []
-        for location in order_lst:
-            xdata = location['x']
-            ydata = location['y']
-            if x in xdata:
-                i = np.where(xdata == x)[0][0]
-                order_cen.append(ydata[i])
+        inter_aper = []
+        prev_newy = None
+        # loop for every aperture
+        for aper in range(min_aper, max_aper+1):
+            # for a new aperture, initialize the count of channel
+            count_channel = 0
+            for ich, channel in enumerate(channels):
+                # check every channel in this frame
+                if aper in aperture_lst[channel]:
+                    count_channel += 1
+                    this_newy = aperture_lst[channel][aper].position(x)
+                    if count_channel == 1 and prev_newy is not None:
+                        # this channel is the first channel in this aperture and
+                        # there is a previous y
+                        mid_newy = (prev_newy + this_newy)/2.
+                        inter_aper.append(mid_newy)
+                    prev_newy = this_newy
 
-        order_cen = np.array(order_cen)
-        #ax.plot(np.zeros_like(order_cen)+x, order_cen,'ro')
-        order_mid = ((order_cen + np.roll(order_cen,1))/2.)[1:]
+        inter_aper = np.array(inter_aper)
 
-        order_mid = np.int16(order_mid[::4])
-
-        # if expand_grid = True, expand the grid with polynomial fitting to
+        # if extend = True, expand the grid with polynomial fitting to
         # cover the whole CCD area
-        if expand_grid:
-            coeff = np.polyfit(np.arange(order_mid.size), order_mid, deg=3)
-            # find the points after the end of order_mid
-            ii = order_mid.size-1
-            new_y = order_mid[-1]
+        if extend:
+            coeff = np.polyfit(np.arange(inter_aper.size), inter_aper, deg=3)
+            # find the points after the end of inter_aper
+            ii = inter_aper.size-1
+            new_y = inter_aper[-1]
             while(new_y<h-1):
                 ii += 1
                 new_y = int(np.polyval(coeff,ii))
-                order_mid = np.append(order_mid,new_y)
+                inter_aper = np.append(inter_aper,new_y)
             # find the points before the beginning of order_mid
             ii = 0
-            new_y = order_mid[0]
+            new_y = inter_aper[0]
             while(new_y>0):
                 ii -= 1
                 new_y = int(np.polyval(coeff,ii))
-                order_mid = np.insert(order_mid,0,new_y)
+                inter_aper = np.insert(inter_aper,0,new_y)
 
         # remove those points with y<0 or y>h-1
-        m1 = order_mid > 0
-        m2 = order_mid < h-1
-        order_mid = order_mid[np.nonzero(m1*m2)[0]]
+        m1 = inter_aper > 0
+        m2 = inter_aper < h-1
+        inter_aper = inter_aper[np.nonzero(m1*m2)[0]]
 
         # remove backward points
-        tmp = np.insert(order_mid,0,0.)
+        tmp = np.insert(inter_aper,0,0.)
         mask = np.diff(tmp)>0
-        order_mid = order_mid[np.nonzero(mask)[0]]
+        inter_aper = inter_aper[np.nonzero(mask)[0]]
 
 
-        for y in order_mid:
+        for y in inter_aper:
             # avoid including masked pixels in fitting
             if not data_mask[y,x]:
                 xnodes.append(x)

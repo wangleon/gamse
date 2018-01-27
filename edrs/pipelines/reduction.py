@@ -1189,16 +1189,16 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 60
 
-           **background.skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **background.surfix**,      *string*,  Surfix of the background correceted files
-           **background.display**,     *bool*,    Display a graphics if *yes*
-           **background.scan_step**,   *integer*, Steps of pixels used to scan along the main dispersion direction
-           **background.xorder**,      *integer*, Order of 2D polynomial along *x*-axis (dispersion direction)
-           **background.yorder**,      *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction)
-           **background.maxiter**,     *integer*, Maximum number of iteration of 2D polynomial fitting
-           **background.upper_clip**,  *float*,   Upper sigma clipping threshold
-           **background.lower_clip**,  *float*,   Lower sigma clipping threshold
-           **background.expand_grid**, *bool*,    Expand the grid to the whole image if *True*
+           **background.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **background.surfix**,     *string*,  Surfix of the background correceted files
+           **background.display**,    *bool*,    Display a graphics if *yes*
+           **background.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
+           **background.xorder**,     *integer*, Order of 2D polynomial along *x*-axis (dispersion direction)
+           **background.yorder**,     *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction)
+           **background.maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting
+           **background.upper_clip**, *float*,   Upper sigma clipping threshold
+           **background.lower_clip**, *float*,   Lower sigma clipping threshold
+           **background.extend**,     *bool*,    Extend the grid to the whole image if *True*
 
 
         '''
@@ -1214,23 +1214,25 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
+        midproc = self.paths['midproc']
+
         # read config parameters
-        display     = self.config.getboolean('reduction', 'background.display')
-        scan_step   = self.config.getint('reduction', 'background.scan_step')
-        xorder      = self.config.getint('reduction', 'background.xorder')
-        yorder      = self.config.getint('reduction', 'background.yorder')
-        maxiter     = self.config.getint('reduction', 'background.maxiter')
-        upper_clip  = self.config.getfloat('reduction', 'background.upper_clip')
-        lower_clip  = self.config.getfloat('reduction', 'background.lower_clip')
-        expand_grid = self.config.getboolean('reduction', 'background.expand_grid')
+        display    = self.config.getboolean('reduction', 'background.display')
+        scan_step  = self.config.getint('reduction', 'background.scan_step')
+        xorder     = self.config.getint('reduction', 'background.xorder')
+        yorder     = self.config.getint('reduction', 'background.yorder')
+        maxiter    = self.config.getint('reduction', 'background.maxiter')
+        upper_clip = self.config.getfloat('reduction', 'background.upper_clip')
+        lower_clip = self.config.getfloat('reduction', 'background.lower_clip')
+        extend     = self.config.getboolean('reduction', 'background.extend')
 
         # load aperture set for different channels
         aperset_lst = {}
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
-
-            trc_file = os.path.join(self.paths['midproc'], 'flat_%s_trc.txt'%channel)
-            aperset = load_aperture_set(trc_file)
+            trcfilename = 'flat_%s_trc.txt'%channel
+            trcfile = os.path.join(midproc, trcfilename)
+            aperset = load_aperture_set(trcfile)
             aperset_lst[channel] = aperset
 
         # prepare the file queue
@@ -1243,17 +1245,23 @@ class Reduction(object):
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
-            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
-            scafilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, '_sca'))
+            infilename  = '%s%s.fits'%(item.fileid, self.input_surfix)
+            mskfilename = '%s%s.fits'%(item.fileid, self.mask_surfix)
+            outfilename = '%s%s.fits'%(item.fileid, self.output_surfix)
+            scafilename = '%s%s.fits'%(item.fileid, '_sca')
+
+            infile  = os.path.join(midproc, infilename)
+            mskfile = os.path.join(midproc, mskfilename)
+            outfile = os.path.join(midproc, outfilename)
+            scafile = os.path.join(midproc, scafilename)
+
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
 
-            infile_lst.append(infilename)
-            mskfile_lst.append(mskfilename)
-            outfile_lst.append(outfilename)
-            scafile_lst.append(scafilename)
+            infile_lst.append(infile)
+            mskfile_lst.append(mskfile)
+            outfile_lst.append(outfile)
+            scafile_lst.append(scafile)
             channel_lst.append(channels)
             scale_lst.append('linear')
 
@@ -1263,8 +1271,8 @@ class Reduction(object):
             mskfile = mskfile_lst[i]
             outfile = outfile_lst[i]
             scafile = scafile_lst[i]
-            scale   = scale_lst[i]
             channel = channel_lst[i]
+            scale   = scale_lst[i]
 
             correct_background(infile, mskfile, outfile, scafile,
                                channels        = channel,
@@ -1277,7 +1285,7 @@ class Reduction(object):
                                maxiter         = maxiter,
                                upper_clip      = upper_clip,
                                lower_clip      = lower_clip,
-                               expand_grid     = expand_grid,
+                               extend          = extend,
                                display         = display,
                                img_path        = self.paths['report_img'],
                                )
@@ -1399,12 +1407,9 @@ class Reduction(object):
     
         if len(self.flat_groups)>0:
             for flatname in sorted(self.flat_groups.keys()):
-                infilename  = os.path.join(self.paths['midproc'],
-                              '%s%s.fits'%(flatname,self.input_surfix))
-                mskfilename = os.path.join(self.paths['midproc'],
-                              '%s%s.fits'%(flatname,self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'],
-                             '%s%s.fits'%(flatname,self.output_surfix))
+                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.input_surfix))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.mask_surfix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.output_surfix))
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
@@ -1426,13 +1431,10 @@ class Reduction(object):
             for item in self.log:
                 if item.frameid not in id_lst:
                     continue
-                infilename  = os.path.join(self.paths['midproc'],
-                              '%s%s.fits'%(item.fileid,
+                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid,
                               self.config.get('reduction','bias.surfix')))
-                mskfilename = os.path.join(self.paths['midproc'],
-                              '%s%s.fits'%(item.fileid, self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'],
-                              '%s%s.fits'%(item.fileid, self.output_surfix))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
@@ -1445,12 +1447,9 @@ class Reduction(object):
         for item in self.log:
             if item.frameid not in id_lst:
                 continue
-            infilename  = os.path.join(self.paths['midproc'],
-                                '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'],
-                                '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'],
-                                '%s%s.fits'%(item.fileid, self.output_surfix))
+            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
             infile_lst.append(infilename)
             mskfile_lst.append(mskfilename)
             outfile_lst.append(outfilename)
@@ -1562,16 +1561,16 @@ class Reduction(object):
         from ..echelle.wvcalib import wvcalib, recalib, reference_wv, reference_wv_self
 
         kwargs = {
-                'linelist': self.config.get('reduction', 'wvcalib.linelist'),
-                'window_size': self.config.getint('reduction', 'wvcalib.window_size'),
-                'xorder':   self.config.getint('reduction', 'wvcalib.xorder'), 
-                'yorder':   self.config.getint('reduction', 'wvcalib.yorder'),
-                'maxiter':  self.config.getint('reduction', 'wvcalib.maxiter'),
-                'clipping': self.config.getfloat('reduction', 'wvcalib.clipping'),
+                'linelist':      self.config.get('reduction', 'wvcalib.linelist'),
+                'window_size':   self.config.getint('reduction', 'wvcalib.window_size'),
+                'xorder':        self.config.getint('reduction', 'wvcalib.xorder'), 
+                'yorder':        self.config.getint('reduction', 'wvcalib.yorder'),
+                'maxiter':       self.config.getint('reduction', 'wvcalib.maxiter'),
+                'clipping':      self.config.getfloat('reduction', 'wvcalib.clipping'),
                 'snr_threshold': self.config.getfloat('reduction', 'wvcalib.snr_threshold'),
-                'fig_width':  self.config.getint('reduction', 'wvcalib.fig_width'),
-                'fig_height': self.config.getint('reduction', 'wvcalib.fig_height'),
-                'fig_dpi':    self.config.getfloat('reduction', 'wvcalib.fig_dpi'),
+                'fig_width':     self.config.getint('reduction', 'wvcalib.fig_width'),
+                'fig_height':    self.config.getint('reduction', 'wvcalib.fig_height'),
+                'fig_dpi':       self.config.getfloat('reduction', 'wvcalib.fig_dpi'),
                 }
 
         if self.nchannels == 1:
@@ -1591,10 +1590,8 @@ class Reduction(object):
             
                 for item in self.log:
                     if item.frameid in id_lst:
-                        infilename = os.path.join(self.paths['midproc'],
-                                     '%s%s.fits'%(item.fileid, extract_surfix))
-                        mskfilename = os.path.join(self.paths['midproc'],
-                                      '%s%s.fits'%(item.fileid, self.mask_surfix))
+                        infilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, extract_surfix))
+                        mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
                         coeff = wvcalib(infilename, linelistname)
                         break
             
@@ -1604,10 +1601,8 @@ class Reduction(object):
             
                 for item in self.log:
                     if item.frameid in sci_id_lst:
-                        infilename = os.path.join(self.paths['midproc'],
-                                     '%s%s.fits'%(item.fileid, extract_surfix))
-                        outfilename = os.path.join(self.paths['midproc'],
-                                      '%s%s.fits'%(item.fileid, self.output_surfix))
+                        infilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, extract_surfix))
+                        outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
                         reference_wv(infilename, outfilename, coeff)
         else:
             # multifiber calibration
@@ -1619,15 +1614,15 @@ class Reduction(object):
             for ichannel in range(self.nchannels):
                 channel = chr(ichannel+65)
                 thar_lst[channel] = [item for item in self.log
-                                        if len(item.objectname) == self.nchannels and 
-                                            item.objectname[ichannel] == 'ThAr']
+                                     if len(item.objectname) == self.nchannels and 
+                                     item.objectname[ichannel] == 'ThAr']
 
             calib_lst = {}
             for ich, (channel, item_lst) in enumerate(sorted(thar_lst.items())):
                 kwargs['channel'] = channel
                 for i, item in enumerate(item_lst):
-                    filename = os.path.join(self.paths['midproc'],
-                               '%s%s.fits'%(item.fileid, self.input_surfix))
+                    filename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+
                     if ich == 0 and i == 0:
                         calib = wvcalib(filename, **kwargs)
                         ref_calib = calib
@@ -1660,10 +1655,8 @@ class Reduction(object):
             # find file to calibrate
             for item in self.log:
                 if item.imagetype == 'sci':
-                    infilename = os.path.join(self.paths['midproc'],
-                                              '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(self.paths['midproc'],
-                                              '%s%s.fits'%(item.fileid, self.output_surfix))
+                    infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
                     refcalib_lst = {}
                     # search for ref thar
                     for ichannel in range(len(item.objectname)):
@@ -1688,10 +1681,8 @@ class Reduction(object):
 
             for item in self.log:
                 if item.frameid in calib_lst:
-                    infilename = os.path.join(self.paths['midproc'],
-                                              '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(self.paths['midproc'],
-                                              '%s%s.fits'%(item.fileid, self.output_surfix))
+                    infilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
                     reference_wv_self(infilename, outfilename, calib_lst[item.frameid])
 
 
