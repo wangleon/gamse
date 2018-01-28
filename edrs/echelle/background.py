@@ -13,7 +13,7 @@ from ..ccdproc import save_fits, table_to_array, array_to_table
 def correct_background(infilename, mskfilename, outfilename, scafilename,
         channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clip=3., lower_clip=3.,
-        extend=True, display=True, img_path = None):
+        extend=True, display=True, img_path=None, reg_file=None):
 
     '''Subtract the background for an input FITS image.
 
@@ -63,6 +63,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     max_aper = max([max(apertureset_lst[ch].dict.keys()) for ch in channels])
 
     for x in np.arange(1, w, scan_step):
+        xsection = meddata[:,x]
         inter_aper = []
         prev_newy = None
         # loop for every aperture
@@ -78,7 +79,12 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
                         # this channel is the first channel in this aperture and
                         # there is a previous y
                         mid_newy = int((prev_newy + this_newy)/2.)
-                        inter_aper.append(mid_newy)
+                        i1 = max(0,  int(prev_newy))
+                        i2 = min(h-1,int(this_newy))
+                        if len(inter_aper)==0 or \
+                            abs(mid_newy - inter_aper[-1])>scan_step*0.6:
+                            mid_newy = i1 + xsection[i1:i2].argmin()
+                            inter_aper.append(mid_newy)
                     prev_newy = this_newy
 
         inter_aper = np.array(inter_aper)
@@ -139,9 +145,9 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     # initialize figures
     fig1 = plt.figure(figsize=(12,6), dpi=150)
-    ax11 = fig1.add_axes([0.07, 0.11, 0.38, 0.76])
-    ax12 = fig1.add_axes([0.52, 0.11, 0.38, 0.76])
-    ax13 = fig1.add_axes([0.93, 0.11, 0.02, 0.76])
+    ax11 = fig1.add_axes([0.07, 0.11, 0.39,  0.78])
+    ax12 = fig1.add_axes([0.52, 0.11, 0.39,  0.78])
+    ax13 = fig1.add_axes([0.94, 0.11, 0.015, 0.78])
     
     fig2 = plt.figure(figsize=(12,6), dpi=150)
     ax21 = fig2.add_subplot(121, projection='3d')
@@ -267,6 +273,22 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     save_fits(outfilename, corrected_data,  head) 
     save_fits(scafilename, background_data, head) 
+
+
+    if reg_file is not None:
+        outfile = open(reg_file, 'w')
+        outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
+        outfile.write('global color=green dashlist=8 3 width=1 ')
+        outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
+        outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
+        outfile.write('source=1'+os.linesep)
+        outfile.write('physical'+os.linesep)
+        for x, y in zip(xnodes, ynodes):
+            text = ('point(%4d %4d) # point=circle'%(x+1, y+1))
+            outfile.write(text+os.linesep)
+        outfile.close()
+
+
 
     if img_path is not None:
         filename = os.path.basename(infilename)

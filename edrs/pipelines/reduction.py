@@ -1242,6 +1242,7 @@ class Reduction(object):
         scafile_lst = []
         scale_lst   = [] # different files use differenet scales
         channel_lst = []
+        regfile_lst = []
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
@@ -1249,11 +1250,13 @@ class Reduction(object):
             mskfilename = '%s%s.fits'%(item.fileid, self.mask_surfix)
             outfilename = '%s%s.fits'%(item.fileid, self.output_surfix)
             scafilename = '%s%s.fits'%(item.fileid, '_sca')
+            regfilename = '%s%s.reg'%(item.fileid, self.output_surfix)
 
             infile  = os.path.join(midproc, infilename)
             mskfile = os.path.join(midproc, mskfilename)
             outfile = os.path.join(midproc, outfilename)
             scafile = os.path.join(midproc, scafilename)
+            regfile = os.path.join(midproc, regfilename)
 
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
@@ -1262,6 +1265,7 @@ class Reduction(object):
             mskfile_lst.append(mskfile)
             outfile_lst.append(outfile)
             scafile_lst.append(scafile)
+            regfile_lst.append(regfile)
             channel_lst.append(channels)
             scale_lst.append('linear')
 
@@ -1271,6 +1275,7 @@ class Reduction(object):
             mskfile = mskfile_lst[i]
             outfile = outfile_lst[i]
             scafile = scafile_lst[i]
+            regfile = regfile_lst[i]
             channel = channel_lst[i]
             scale   = scale_lst[i]
 
@@ -1288,8 +1293,9 @@ class Reduction(object):
                                extend          = extend,
                                display         = display,
                                img_path        = self.paths['report_img'],
+                               reg_file        = regfile,
                                )
-            exit()
+        exit()
 
     
         # prepare the file queue
