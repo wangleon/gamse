@@ -22,7 +22,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
         channels (list): List of channels as strings.
-        aperture_lst (dict): Dict of ApertureSet at different channels.
+        apertureset_lst (dict): Dict of ApertureSet at different channels.
         scale (string): Scale of the image. Either 'linear' or 'log'.
         block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
@@ -55,23 +55,12 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
 
-    # initialize figures
-    fig1 = plt.figure(figsize=(12,6), dpi=150)
-    ax11 = fig1.add_axes([0.10, 0.15, 0.35, 0.70])
-    ax12 = fig1.add_axes([0.53, 0.15, 0.35, 0.70])
-    ax13 = fig1.add_axes([0.92, 0.15, 0.02, 0.70])
-    
-    fig2 = plt.figure(figsize=(12,6), dpi=150)
-    ax21 = fig2.add_subplot(121, projection='3d')
-    ax22 = fig2.add_subplot(122, projection='3d')
-    fig1.suptitle('Background of %s'%os.path.basename(infilename))
-    ax11.imshow(data,cmap='gray')
 
     xnodes, ynodes, znodes = [], [], []
 
     # find the minimum and maximum aperture number
-    min_aper = min([min(apertuerset_lst[ch].keys()) for ch in channels])
-    max_aper = max([max(apertuerset_lst[ch].keys()) for ch in channels])
+    min_aper = min([min(apertureset_lst[ch].dict.keys()) for ch in channels])
+    max_aper = max([max(apertureset_lst[ch].dict.keys()) for ch in channels])
 
     for x in np.arange(1, w, scan_step):
         inter_aper = []
@@ -82,13 +71,13 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
             count_channel = 0
             for ich, channel in enumerate(channels):
                 # check every channel in this frame
-                if aper in aperture_lst[channel]:
+                if aper in apertureset_lst[channel]:
                     count_channel += 1
-                    this_newy = aperture_lst[channel][aper].position(x)
+                    this_newy = apertureset_lst[channel][aper].position(x)
                     if count_channel == 1 and prev_newy is not None:
                         # this channel is the first channel in this aperture and
                         # there is a previous y
-                        mid_newy = (prev_newy + this_newy)/2.
+                        mid_newy = int((prev_newy + this_newy)/2.)
                         inter_aper.append(mid_newy)
                     prev_newy = this_newy
 
@@ -123,7 +112,6 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         mask = np.diff(tmp)>0
         inter_aper = inter_aper[np.nonzero(mask)[0]]
 
-
         for y in inter_aper:
             # avoid including masked pixels in fitting
             if not data_mask[y,x]:
@@ -149,8 +137,26 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     nodefile.close()
 
 
+    # initialize figures
+    fig1 = plt.figure(figsize=(12,6), dpi=150)
+    ax11 = fig1.add_axes([0.07, 0.11, 0.38, 0.76])
+    ax12 = fig1.add_axes([0.52, 0.11, 0.38, 0.76])
+    ax13 = fig1.add_axes([0.93, 0.11, 0.02, 0.76])
+    
+    fig2 = plt.figure(figsize=(12,6), dpi=150)
+    ax21 = fig2.add_subplot(121, projection='3d')
+    ax22 = fig2.add_subplot(122, projection='3d')
+    fig1.suptitle('Background of %s'%os.path.basename(infilename))
+    ax11.imshow(data,cmap='gray')
     # plot nodes
-    ax11.scatter(xnodes, ynodes, c='r', s=10, linewidth=0)
+    ax11.scatter(xnodes, ynodes, c='r', s=8, linewidth=0, alpha=0.8)
+    for ax in fig1.get_axes()[0:2]:
+        ax.set_xlim(0,w-1)
+        ax.set_ylim(h-1,0)
+    for ax in fig2.get_axes():
+        ax.set_xlim(0,w-1)
+        ax.set_ylim(0,h-1)
+    plt.show(block=False)
 
     # normalize to 0 ~ 1 for x and y nodes
     xfit = np.float64(xnodes)/w
@@ -168,8 +174,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
                           xorder=xorder, yorder=yorder)
         fitvalues = polyval2d(xfit, yfit, coeff)
         residual = zfit - fitvalues
-        mean  = residual[fitmask].mean(dtype='float64')
-        sigma = residual[fitmask].std(dtype='float64')
+        mean  = residual[fitmask].mean(dtype=np.float64)
+        sigma = residual[fitmask].std(dtype=np.float64)
         m1 = residual < mean + upper_clip*sigma
         m2 = residual > mean - lower_clip*sigma
         new_fitmask = m1*m2
@@ -189,30 +195,26 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         zz = np.exp(log_zz)
 
     # plot 2d fitting in a 3-D axis in fig2
-    ms = 3
-    alpha=0.5
-    fontsize=9
     for ax in fig2.get_axes():
         ax.cla()
-    title2 = fig2.suptitle('')
-    title2.set_text('3D Background of %s'%os.path.basename(infilename))
+    fig2.suptitle('3D Background of %s'%os.path.basename(infilename))
     # plot the linear fitting
     ax21 = fig2.get_axes()[0]
     ax22 = fig2.get_axes()[1]
-    ax21.set_title('Background fitting (linear Z)',fontsize=fontsize)
-    ax22.set_title('residuals (linear Z)',         fontsize=fontsize)
+    ax21.set_title('Background fitting (linear Z)',fontsize=10)
+    ax22.set_title('residuals (linear Z)',         fontsize=10)
     ax21.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
-                      linewidth=0, antialiased=True, alpha=alpha)
+                      linewidth=0, antialiased=True, alpha=0.5)
     ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],   linewidth=0)
     ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask], linewidth=0)
     if scale=='log':
         # plot the logrithm fitting
         ax23 = fig2.get_axes()[2]
         ax24 = fig2.get_axes()[3]
-        ax23.set_title('Background fitting (log Z)',   fontsize=fontsize)
-        ax24.set_title('residuals (log Z)',            fontsize=fontsize)
+        ax23.set_title('Background fitting (log Z)',   fontsize=10)
+        ax24.set_title('residuals (log Z)',            fontsize=10)
         ax23.plot_surface(xx, yy, log_zz, rstride=1, cstride=1, cmap='jet',
-                          linewidth=0, antialiased=True, alpha=alpha)
+                          linewidth=0, antialiased=True, alpha=0.5)
         ax23.scatter(xnodes[fitmask], ynodes[fitmask], zfit[fitmask],         linewidth=0)
         ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
 
@@ -223,8 +225,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
         ax.yaxis.set_major_locator(tck.MultipleLocator(500))
         ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
-        ax.set_xlabel('X (pixel)')
-        ax.set_ylabel('Y (pixel)')
+        ax.set_xlabel('X (pixel)', fontsize=10)
+        ax.set_ylabel('Y (pixel)', fontsize=10)
     fig2.canvas.draw()
 
     # calculate the background
@@ -241,13 +243,23 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
                              vmax = background_data.max())
     scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
     image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
-    ax12.scatter(xnodes, ynodes, c=znodes, s=10, cmap=scalarmap.get_cmap())
-    plt.colorbar(image,cax=ax13)
+    ax12.scatter(xnodes, ynodes, c=znodes, s=8, lw=0.5, cmap=scalarmap.get_cmap())
+    for ax in [ax11, ax12]:
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(9)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(9)
+    # set colorbar
+    plt.colorbar(image, cax=ax13)
+    # set font size of colorbar
+    for tick in ax13.get_yaxis().get_major_ticks():
+        tick.label2.set_fontsize(9)
+    # set axes of fig1
     for ax in fig1.get_axes()[0:2]:
         ax.set_xlim(0,w-1)
         ax.set_ylim(h-1,0)
-        ax.set_xlabel('X (pixel)')
-        ax.set_ylabel('Y (pixel)')
+        ax.set_xlabel('X (pixel)', fontsize=10)
+        ax.set_ylabel('Y (pixel)', fontsize=10)
     fig1.canvas.draw()
 
     # correct background
@@ -256,13 +268,12 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     save_fits(outfilename, corrected_data,  head) 
     save_fits(scafilename, background_data, head) 
 
-    if report_img_path != None:
-        fig1.savefig(os.path.join(report_img_path,
-                'bkg-overview-%s.png'%os.path.basename(infilename)
-            ))
-        fig2.savefig(os.path.join(report_img_path,
-                'bkg-overview-3d-%s.png'%os.path.basename(infilename)
-            ))
+    if img_path is not None:
+        filename = os.path.basename(infilename)
+        fig1.savefig(os.path.join(img_path, 'bkg-overview-%s.png'%filename))
+        fig2.savefig(os.path.join(img_path, 'bkg-overview-3d-%s.png'%filename))
+        plt.close(fig1)
+        plt.close(fig2)
 
         #for ii in xrange(0,360,15):
         #    for ax in fig2.get_axes():

@@ -1071,7 +1071,7 @@ class Reduction(object):
 
                     if True:
                         #temporarily added for debug
-                        aperture_set = load_aperture_set(trace_result_file)
+                        aperture_set = load_aperture_set(trc_file)
                     else:
                         aperture_set = find_apertures(data, **kwargs)
 
