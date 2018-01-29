@@ -1242,30 +1242,21 @@ class Reduction(object):
         scafile_lst = []
         scale_lst   = [] # different files use differenet scales
         channel_lst = []
+        figfile_lst = []
         regfile_lst = []
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
-            infilename  = '%s%s.fits'%(item.fileid, self.input_surfix)
-            mskfilename = '%s%s.fits'%(item.fileid, self.mask_surfix)
-            outfilename = '%s%s.fits'%(item.fileid, self.output_surfix)
-            scafilename = '%s%s.fits'%(item.fileid, '_sca')
-            regfilename = '%s%s.reg'%(item.fileid, self.output_surfix)
 
-            infile  = os.path.join(midproc, infilename)
-            mskfile = os.path.join(midproc, mskfilename)
-            outfile = os.path.join(midproc, outfilename)
-            scafile = os.path.join(midproc, scafilename)
-            regfile = os.path.join(midproc, regfilename)
+            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
+            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
+            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
+            scafile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, '_sca')))
+            regfile_lst.append(os.path.join(midproc, '%s%s.reg'%(item.fileid, self.output_surfix)))
+            figfile_lst.append(os.path.join(self.paths['report_img'], 'bkg-%s.png'%item.fileid))
 
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
-
-            infile_lst.append(infile)
-            mskfile_lst.append(mskfile)
-            outfile_lst.append(outfile)
-            scafile_lst.append(scafile)
-            regfile_lst.append(regfile)
             channel_lst.append(channels)
             scale_lst.append('linear')
 
@@ -1276,6 +1267,7 @@ class Reduction(object):
             outfile = outfile_lst[i]
             scafile = scafile_lst[i]
             regfile = regfile_lst[i]
+            figfile = figfile_lst[i]
             channel = channel_lst[i]
             scale   = scale_lst[i]
 
@@ -1292,7 +1284,7 @@ class Reduction(object):
                                lower_clip      = lower_clip,
                                extend          = extend,
                                display         = display,
-                               img_path        = self.paths['report_img'],
+                               fig_file        = figfile,
                                reg_file        = regfile,
                                )
         exit()

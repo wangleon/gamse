@@ -13,7 +13,7 @@ from ..ccdproc import save_fits, table_to_array, array_to_table
 def correct_background(infilename, mskfilename, outfilename, scafilename,
         channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clip=3., lower_clip=3.,
-        extend=True, display=True, img_path=None, reg_file=None):
+        extend=True, display=True, fig_file=None, reg_file=None):
 
     '''Subtract the background for an input FITS image.
 
@@ -40,6 +40,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     Returns:
         No returns.
     '''
+    
+    plot = (display or fig_file is not None)
 
     data, head = fits.getdata(infilename,header=True)
 
@@ -54,7 +56,6 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     data_mask = (np.int16(mask) & block_mask > 0)
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
-
 
     xnodes, ynodes, znodes = [], [], []
 
@@ -143,26 +144,28 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     nodefile.close()
 
 
-    # initialize figures
-    fig1 = plt.figure(figsize=(12,6), dpi=150)
-    ax11 = fig1.add_axes([0.07, 0.11, 0.39,  0.78])
-    ax12 = fig1.add_axes([0.52, 0.11, 0.39,  0.78])
-    ax13 = fig1.add_axes([0.94, 0.11, 0.015, 0.78])
-    
-    fig2 = plt.figure(figsize=(12,6), dpi=150)
-    ax21 = fig2.add_subplot(121, projection='3d')
-    ax22 = fig2.add_subplot(122, projection='3d')
-    fig1.suptitle('Background of %s'%os.path.basename(infilename))
-    ax11.imshow(data,cmap='gray')
-    # plot nodes
-    ax11.scatter(xnodes, ynodes, c='r', s=8, linewidth=0, alpha=0.8)
-    for ax in fig1.get_axes()[0:2]:
-        ax.set_xlim(0,w-1)
-        ax.set_ylim(h-1,0)
-    for ax in fig2.get_axes():
-        ax.set_xlim(0,w-1)
-        ax.set_ylim(0,h-1)
-    plt.show(block=False)
+    if plot:
+        # initialize figures
+        fig = plt.figure(figsize=(12,12), dpi=150)
+        ax11 = fig.add_axes([0.07, 0.54, 0.39,  0.39])
+        ax12 = fig.add_axes([0.52, 0.54, 0.39,  0.39])
+        ax13 = fig.add_axes([0.94, 0.54, 0.015, 0.39])
+        ax21 = fig.add_axes([0.07, 0.07, 0.39,  0.39], projection='3d')
+        ax22 = fig.add_axes([0.52, 0.07, 0.39,  0.39], projection='3d')
+
+        fig.suptitle('Background of %s'%os.path.basename(infilename))
+        ax11.imshow(data, cmap='gray')
+
+        # plot nodes
+        ax11.scatter(xnodes, ynodes, c='r', s=8, linewidth=0, alpha=0.8)
+        for ax in [ax11, ax12]:
+            ax.set_xlim(0,w-1)
+            ax.set_ylim(h-1,0)
+        for ax in [ax21, ax22]:
+            ax.set_xlim(0,w-1)
+            ax.set_ylim(0,h-1)
+
+        if display: plt.show(block=False)
 
     # normalize to 0 ~ 1 for x and y nodes
     xfit = np.float64(xnodes)/w
@@ -193,47 +196,40 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         log_residual = residual
         residual = znodes - np.exp(fitvalues)
 
-    # prepare for plotting the fitted surface with a loose grid
-    xx, yy = np.meshgrid(np.linspace(0,w-1,32), np.linspace(0,h-1,32))
-    zz = polyval2d(xx/w, yy/h, coeff)
-    if scale=='log':
-        log_zz = zz
-        zz = np.exp(log_zz)
+    if plot:
+        # prepare for plotting the fitted surface with a loose grid
+        xx, yy = np.meshgrid(np.linspace(0,w-1,32), np.linspace(0,h-1,32))
+        zz = polyval2d(xx/w, yy/h, coeff)
+        if scale=='log':
+            log_zz = zz
+            zz = np.exp(log_zz)
 
-    # plot 2d fitting in a 3-D axis in fig2
-    for ax in fig2.get_axes():
-        ax.cla()
-    fig2.suptitle('3D Background of %s'%os.path.basename(infilename))
-    # plot the linear fitting
-    ax21 = fig2.get_axes()[0]
-    ax22 = fig2.get_axes()[1]
-    ax21.set_title('Background fitting (linear Z)',fontsize=10)
-    ax22.set_title('residuals (linear Z)',         fontsize=10)
-    ax21.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
-                      linewidth=0, antialiased=True, alpha=0.5)
-    ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],   linewidth=0)
-    ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask], linewidth=0)
-    if scale=='log':
-        # plot the logrithm fitting
-        ax23 = fig2.get_axes()[2]
-        ax24 = fig2.get_axes()[3]
-        ax23.set_title('Background fitting (log Z)',   fontsize=10)
-        ax24.set_title('residuals (log Z)',            fontsize=10)
-        ax23.plot_surface(xx, yy, log_zz, rstride=1, cstride=1, cmap='jet',
+        # plot 2d fitting in a 3-D axis in fig2
+        # plot the linear fitting
+        ax21.set_title('Background fitting (linear Z)',fontsize=10)
+        ax22.set_title('residuals (linear Z)',         fontsize=10)
+        ax21.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
                           linewidth=0, antialiased=True, alpha=0.5)
-        ax23.scatter(xnodes[fitmask], ynodes[fitmask], zfit[fitmask],         linewidth=0)
-        ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
+        ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],   linewidth=0)
+        ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask], linewidth=0)
+        if scale=='log':
+            # plot the logrithm fitting
+            ax23.plot_surface(xx, yy, log_zz, rstride=1, cstride=1, cmap='jet',
+                                linewidth=0, antialiased=True, alpha=0.5)
+            ax23.scatter(xnodes[fitmask], ynodes[fitmask], zfit[fitmask],         linewidth=0)
+            ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
 
-    for ax in fig2.get_axes():
-        ax.set_xlim(0,w-1)
-        ax.set_ylim(0,h-1)
-        ax.xaxis.set_major_locator(tck.MultipleLocator(500))
-        ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
-        ax.yaxis.set_major_locator(tck.MultipleLocator(500))
-        ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
-        ax.set_xlabel('X (pixel)', fontsize=10)
-        ax.set_ylabel('Y (pixel)', fontsize=10)
-    fig2.canvas.draw()
+        for ax in [ax21, ax22]:
+            ax.set_xlim(0, w-1)
+            ax.set_ylim(0, h-1)
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.set_xlabel('X (pixel)', fontsize=10)
+            ax.set_ylabel('Y (pixel)', fontsize=10)
+
+        if display: fig.canvas.draw()
 
     # calculate the background
     xx, yy = np.meshgrid(np.arange(w), np.arange(h))
@@ -244,29 +240,31 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     elif scale=='linear':
         background_data = polyval2d(xx, yy, coeff)
 
-    # plot the background light in fig1
-    cnorm = colors.Normalize(vmin = background_data.min(),
-                             vmax = background_data.max())
-    scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
-    image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
-    ax12.scatter(xnodes, ynodes, c=znodes, s=8, lw=0.5, cmap=scalarmap.get_cmap())
-    for ax in [ax11, ax12]:
-        for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(9)
-        for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(9)
-    # set colorbar
-    plt.colorbar(image, cax=ax13)
-    # set font size of colorbar
-    for tick in ax13.get_yaxis().get_major_ticks():
-        tick.label2.set_fontsize(9)
-    # set axes of fig1
-    for ax in fig1.get_axes()[0:2]:
-        ax.set_xlim(0,w-1)
-        ax.set_ylim(h-1,0)
-        ax.set_xlabel('X (pixel)', fontsize=10)
-        ax.set_ylabel('Y (pixel)', fontsize=10)
-    fig1.canvas.draw()
+    if plot:
+        # plot the background light
+        cnorm = colors.Normalize(vmin = background_data.min(),
+                                 vmax = background_data.max())
+        scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
+        image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
+        ax12.scatter(xnodes, ynodes, c=znodes, s=8, lw=0.5, cmap=scalarmap.get_cmap())
+        for ax in [ax11, ax12]:
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+        # set colorbar
+        plt.colorbar(image, cax=ax13)
+        # set font size of colorbar
+        for tick in ax13.get_yaxis().get_major_ticks():
+            tick.label2.set_fontsize(9)
+        # set axes of fig1
+        for ax in [ax11, ax12]:
+            ax.set_xlim(0,w-1)
+            ax.set_ylim(h-1,0)
+            ax.set_xlabel('X (pixel)', fontsize=10)
+            ax.set_ylabel('Y (pixel)', fontsize=10)
+
+        if display: fig.canvas.draw()
 
     # correct background
     corrected_data = data - background_data
@@ -289,16 +287,13 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         outfile.close()
 
 
-
-    if img_path is not None:
-        filename = os.path.basename(infilename)
-        fig1.savefig(os.path.join(img_path, 'bkg-overview-%s.png'%filename))
-        fig2.savefig(os.path.join(img_path, 'bkg-overview-3d-%s.png'%filename))
-        plt.close(fig1)
-        plt.close(fig2)
-
+    if fig_file is not None:
+        fig.savefig(fig_file)
         #for ii in xrange(0,360,15):
         #    for ax in fig2.get_axes():
         #        ax.view_init(elev=20.,azim=ii)
         #    fig2.savefig('bkg-overview-3d-%s-%03d.png'%(
         #              os.path.basename(infilename),ii))
+
+    plt.close(fig)
+
