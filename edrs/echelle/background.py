@@ -1,6 +1,11 @@
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
 import numpy as np
 from scipy.ndimage.filters import median_filter
+import scipy.interpolate as intp
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -35,7 +40,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         lower_clip (float): Lower sigma clipping threshold.
         extend (bool): Extend the grid to the whole image if *True*.
         display (bool): Display figures on the screen if *True*.
-        img_path (string): Path to the report directory.
+        fig_file (string): Name of the output figure.
+        reg_file (string): Name of the output DS9 region file.
 
     Returns:
         No returns.
@@ -43,7 +49,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     
     plot = (display or fig_file is not None)
 
-    data, head = fits.getdata(infilename,header=True)
+    data, head = fits.getdata(infilename, header=True)
 
     h, w = data.shape
 
@@ -131,17 +137,12 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     ynodes = np.array(ynodes)
     znodes = np.array(znodes)
     
-    # if scale='log', then filter the negative values
+    # if scale='log', filter the negative values
     if scale=='log':
         mask = znodes > 0
         xnodes = xnodes[mask]
         ynodes = ynodes[mask]
         znodes = znodes[mask]
-
-    nodefile = open(outfilename[0:-5]+'_nodes.txt','w')
-    for x,y,z in zip(xnodes, ynodes, znodes):
-        nodefile.write('%4d %4d %+10.8e%s'%(x,y,z,os.linesep))
-    nodefile.close()
 
 
     if plot:
@@ -161,9 +162,25 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         for ax in [ax11, ax12]:
             ax.set_xlim(0,w-1)
             ax.set_ylim(h-1,0)
+            ax.set_xlabel('X (pixel)', fontsize=10)
+            ax.set_ylabel('Y (pixel)', fontsize=10)
         for ax in [ax21, ax22]:
             ax.set_xlim(0,w-1)
             ax.set_ylim(0,h-1)
+            ax.set_xlabel('X (pixel)', fontsize=10)
+            ax.set_ylabel('Y (pixel)', fontsize=10)
+        for ax in [ax11, ax12]:
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+        for ax in [ax21, ax22]:
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
+            for tick in ax.zaxis.get_major_ticks():
+                tick.label1.set_fontsize(9)
 
         if display: plt.show(block=False)
 
@@ -192,6 +209,14 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
             break
         fitmask = new_fitmask
 
+    # write nodes to running log
+    message = ['Background Nodes for "%s":'%infilename,
+                ' x,    y,    value,  mask']
+    for x,y,z,m in zip(xnodes, ynodes, znodes, fitmask):
+        message.append('%4d %4d %+10.8e %2d'%(x,y,z,m))
+    logger.info((os.linesep+' '*4).join(message))
+
+
     if scale=='log':
         log_residual = residual
         residual = znodes - np.exp(fitvalues)
@@ -206,28 +231,29 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
         # plot 2d fitting in a 3-D axis in fig2
         # plot the linear fitting
-        ax21.set_title('Background fitting (linear Z)',fontsize=10)
-        ax22.set_title('residuals (linear Z)',         fontsize=10)
+        ax21.set_title('Background fitting (%s Z)'%scale, fontsize=10)
+        ax22.set_title('residuals (%s Z)'%scale, fontsize=10)
         ax21.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
                           linewidth=0, antialiased=True, alpha=0.5)
         ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],   linewidth=0)
         ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask], linewidth=0)
-        if scale=='log':
-            # plot the logrithm fitting
-            ax23.plot_surface(xx, yy, log_zz, rstride=1, cstride=1, cmap='jet',
-                                linewidth=0, antialiased=True, alpha=0.5)
-            ax23.scatter(xnodes[fitmask], ynodes[fitmask], zfit[fitmask],         linewidth=0)
-            ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
+
+        # plot the logrithm fitting in another fig
+        #if scale=='log':
+        #    ax23.plot_surface(xx, yy, log_zz, rstride=1, cstride=1, cmap='jet',
+        #                        linewidth=0, antialiased=True, alpha=0.5)
+        #    ax23.scatter(xnodes[fitmask], ynodes[fitmask], zfit[fitmask],         linewidth=0)
+        #    ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
 
         for ax in [ax21, ax22]:
-            ax.set_xlim(0, w-1)
-            ax.set_ylim(0, h-1)
+            #ax.set_xlim(0, w-1)
+            #ax.set_ylim(0, h-1)
             ax.xaxis.set_major_locator(tck.MultipleLocator(500))
             ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
             ax.yaxis.set_major_locator(tck.MultipleLocator(500))
             ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
-            ax.set_xlabel('X (pixel)', fontsize=10)
-            ax.set_ylabel('Y (pixel)', fontsize=10)
+            #ax.set_xlabel('X (pixel)', fontsize=10)
+            #ax.set_ylabel('Y (pixel)', fontsize=10)
 
         if display: fig.canvas.draw()
 
@@ -247,22 +273,11 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
         image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
         ax12.scatter(xnodes, ynodes, c=znodes, s=8, lw=0.5, cmap=scalarmap.get_cmap())
-        for ax in [ax11, ax12]:
-            for tick in ax.xaxis.get_major_ticks():
-                tick.label1.set_fontsize(9)
-            for tick in ax.yaxis.get_major_ticks():
-                tick.label1.set_fontsize(9)
         # set colorbar
         plt.colorbar(image, cax=ax13)
         # set font size of colorbar
         for tick in ax13.get_yaxis().get_major_ticks():
             tick.label2.set_fontsize(9)
-        # set axes of fig1
-        for ax in [ax11, ax12]:
-            ax.set_xlim(0,w-1)
-            ax.set_ylim(h-1,0)
-            ax.set_xlabel('X (pixel)', fontsize=10)
-            ax.set_ylabel('Y (pixel)', fontsize=10)
 
         if display: fig.canvas.draw()
 
@@ -273,6 +288,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     save_fits(scafilename, background_data, head) 
 
 
+    # save nodes to DS9 region file
     if reg_file is not None:
         outfile = open(reg_file, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
