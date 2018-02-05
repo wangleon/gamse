@@ -7,13 +7,17 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
-def sum_extract(infilename, mskfilename, outfilename, order_lst, figure=None):
+def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
+    upper_limit=5, lowr_limit=5, figure=None):
     '''Extract spectra from an individual image.
     
     Args:
-        infilename (string): Name of the input image
-        outfilename (string): Name of the output image
-        order_lst (list): List containing the locations of each order
+        infilename (string): Name of the input image.
+        outfilename (string): Name of the output image.
+        channels (list): List of channels as strings.
+        apertureset_lst (dict): Dict of ApertureSet at different channels.
+        upper_limit (float): Upper limit of the extracted aperture.
+        lower_limit (float): Lower limit of the extracted aperture.
         figure (:class:`matplotlib.figure`): Figure to display the 1d spectra
     Returns:
         No returns
@@ -31,10 +35,11 @@ def sum_extract(infilename, mskfilename, outfilename, order_lst, figure=None):
     
     # define a numpy structured array
     types = [
-            ('order',  np.int32),
-            ('points', np.int32),
-            ('flux',   '(%d,)float32'%w),
-            ('mask',   '(%d,)int16'%w),
+            ('aperture', np.int32),
+            ('channel',  '|1S'),
+            ('points',   np.int32),
+            ('flux',    '(%d,)float32'%w),
+            ('mask',    '(%d,)int16'%w),
             ]
     tmp = zip(*types)
     eche_spec = np.dtype({'names':tmp[0], 'formats':tmp[1]})
@@ -44,8 +49,8 @@ def sum_extract(infilename, mskfilename, outfilename, order_lst, figure=None):
         xdata = location['x']
         ydata = location['y']
 
-        m1 = yy > ydata - 6.
-        m2 = yy < ydata + 6.
+        m1 = yy > ydata - lower_limit
+        m2 = yy < ydata + upper_limit
         mask = m1*m2
 
         fluxdata = (data*mask).sum(axis=0)

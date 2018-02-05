@@ -266,12 +266,11 @@ class Reduction(object):
         return bias_id_lst
 
     def find_trace(self):
-        '''Find trace frames.
-
-        Scan the log file and find items with "objectname" containg "bias".
+        '''Scan the log file and find trace items in any channel.
 
         Returns:
-            dict: A dict containing the items of trace frames in each channel.
+            dict: A dict containing the :class:`LogItem` instances of trace
+                frames in each channel.
         '''
         message = ['Finding Traces', 'channel frameid fileid']
         find_trace = False
@@ -315,8 +314,29 @@ class Reduction(object):
 
     def find_science(self):
         '''Find science items.
+
+        Returns:
+            list: A list containing the :class:`LogItem` instances for
+                scientific objects.
         '''
         item_lst = [item for item in self.log if item.imagetype=='sci']
+        return item_lst
+
+    def find_comp(self):
+        '''Scan the log file and find comparison items.
+
+        Returns:
+            list: A list containing the :class:`LogItem` instances for
+                comparison lamps.
+        '''
+        item_lst = []
+        for item in self.log:
+            if item.imagetype=='cal':
+                for ich in range(self.nchannels):
+                    name = item.objectname[ich]
+                    if name.lower().strip()=='thar':
+                        item_lst.append(item)
+                        break
         return item_lst
 
     def bias(self):
@@ -1371,7 +1391,17 @@ class Reduction(object):
 
     def extract(self):
         '''
-        Extract 1d spectra
+        Extract 1d spectra.
+
+        .. csv-table:: Accepted options in config file
+           :header: Option, Type, Description
+           :widths: 25, 10, 60
+
+           **extract.skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **extract.surfix**,      *string*,  Surfix of the extracted files
+           **extract.upper_limit**, *float*,   Upper limit of extracted aperture
+           **extract.lower_limit**, *float*,   Lower limit of extracted aperture
+
         '''
         # find output surfix for fits
         self.output_surfix = self.config.get('reduction', 'extract.surfix')
@@ -1382,6 +1412,61 @@ class Reduction(object):
             return True
 
         from ..echelle.extract import sum_extract
+
+        midproc = self.paths['midproc']
+
+        upper_limit = self.config.getfloat('reduction', 'extract.upper_limit')
+        lower_limit = self.config.getfloat('reduction', 'extract.lower_limit')
+
+        # load aperture set for different channels
+        aperset_lst = {}
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
+            trcfilename = 'flat_%s_trc.txt'%channel
+            trcfile = os.path.join(midproc, trcfilename)
+            aperset = load_aperture_set(trcfile)
+            aperset_lst[channel] = aperset
+
+        # prepare the file queue
+        infile_lst  = []
+        mskfile_lst = []
+        outfile_lst = []
+        channel_lst = []
+
+        # add comparison lamps to the queue
+        comp_item_lst = self.find_comp()
+        for item in comp_item_lst:
+            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
+            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
+            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
+            channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
+                            if len(objectname)>0]
+            channel_lst.append(channels)
+
+        # add scientific frames to the queue
+        sci_item_lst = self.find_science()
+        for item in sci_item_lst:
+            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
+            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
+            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
+            channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
+                            if len(objectname)>0]
+            channel_lst.append(channels)
+
+        for i in range(len(infile_lst)):
+            infile = infile_lst[i]
+            mskfile = mskfile_lst[i]
+            outfile = outfile_lst[i]
+            channel = channle_lst[i]
+
+            sum_extract(infile, mskfile, outfile,
+                        channels         = channel,
+                        apertureset_lsts = aperset_lst,
+                        upper_limit      = upper_limit,
+                        lower_limit      = lower_limit,
+                        figure=fig)
+
+        #--------------
 
         order_loc_file = self.config.get('reduction', 'trace.location_file')
         order_lst, info = load_order_locations(order_loc_file)
