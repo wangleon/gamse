@@ -7,8 +7,11 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
+from ..ccdproc import save_fits, table_to_array
+from ..utils.memoize import memoized
+
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
-    upper_limit=5, lowr_limit=5, figure=None):
+    upper_limit=5, lower_limit=5, figure=None):
     '''Extract spectra from an individual image.
     
     Args:
@@ -22,16 +25,23 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     Returns:
         No returns
     '''
-
     data, head = fits.getdata(infilename, header=True)
-    mdata = np.int16(fits.getdata(mskfilename))
     h, w = data.shape
+
+    # read data mask
+    mask_table = fits.getdata(mskfilename)
+    if mask_table.size==0:
+        mask = np.zeros_like(data, dtype=np.int16)
+    else:
+        mask = table_to_array(mask_table, data.shape)
+    data_mask = (np.int16(mask) & 4) > 0
+
     xx, yy = np.meshgrid(np.arange(w),np.arange(h))
 
     # seperate each type of mask
     #cov_mask = (mdata & 1)>0
     #bad_mask = (mdata & 2)>0
-    sat_mask = (mdata & 4)>0
+    #sat_mask = (mdata & 4)>0
     
     # define a numpy structured array
     types = [
@@ -41,32 +51,76 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
             ('flux',    '(%d,)float32'%w),
             ('mask',    '(%d,)int16'%w),
             ]
-    tmp = zip(*types)
+    tmp = list(zip(*types))
     eche_spec = np.dtype({'names':tmp[0], 'formats':tmp[1]})
 
     spec = []
-    for o, location in enumerate(order_lst):
-        xdata = location['x']
-        ydata = location['y']
 
-        m1 = yy > ydata - lower_limit
-        m2 = yy < ydata + upper_limit
-        mask = m1*m2
+    newx = np.arange(w)
 
-        fluxdata = (data*mask).sum(axis=0)
-        sat_flux = (sat_mask*mask).sum(axis=0)>0
+    # find integration limits
+    info_lst = []
+    for channel in channels:
+        for aper, aperloc in apertureset_lst[channel].items():
+            center = aperloc.get_center()
+            info_lst.append((center, channel, aper))
+    # sort the info_lst
+    newinfo_lst = sorted(info_lst, key=lambda item: item[0])
 
-        fluxmask = np.int16(sat_flux*4)
-        item = np.array((o,fluxdata.size,fluxdata,fluxmask),dtype=eche_spec)
-        spec.append(item)
+    # find the middle bounds for every adjacent apertures
+    lower_bounds = {}
+    upper_bounds = {}
+    prev_channel  = None
+    prev_aper     = None
+    prev_position = None
+    for item in newinfo_lst:
+        channel = item[1]
+        aper    = item[2]
+        position = apertureset_lst[channel][aper].position(newx)
+        if prev_position is not None:
+            mid = (position + prev_position)/2.
+            lower_bounds[(channel, aper)] = mid
+            upper_bounds[(prev_channel, prev_aper)] = mid
+        prev_position = position
+        prev_channel  = channel
+        prev_aper     = aper
 
-        if figure != None:
-            ax = figure.gca()
-            ax.cla()
-            ax.plot(np.arange(fluxdata.size),fluxdata,'r-')
-            ax.set_xlim(0, fluxdata.size-1)
-            ax.set_title('%s: Order %d'%(os.path.basename(infilename),o))
-            figure.canvas.draw()
+    for channel in channels:
+        for aper, aperloc in apertureset_lst[channel].items():
+            position = aperloc.position(newx)
+            # determine the lower and upper limits
+            lower_line = position - lower_limit
+            upper_line = position + upper_limit
+            key = (channel, aper)
+            if key in lower_bounds:
+                lower_line = np.maximum(lower_line, lower_bounds[key])
+            if key in upper_bounds:
+                upper_line = np.minimum(upper_line, upper_bounds[key])
+            lower_line = np.maximum(lower_line, np.zeros(w)-0.5)
+            upper_line = np.minimum(upper_line, np.zeros(w)+h-1-0.5)
+            lower_ints = np.int32(np.round(lower_line))
+            upper_ints = np.int32(np.round(upper_line))
+            m1 = yy > lower_ints
+            m2 = yy < upper_ints
+            mask = m1*m2
+            mask = np.float32(mask)
+            # determine the weight in the boundary
+            mask[lower_ints, newx] = 1-(lower_line+0.5)%1
+            mask[upper_ints, newx] = (upper_line+0.5)%1
+
+            # determine the upper and lower row of summing
+            r1 = int(lower_line.min())
+            r2 = int(upper_line.max())+1
+            mask = mask[r1:r2]
+
+            # summing the data and mask
+            fluxdata = (data[r1:r2,]*mask).sum(axis=0)
+            sat_flux = (data_mask[r1:r2,]*mask).sum(axis=0)>0
+
+            fluxmask = np.int16(sat_flux*4)
+            item = np.array((aper, channel, fluxdata.size, fluxdata, fluxmask),
+                    dtype=eche_spec)
+            spec.append(item)
 
     spec = np.array(spec, dtype=eche_spec)
 
@@ -78,3 +132,4 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         logger.warning('File "%s" is overwritten'%outfilename)
     hdu_lst.writeto(outfilename)
     logger.info('Write 1D spectra file "%s"'%outfilename)
+

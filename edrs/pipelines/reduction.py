@@ -17,6 +17,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from ..utils.config  import read_config
 from ..utils.obslog  import read_log, parse_num_seq, find_log
 from ..ccdproc       import save_fits, table_to_array, array_to_table
+from ..echelle.trace import load_aperture_set
 
 class Reduction(object):
     '''General echelle reduction.
@@ -1223,7 +1224,6 @@ class Reduction(object):
 
         '''
 
-        from ..echelle.trace import load_aperture_set
         from ..echelle.background import correct_background
         
         # find output surfix for fits
@@ -1436,7 +1436,7 @@ class Reduction(object):
         # add comparison lamps to the queue
         comp_item_lst = self.find_comp()
         for item in comp_item_lst:
-            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
+            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, '_ovr')))
             mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
             outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
@@ -1457,14 +1457,15 @@ class Reduction(object):
             infile = infile_lst[i]
             mskfile = mskfile_lst[i]
             outfile = outfile_lst[i]
-            channel = channle_lst[i]
+            channel = channel_lst[i]
 
             sum_extract(infile, mskfile, outfile,
-                        channels         = channel,
-                        apertureset_lsts = aperset_lst,
-                        upper_limit      = upper_limit,
-                        lower_limit      = lower_limit,
-                        figure=fig)
+                        channels        = channel,
+                        apertureset_lst = aperset_lst,
+                        upper_limit     = upper_limit,
+                        lower_limit     = lower_limit,
+                        )
+        exit()
 
         #--------------
 
