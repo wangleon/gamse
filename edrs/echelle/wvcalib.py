@@ -1041,36 +1041,45 @@ class CalibWindow(tk.Frame):
             # temporarily plot this line
             self.plot_aperture()
 
+            line_frame.clr_button.config(state=tk.NORMAL)
+
             # guess the input wavelength
             guess_wv = guess_wavelength(peak_x, aperture, self.identlist,
                                         self.linelist, self.param)
 
-            # check whether wavelength has already been identified
-            if is_identified(guess_wv, self.identlist, aperture):
-                guess_wv = None
-
-            line_frame.clr_button.config(state=tk.NORMAL)
-
             if guess_wv is None:
-                # guessing wavelength failed
+                # wavelength guess failed
                 #line_frame.search_entry.focus()
-                pass
-            else:
-                line_frame.search_text.set(str(guess_wv))
-                # select this line in the linetable
-                for i, record in enumerate(line_frame.item_lst):
-                    iid  = record[0]
-                    wave = record[1]
-                    if abs(guess_wv - wave)<1e-3:
-                        break
-                line_frame.line_tree.selection_set(iid)
-                pos = i/float(len(line_frame.item_lst))
-                line_frame.line_tree.yview_moveto(pos)
-                # update 3 buttons
+                # update buttons
                 line_frame.add_button.config(state=tk.NORMAL)
                 line_frame.del_button.config(state=tk.DISABLED)
-                # unset focus
-                self.focus()
+            else:
+                # wavelength guess succeed
+
+                # check whether wavelength has already been identified
+                if is_identified(guess_wv, self.identlist, aperture):
+                    # has been identified, do nothing
+                    # update buttons
+                    line_frame.add_button.config(state=tk.DISABLED)
+                    line_frame.del_button.config(state=tk.NORMAL)
+                else:
+                    # has not been identified yet
+                    # put the wavelength in the search bar
+                    line_frame.search_text.set(str(guess_wv))
+                    # select this line in the linetable
+                    for i, record in enumerate(line_frame.item_lst):
+                        iid  = record[0]
+                        wave = record[1]
+                        if abs(guess_wv - wave)<1e-3:
+                            break
+                    line_frame.line_tree.selection_set(iid)
+                    pos = i/float(len(line_frame.item_lst))
+                    line_frame.line_tree.yview_moveto(pos)
+                    # update buttons
+                    line_frame.add_button.config(state=tk.NORMAL)
+                    line_frame.del_button.config(state=tk.DISABLED)
+                    # unset focus
+                    self.focus()
 
     def on_add_ident(self):
         aperture = self.param['aperture']
@@ -1199,11 +1208,14 @@ class CalibWindow(tk.Frame):
 
 
 
-def wvcalib(filename, **kwargs):
+def wvcalib(filename, identfilename, linelist, channel, window_size=13,
+        xorder=3, yorder=3, maxiter=10, clipping=3, snr_threshold=10):
     '''Wavelength calibration.
 
     Args:
-        linelist (string):
+        filename (string): Filename of the 1-D spectra
+        identfilename (string): Filename of wavelength identification
+        linelist (string): Name of wavelength standard file
         channel (string): Name of the input channel
         window_size (integer): size of the window in pixel to search for the lines
         xorder (integer): Degree of polynomial along X direction
@@ -1212,25 +1224,7 @@ def wvcalib(filename, **kwargs):
         clipping (float): Threshold of sigma-clipping
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting
-        fig_width (integer): Width of calibration window
-        fig_height (integer): Height of calibration window
-        dpi (integer): DPI of calibration figure
-
     '''
-
-    linelist_file = kwargs.pop('linelist')
-    #ident_file   = kwargs.pop('ident_file')
-    ident_file    = 'ident_lines.dat'
-    channel       = kwargs.pop('channel', '')
-    window_size   = kwargs.pop('window_size')
-    xorder        = kwargs.pop('xorder', 3)
-    yorder        = kwargs.pop('yorder', 3)
-    maxiter       = kwargs.pop('maxiter', 10)
-    clipping      = kwargs.pop('clipping', 3)
-    snr_threshold = kwargs.pop('snr_threshold', None)
-    fig_width     = kwargs.pop('fig_width', None)
-    fig_height    = kwargs.pop('fig_height', None)
-    dpi           = kwargs.pop('fig_dpi')
 
     spec = fits.getdata(filename)
     if channel != '':
@@ -1238,15 +1232,17 @@ def wvcalib(filename, **kwargs):
         spec = spec[mask]
 
     # initialize fitting list
-    if os.path.exists(ident_file):
-        identlist = load_identlist(ident_file, channel=channel)
+    if os.path.exists(identfilename):
+        identlist = load_identlist(identfilename, channel=channel)
     else:
         identlist = {}
 
-
     # load the wavelengths
-    linefilename = search_linelist(linelist_file)
-    linelist = load_linelist(linefilename)
+    linefilename = search_linelist(linelist)
+    if linefilename is None:
+        print('Error: Cannot find linelist file: %s'%linelist)
+        exit()
+    line_list = load_linelist(linefilename)
 
     # display an interactive figure
     # reset keyboard shortcuts
@@ -1261,6 +1257,9 @@ def wvcalib(filename, **kwargs):
     screen_width  = master.winfo_screenwidth()
     screen_height = master.winfo_screenheight()
 
+    fig_width  = 2500
+    fig_height = 1500
+    fig_dpi    = 150
     if None in [fig_width, fig_height]:
         # detremine window size and position
         window_width = int(screen_width-200)
@@ -1277,12 +1276,12 @@ def wvcalib(filename, **kwargs):
     calibwindow = CalibWindow(master,
                               width         = window_width,
                               height        = window_height-34,
-                              dpi           = dpi,
+                              dpi           = fig_dpi,
                               spec          = spec,
                               filename      = filename,
                               channel       = channel,
                               identlist     = identlist,
-                              linelist      = linelist,
+                              linelist      = line_list,
                               window_size   = window_size,
                               xorder        = xorder,
                               yorder        = yorder,
@@ -1310,6 +1309,10 @@ def wvcalib(filename, **kwargs):
               'clipping':      calibwindow.param['clipping'],
               'snr_threshold': calibwindow.param['snr_threshold'],
             }
+
+    # save ident list
+    if len(calibwindow.identlist)>0:
+        save_identlist(identlist, filename, channel)
 
     return result
 
@@ -1423,7 +1426,15 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         return guess_wv
 
 def is_identified(wavelength, identlist, aperture):
-    '''check if wavelength is in identlist. return True if yes'''
+    '''Check if wavelength is in identlist.
+    Args:
+        wavelength (float): Wavelength of the input line
+        identlist (dict): List of identified lines
+        aperture (integer): Aperture number
+    Returns:
+        bool: *True* if **wavelength** and **aperture** in **identlist**
+    
+    '''
     if aperture in identlist:
         list1 = identlist[aperture]
         diff = np.abs(list1['wavelength'] - wavelength)
@@ -1477,37 +1488,70 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_ident_linelist(ident_linelist,filename):
+def save_identlist(identlist, filename, channel):
+    '''Write the ident line list into an ascii file.
+
+    Args:
+        identlist (dict): Identification line list
+        filename (string): Name of the ASCII file
+        channel (string): Channel
+    Returns:
+        No returns
     '''
-    Write the ident line list into an ascii file.
-    '''
-    ident_file = open(filename,'w')
-    for aperture, list1 in sorted(ident_line_lst.items()):
+    exist_row_lst = []
+    if os.path.exists(filename):
+        # if filename already exist, only overwrite the current channel
+        infile = open(filename)
+        for row in infile:
+            row = row.strip()
+            if len(row)==0 or row[0] in '#$%^@!':
+                continue
+            g = row.split()
+            if g[0] != channel:
+                exist_row_lst.append(row)
+        infile.close()
+
+    outfile = open(filename, 'w')
+    # write other channels
+    if len(exist_row_lst)>0:
+        outfile.write(os.linesep.join(exist_row_lst))
+    # write current channel
+    for aperture, list1 in sorted(identlist.items()):
         for pix, wav, mask, res, method in zip(list1['pixel'],
                 list1['wavelength'], list1['mask'], list1['residual'],
                 list1['method']):
-            ident_file.write('%03d %10.4f %10.4f %1d %+10.6f %1s%s'%(
-                aperture, pix, wav, int(mask), res, method, os.linesep))
-    ident_file.close()
+            outfile.write('%1s %03d %10.4f %10.4f %1d %+10.6f %1s'%(
+                channel, aperture, pix, wav, int(mask), res, method)+os.linesep)
+
+    outfile.close()
+
 
 def load_identlist(filename, channel):
-    '''
-    load identified line list
+    '''Load identified line list.
+
+    Args:
+        filename (string): Name of the identification file
+        channel (string): Channel
+    Returns:
+        dict: A dict containing all the identified lines
+    
     '''
     identlist = {}
 
-    ident_file = open(filename)
-    for row in ident_file:
+    infile = open(filename)
+    for row in infile:
         row = row.strip()
         if len(row)==0 or row[0] in '#$%^@!':
             continue
         g = row.split()
-        aperture    = int(g[0])
-        pixel       = float(g[1])
-        wavelength  = float(g[2])
-        mask        = bool(g[3])
-        residual    = float(g[4])
-        method      = g[5].strip()
+        if g[0] != channel:
+            continue
+        aperture    = int(g[1])
+        pixel       = float(g[2])
+        wavelength  = float(g[3])
+        mask        = bool(g[4])
+        residual    = float(g[5])
+        method      = g[6].strip()
         item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,residual,method),
                          dtype=identlinetype)
 
@@ -1515,7 +1559,7 @@ def load_identlist(filename, channel):
             identlist[aperture] = []
         identlist[aperture].append(item)
 
-    ident_file.close()
+    infile.close()
 
     # convert list of every order to numpy structured array
     for aperture, list1 in identlist.items():
@@ -1596,8 +1640,12 @@ def recenter(flux, center):
     return p1[2]
     
 def search_linelist(linelistname):
-    '''
-    search the line list file and load the list
+    '''Search the line list file and load the list.
+
+    Args:
+        linelistname (string): Name of the line list file
+    Returns:
+        string: Path to the line list file
     '''
 
     # first, seach $LINELIST in current working directory
@@ -1621,11 +1669,23 @@ def search_linelist(linelistname):
     if os.path.exists(newname):
         return newname
 
+    # seach EDRS_DATA path
+    edrs_data = os.getenv('EDRS_DATA')
+    if len(edrs_data)>0:
+        data_path = os.path.join(edrs_data, 'linelist')
+        newname = os.path.join(data_path, linelistname+'.dat')
+        if os.path.exists(newname):
+            return newname
+
     return None
 
 def load_linelist(filename):
-    '''
-    load standard wavelength line list
+    '''Load standard wavelength line list.
+
+    Args:
+        filename (string): Name of the wavelength standard list file
+    Returns:
+        list: A list containing (wavelength, species)
     '''
     linelist = []
     infile = open(filename)

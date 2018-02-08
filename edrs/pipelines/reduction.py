@@ -1659,18 +1659,15 @@ class Reduction(object):
 
         from ..echelle.wvcalib import wvcalib, recalib, reference_wv, reference_wv_self
 
-        kwargs = {
-                'linelist':      self.config.get('reduction', 'wvcalib.linelist'),
-                'window_size':   self.config.getint('reduction', 'wvcalib.window_size'),
-                'xorder':        self.config.getint('reduction', 'wvcalib.xorder'), 
-                'yorder':        self.config.getint('reduction', 'wvcalib.yorder'),
-                'maxiter':       self.config.getint('reduction', 'wvcalib.maxiter'),
-                'clipping':      self.config.getfloat('reduction', 'wvcalib.clipping'),
-                'snr_threshold': self.config.getfloat('reduction', 'wvcalib.snr_threshold'),
-                'fig_width':     self.config.getint('reduction', 'wvcalib.fig_width'),
-                'fig_height':    self.config.getint('reduction', 'wvcalib.fig_height'),
-                'fig_dpi':       self.config.getfloat('reduction', 'wvcalib.fig_dpi'),
-                }
+        # get parameters from config file
+        linelist      = self.config.get('reduction', 'wvcalib.linelist')
+        window_size   = self.config.getint('reduction', 'wvcalib.window_size')
+        xorder        = self.config.getint('reduction', 'wvcalib.xorder')
+        yorder        = self.config.getint('reduction', 'wvcalib.yorder')
+        maxiter       = self.config.getint('reduction', 'wvcalib.maxiter'),
+        clipping      = self.config.getfloat('reduction', 'wvcalib.clipping'),
+        snr_threshold = self.config.getfloat('reduction', 'wvcalib.snr_threshold'),
+
         # path alias
         midproc = self.paths['midproc']
 
@@ -1721,12 +1718,22 @@ class Reduction(object):
 
             calib_lst = {}
             for ich, (channel, item_lst) in enumerate(sorted(thar_lst.items())):
-                kwargs['channel'] = channel
                 for i, item in enumerate(item_lst):
                     filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
+                    identfilename = os.path.join(midproc, '%s_idt.dat'%item.fileid)
 
                     if ich == 0 and i == 0:
-                        calib = wvcalib(filename, **kwargs)
+                        calib = wvcalib(filename,
+                                        identfilename = identfilename,
+                                        channel       = channel,
+                                        linelist      = linelist,
+                                        window_size   = window_size,
+                                        xorder        = xorder,
+                                        yorder        = yorder,
+                                        maxiter       = maxiter,
+                                        clipping      = clipping,
+                                        snr_threshold = snr_threshold,
+                                        )
                         ref_calib = calib
                         spec = fits.getdata(filename)
                         ref_spec = spec[spec['channel']==channel]
@@ -1734,7 +1741,7 @@ class Reduction(object):
                         calib = recalib(filename,
                                         channel       = channel,
                                         ref_spec      = ref_spec,
-                                        linelist      = kwargs['linelist'],
+                                        linelist      = linelist,
                                         coeff         = ref_calib['coeff'],
                                         npixel        = ref_calib['npixel'],
                                         window_size   = ref_calib['window_size'],
@@ -1745,9 +1752,6 @@ class Reduction(object):
                                         snr_threshold = ref_calib['snr_threshold'],
                                         k             = ref_calib['k'],
                                         offset        = ref_calib['offset'],
-                                        fig_width     = kwargs['fig_width'],
-                                        fig_height    = kwargs['fig_height'],
-                                        fig_dpi       = kwargs['fig_dpi'],
                                         )
                     if item.frameid not in calib_lst:
                         calib_lst[item.frameid] = {}
