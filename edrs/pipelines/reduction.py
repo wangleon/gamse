@@ -1214,8 +1214,8 @@ class Reduction(object):
            **background.surfix**,     *string*,  Surfix of the background correceted files
            **background.display**,    *bool*,    Display a graphics if *yes*
            **background.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
-           **background.xorder**,     *integer*, Order of 2D polynomial along *x*-axis (dispersion direction)
-           **background.yorder**,     *integer*, Order of 2D polynomial along *y*-axis (cross-dispersion direction)
+           **background.xorder**,     *integer*, Degree of 2D polynomial along *x*-axis (dispersion direction)
+           **background.yorder**,     *integer*, Degree of 2D polynomial along *y*-axis (cross-dispersion direction)
            **background.maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting
            **background.upper_clip**, *float*,   Upper sigma clipping threshold
            **background.lower_clip**, *float*,   Lower sigma clipping threshold
@@ -1631,7 +1631,22 @@ class Reduction(object):
 
     def wvcalib(self):
         '''
-        Wavelength calibration
+        Wavelength calibration.
+
+        .. csv-table:: Accepted options in config file
+           :header: Option, Type, Description
+           :widths: 25, 10, 60
+
+           **wvcalib.skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **wvcalib.surfix**,        *string*,  Surfix of the extracted files
+           **wvcalib.linelist**,      *string*,  Name of the wavelength standard list
+           **wvcalib.window_size**,   *integer*, Size of the window in pixel to search for the lines
+           **wvcalib.xorder**,        *integer*, Order of polynomial along main dispersion direction
+           **wvcalib.yorder**,        *integer*, Order of polynomial along cross-dispersion direction
+           **wvcalib.maxiter**,       *integer*, Mximum number of polnomial fitting
+           **wvcalib.clipping**,      *float*,   Sigma-clipping threshold
+           **wvcalib.snr_threshold**, *float*,   Signal-to-noise ratio threshold of the emission line fitting
+
         '''
 
         # find output surfix for fits
@@ -1656,6 +1671,8 @@ class Reduction(object):
                 'fig_height':    self.config.getint('reduction', 'wvcalib.fig_height'),
                 'fig_dpi':       self.config.getfloat('reduction', 'wvcalib.fig_dpi'),
                 }
+        # path alias
+        midproc = self.paths['midproc']
 
         if self.nchannels == 1:
             # single fiber calibration
@@ -1694,18 +1711,19 @@ class Reduction(object):
             # loop all channels
             result_lst = {}
 
+            # find thar list for each channel
             thar_lst = {}
-            for ichannel in range(self.nchannels):
-                channel = chr(ichannel+65)
+            for ich in range(self.nchannels):
+                channel = chr(ich+65)
                 thar_lst[channel] = [item for item in self.log
                                      if len(item.objectname) == self.nchannels and 
-                                     item.objectname[ichannel] == 'ThAr']
+                                     item.objectname[ich] == 'ThAr']
 
             calib_lst = {}
             for ich, (channel, item_lst) in enumerate(sorted(thar_lst.items())):
                 kwargs['channel'] = channel
                 for i, item in enumerate(item_lst):
-                    filename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                    filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
 
                     if ich == 0 and i == 0:
                         calib = wvcalib(filename, **kwargs)
@@ -1739,8 +1757,8 @@ class Reduction(object):
             # find file to calibrate
             for item in self.log:
                 if item.imagetype == 'sci':
-                    infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+                    infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
+                    outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
                     refcalib_lst = {}
                     # search for ref thar
                     for ichannel in range(len(item.objectname)):
@@ -1765,8 +1783,8 @@ class Reduction(object):
 
             for item in self.log:
                 if item.frameid in calib_lst:
-                    infilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+                    infilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
+                    outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
                     reference_wv_self(infilename, outfilename, calib_lst[item.frameid])
 
 

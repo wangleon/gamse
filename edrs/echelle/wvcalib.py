@@ -941,6 +941,11 @@ class CalibWindow(tk.Frame):
         self.plot_frame.fig.savefig('wvcalib.png')
 
     def on_click(self, event):
+        '''Response function of clicking the axes.
+
+        * Double click: prepare to add a new identified line
+
+        '''
         # double click on ax1: want to add a new identified line
         if event.inaxes == self.plot_frame.ax1 and event.dblclick:
             fig = self.plot_frame.fig
@@ -1198,18 +1203,18 @@ def wvcalib(filename, **kwargs):
     '''Wavelength calibration.
 
     Args:
-        linelist (str):
-        channel (str): Channel.
-        window_size (int): size of the window in pixel to search for the lines.
-        xorder (int): Degree of polynomial along X direction.
-        yorder (int): Degree of polynomial along Y direction.
-        maxiter (int): Maximim number of interation in polynomial fitting.
-        clipping (float): Threshold of sigma-clipping.
+        linelist (string):
+        channel (string): Name of the input channel
+        window_size (integer): size of the window in pixel to search for the lines
+        xorder (integer): Degree of polynomial along X direction
+        yorder (integer): Degree of polynomial along Y direction
+        maxiter (integer): Maximim number of interation in polynomial fitting
+        clipping (float): Threshold of sigma-clipping
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting.
-        fig_width (int): Width of figure.
-        fig_height (int): Height of figure.
-        dpi (int): DPI of figure.
+            in the wavelength fitting
+        fig_width (integer): Width of calibration window
+        fig_height (integer): Height of calibration window
+        dpi (integer): DPI of calibration figure
 
     '''
 
@@ -1408,7 +1413,7 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         order = aperture*self.param['k'] + self.param['offset']
         rough_wv = get_wv_val(param['coeff'], param['npixel'], x, order)
 
-    if rought_wv is None:
+    if rough_wv is None:
         return None
     else:
         # now find the nearest wavelength in linelist
