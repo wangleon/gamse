@@ -1664,9 +1664,9 @@ class Reduction(object):
         window_size   = self.config.getint('reduction', 'wvcalib.window_size')
         xorder        = self.config.getint('reduction', 'wvcalib.xorder')
         yorder        = self.config.getint('reduction', 'wvcalib.yorder')
-        maxiter       = self.config.getint('reduction', 'wvcalib.maxiter'),
-        clipping      = self.config.getfloat('reduction', 'wvcalib.clipping'),
-        snr_threshold = self.config.getfloat('reduction', 'wvcalib.snr_threshold'),
+        maxiter       = self.config.getint('reduction', 'wvcalib.maxiter')
+        clipping      = self.config.getfloat('reduction', 'wvcalib.clipping')
+        snr_threshold = self.config.getfloat('reduction', 'wvcalib.snr_threshold')
 
         # path alias
         midproc = self.paths['midproc']

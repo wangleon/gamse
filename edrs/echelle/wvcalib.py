@@ -1032,8 +1032,15 @@ class CalibWindow(tk.Frame):
             flux = specdata['flux']
 
             # find peak
+            # first, find the local maximum around the clicking point
+            # the searching window is set to be +-5 pixels
+            i0 = int(event.xdata)
+            i1 = max(int(round(i0 - 5*vpp)), 0)
+            i2 = min(int(round(i0 + 5*vpp)), flux.size)
+            local_max = i1 + flux[i1:i2].argmax()
+            # now found the local max point
             window_size = self.param['window_size']
-            _, _, param, _ = find_local_peak(flux, int(event.xdata), window_size)
+            _, _, param, _ = find_local_peak(flux, local_max, window_size)
             peak_x = param[1]
 
             self.param['ident'] = peak_x
@@ -1217,7 +1224,7 @@ def wvcalib(filename, identfilename, linelist, channel, window_size=13,
         identfilename (string): Filename of wavelength identification
         linelist (string): Name of wavelength standard file
         channel (string): Name of the input channel
-        window_size (integer): size of the window in pixel to search for the lines
+        window_size (integer): Size of the window in pixel to search for the lines
         xorder (integer): Degree of polynomial along X direction
         yorder (integer): Degree of polynomial along Y direction
         maxiter (integer): Maximim number of interation in polynomial fitting
@@ -1312,7 +1319,7 @@ def wvcalib(filename, identfilename, linelist, channel, window_size=13,
 
     # save ident list
     if len(calibwindow.identlist)>0:
-        save_identlist(identlist, filename, channel)
+        save_identlist(identlist, identfilename, channel)
 
     return result
 
@@ -1320,11 +1327,11 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
     '''Fit the wavelength using 2-D polynomial.
     
     Args:
-        identlist ():
-        npixel (int): Number of pixels for each order.
-        xorder (int): Degree of polynomial along X direction.
-        yorder (int): Degree of polynomial along Y direction.
-        maxiter (int): Maximim number of interation in polynomial fitting.
+        identlist (dict): Dict of identification lines for different apertures.
+        npixel (integer): Number of pixels for each order.
+        xorder (integer): Degree of polynomial along X direction.
+        yorder (integer): Degree of polynomial along Y direction.
+        maxiter (integer): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
 
     Returns:
@@ -1399,7 +1406,18 @@ def get_wv_val(coeff, npixel, pixel, order):
     return polyval2d(norm_pixel, order, coeff)/order
 
 def guess_wavelength(x, aperture, identlist, linelist, param):
-    '''Guess wavelength'''
+    '''Guess wavelength.
+
+    Args:
+        x ():
+        aperture (integer): Aperture number
+        identlist (dict): Dict of identified lines for different apertures.
+        linelist (list): List of wavelength standards.
+        param (dict): Parameters.
+    Returns:
+        float: Guessed wavelength. If failed, return *None*.
+        
+    '''
     rough_wv = None
 
     # guess wv from the identified lines in this order
@@ -1413,7 +1431,7 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
     # guess wavelength from global wavelength solution
     if rough_wv is None and param['coeff'].size > 0:
         npixel = param['npixel']
-        order = aperture*self.param['k'] + self.param['offset']
+        order = aperture*param['k'] + param['offset']
         rough_wv = get_wv_val(param['coeff'], param['npixel'], x, order)
 
     if rough_wv is None:
@@ -1521,7 +1539,7 @@ def save_identlist(identlist, filename, channel):
                 list1['wavelength'], list1['mask'], list1['residual'],
                 list1['method']):
             outfile.write('%1s %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                channel, aperture, pix, wav, int(mask), res, method)+os.linesep)
+                channel, aperture, pix, wav, int(mask), res, method.decode('ascii'))+os.linesep)
 
     outfile.close()
 
@@ -1601,8 +1619,20 @@ def errfunc2(p,x,y):
     return y - gaussian_bkg(p[0],p[1],p[2],p[3],x)
 
 def find_local_peak(flux, x, width):
-    '''
-    find the local peak
+    '''Find the central pixel of an emission line.
+
+    Args:
+        flux (:class:`numpy.array`): Flux array
+        x (integer): The approximate coordinate of the peak pixel
+        width (integer): Window of profile fitting
+    Returns:
+        tuple: A tuple containing:
+
+            * i1 (integer): Index of the left side
+            * i2 (integer): Index of the right side
+            * p1 (list): List of fitting parameters
+            * std (float): Standard devation of the fitting
+        
     '''
     width = int(round(width))
     if width%2 != 1:
