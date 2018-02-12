@@ -37,8 +37,15 @@ identlinetype = np.dtype({
     })
 
 class CustomToolbar(NavigationToolbar2TkAgg):
-    '''A class for customized matplotlib toolbar.'''
+    '''Class for customized matplotlib toolbar.
+    '''
     def __init__(self, canvas, master):
+        '''Constructor of :class:`CustomToolbar`.
+
+        Args:
+            canvas (): Matplotlib canvas
+            master (): Master
+        '''
         self.toolitems = (
             ('Home', 'Reset original view', 'home', 'home'),
             ('Back', 'Back to previous view', 'back', 'back'),
@@ -90,6 +97,15 @@ class InfoFrame(tk.Frame):
     '''The frame for buttons and tables on the right side of the :class:`CalibWindow`.
     '''
     def __init__(self, master, width, height, linelist, identlist):
+        '''Constuctor of :class:`InfoFrame`.
+
+        Args:
+            master (): 
+            width (integer): Width of the frame
+            height (integer): Height of the frame
+            linelist (list): List of wavelength standards
+            identlist (dict): Dict of identified lines
+        '''
 
         self.master = master
 
@@ -231,6 +247,16 @@ class LineTable(tk.Frame):
     
     '''
     def __init__(self, master, width, height, identlist, linelist):
+        '''Constructor of :class:`LineTable`.
+
+        Args:
+            master (): master
+            width (integer): Width of table
+            height (integer): Height of table
+            identlist (dict): Dict of identified lines
+            linelist (list): List of wavelength standards.
+
+        '''
         self.master = master
 
         font = ('Arial', 10)
@@ -311,6 +337,8 @@ class LineTable(tk.Frame):
         self.pack()
 
     def on_clear_search(self):
+        '''Clear the search bar
+        '''
         # clear the search bar
         self.search_text.set('')
 
@@ -392,6 +420,13 @@ class FitparaFrame(tk.Frame):
     
     '''
     def __init__(self, master, width, height):
+        '''Constructor of :class:`FitparaFrame`.
+
+        Args:
+            master (): Master
+            width (integer): Width of the frame
+            height (integer): Height of the frame
+        '''
 
         self.master = master
 
@@ -490,24 +525,46 @@ class FitparaFrame(tk.Frame):
 class CalibWindow(tk.Frame):
     '''Frame for the wavelength calibration window.
     '''
-    def __init__(self, master, **kwargs):
+    def __init__(self, master, width, height, dpi, spec, filename, figfilename,
+            identlist, linelist, channel, window_size, xorder, yorder, maxiter,
+            clipping, snr_threshold):
+        '''Constructor of :class:`CalibWindow`.
+
+        Args:
+            master (?): Master object
+            width (integer): Width of window
+            height (integer): Height of window
+            dpi (integer): DPI of figure
+            spec (:class:`dtype`): Spectra data
+            filename (string): Filename of the spectra data
+            figfilename (string): Filename of the output wavelength calibration figure
+            identlist (dict): Identification line list
+            linelist (list): List of wavelength standards (wavelength, species)
+            channel (string): Channel
+            window_size (integer): Size of the window in pixel to search for the lines
+            xorder (integer): Degree of polynomial along X direction
+            yorder (integer): Degree of polynomial along Y direction
+            maxiter (integer): Maximim number of interation in polynomial fitting
+            clipping (float): Threshold of sigma-clipping
+            snr_threshold (float): Minimum S/N of the spectral lines to be accepted
+                in the wavelength fitting
+
+        '''
         
-        self.master = master
-        width  = kwargs.pop('width')
-        height = kwargs.pop('height')
-        dpi    = kwargs.pop('dpi')
+        self.master    = master
+        self.spec      = spec
+        self.identlist = identlist
+        self.linelist  = linelist
 
         tk.Frame.__init__(self, master, width=width, height=height)
 
-        self.spec      = kwargs.pop('spec')
-        self.identlist = kwargs.pop('identlist')
-        self.linelist  = kwargs.pop('linelist')
 
         self.param = {
             'mode':          'ident',
             'aperture':      self.spec['aperture'].min(),
-            'filename':      kwargs.pop('filename'),
-            'channel':       kwargs.pop('channel'),
+            'filename':      filename,
+            'figfilename':   figfilename,
+            'channel':       channel,
             'aperture_min':  self.spec['aperture'].min(),
             'aperture_max':  self.spec['aperture'].max(),
             'npixel':        self.spec['points'].max(),
@@ -519,12 +576,12 @@ class CalibWindow(tk.Frame):
             'k':             None,
             'offset':        None,
             # wavelength fitting parameters
-            'window_size':   kwargs.pop('window_size'),
-            'xorder':        kwargs.pop('xorder'),
-            'yorder':        kwargs.pop('yorder'),
-            'maxiter':       kwargs.pop('maxiter'),
-            'clipping':      kwargs.pop('clipping'),
-            'snr_threshold': kwargs.pop('snr_threshold'),
+            'window_size':   window_size,
+            'xorder':        xorder,
+            'yorder':        yorder,
+            'maxiter':       maxiter,
+            'clipping':      clipping,
+            'snr_threshold': snr_threshold,
             # wavelength fitting results
             'std':           0,
             'coeff':         np.array([]),
@@ -567,7 +624,7 @@ class CalibWindow(tk.Frame):
         self.update_fit_buttons()
 
     def fit(self):
-        '''fit wavelength'''
+        '''Fit the wavelength.'''
 
         coeff, std, k, offset, nuse, ntot = fit_wv(
                 identlist = self.identlist, 
@@ -595,7 +652,8 @@ class CalibWindow(tk.Frame):
         self.update_fit_buttons()
 
     def recenter(self):
-        '''recenter all the identified lines'''
+        '''Recenter all the identified lines.
+        '''
         for aperture, list1 in self.identlist.items():
             mask = (self.spec['aperture'] == aperture)
             specdata = self.spec[mask][0]
@@ -938,7 +996,7 @@ class CalibWindow(tk.Frame):
         self.plot_frame.fig.plot_solution(self.identlist, aperture_lst, plot_ax1, **kwargs)
 
         self.plot_frame.canvas.draw()
-        self.plot_frame.fig.savefig('wvcalib.png')
+        self.plot_frame.fig.savefig(self.param['figfilename'])
 
     def on_click(self, event):
         '''Response function of clicking the axes.
@@ -1215,13 +1273,14 @@ class CalibWindow(tk.Frame):
 
 
 
-def wvcalib(filename, identfilename, linelist, channel, window_size=13,
+def wvcalib(filename, identfilename, figfilename, linelist, channel, window_size=13,
         xorder=3, yorder=3, maxiter=10, clipping=3, snr_threshold=10):
     '''Wavelength calibration.
 
     Args:
         filename (string): Filename of the 1-D spectra
         identfilename (string): Filename of wavelength identification
+        figfilename (string): Filename of the output wavelength figure
         linelist (string): Name of wavelength standard file
         channel (string): Name of the input channel
         window_size (integer): Size of the window in pixel to search for the lines
@@ -1240,7 +1299,7 @@ def wvcalib(filename, identfilename, linelist, channel, window_size=13,
 
     # initialize fitting list
     if os.path.exists(identfilename):
-        identlist = load_identlist(identfilename, channel=channel)
+        identlist, _ = load_ident(identfilename, channel=channel)
     else:
         identlist = {}
 
@@ -1286,6 +1345,7 @@ def wvcalib(filename, identfilename, linelist, channel, window_size=13,
                               dpi           = fig_dpi,
                               spec          = spec,
                               filename      = filename,
+                              figfilename   = figfilename,
                               channel       = channel,
                               identlist     = identlist,
                               linelist      = line_list,
@@ -1555,17 +1615,21 @@ def save_ident(result, filename, channel):
     outfile.close()
 
 
-def load_identlist(filename, channel):
+def load_ident(filename, channel):
     '''Load identified line list.
 
     Args:
         filename (string): Name of the identification file
         channel (string): Channel
     Returns:
-        dict: A dict containing all the identified lines
+        tuple: A tuple containing:
+
+            * **identlist** (*dict*):  Identified lines for all orders
+            * **coeff** (:class:`numpy.array`): Coefficients of wavelengths
     
     '''
     identlist = {}
+    coeff = []
 
     infile = open(filename)
     for row in infile:
@@ -1575,18 +1639,22 @@ def load_identlist(filename, channel):
         g = row.split()
         if g[0] != channel:
             continue
-        aperture    = int(g[1])
-        pixel       = float(g[2])
-        wavelength  = float(g[3])
-        mask        = bool(g[4])
-        residual    = float(g[5])
-        method      = g[6].strip()
-        item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,residual,method),
-                         dtype=identlinetype)
+        key = g[1]
+        if key == 'LINE':
+            aperture    = int(g[2])
+            pixel       = float(g[3])
+            wavelength  = float(g[4])
+            mask        = bool(g[5])
+            residual    = float(g[6])
+            method      = g[7].strip()
+            item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,
+                             residual,method),dtype=identlinetype)
 
-        if aperture not in identlist:
-            identlist[aperture] = []
-        identlist[aperture].append(item)
+            if aperture not in identlist:
+                identlist[aperture] = []
+            identlist[aperture].append(item)
+        elif key == 'COEFF':
+            coeff.append([float(v) for v in g[2:]])
 
     infile.close()
 
@@ -1594,7 +1662,10 @@ def load_identlist(filename, channel):
     for aperture, list1 in identlist.items():
         identlist[aperture] = np.array(list1, dtype=identlinetype)
 
-    return identlist
+    # convert coeff to numpy array
+    coeff = np.array(coeff)
+
+    return identlist, coeff
 
 def parse_input_wavelength(aperture,pixel,default=None):
     '''
@@ -1794,7 +1865,20 @@ def find_drift(spec1, spec2, offset=0):
     return drift
 
 class CalibFigure(Figure):
+    '''Figure class for wavelength calibration
+    '''
+
     def __init__(self, width, height, dpi, filename, channel):
+        '''Constuctor of :class:`CalibFigure`.
+
+        Args:
+            width (integer): Width of the figure
+            height (integer): Height of the figure
+            dpi (integer): DPI of the figure
+            filename (string): Filename of the input spectra
+            channel (string): Channel name of the spectra
+
+        '''
         super(CalibFigure, self).__init__(figsize=(width/dpi, height/dpi), dpi=dpi)
         self.patch.set_facecolor('#d9d9d9')
 
@@ -1844,7 +1928,7 @@ class CalibFigure(Figure):
                 w = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
                 wv_max = max(wv_max, w.max())
                 wv_min = min(wv_min, w.min())
-                self._ax1.plot(x, w, color=color, ls='-')
+                self._ax1.plot(x, w, color=color, ls='-', alpha=0.7)
 
             if aperture in identlist:
                 list1 = identlist[aperture]
@@ -1855,19 +1939,19 @@ class CalibFigure(Figure):
 
                 if plot_ax1:
                     self._ax1.scatter(pix_lst[mask],  wav_lst[mask],
-                                      c=color, s=25, lw=0)
+                                      c=color, s=20, lw=0, alpha=0.7)
                     self._ax1.scatter(pix_lst[~mask], wav_lst[~mask],
-                                      c='w', s=20, lw=1, edgecolor=color)
+                                      c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
 
                 repeat_aper_lst = np.repeat(aperture, pix_lst.size)
                 self._ax2.scatter(repeat_aper_lst[mask], res_lst[mask],
-                                  c=color, s=25, lw=0)
+                                  c=color, s=20, lw=0, alpha=0.7)
                 self._ax2.scatter(repeat_aper_lst[~mask], res_lst[~mask],
-                                  c='w', s=20, lw=1, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
                 self._ax3.scatter(pix_lst[mask], res_lst[mask],
-                                  c=color, s=25, lw=0)
+                                  c=color, s=20, lw=0, alpha=0.7)
                 self._ax3.scatter(pix_lst[~mask], res_lst[~mask],
-                                  c='w', s=20, lw=1, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
 
         self._ax3._residual_text.set_text('R.M.S. = %.5f, N = %d/%d'%(std, nuse, ntot))
 
@@ -1900,44 +1984,55 @@ class CalibFigure(Figure):
         self._ax3.set_xlabel('Pixel')
         self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
 
-def recalib(filename,**kwargs):
-    '''
-    recalibrate the wavelength
-    '''
+def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, coeff,
+        npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
+        clipping=3, snr_threshold=10):
 
-    channel  = kwargs.pop('channel', '')
+    '''
+    Re-calibrate the wavelength for a given spectra file.
+
+    Args:
+        filename (string): Filename of the 1-D spectra
+        identfilename (string): Filename of wavelength identification
+        figfilename (string): Filename of the output wavelength figure
+        ref_spec (:class:`numpy.dtype`): Reference spectra
+        linelist (string): Name of wavelength standard file
+        channel (string): Name of the input channel
+        coeff (:class:`numpy.array`): Coefficients of the reference wavelength
+        npixel (integer): Number of pixels along the main-dispersion direction
+        k (integer): -1 or 1, depending on the relationship `order = k*aperture+offset`
+        offset (integer): coefficient in the relationship `order = k*aperture+offset`
+        window_size (integer): Size of the window in pixel to search for the lines
+        xorder (integer): Degree of polynomial along X direction
+        yorder (integer): Degree of polynomial along Y direction
+        maxiter (integer): Maximim number of interation in polynomial fitting
+        clipping (float): Threshold of sigma-clipping
+        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
+            in the wavelength fitting
+        
+    '''
 
     spec = fits.getdata(filename)
     if channel != '':
         mask = spec['channel']==channel
         spec = spec[mask]
 
-    ref_spec      = kwargs.pop('ref_spec')
-    linelist_file = kwargs.pop('linelist')
-    coeff         = kwargs.pop('coeff')
-    window_size   = kwargs.pop('window_size')
-    xorder        = kwargs.pop('xorder')
-    yorder        = kwargs.pop('yorder')
-    maxiter       = kwargs.pop('maxiter')
-    clipping      = kwargs.pop('clipping')
-    snr_threshold = kwargs.pop('snr_threshold')
-    npixel        = kwargs.pop('npixel')
-    k             = kwargs.pop('k')
-    offset        = kwargs.pop('offset')
-    fig_width     = kwargs.pop('fig_width')
-    fig_height    = kwargs.pop('fig_height')
-    fig_dpi       = kwargs.pop('fig_dpi')
-
+    # find initial shift with cross-corelation functions
     shift = find_drift(ref_spec, spec)
 
-    print('shift = ',shift)
+    print('%s channel %s shift = %+8.6f'%(os.path.basename(filename), channel, shift))
+
+    # initialize the identlist
+    identlist = {}
+
+    # load the wavelengths
+    linefilename = search_linelist(linelist)
+    if linefilename is None:
+        print('Error: Cannot find linelist file: %s'%linelist)
+        exit()
+    line_list = load_linelist(linefilename)
 
     x = np.arange(npixel)
-
-    linefilename = search_linelist(linelist_file)
-    linelist = load_linelist(linefilename)
-
-    identlist = {}
 
     for row in spec:
         aperture = row['aperture']
@@ -1947,7 +2042,7 @@ def recalib(filename,**kwargs):
         wv1 = min(wvs[0], wvs[-1])
         wv2 = max(wvs[0], wvs[-1])
         has_insert = False
-        for line in linelist:
+        for line in line_list:
             if line[0]<wv1:
                 continue
             elif line[0]>wv2:
@@ -1988,13 +2083,17 @@ def recalib(filename,**kwargs):
     #        print(aperture, row['pixel'], row['wavelength'], row['snr'])
 
     coeff, std, k, offset, nuse, ntot = fit_wv(
-            identlist = identlist, 
-            npixel    = npixel,
-            xorder    = xorder,
-            yorder    = yorder,
-            maxiter   = maxiter,
-            clipping  = clipping,
-            )
+        identlist = identlist, 
+        npixel    = npixel,
+        xorder    = xorder,
+        yorder    = yorder,
+        maxiter   = maxiter,
+        clipping  = clipping,
+        )
+
+    fig_width  = 2500
+    fig_height = 1500
+    fig_dpi    = 150
 
     fig = CalibFigure(width    = fig_width,
                       height   = fig_height,
@@ -2015,7 +2114,7 @@ def recalib(filename,**kwargs):
                       nuse         = nuse,
                       ntot         = ntot,
                       )
-    fig.savefig('calib-%s.png'%os.path.basename(filename))
+    fig.savefig(figfilename)
     plt.close(fig)
 
     # organize results

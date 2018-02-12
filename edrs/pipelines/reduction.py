@@ -352,7 +352,7 @@ class Reduction(object):
            **bias.surfix**,        *string*,  Surfix of the corrected files
            **bias.file**,          *string*,  Name of bias file
            **bias.cosmic_clip**,   *float*,   Upper clipping threshold to remove cosmic-rays
-           **bias.smooth_method**, *string*,  Method of smoothing, including *Gauss*
+           **bias.smooth_method**, *string*,  "Method of smoothing, including *Gauss*"
            **bias.smooth_sigma**,  *integer*, Sigma of the smoothing filter
            **bias.smooth_mode**,   *string*,  Mode of the smoothing
 
@@ -1670,6 +1670,7 @@ class Reduction(object):
 
         # path alias
         midproc = self.paths['midproc']
+        report_img = self.paths['report_img']
 
         if self.nchannels == 1:
             # single fiber calibration
@@ -1721,10 +1722,12 @@ class Reduction(object):
                 for i, item in enumerate(item_lst):
                     filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
                     identfilename = os.path.join(midproc, '%s_idt.dat'%item.fileid)
+                    figfilename = os.path.join(report_img, 'wvcalib-%s-%s.png'%(item.fileid, channel))
 
                     if ich == 0 and i == 0:
                         calib = wvcalib(filename,
                                         identfilename = identfilename,
+                                        figfilename   = figfilename,
                                         channel       = channel,
                                         linelist      = linelist,
                                         window_size   = window_size,
@@ -1739,8 +1742,10 @@ class Reduction(object):
                         ref_spec = spec[spec['channel']==channel]
                     else:
                         calib = recalib(filename,
-                                        channel       = channel,
+                                        identfilename = identfilename,
+                                        figfilename   = figfilename,
                                         ref_spec      = ref_spec,
+                                        channel       = channel,
                                         linelist      = linelist,
                                         coeff         = ref_calib['coeff'],
                                         npixel        = ref_calib['npixel'],
@@ -1756,6 +1761,7 @@ class Reduction(object):
                     if item.frameid not in calib_lst:
                         calib_lst[item.frameid] = {}
                     calib_lst[item.frameid][channel] = calib
+            exit()
 
 
             # find file to calibrate

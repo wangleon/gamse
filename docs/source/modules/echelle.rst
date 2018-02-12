@@ -49,6 +49,28 @@ Wavelength Calibration
 .. currentmodule:: edrs.echelle.wvcalib
 .. autosummary::
     CalibWindow
+    CalibFigure
+    PlotFrame
+    CustomToolbar
+    InfoFrame
+    LineTable
+    FitparaFrame
+    wvcalib
+    recalib
+    fit_wv
+    guess_wavelength
+    find_drift
+    find_local_peak
+    find_shift_ccf
+    find_shift_ccf2
+    load_ident
+    save_ident
+    is_identified
+    load_linelist
+    search_linelist
+    parse_input_wavelength
+    reference_wv
+    reference_wv_self
 
 .. automodule:: edrs.echelle.wvcalib
    :members:
