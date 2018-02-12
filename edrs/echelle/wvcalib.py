@@ -1319,7 +1319,7 @@ def wvcalib(filename, identfilename, linelist, channel, window_size=13,
 
     # save ident list
     if len(calibwindow.identlist)>0:
-        save_identlist(identlist, identfilename, channel)
+        save_ident(result, identfilename, channel)
 
     return result
 
@@ -1506,11 +1506,11 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_identlist(identlist, filename, channel):
+def save_ident(result, filename, channel):
     '''Write the ident line list into an ascii file.
 
     Args:
-        identlist (dict): Identification line list
+        result (dict): A dict containing identification results
         filename (string): Name of the ASCII file
         channel (string): Channel
     Returns:
@@ -1530,16 +1530,27 @@ def save_identlist(identlist, filename, channel):
         infile.close()
 
     outfile = open(filename, 'w')
+
     # write other channels
     if len(exist_row_lst)>0:
         outfile.write(os.linesep.join(exist_row_lst))
+
     # write current channel
+
+    # write identified lines
+    identlist = result['identlist']
     for aperture, list1 in sorted(identlist.items()):
         for pix, wav, mask, res, method in zip(list1['pixel'],
                 list1['wavelength'], list1['mask'], list1['residual'],
                 list1['method']):
-            outfile.write('%1s %03d %10.4f %10.4f %1d %+10.6f %1s'%(
+            outfile.write('%1s LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
                 channel, aperture, pix, wav, int(mask), res, method.decode('ascii'))+os.linesep)
+
+    # write coefficients
+    coeff = result['coeff']
+    for irow in range(coeff.shape[0]):
+        string = ' '.join(['%18.10e'%v for v in coeff[irow]])
+        outfile.write('%1s COEFF %s'%(channel, string)+os.linesep)
 
     outfile.close()
 
