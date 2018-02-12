@@ -58,7 +58,9 @@ Wavelength Calibration
     wvcalib
     recalib
     fit_wv
+    get_wv_val
     guess_wavelength
+    find_order
     find_drift
     find_local_peak
     find_shift_ccf
@@ -68,7 +70,6 @@ Wavelength Calibration
     is_identified
     load_linelist
     search_linelist
-    parse_input_wavelength
     reference_wv
     reference_wv_self
 
