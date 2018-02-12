@@ -2,4 +2,6 @@
 FOCES Pipeline
 ==============
 .. automodule:: edrs.pipelines.foces
-    :members:
+   :members:
+   :private-members:
+   :undoc-members:

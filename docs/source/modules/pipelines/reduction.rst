@@ -3,7 +3,9 @@ General Reduction Pipeline
 ==========================
 
 .. automodule:: edrs.pipelines
-    :members:
+   :members:
 
 .. automodule:: edrs.pipelines.reduction
-    :members:
+   :members:
+   :private-members:
+   :undoc-members:

@@ -1418,7 +1418,7 @@ def get_wv_val(coeff, npixel, pixel, order):
         pixel (integer or :class:`numpy.array`): Pixel coordinates.
         order (integer): Order number.
     Returns:
-        float or :class:`numpy.array`: Wavelength solution of the given pixels
+        float or :class:`numpy.array`: Wavelength solution of the given pixels.
     See also:
         :func:`fit_wv`
 
@@ -1554,9 +1554,11 @@ def save_ident(identlist, coeff, filename, channel):
         filename (string): Name of the ASCII file.
         channel (string): Name of channel.
     Returns:
-        No returns
+        No returns.
+
     See also:
         :func:`load_ident`
+
     '''
     exist_row_lst = []
     if os.path.exists(filename):
@@ -1606,6 +1608,7 @@ def load_ident(filename, channel):
 
             * **identlist** (*dict*):  Identified lines for all orders
             * **coeff** (:class:`numpy.array`): Coefficients of wavelengths
+
     See also:
         :func:`save_ident`
     

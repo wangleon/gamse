@@ -32,8 +32,10 @@ def mosaic_flat_interact(filename_lst, outfile,
         mask_surfix (string): Surfix of the filenames of masks.
     Returns:
         No returns.
+
     See Also:
         :func:`mosaic_flat_auto`
+
     '''
     import matplotlib.pyplot as plt
 
@@ -179,7 +181,7 @@ def mosaic_flat_interact(filename_lst, outfile,
         fig.canvas.draw()
 
     def onclick(event):
-        ''' Select an area when clicking on the figure
+        '''Select an area when clicking on the figure.
         '''
         ax = event.inaxes
         if ax is not None and ax.filename is not None:
@@ -475,8 +477,10 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
         max_count (float): Maximum count.
     Returns:
         No returns.
+
     See Also:
         :func:`mosaic_flat_interact`
+
     '''
     from ..echelle.trace import ApertureSet
 

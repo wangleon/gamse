@@ -1,8 +1,8 @@
 Echelle Module
-===============
+==============
 
 Order Location and Tracing
----------------------------
+--------------------------
 .. currentmodule:: edrs.echelle.trace
 .. autosummary::
     ApertureLocation
@@ -12,9 +12,11 @@ Order Location and Tracing
 
 .. automodule:: edrs.echelle.trace
    :members:
+   :private-members:
+   :undoc-members:
 
 Flat Fielding Correction
---------------------------
+------------------------
 .. currentmodule:: edrs.echelle.flat
 .. autosummary::
     load_mosaic
@@ -25,24 +27,30 @@ Flat Fielding Correction
 
 .. automodule:: edrs.echelle.flat
    :members:
+   :private-members:
+   :undoc-members:
 
 Background Correction
-----------------------
+---------------------
 .. currentmodule:: edrs.echelle.background
 .. autosummary::
     correct_background
 
 .. automodule:: edrs.echelle.background
    :members:
+   :private-members:
+   :undoc-members:
 
 1-D Spectra Extraction
------------------------
+----------------------
 .. currentmodule:: edrs.echelle.extract
 .. autosummary::
     sum_extract
 
 .. automodule:: edrs.echelle.extract
    :members:
+   :private-members:
+   :undoc-members:
 
 Wavelength Calibration
 ----------------------
@@ -75,3 +83,5 @@ Wavelength Calibration
 
 .. automodule:: edrs.echelle.wvcalib
    :members:
+   :private-members:
+   :undoc-members:

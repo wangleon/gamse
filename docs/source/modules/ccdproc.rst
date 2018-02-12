@@ -13,3 +13,5 @@ Summaries
 
 .. automodule:: edrs.ccdproc
    :members:
+   :private-members:
+   :undoc-members:

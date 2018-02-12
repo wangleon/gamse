@@ -25,18 +25,26 @@ Configuration
 -------------
 .. automodule:: edrs.utils.config
    :members:
+   :private-members:
+   :undoc-members:
 
 Observing Log
 -------------
 .. automodule:: edrs.utils.obslog
    :members:
+   :private-members:
+   :undoc-members:
 
 One Dimensional Array
 ---------------------
 .. automodule:: edrs.utils.onedarray
    :members:
+   :private-members:
+   :undoc-members:
 
 Regression
 ----------
 .. automodule:: edrs.utils.regression
    :members:
+   :private-members:
+   :undoc-members:
