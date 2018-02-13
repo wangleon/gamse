@@ -64,7 +64,6 @@ class ApertureLocation(object):
 
         setattr(self, 'nodes_%s'%key, xydata)
 
-
     def fit_nodes(self, key, degree, clipping, maxiter):
         '''
         Fit the polynomial iteratively with sigma-clipping method and get the
@@ -265,10 +264,10 @@ class ApertureSet(object):
         '''Add an :class:`ApertureLocation` instance into this set.
 
         Args:
-            aperture_loc (:class:`ApertureLocation`): The added
-                :class:`ApertureLocation` instance
+            aperture_loc (:class:`ApertureLocation`): An
+                :class:`ApertureLocation` instance to be added.
         Returns:
-            No returns
+            No returns.
         '''
         n = len(self.dict)
         if n == 0:

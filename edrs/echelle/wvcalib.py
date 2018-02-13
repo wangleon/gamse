@@ -59,7 +59,7 @@ class CustomToolbar(NavigationToolbar2TkAgg):
         NavigationToolbar2TkAgg.__init__(self, canvas, master)
 
     def set_message(self, msg):
-        '''Remove the coordinate display in the toolbar.
+        '''Remove the coordinate displayed in the toolbar.
         '''
         pass
 
@@ -550,7 +550,7 @@ class CalibWindow(tk.Frame):
         width (integer): Width of window.
         height (integer): Height of window.
         dpi (integer): DPI of figure.
-        spec (:class:`dtype`): Spectra data.
+        spec (:class:`numpy.dtype`): Spectra data.
         filename (string): Filename of the spectra data.
         figfilename (string): Filename of the output wavelength calibration
             figure.
@@ -1227,18 +1227,50 @@ def wvcalib(filename, identfilename, figfilename, linelist, channel, window_size
     '''Wavelength calibration.
 
     Args:
-        filename (string): Filename of the 1-D spectra
-        identfilename (string): Filename of wavelength identification
-        figfilename (string): Filename of the output wavelength figure
-        linelist (string): Name of wavelength standard file
-        channel (string): Name of the input channel
-        window_size (integer): Size of the window in pixel to search for the lines
-        xorder (integer): Degree of polynomial along X direction
-        yorder (integer): Degree of polynomial along Y direction
-        maxiter (integer): Maximim number of interation in polynomial fitting
-        clipping (float): Threshold of sigma-clipping
+        filename (string): Filename of the 1-D spectra.
+        identfilename (string): Filename of wavelength identification.
+        figfilename (string): Filename of the output wavelength figure.
+        linelist (string): Name of wavelength standard file.
+        channel (string): Name of the input channel.
+        window_size (integer): Size of the window in pixel to search for the
+            lines.
+        xorder (integer): Degree of polynomial along X direction.
+        yorder (integer): Degree of polynomial along Y direction.
+        maxiter (integer): Maximim number of interation in polynomial fitting.
+        clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting
+            in the wavelength fitting.
+    Returns:
+        dict: A dict containing:
+
+            * **coeff** (:class:`numpy.array`): Coefficient array.
+            * **npixel** (*integer*): Number of pixels along the main dispersion
+              direction.
+            * **k** (*integer*): Coefficient in the relationship `order =
+              k*aperture + offset`.
+            * **offset** (*integer*): Coefficient in the relationship `order =
+              k*aperture + offset`.
+            * **std** (*float*): Standard deviation of wavelength fitting in Å.
+            * **nuse** (*integer*): Number of lines used in the wavelength
+              fitting.
+            * **ntot** (*integer*): Number of lines found in the wavelength
+              fitting.
+            * **identlist** (*dict*): Dict of identified lines.
+            * **window_size** (*integer*): Length of window in searching the
+              line centers.
+            * **xorder** (*integer*): Order of polynomial along X axis in the
+              wavelength fitting.
+            * **yorder** (*integer*): Order of polynomial along Y axis in the
+              wavelength fitting.
+            * **maxiter** (*integer*): Maximum number of iteration in the
+              wavelength fitting.
+            * **clipping** (*float*): Clipping value of the wavelength fitting.
+            * **snr_threshold** (*float*): Minimum S/N of the spectral lines to
+              be accepted in the wavelength fitting.
+        
+    See also:
+        :func:`recalib`
+
     '''
 
     spec = fits.getdata(filename)
@@ -1338,9 +1370,10 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
     Args:
         identlist (dict): Dict of identification lines for different apertures.
         npixel (integer): Number of pixels for each order.
-        xorder (integer): Degree of polynomial along X direction.
-        yorder (integer): Degree of polynomial along Y direction.
-        maxiter (integer): Maximim number of interation in polynomial fitting.
+        xorder (integer): Order of polynomial along X direction.
+        yorder (integer): Order of polynomial along Y direction.
+        maxiter (integer): Maximim number of iterations in the polynomial
+            fitting.
         clipping (float): Threshold of sigma-clipping.
 
     Returns:
@@ -1348,13 +1381,16 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
         
             * **coeff** (:class:`numpy.array`): Coefficients array.
             * **std** (*float*): Standard deviation.
-            * **k** (*int*): *k* in the relation between aperture numbers and diffraction orders.
-            * **offset** (*int*): *offset* in the relation between aperture numbers and diffraction orders.
+            * **k** (*int*): *k* in the relationship between aperture numbers
+              and diffraction orders: `order = k*aperture + offset`.
+            * **offset** (*int*): *offset* in the relationship between aperture
+              numbers and diffraction orders: `order = k*aperture + offset`.
             * **nuse** (*int*): Number of lines used in the fitting.
             * **ntot** (*int*): Number of lines found.
 
     See also:
         :func:`get_wv_val`
+
     '''
     # find physical order
     k, offset = find_order(identlist, npixel)
@@ -1472,7 +1508,7 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         return guess_wv
 
 def is_identified(wavelength, identlist, aperture):
-    '''Check if wavelength has already identified.
+    '''Check if the input wavelength has already been identified.
 
     Args:
         wavelength (float): Wavelength of the input line.
@@ -1495,14 +1531,14 @@ def is_identified(wavelength, identlist, aperture):
 def find_order(identlist, npixel):
     '''Find the linear relation between the aperture numbers and diffraction
     orders.
-    The relationship is  order = k*aperture + offset.
+    The relationship is `order = k*aperture + offset`.
     Longer wavelength has lower order number.
 
     Args:
         identlist (dict): Dict of identified lines.
         npixel (integer): Number of pixels along the main dispersion direction.
     Returns:
-        tuple: A tuple containg (k, offset).
+        tuple: A tuple containg (`k`, `offset`).
     '''
     aper_lst, wvc_lst = [], []
     for aperture, list1 in sorted(identlist.items()):
@@ -1674,10 +1710,10 @@ def find_local_peak(flux, x, width):
     Returns:
         tuple: A tuple containing:
 
-            * i1 (integer): Index of the left side.
-            * i2 (integer): Index of the right side.
-            * p1 (list): List of fitting parameters.
-            * std (float): Standard devation of the fitting.
+            * **i1** (*integer*): Index of the left side.
+            * **i2** (*integer*): Index of the right side.
+            * **p1** (*list*): List of fitting parameters.
+            * **std** (*float*): Standard devation of the fitting.
         
     '''
     width = int(round(width))
@@ -1994,8 +2030,7 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
         npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
         clipping=3, snr_threshold=10):
 
-    '''
-    Re-calibrate the wavelength for a given spectra file.
+    '''Re-calibrate the wavelength for a given spectra file.
 
     Args:
         filename (string): Filename of the 1-D spectra.
@@ -2012,12 +2047,41 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
             offset`.
         window_size (integer): Size of the window in pixel to search for the
             lines.
-        xorder (integer): Degree of polynomial along X direction.
-        yorder (integer): Degree of polynomial along Y direction.
+        xorder (integer): Order of polynomial along X axis.
+        yorder (integer): Order of polynomial along Y axis.
         maxiter (integer): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
+    Returns:
+        dict: A dict containing:
+
+            * **coeff** (:class:`numpy.array`): Coefficient array.
+            * **npixel** (*integer*): Number of pixels along the main dispersion
+              direction.
+            * **k** (*integer*): Coefficient in the relationship `order =
+              k*aperture + offset`.
+            * **offset** (*integer*): Coefficient in the relationship `order =
+              k*aperture + offset`.
+            * **std** (*float*): Standard deviation of wavelength fitting in Å.
+            * **nuse** (*integer*): Number of lines used in the wavelength
+              fitting.
+            * **ntot** (*integer*): Number of lines found in the wavelength
+              fitting.
+            * **identlist** (*dict*): Dict of identified lines.
+            * **window_size** (*integer*): Length of window in searching the
+              line centers.
+            * **xorder** (*integer*): Order of polynomial along X axis in the
+              wavelength fitting.
+            * **yorder** (*integer*): Order of polynomial along Y axis in the
+              wavelength fitting.
+            * **maxiter** (*integer*): Maximum number of iteration in the
+              wavelength fitting.
+            * **clipping** (*float*): Clipping value of the wavelength fitting.
+            * **snr_threshold** (*float*): Minimum S/N of the spectral lines to
+              be accepted in the wavelength fitting.
+    See also:
+        :func:`wvcalib`
         
     '''
 
