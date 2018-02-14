@@ -1515,7 +1515,7 @@ def is_identified(wavelength, identlist, aperture):
         identlist (dict): Dict of identified lines.
         aperture (integer): Aperture number.
     Returns:
-        bool: *True* if **wavelength** and **aperture** in **identlist**
+        bool: *True* if **wavelength** and **aperture** in **identlist**.
     
     '''
     if aperture in identlist:
@@ -1538,7 +1538,13 @@ def find_order(identlist, npixel):
         identlist (dict): Dict of identified lines.
         npixel (integer): Number of pixels along the main dispersion direction.
     Returns:
-        tuple: A tuple containg (`k`, `offset`).
+        tuple: A tuple containg (`k`, `offset`), where
+
+            * **k** (*integer*): Coefficient in the relationship
+              `order = k*aperture + offset`.
+            * **offset** (*integer*): Coefficient in the relationship
+              `order = k*aperture + offset`.
+
     '''
     aper_lst, wvc_lst = [], []
     for aperture, list1 in sorted(identlist.items()):
@@ -1640,7 +1646,7 @@ def load_ident(filename, channel):
         filename (string): Name of the identification file.
         channel (string): Name of channel.
     Returns:
-        tuple: A tuple containing:
+        tuple: A tuple (`identlist`, `coeff`), where
 
             * **identlist** (*dict*):  Identified lines for all orders
             * **coeff** (:class:`numpy.array`): Coefficients of wavelengths
@@ -1708,7 +1714,7 @@ def find_local_peak(flux, x, width):
         x (integer): The approximate coordinate of the peak pixel.
         width (integer): Window of profile fitting.
     Returns:
-        tuple: A tuple containing:
+        tuple: A tuple containing (`i1`, `i2`, `p1`, `std`), where
 
             * **i1** (*integer*): Index of the left side.
             * **i2** (*integer*): Index of the right side.
@@ -2029,8 +2035,9 @@ class CalibFigure(Figure):
 def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, coeff,
         npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
         clipping=3, snr_threshold=10):
-
-    '''Re-calibrate the wavelength for a given spectra file.
+    '''
+    Re-calibrate the wavelength of an input spectra file using another spectra
+    as reference.
 
     Args:
         filename (string): Filename of the 1-D spectra.
@@ -2211,13 +2218,18 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
     return result
 
 def reference_wv(infilename, outfilename, refcalib_lst):
-    '''Reference the wavelength and write the wavelength solution to the FITS
-    file.
+    '''
+    Reference the wavelength and write the wavelength solution to the FITS file.
 
     Args:
         infilename (string): Filename of input spectra.
         outfilename (string): Filename of output spectra.
         recalib_lst (list): List of calibration results.
+    Returns:
+        No returns.
+    See also:
+        * :func:`wvcalib`
+        * :func:`recalib`
 
     '''
     f = fits.open(infilename)
@@ -2279,7 +2291,7 @@ def reference_wv(infilename, outfilename, refcalib_lst):
     
 
 def reference_wv_self(infilename, outfilename, calib_lst):
-    '''Reference the wavelength
+    '''Reference the wavelength.
     '''
     f = fits.open(infilename)
     data = f[1].data

@@ -12,14 +12,10 @@ import matplotlib.pyplot as plt
 from ..ccdproc import save_fits, array_to_table, table_to_array
 from ..utils.onedarray import pairwise
 
-def mosaic_flat_interact(filename_lst, outfile,
-                         mosaic_file,
-                         reg_file,
-                         disp_axis   = 0,
-                         mask_surfix = '_msk',
-                         ):
+def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
+    disp_axis=0, mask_surfix = '_msk'):
     '''
-    Display an interacitve interface to mosaic the flat images
+    Display an interacitve GUI to mosaic the flat images.
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
@@ -314,15 +310,9 @@ def mosaic_flat_interact(filename_lst, outfile,
     # display the final flat and the boundaries in a ds9 window
     os.system('ds9 -language en %s -region %s'%(outfile, reg_file))
 
-def detect_gap(
-        data, x0,
-        ccf_ulimit = 50,
-        ccf_llimit = 50,
-        step       = 50,
-        order      = 4, 
-        ):
+def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
     '''
-    Detect the curve of gap between two orders along Y-xias.
+    Detect the curve of gap between two orders along Y-axis.
 
     This is realized by calculating the cross-correlation function and detect
     the position of the maximum value.
@@ -403,15 +393,15 @@ def detect_gap(
 
 def load_mosaic(filename):
     '''
-    Read mosaic boundary information from an existing ascii file.
+    Read mosaic boundary information from an existing ASCII file.
 
     Args:
         filename (string): Name of the mosaic file.
     Returns:
-        tuple: A tuple containing:
+        tuple: A tuple containing (`coeff_lst`, `select_area`), where
 
             * **coeff_lst** (*list*): A list containing coefficients of
-                polynomials for the boundaries
+              polynomials for the boundaries.
             * **select_area** (*dict*): A dict containing the selected areas.
 
     '''
@@ -646,7 +636,16 @@ def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''
-    Save boundaries data in a `.reg` file
+    Save boundaries data in a SAO-DS9 region file.
+
+    Args:
+        filename (string): Filename of the output region file.
+        coeff_lst (list): List of coefficients.
+        disp_axis (integer): 0 or 1, depending on the dispersion axis.
+        shape (tuple): A tuple containing the shape of the image.
+        npoints (integer): Number of sampling points.
+    Returns:
+        No returns.
     '''
     outfile = open(filename, 'w')
     outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
