@@ -79,7 +79,6 @@ Wavelength Calibration
     load_linelist
     search_linelist
     reference_wv
-    reference_wv_self
 
 .. automodule:: edrs.echelle.wvcalib
    :members:

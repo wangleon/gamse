@@ -1208,7 +1208,7 @@ class Reduction(object):
 
         .. csv-table:: Accepted options in config file
            :header: Option, Type, Description
-           :widths: 25, 10, 60
+           :widths: 25, 10, 80
 
            **background.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
            **background.surfix**,     *string*,  Surfix of the background correceted files
@@ -1657,7 +1657,7 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
-        from ..echelle.wvcalib import wvcalib, recalib, reference_wv, reference_wv_self
+        from ..echelle.wvcalib import wvcalib, recalib, reference_wv, reference_wv_comp
 
         # get parameters from config file
         linelist      = self.config.get('reduction', 'wvcalib.linelist')
@@ -1717,7 +1717,13 @@ class Reduction(object):
                                      if len(item.objectname) == self.nchannels and 
                                      item.objectname[ich] == 'ThAr']
 
+            # calib_lst is a hierarchical dict of calibration results
             calib_lst = {}
+            # calib_lst = {
+            #       'frameid1': {'A': calib_dict1, 'B': calib_dict2, ...},
+            #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
+            #       ... ...
+            #       }
             for ich, (channel, item_lst) in enumerate(sorted(thar_lst.items())):
                 for i, item in enumerate(item_lst):
                     filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
@@ -1761,40 +1767,17 @@ class Reduction(object):
                     if item.frameid not in calib_lst:
                         calib_lst[item.frameid] = {}
                     calib_lst[item.frameid][channel] = calib
-            exit()
 
 
-            # find file to calibrate
-            for item in self.log:
-                if item.imagetype == 'sci':
-                    infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
-                    refcalib_lst = {}
-                    # search for ref thar
-                    for ichannel in range(len(item.objectname)):
-                        channel = chr(ichannel+65)
+            comp_item_lst = self.find_comp()
+            sci_item_lst  = self.find_science()
 
-                        refcalib_lst[channel] = []
-
-                        for direction in [-1, +1]:
-                            frameid = item.frameid
-                            while(True):
-                                frameid += direction
-                                if frameid in calib_lst and channel in calib_lst[frameid]:
-                                    refcalib_lst[channel].append(calib_lst[frameid][channel])
-                                    print(item.frameid, 'append',channel, frameid)
-                                    break
-                                elif frameid <= min(calib_lst) or frameid >= max(calib_lst):
-                                    break
-                                else:
-                                    continue
-                    reference_wv(infilename, outfilename, refcalib_lst)
-
-
-            for item in self.log:
-                if item.frameid in calib_lst:
-                    infilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
-                    outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
-                    reference_wv_self(infilename, outfilename, calib_lst[item.frameid])
-
+            for item in comp_item_lst:
+                infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
+                outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
+                reference_wv(infilename, outfilename, item.frameid, calib_lst)
+            for item in sci_item_lst:
+                infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
+                outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
+                reference_wv(infilename, outfilename, item.frameid, calib_lst)
 

@@ -1452,7 +1452,8 @@ def get_wv_val(coeff, npixel, pixel, order):
         coeff (:class:`numpy.array`): 2-D Coefficient array.
         npixel (integer): Number of pixels along the main dispersion direction.
         pixel (integer or :class:`numpy.array`): Pixel coordinates.
-        order (integer): Order number.
+        order (integer or :class:`numpy.array`): Diffraction order number. Must
+            have the same length as **pixel**.
     Returns:
         float or :class:`numpy.array`: Wavelength solution of the given pixels.
     See also:
@@ -2217,14 +2218,16 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
 
     return result
 
-def reference_wv(infilename, outfilename, refcalib_lst):
+def reference_wv(infilename, outfilename, frameid, calib_lst):
     '''
     Reference the wavelength and write the wavelength solution to the FITS file.
 
     Args:
         infilename (string): Filename of input spectra.
         outfilename (string): Filename of output spectra.
-        recalib_lst (list): List of calibration results.
+        frameid (integer): FrameID of the input spectra.
+        calib_lst (dict): A dict containing calibration solutions for different
+            channels.
     Returns:
         No returns.
     See also:
@@ -2246,28 +2249,80 @@ def reference_wv(infilename, outfilename, refcalib_lst):
 
     newspec = []
 
-    for channel, calib_lst in sorted(refcalib_lst.items()):
+    # prepare for self reference. means one channel is ThAr
+    file_identlist = []
+
+    # find unique channels in the input spectra
+    channel_lst = np.unique(data['channel'])
+
+    # loop all channels
+    for channel in sorted(channel_lst):
+
+        # filter the spectra in current channel
         mask = (data['channel'] == channel)
         if mask.sum() == 0:
             continue
         spec = data[mask]
 
-        if len(calib_lst) > 0:
-            k      = calib_lst[0]['k']
-            offset = calib_lst[0]['offset']
-            xorder = calib_lst[0]['xorder']
-            yorder = calib_lst[0]['yorder']
+        # check if the current frameid & channel are in calib_lst
+        if frameid in calib_lst and channel in calib_lst[frameid]:
+            self_reference = True
+            calib = calib_lst[frameid][channel]
+        else:
+            self_reference = False
+            # find the closet ThAr
+            refcalib_lst = []
+            for direction in [-1, +1]:
+                _frameid = frameid
+                while(True):
+                    _frameid += direction
+                    if _frameid in calib_lst and channel in calib_lst[_frameid]:
+                        calib = calib_lst[_frameid][channel]
+                        refcalib_lst.append(calib)
+                        #print(item.frameid, 'append',channel, frameid)
+                        break
+                    elif _frameid <= min(calib_lst) or _frameid >= max(calib_lst):
+                        break
+                    else:
+                        continue
 
-            coeff_lst = np.array([res['coeff'] for res in calib_lst])
-            coeff = coeff_lst.sum(axis=0)/len(calib_lst)
+        # get variable shortcuts.
+        # in principle, these parameters in refcalib_lst should have the same
+        # values. so just use the last calib solution
+        k      = calib['k']
+        offset = calib['offset']
+        xorder = calib['xorder']
+        yorder = calib['yorder']
 
+        if self_reference:
+            coeff = calib['coeff']
+        else:
+            # calculate the average coefficients
+            coeff_lst = np.array([_calib['coeff'] for _calib in refcalib_lst])
+            coeff = coeff_lst.mean(axis=0, dtype=np.float64)
+
+        # write important parameters into the FITS header
         leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
         head[leading_str+' K']      = k
         head[leading_str+' OFFSET'] = offset
         head[leading_str+' XORDER'] = xorder
         head[leading_str+' YORDER'] = yorder
+
+        # write the coefficients
         for j, i in itertools.product(range(coeff.shape[0]), range(coeff.shape[1])):
             head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+
+        if self_reference:
+            head[leading_str+' MAXITER']    = calib['maxiter']
+            head[leading_str+' STDDEV']     = calib['std']
+            head[leading_str+' WINDOWSIZE'] = calib['window_size']
+            head[leading_str+' NTOT']       = calib['ntot']
+            head[leading_str+' NUSE']       = calib['nuse']
+            head[leading_str+' NPIXEL']     = calib['npixel']
+
+            for aperture, list1 in calib['identlist'].items():
+                for row in list1:
+                    file_identlist.append(row)
 
         for row in spec:
             aperture = row['aperture']
@@ -2280,77 +2335,20 @@ def reference_wv(infilename, outfilename, refcalib_lst):
             item.append(wv)
             item = np.array(tuple(item), dtype=newdescr)
             newspec.append(item)
+
     newspec = np.array(newspec, dtype=newdescr)
+
 
     pri_hdu  = fits.PrimaryHDU(header=head)
     tbl_hdu1 = fits.BinTableHDU(newspec)
-    hdu_lst  = fits.HDUList([pri_hdu, tbl_hdu1])
-    if os.path.exists(outfilename):
-        os.remove(outfilename)
-    hdu_lst.writeto(outfilename)
-    
+    lst = [pri_hdu, tbl_hdu1]
 
-def reference_wv_self(infilename, outfilename, calib_lst):
-    '''Reference the wavelength.
-    '''
-    f = fits.open(infilename)
-    data = f[1].data
-    head = f[0].header
-    f.close()
+    if len(file_identlist)>0:
+        file_identlist = np.array(file_identlist, dtype=identlinetype)
+        tbl_hdu2 = fits.BinTableHDU(file_identlist)
+        lst.append(tbl_hdu2)
+    hdu_lst  = fits.HDUList(lst)
 
-    npoints = data['points'].max()
-
-    newdescr = [descr for descr in data.dtype.descr]
-    # add new columns
-    newdescr.append(('order',np.int16))
-    newdescr.append(('wavelength','>f8',(npoints,)))
-
-    newspec = []
-
-    file_identlist = []
-    for channel, res in sorted(calib_lst.items()):
-        mask = (data['channel'] == channel)
-        if mask.sum() == 0:
-            continue
-        spec = data[mask]
-
-        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
-        head[leading_str+' K']          = res['k']
-        head[leading_str+' OFFSET']     = res['offset']
-        head[leading_str+' XORDER']     = res['xorder']
-        head[leading_str+' YORDER']     = res['yorder']
-        for j, i in itertools.product(range(res['yorder']+1), range(res['xorder']+1)):
-            head[leading_str+' COEFF %d %d'%(j, i)] = res['coeff'][j,i]
-        head[leading_str+' MAXITER']    = res['maxiter']
-        head[leading_str+' STDDEV']     = res['std']
-        head[leading_str+' WINDOWSIZE'] = res['window_size']
-        head[leading_str+' NTOT']       = res['ntot']
-        head[leading_str+' NUSE']       = res['nuse']
-        head[leading_str+' NPIXEL']     = res['npixel']
-
-        for aperture, list1 in res['identlist'].items():
-            for row in list1:
-                file_identlist.append(row)
-
-        for row in spec:
-            aperture = row['aperture']
-            npixel   = row['points']
-            order    = aperture*res['k'] + res['offset']
-            wv = get_wv_val(res['coeff'], npixel, np.arange(npixel), np.repeat(order, npixel))
-
-            item = list(row)
-            item.append(order)
-            item.append(wv)
-            item = np.array(tuple(item), dtype=newdescr)
-            newspec.append(item)
-
-    newspec = np.array(newspec, dtype=newdescr)
-    file_identlist = np.array(file_identlist, dtype=identlinetype)
-
-    pri_hdu  = fits.PrimaryHDU(header=head)
-    tbl_hdu1 = fits.BinTableHDU(newspec)
-    tbl_hdu2 = fits.BinTableHDU(file_identlist)
-    hdu_lst  = fits.HDUList([pri_hdu, tbl_hdu1, tbl_hdu2])
     if os.path.exists(outfilename):
         os.remove(outfilename)
     hdu_lst.writeto(outfilename)
