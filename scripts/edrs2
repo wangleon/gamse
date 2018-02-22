@@ -99,9 +99,11 @@ def main():
         logger.info('Start reducing %s data'%instrument)
         reduce_echelle(instrument=instrument)
 
-    elif sys.argv[1] == 'plot' and len(sys.argv)>=3:
-        from edrs.echelle import plot
-        plot.plot(sys.argv[2])
+    elif sys.argv[1] == 'plot':
+        from edrs.pipelines import plot
+
+        plot()
+
     elif sys.argv[1] == 'list':
         # list the observing log of raw data
 

@@ -2,6 +2,7 @@ import os
 import astropy.io.fits as fits
 
 from .reduction import Reduction
+from .plot import plot_spectra1d
 from ..utils.config import read_config, find_config
 
 instrument_lst =  ['FOCES', 'Xinglong216HRS']
@@ -32,6 +33,17 @@ def reduce_echelle(instrument):
         reduction.reduce()
     else:
         print('Unknown Instrument: %s'%instrument)
+
+def plot():
+    '''Plot the 1-D spectra.
+
+    Args:
+        No args.
+    Returns:
+        No returns.
+    '''
+    plot_spectra1d()
+
 
 
 def make_log(instrument, path):
