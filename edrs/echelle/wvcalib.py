@@ -2231,8 +2231,7 @@ def reference_wv(infilename, outfilename, frameid, calib_lst):
     Returns:
         No returns.
     See also:
-        * :func:`wvcalib`
-        * :func:`recalib`
+        :func:`wvcalib`
 
     '''
     f = fits.open(infilename)

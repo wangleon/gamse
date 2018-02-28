@@ -28,17 +28,18 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         scafilename (string): Name of the scatter light file.
         channels (list): List of channels as strings.
         apertureset_lst (dict): Dict of ApertureSet at different channels.
-        scale (string): Scale of the image. Either 'linear' or 'log'.
+        scale (string): Scale of the 2-D polynomial fitting. If 'log', fit the
+            polynomial in the logrithm scale.
         block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
-        xorder (integer): Order of 2D polynomial along *x*-axis
-            (main dispersion direction)
-        yorder (integer): Order of 2D polynomial along *y*-axis
-            (cross-dispersion direction)
+        xorder (integer): Order of 2D polynomial along the main dispersion
+            direction.
+        yorder (integer): Order of 2D polynomial along the cross-dispersion
+            direction.
         maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
         upper_clip (float): Upper sigma clipping threshold.
         lower_clip (float): Lower sigma clipping threshold.
-        extend (bool): Extend the grid to the whole image if *True*.
+        extend (bool): Extend the grid to the whole CCD image if *True*.
         display (bool): Display figures on the screen if *True*.
         fig_file (string): Name of the output figure.
         reg_file (string): Name of the output DS9 region file.
@@ -69,6 +70,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     min_aper = min([min(apertureset_lst[ch].dict.keys()) for ch in channels])
     max_aper = max([max(apertureset_lst[ch].dict.keys()) for ch in channels])
 
+    # find intra-order pixels
     for x in np.arange(1, w, scan_step):
         xsection = meddata[:,x]
         inter_aper = []
@@ -139,10 +141,10 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     
     # if scale='log', filter the negative values
     if scale=='log':
-        mask = znodes > 0
-        xnodes = xnodes[mask]
-        ynodes = ynodes[mask]
-        znodes = znodes[mask]
+        pmask = znodes > 0
+        xnodes = xnodes[pmask]
+        ynodes = ynodes[pmask]
+        znodes = znodes[pmask]
 
 
     if plot:

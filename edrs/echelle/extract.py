@@ -18,7 +18,8 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         infilename (string): Name of the input image.
         outfilename (string): Name of the output image.
         channels (list): List of channels as strings.
-        apertureset_lst (dict): Dict of ApertureSet at different channels.
+        apertureset_lst (dict): Dict of :class:`ApertureSet` instances at
+            different channels.
         upper_limit (float): Upper limit of the extracted aperture.
         lower_limit (float): Lower limit of the extracted aperture.
         figure (:class:`matplotlib.figure`): Figure to display the 1d spectra
@@ -86,8 +87,8 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         prev_aper     = aper
 
     for channel in channels:
-        for aper, aperloc in apertureset_lst[channel].items():
-            position = aperloc.position(newx)
+        for aper, aper_loc in apertureset_lst[channel].items():
+            position = aper_loc.position(newx)
             # determine the lower and upper limits
             lower_line = position - lower_limit
             upper_line = position + upper_limit
@@ -121,6 +122,13 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
             item = np.array((aper, channel, fluxdata.size, fluxdata, fluxmask),
                     dtype=eche_spec)
             spec.append(item)
+
+            # update header. Put coefficients of aperture locations into header.
+            leading_string = 'HIERARCH EDRS TRACE CHANNEL %s APERTURE %d'%(
+                    channel, aper)
+            for ic, c in enumerate(aper_loc.position.coef):
+                head[leading_string + ' COEFF %d'%ic] = c
+
 
     spec = np.array(spec, dtype=eche_spec)
 
