@@ -16,14 +16,12 @@ from .reduction import Reduction
 class XinglongHRS(Reduction):
 
     def __init__(self):
-        super(XinglongHRS, self).__init__()
-
+        super(XinglongHRS, self).__init__(instrument='XinglongHRS')
 
     def config_ccd(self):
         '''Set CCD images configurations.
         '''
         self.ccd_config
-
 
     def overscan(self):
         '''

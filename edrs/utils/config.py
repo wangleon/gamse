@@ -3,13 +3,15 @@ import logging
 logger = logging.getLogger(__name__)
 from configparser import ConfigParser
 
-def read_config():
+def read_config(instrument):
     '''
     Read the config file ended with `.cfg` in the current directory.
 
     Default config file is `reduction.cfg`. If the file does not exist, find a
     file ended with `.cfg`. If such file does not exist, return *None*.
 
+    Args:
+        instrument (string): Name of the instrument.
     Returns:
         :class:`ConfigParser`: A :class:`ConfigParser` instance.
     '''
@@ -26,12 +28,15 @@ def read_config():
     elif len(filename_lst)==1:
         conf_file = filename_lst[0]
         logger.info('Found config file: "%s"'%conf_file)
-        config = ConfigParser()
-        config.read(conf_file)
-        return config
+    elif os.path.exists(instrument+'.cfg'):
+        conf_file = '%s.cfg'%instrument
     elif len(filename_lst)>1:
         logger.error('There are %d config files (*.cfg)'%len(filename_lst))
         return None
+
+    config = ConfigParser()
+    config.read(conf_file)
+    return config
 
 def find_config(path):
     '''Find the config file in the given directory.

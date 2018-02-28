@@ -38,14 +38,15 @@ class Reduction(object):
 
     '''
 
-    def __init__(self):
+    def __init__(self, instrument):
+
+        self.instrument = instrument
 
         # read config file
         self.load_config()
 
         # read log file
         self.load_log()
-
 
     def reduce(self):
         '''
@@ -102,7 +103,7 @@ class Reduction(object):
            **path.report_img**, *string*, (*optional*) Path to the images of report file
 
         '''
-        self.config = read_config()
+        self.config = read_config(instrument=self.instrument)
 
         # get a dict of paths
         self.paths = {}
@@ -1278,7 +1279,7 @@ class Reduction(object):
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
             channel_lst.append(channels)
-            scale_lst.append('linear')
+            scale_lst.append('log')
 
         # correct the backgrounds
         for i in range(len(infile_lst)):
@@ -1307,87 +1308,86 @@ class Reduction(object):
                                fig_file        = figfile,
                                reg_file        = regfile,
                                )
-        exit()
 
+        if False:    
+            # prepare the file queue
+            infile_lst, mskfile_lst, outfile_lst, scafile_lst = [], [], [], []
+            # different files use differenet scales
+            scale_lst = []
     
-        # prepare the file queue
-        infile_lst, mskfile_lst, outfile_lst, scafile_lst = [], [], [], []
-        # different files use differenet scales
-        scale_lst = []
-    
-        # check combined flat
-        if self.config.has_option('reduction', 'fileid.flat'):
-            # there only 1 flats in the dataset
-            flat_file = self.config.get('reduction', 'flat.file')
-            msk_file  = '%s%s.fits'%(flat_file[0:-5], self.mask_surfix)
-            out_file  = '%s%s.fits'%(flat_file[0:-5], self.output_surfix)
-            sca_file  = '%s_sca.fits'%(flat_file[0:-5])
-            infile_lst.append(flat_file)
-            mskfile_lst.append(msk_file)
-            outfile_lst.append(out_file)
-            scafile_lst.append(sca_file)
-            scale_lst.append('linear')
-            logger.info('Add "%s" to the background file queue'%flat_file)
-    
-        if len(self.flat_groups)>0:
-            for flatname in sorted(self.flat_groups.keys()):
-                infilename  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
-                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.output_surfix))
-                scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%flatname)
+            # check combined flat
+            if self.config.has_option('reduction', 'fileid.flat'):
+                # there only 1 flats in the dataset
+                flat_file = self.config.get('reduction', 'flat.file')
+                msk_file  = '%s%s.fits'%(flat_file[0:-5], self.mask_surfix)
+                out_file  = '%s%s.fits'%(flat_file[0:-5], self.output_surfix)
+                sca_file  = '%s_sca.fits'%(flat_file[0:-5])
+                infile_lst.append(flat_file)
+                mskfile_lst.append(msk_file)
+                outfile_lst.append(out_file)
+                scafile_lst.append(sca_file)
+                scale_lst.append('linear')
+                logger.info('Add "%s" to the background file queue'%flat_file)
+        
+            if len(self.flat_groups)>0:
+                for flatname in sorted(self.flat_groups.keys()):
+                    infilename  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                    mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
+                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.output_surfix))
+                    scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%flatname)
+                    infile_lst.append(infilename)
+                    mskfile_lst.append(mskfilename)
+                    outfile_lst.append(outfilename)
+                    scafile_lst.append(scafilename)
+                    scale_lst.append('linear')
+                    logger.info('Add "%s" to the background file queue'%infilename)
+        
+            # check scientific files
+            string = self.config.get('reduction', 'fileid.science')
+            id_lst = parse_num_seq(string)
+            for item in self.log:
+                if item.frameid not in id_lst:
+                    continue
+                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+                scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%item.fileid)
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
                 scafile_lst.append(scafilename)
                 scale_lst.append('linear')
-                logger.info('Add "%s" to the background file queue'%infilename)
-    
-        # check scientific files
-        string = self.config.get('reduction', 'fileid.science')
-        id_lst = parse_num_seq(string)
-        for item in self.log:
-            if item.frameid not in id_lst:
-                continue
-            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
-            scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%item.fileid)
-            infile_lst.append(infilename)
-            mskfile_lst.append(mskfilename)
-            outfile_lst.append(outfilename)
-            scafile_lst.append(scafilename)
-            scale_lst.append('linear')
-            logger.info('Add scientific file "%s" to background file queue'%
-                        infilename)
-    
-        scan_step = self.config.getint('reduction', 'background.scan_step')
-    
-        # correct the backgrounds
-        for infile,mskfile,outfile,scafile,scale in zip(
-                infile_lst,mskfile_lst,outfile_lst,scafile_lst,scale_lst):
-            correct_background(infile, mskfile, outfile, scafile,
-                               order_lst       = order_lst,
-                               scale           = scale,
-                               block_mask      = 4,
-                               scan_step       = scan_step,
-                               xorder          = xorder,
-                               yorder          = yorder,
-                               maxiter         = maxiter,
-                               upper_clipping  = upper_clipping,
-                               lower_clipping  = lower_clipping,
-                               expand_grid     = expand_grid,
-                               fig1            = fig1,
-                               fig2            = fig2,
-                               report_img_path = self.paths['report_img'],
-                               )
-
-        if display:
-            # close the figures
-            plt.close(fig1)
-            plt.close(fig2)
-
-        # update surfix
-        self.input_surfix = self.output_surfix
+                logger.info('Add scientific file "%s" to background file queue'%
+                            infilename)
+        
+            scan_step = self.config.getint('reduction', 'background.scan_step')
+        
+            # correct the backgrounds
+            for infile,mskfile,outfile,scafile,scale in zip(
+                    infile_lst,mskfile_lst,outfile_lst,scafile_lst,scale_lst):
+                correct_background(infile, mskfile, outfile, scafile,
+                                   order_lst       = order_lst,
+                                   scale           = scale,
+                                   block_mask      = 4,
+                                   scan_step       = scan_step,
+                                   xorder          = xorder,
+                                   yorder          = yorder,
+                                   maxiter         = maxiter,
+                                   upper_clipping  = upper_clipping,
+                                   lower_clipping  = lower_clipping,
+                                   expand_grid     = expand_grid,
+                                   fig1            = fig1,
+                                   fig2            = fig2,
+                                   report_img_path = self.paths['report_img'],
+                                   )
+            
+            if display:
+                # close the figures
+                plt.close(fig1)
+                plt.close(fig2)
+            
+            # update surfix
+            self.input_surfix = self.output_surfix
 
     def extract(self):
         '''
@@ -1657,7 +1657,7 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
-        from ..echelle.wvcalib import wvcalib, recalib, reference_wv, reference_wv_comp
+        from ..echelle.wvcalib import wvcalib, recalib, reference_wv
 
         # get parameters from config file
         linelist      = self.config.get('reduction', 'wvcalib.linelist')
