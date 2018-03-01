@@ -2350,7 +2350,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             item.append(wv)
             newspec.append(tuple(item))
 
-            # write information into regfile
+            # write wavlength information into regfile
             if (channel, aperture) in aperture_coeffs:
                 coeffs = aperture_coeffs[(channel, aperture)]
                 position = poly.Chebyshev(coef=coeffs, domain=[0, npixel-1])
@@ -2406,6 +2406,17 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
                     string = 'line(%7.2f, %7.2f, %7.2f, %7.2f) # color=%s wl=%d'
                     text = string%(x+1+20, y+1, x+1+20, y+1+ticklen, color, w)
                     regfile.write(text+os.linesep)
+
+                # draw identified lines in region file
+                if self_reference and aperture in calib['identlist']:
+                    list1 = calib['identlist'][aperture]
+                    for row in list1:
+                        x = row['pixel']
+                        y = position(x)
+                        ps = ('x', 'circle')[row['mask']]
+                        string = 'point(%7.2f, %7.2f) # point=%s color=%s wl=%9.4f'
+                        text = string%(x+1, y+1, ps, color, row['wavelength'])
+                        regfile.write(text+os.linesep)
 
     newspec = np.array(newspec, dtype=newdescr)
 
