@@ -1,9 +1,11 @@
 import os
+import re
 import sys
 import math
 import itertools
 
 import numpy as np
+import numpy.polynomial as poly
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 import scipy.optimize as opt
@@ -24,10 +26,9 @@ else:
     import tkinter as tk
     import tkinter.ttk as ttk
 
-
 from ..ccdproc import save_fits
 from ..utils.regression import polyfit2d, polyval2d
-
+from ..utils.onedarray import pairwise
 
 identlinetype = np.dtype({
     'names':  ['channel','aperture','order','pixel','wavelength','snr','mask',
@@ -2218,16 +2219,18 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
 
     return result
 
-def reference_wv(infilename, outfilename, frameid, calib_lst):
+def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     '''
     Reference the wavelength and write the wavelength solution to the FITS file.
 
     Args:
         infilename (string): Filename of input spectra.
         outfilename (string): Filename of output spectra.
-        frameid (integer): FrameID of the input spectra.
-        calib_lst (dict): A dict containing calibration solutions for different
-            channels.
+        regfilename (string): Filename of output region file for SAO-DS9.
+        frameid (integer): FrameID of the input spectra. The frameid is used to
+            find the proper calibration solution in calib_lst.
+        calib_lst (dict): A dict with key of frameids, and values of calibration
+            solutions for different channels.
     Returns:
         No returns.
     See also:
@@ -2254,8 +2257,18 @@ def reference_wv(infilename, outfilename, frameid, calib_lst):
     # find unique channels in the input spectra
     channel_lst = np.unique(data['channel'])
 
+    # open region file and write headers
+    regfile = open(regfilename, 'w')
+    regfile.write('# Region file format: DS9 version 4.1'+os.linesep)
+    regfile.write('global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" ')
+    regfile.write('select=1 highlite=1 dash=0 fixed=1 edit=0 move=0 delete=0 include=1 source=1'+os.linesep)
+    colors = ['red', 'green', 'blue', 'cyan']
+
+    # find aperture locations
+    aperture_coeffs = get_aperture_coeffs_in_header(head)
+
     # loop all channels
-    for channel in sorted(channel_lst):
+    for ich, channel in enumerate(sorted(channel_lst)):
 
         # filter the spectra in current channel
         mask = (data['channel'] == channel)
@@ -2323,20 +2336,80 @@ def reference_wv(infilename, outfilename, frameid, calib_lst):
                 for row in list1:
                     file_identlist.append(row)
 
+
+
         for row in spec:
             aperture = row['aperture']
             npixel   = row['points']
             order = aperture*k + offset
             wv = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
             
+            # add wavelength into FITS table
             item = list(row)
             item.append(order)
             item.append(wv)
-            item = np.array(tuple(item), dtype=newdescr)
-            newspec.append(item)
+            newspec.append(tuple(item))
+
+            # write information into regfile
+            if (channel, aperture) in aperture_coeffs:
+                coeffs = aperture_coeffs[(channel, aperture)]
+                position = poly.Chebyshev(coef=coeffs, domain=[0, npixel-1])
+                color = colors[ich]
+
+                # write text in the left edge
+                x = -6
+                y = position(x)
+                string = '# text(%7.2f, %7.2f) text={A%d, O%d} color=%s'
+                text = string%(x+1, y+1, aperture, order, color)
+                regfile.write(text+os.linesep)
+
+                # write text in the right edge
+                x = npixel-1+6
+                y = position(x)
+                string = '# text(%7.2f, %7.2f) text={A%d, O%d} color=%s'
+                text = string%(x+1, y+1, aperture, order, color)
+                regfile.write(text+os.linesep)
+
+                # write text in the center
+                x = npixel/2.
+                y = position(x)
+                string = '# text(%7.2f, %7.2f) text={Channel %s, Aperture %3d, Order %3d} color=%s'
+                text = string%(x+1, y+1+5, channel, aperture, order, color)
+                regfile.write(text+os.linesep)
+
+                # draw lines
+                x = np.linspace(0, npixel-1, 50)
+                y = position(x)
+                for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
+                    string = 'line(%7.2f,%7.2f,%7.2f,%7.2f) # color=%s'
+                    text = string%(x1+1, y1+1, x2+1, y2+1, color)
+                    regfile.write(text+os.linesep)
+
+                # draw ticks at integer wavelegths
+                pix = np.arange(npixel)
+                if wv[0] > wv[-1]:
+                    wv = wv[::-1]
+                    pix= pix[::-1]
+                f = intp.InterpolatedUnivariateSpline(wv, pix, k=3)
+                w1 = wv.min()
+                w2 = wv.max()
+                for w in np.arange(int(math.ceil(w1)), int(math.floor(w2))+1):
+                    x = f(w)
+                    y = position(x)
+                    if w%10==0:
+                        ticklen = 3
+                        string = '# text(%7.2f, %7.2f) text={%4d} color=%s'
+                        text = string%(x+1+20, y+1+5, w, color)
+                        regfile.write(text+os.linesep)
+                    else:
+                        ticklen = 1
+                    string = 'line(%7.2f, %7.2f, %7.2f, %7.2f) # color=%s wl=%d'
+                    text = string%(x+1+20, y+1, x+1+20, y+1+ticklen, color, w)
+                    regfile.write(text+os.linesep)
 
     newspec = np.array(newspec, dtype=newdescr)
 
+    regfile.close()
 
     pri_hdu  = fits.PrimaryHDU(header=head)
     tbl_hdu1 = fits.BinTableHDU(newspec)
@@ -2351,3 +2424,27 @@ def reference_wv(infilename, outfilename, frameid, calib_lst):
     if os.path.exists(outfilename):
         os.remove(outfilename)
     hdu_lst.writeto(outfilename)
+
+def get_aperture_coeffs_in_header(head):
+    '''Get coefficients of each aperture from the FITS header.
+
+    Args:
+        head (:class:`astropy.io.fits.Header`): Header of FITS file.
+    Returns:
+        dict: A dict containing coefficients for each aperture and each channel.
+    '''
+    
+    coeffs = {}
+    for key, value in head.items():
+        exp = '^EDRS TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
+        if re.match(exp, key) is not None:
+            g = key.split()
+            channel  = g[3]
+            aperture = int(g[5])
+            icoeff   = int(g[7])
+            if (channel, aperture) not in coeffs:
+                coeffs[(channel, aperture)] = []
+            if len(coeffs[(channel, aperture)]) == icoeff:
+                coeffs[(channel, aperture)].append(value)
+    return coeffs
+

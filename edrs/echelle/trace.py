@@ -319,12 +319,13 @@ class ApertureSet(object):
             outfile.write('# aperture %3d'%aper + os.linesep)
 
             if aper_loc.direct == 1:
+                # write text in the left edge
                 x = -6
                 y = aper_loc.position(x)
                 text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
                 outfile.write(text+os.linesep)
 
-                # write text in the left edge
+                # write text in the right edge
                 x = aper_loc.shape[aper_loc.direct]-1+6
                 y = aper_loc.position(x)
                 text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
@@ -339,7 +340,7 @@ class ApertureSet(object):
                     text = '# text(%7.2f, %7.2f) text={Channel %s, Aperture %3d} '%(x+1, y+1+5, channel, aper)
                 outfile.write(text+os.linesep)
 
-                # write text in the right edge
+                # draw lines
                 x = np.linspace(0, aper_loc.shape[aper_loc.direct]-1, 50)
                 y = aper_loc.position(x)
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):

@@ -1775,9 +1775,11 @@ class Reduction(object):
             for item in comp_item_lst:
                 infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
                 outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
-                reference_wv(infilename, outfilename, item.frameid, calib_lst)
+                regfilename = os.path.join(midproc, '%s%s.reg'%(item.fileid, self.output_surfix))
+                reference_wv(infilename, outfilename, regfilename, item.frameid, calib_lst)
             for item in sci_item_lst:
                 infilename  = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
                 outfilename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix))
-                reference_wv(infilename, outfilename, item.frameid, calib_lst)
+                regfilename = os.path.join(midproc, '%s%s.reg'%(item.fileid, self.output_surfix))
+                reference_wv(infilename, outfilename, regfilename, item.frameid, calib_lst)
 
