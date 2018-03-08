@@ -1003,6 +1003,9 @@ class Reduction(object):
 
         aperture_set_lst = {}
 
+        # path alias
+        midproc = self.paths['midproc']
+
         for ichannel in range(self.nchannels):
             channel = chr(ichannel + 65)
             print(ichannel, channel)
@@ -1012,10 +1015,10 @@ class Reduction(object):
 
             if channel in trace_lst:
                 if len(trace_lst[channel]) > 1:
-                    filename_lst = [os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                    filename_lst = [os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
                                     for item in trace_lst[channel]]
                     tracename = 'trace_%s'%channel
-                    dst_filename = os.path.join(self.paths['midproc'],'%s.fits'%tracename)
+                    dst_filename = os.path.join(midproc,'%s.fits'%tracename)
 
                     # combine the trace files
                     combine_fits(filename_lst, dst_filename, mode='sum')
@@ -1024,7 +1027,7 @@ class Reduction(object):
                     data = fits.getdata(dst_filename)
                     mask = np.zeros_like(data, dtype=np.bool)
                     for item in trace_lst[channel]:
-                        mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+                        mask_file = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix))
                         mask_table = fits.getdata(mask_file)
                         imask = table_to_array(mask_table, data.shape)
                         imask = (imask&4 == 4)
@@ -1032,15 +1035,15 @@ class Reduction(object):
                 else:
                     item = trace_lst[channel][0]
                     tracename = item.fileid
-                    filename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
+                    filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix))
                     data = fits.getdata(filename)
-                    mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
+                    mask_file = os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix))
                     mask_table = fits.getdata(mask_file)
                     mask = table_to_array(mask_table, data.shape)
                     mask = (mask&4 == 4)
 
-                trc_file = os.path.join(self.paths['midproc'],   '%s_trc.txt'%tracename)
-                reg_file = os.path.join(self.paths['midproc'],   '%s_trc.reg'%tracename)
+                trc_file = os.path.join(midproc,   '%s_trc.txt'%tracename)
+                reg_file = os.path.join(midproc,   '%s_trc.reg'%tracename)
                 fig_file = os.path.join(self.paths['report_img'],'trace_%s.png'%tracename)
 
                 kwargs.update({'mask'       : mask,
@@ -1063,13 +1066,13 @@ class Reduction(object):
                     print(flatname)
                     logger.info('Begin processing flat component: %s'%flatname)
 
-                    flatpath = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                    flatpath = os.path.join(midproc, '%s.fits'%flatname)
 
                     # combine flats
                     #self.combine_flat(item_lst, flatname)
 
                     data = fits.getdata(flatpath)
-                    mask_file = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
+                    mask_file = os.path.join(midproc, '%s%s.fits'%(flatname, self.mask_surfix))
                     mask_table = fits.getdata(mask_file)
                     if mask_table.size==0:
                         mask = np.zeros_like(data, dtype=np.int16)
@@ -1078,8 +1081,8 @@ class Reduction(object):
                     mask = (mask&4 == 4)
 
                     # determine the result file and figure file
-                    trc_file = os.path.join(self.paths['midproc'],   '%s_trc.txt'%flatname)
-                    reg_file = os.path.join(self.paths['midproc'],   '%s_trc.reg'%flatname)
+                    trc_file = os.path.join(midproc,   '%s_trc.txt'%flatname)
+                    reg_file = os.path.join(midproc,   '%s_trc.reg'%flatname)
                     fig_file = os.path.join(self.paths['report_img'],'trace_%s.png'%flatname)
 
                     # find the apertures
@@ -1091,7 +1094,7 @@ class Reduction(object):
                                    'fig_file'   : fig_file,
                                    })
 
-                    if True:
+                    if False:
                         #temporarily added for debug
                         aperture_set = load_aperture_set(trc_file)
                     else:

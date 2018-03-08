@@ -2034,9 +2034,9 @@ class CalibFigure(Figure):
         self._ax3.set_xlabel('Pixel')
         self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
 
-def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, coeff,
-        npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
-        clipping=3, snr_threshold=10):
+def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel,
+    coeff, npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
+    clipping=3, snr_threshold=10):
     '''
     Re-calibrate the wavelength of an input spectra file using another spectra
     as reference.
@@ -2102,7 +2102,8 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel, c
     # find initial shift with cross-corelation functions
     shift = find_drift(ref_spec, spec)
 
-    print('%s channel %s shift = %+8.6f'%(os.path.basename(filename), channel, shift))
+    string = '%s channel %s shift = %+8.6f pixel'
+    print(string%(os.path.basename(filename), channel, shift))
 
     # initialize the identlist
     identlist = {}
@@ -2237,10 +2238,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
         :func:`wvcalib`
 
     '''
-    f = fits.open(infilename)
-    data = f[1].data
-    head = f[0].header
-    f.close()
+    data, head = fits.getdata(infilename, header=True)
 
     npoints = data['points'].max()
 
@@ -2260,15 +2258,14 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     # open region file and write headers
     regfile = open(regfilename, 'w')
     regfile.write('# Region file format: DS9 version 4.1'+os.linesep)
-    regfile.write('global color=green dashlist=8 3 width=1 font="helvetica 10 normal roman" ')
+    regfile.write('global dashlist=8 3 width=1 font="helvetica 10 normal roman" ')
     regfile.write('select=1 highlite=1 dash=0 fixed=1 edit=0 move=0 delete=0 include=1 source=1'+os.linesep)
-    colors = ['red', 'green', 'blue', 'cyan']
 
     # find aperture locations
     aperture_coeffs = get_aperture_coeffs_in_header(head)
 
     # loop all channels
-    for ich, channel in enumerate(sorted(channel_lst)):
+    for channel in sorted(channel_lst):
 
         # filter the spectra in current channel
         mask = (data['channel'] == channel)
@@ -2321,9 +2318,11 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
         head[leading_str+' YORDER'] = yorder
 
         # write the coefficients
-        for j, i in itertools.product(range(coeff.shape[0]), range(coeff.shape[1])):
+        for j, i in itertools.product(range(yorder+1), range(xorder+1)):
             head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
 
+        # if the input spectra is a wavelength standard frame (e.g. ThAr), write
+        # calibration solutions into FITS header
         if self_reference:
             head[leading_str+' MAXITER']    = calib['maxiter']
             head[leading_str+' STDDEV']     = calib['std']
@@ -2332,11 +2331,10 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             head[leading_str+' NUSE']       = calib['nuse']
             head[leading_str+' NPIXEL']     = calib['npixel']
 
+            # pack the identfied line list
             for aperture, list1 in calib['identlist'].items():
                 for row in list1:
                     file_identlist.append(row)
-
-
 
         for row in spec:
             aperture = row['aperture']
@@ -2354,7 +2352,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             if (channel, aperture) in aperture_coeffs:
                 coeffs = aperture_coeffs[(channel, aperture)]
                 position = poly.Chebyshev(coef=coeffs, domain=[0, npixel-1])
-                color = colors[ich]
+                color = {'A': 'red', 'B': 'green'}[channel]
 
                 # write text in the left edge
                 x = -6

@@ -79,6 +79,7 @@ Wavelength Calibration
     load_linelist
     search_linelist
     reference_wv
+    get_aperture_coeffs_in_header
 
 .. automodule:: edrs.echelle.wvcalib
    :members:

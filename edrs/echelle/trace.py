@@ -586,6 +586,22 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             mask = new_mask
         return p, mask
 
+    def find_local_peak(xdata, ydata, mask):
+
+        if mask.sum()>=2:
+            core = np.hanning(9)
+            ydata = np.convolve(ydata, core, mode='same')
+
+        argmax = ydata.argmax()
+        xmax = xdata[argmax]
+        if argmax<2 or argmax>ydata.size-2:
+            return xdata[xdata.size//2]
+        coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],deg=2)
+        a, b,c = coeff
+        ypeak = -b/2/a
+        return ypeak
+
+
     # generate a window list according to seperation and sep_der
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
     seperation_lst = seperation + dense_y/1000.*sep_der
@@ -851,21 +867,42 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             ystep = mid
             for ix, (slope, shift) in enumerate(zip(slope_lst[direction],
                                                     shift_lst[direction])):
+                # use (slope, shift) as nodes for polynomial
                 ystep = ystep*slope + shift
                 x1 = x_lst[direction][ix]
                 y_lst = nodes_lst[x1]
-                # use (slope, shift) as nodes for polynomial
-                xfit.append(x1)
-                yfit.append(ystep)
-                # or alternatively, use points as nodes for polynomial
-                #diff = np.abs(y_lst - ystep)
-                #dmin = diff.min()
-                #imin = diff.argmin()
-                #if dmin < 2:
-                #    xfit.append(x1)
-                #    yfit.append(y_lst[imin])
+                # now ystep is the calculated approximate position of peak along
+                # column x1
+                option = 2
+                # option 1: use (x1, ystep)
+                # option 2: find peak by parabola fitting of the 3 points near
+                #           the maximum pixel
+                # option 3: use the closet point in y_lst as nodes
+                if option == 1:
+                    xfit.append(x1)
+                    yfit.append(ystep)
+                elif option == 2:
+                    local_sep = ystep/1000*sep_der + seperation
+                    y1 = max(0, int(ystep-local_sep/2))
+                    y2 = min(h, int(ystep+local_sep/2))
+                    xdata = np.arange(y1, y2)
+                    ydata = data[y1:y2, x1]
+                    m = sat_mask[y1:y2, x1]
+                    ypeak = find_local_peak(xdata, ydata, m)
+                    xfit.append(x1)
+                    yfit.append(ypeak)
+                elif option == 3:
+                    diff = np.abs(y_lst - ystep)
+                    dmin = diff.min()
+                    imin = diff.argmin()
+                    if dmin < 2:
+                        xfit.append(x1)
+                        yfit.append(y_lst[imin])
+                else:
+                    xfit.append(x1)
+                    yfit.append(ystep)
 
-        # resort xfit and yfit
+        # sort xfit and yfit
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
@@ -976,3 +1013,33 @@ def load_aperture_set(filename):
     infile.close()
 
     return aperture_set
+
+
+def gaussian_bkg(A, center, fwhm, bkg, x):
+    '''Gaussian + background function.
+
+    Args:
+        A (float):
+        center (float):
+        fwhm (float):
+        bkg (float):
+        x (float or :class:`numpy.array`):
+    Returns:
+        :class:`numpy.array`: Output function values.
+        
+    '''
+    s = fwhm/2./math.sqrt(2*math.log(2))
+    return A*np.exp(-(x-center)**2/2./s**2) + bkg
+
+def errfunc(p, x, y, fitfunc):
+    '''Error function used in fitting.
+    '''
+    return y - fitfunc(p, x)
+
+def fitfunc(p, x):
+    '''Fitting function used in the least-square fitting.
+    Args:
+        p (list):
+    '''
+    return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+
