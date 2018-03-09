@@ -67,8 +67,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     xnodes, ynodes, znodes = [], [], []
 
     # find the minimum and maximum aperture number
-    min_aper = min([min(apertureset_lst[ch].dict.keys()) for ch in channels])
-    max_aper = max([max(apertureset_lst[ch].dict.keys()) for ch in channels])
+    min_aper = min([min(apertureset_lst[ch].keys()) for ch in channels])
+    max_aper = max([max(apertureset_lst[ch].keys()) for ch in channels])
 
     # find intra-order pixels
     for x in np.arange(1, w, scan_step):

@@ -228,36 +228,42 @@ class ApertureSet(object):
     ApertureSet is a group of :class:`ApertureLocation` instances.
 
     Attributes:
-        dict (dict): Dict containing aperture numbers and
+        _dict (dict): Dict containing aperture numbers and
             :class:`ApertureLocation` instances
         current (dict): 
     '''
     def __init__(self, *args, **kwargs):
-        self.dict = {}
+        self._dict = {}
         self.curret = 0
         for key, value in kwargs.items():
             setattr(self, key, value)
 
     def __getitem__(self, key):
-        return self.dict[key]
+        return self._dict[key]
 
     def __setitem__(self, key, value):
-        self.dict[key] = value
+        self._dict[key] = value
 
     def __len__(self):
-        return len(self.dict)
+        return len(self._dict)
 
     def __contains__(self, key):
-        return key in self.dict
+        return key in self._dict
 
     def items(self):
-        return self.dict.items()
+        return self._dict.items()
+
+    def keys(self):
+        return self._dict.keys()
+
+    def values(self):
+        return self._dict.values()
 
     def __str__(self):
         string = ''
-        for aperture, aperture_loc in sorted(self.dict.items()):
-            string += 'APERTURE LOCATION %d%s'%(aperture, os.linesep)
-            string += aperture_loc.to_string()
+        for aper, aper_loc in sorted(self._dict.items()):
+            string += 'APERTURE LOCATION %d%s'%(aper, os.linesep)
+            string += aper_loc.to_string()
         return string
 
     def add_aperture(self, aperture_loc):
@@ -269,20 +275,20 @@ class ApertureSet(object):
         Returns:
             No returns.
         '''
-        n = len(self.dict)
+        n = len(self._dict)
         if n == 0:
-            self.dict[0] = aperture_loc
+            self._dict[0] = aperture_loc
         else:
-            maxi = max(self.dict.keys())
-            self.dict[maxi+1] = aperture_loc
+            maxi = max(self._dict.keys())
+            self._dict[maxi+1] = aperture_loc
 
     def sort(self):
         '''Sort the apertures according to their positions inside this instance.
         '''
-        aperloc_lst = sorted([aper_loc for aper, aper_loc in self.dict.items()],
+        aperloc_lst = sorted([aper_loc for aper, aper_loc in self._dict.items()],
                               key=lambda aper_loc: aper_loc.get_center())
         for i in range(len(aperloc_lst)):
-            self.dict[i] = aperloc_lst[i]
+            self._dict[i] = aperloc_lst[i]
 
     def save_txt(self, filename):
         '''
@@ -350,7 +356,7 @@ class ApertureSet(object):
         outfile.close()
 
     def __iter__(self):
-        return _ApertureSetIterator(self.dict)
+        return _ApertureSetIterator(self._dict)
 
     def get_local_seperation(self, aper):
         '''
@@ -438,9 +444,9 @@ class ApertureSet(object):
         '''
 
         new_dict = {}
-        for _aper, _aper_loc in self.dict.items():
+        for _aper, _aper_loc in self.items():
             new_dict[_aper+offset] = _aper_loc
-        self.dict = new_dict
+        self._dict = new_dict
 
 class _ApertureSetIterator(object):
     '''
