@@ -229,12 +229,10 @@ class ApertureSet(object):
 
     Attributes:
         _dict (dict): Dict containing aperture numbers and
-            :class:`ApertureLocation` instances
-        current (dict): 
+            :class:`ApertureLocation` instances.
     '''
     def __init__(self, *args, **kwargs):
         self._dict = {}
-        self.curret = 0
         for key, value in kwargs.items():
             setattr(self, key, value)
 
@@ -447,6 +445,60 @@ class ApertureSet(object):
         for _aper, _aper_loc in self.items():
             new_dict[_aper+offset] = _aper_loc
         self._dict = new_dict
+
+    def get_positions(self, x):
+        '''Get central positions of all chelle orders.
+
+        Args:
+            x (integer or :class:`numpy.array`): Input *X* coordiantes of the
+                central positions to calculate.
+        Returns:
+            dict: A dict of `{aperture: y}` containing cetral positions of
+                all orders.
+            
+        '''
+        return {aper: aperloc.position(x) for aper,aperloc in self.items()}
+
+    def get_boundaries(self, x):
+        '''Get upper and lower boundaries of all echelle orders.
+        
+        Args:
+            x (integer or :class:`numpy.array`): Input *X* coordiantes of the
+                boundaries to calculate.
+        Returns:
+            tuple: A tuple containing:
+            
+            * `{aperture: y}`: A dict of lower positions of all orders.
+            * `{aperture: y}`: A dict of upper positions of all orders.
+
+        '''
+        lower_bounds = {}
+        upper_bounds = {}
+        prev_aper     = None
+        prev_position = None
+        for aper, aperloc in sorted(self.items()):
+            position = aperloc.position(x)
+            if prev_aper is not None:
+                mid = (position + prev_position)/2
+                lower_bounds[aper]      = mid
+                upper_bounds[prev_aper] = mid
+            prev_position = position
+            prev_aper     = aper
+
+        # find the lower bound for the first aperture
+        minaper = min(self.keys())
+        position = self[minaper].position(x)
+        dist = upper_bounds[minaper] - position
+        lower_bounds[minaper] = position - dist
+ 
+        # find the upper bound for the last aperture
+        maxaper = max(self.keys())
+        position = self[maxaper].position(x)
+        dist = position - lower_bounds[maxaper]
+        upper_bounds[maxaper] = position + dist
+
+        return (lower_bounds, upper_bounds)
+
 
 class _ApertureSetIterator(object):
     '''
