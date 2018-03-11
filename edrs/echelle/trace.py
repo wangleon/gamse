@@ -466,11 +466,8 @@ class ApertureSet(object):
             x (integer or :class:`numpy.array`): Input *X* coordiantes of the
                 boundaries to calculate.
         Returns:
-            tuple: A tuple containing:
-            
-            * `{aperture: y}`: A dict of lower positions of all orders.
-            * `{aperture: y}`: A dict of upper positions of all orders.
-
+            dict: A dict of `{aperture: (lower, upper)}`, where `lower` and
+                `upper` are boundary arries.
         '''
         lower_bounds = {}
         upper_bounds = {}
@@ -497,8 +494,8 @@ class ApertureSet(object):
         dist = position - lower_bounds[maxaper]
         upper_bounds[maxaper] = position + dist
 
-        return (lower_bounds, upper_bounds)
-
+        return {aper: (lower_bounds[aper], upper_bounds[aper])
+                for aper in self.keys()}
 
 class _ApertureSetIterator(object):
     '''
