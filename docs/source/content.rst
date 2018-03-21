@@ -18,4 +18,6 @@ Modules
    modules/utils
    modules/ccdproc
    modules/echelle
-   modules/pipelines/*
+   modules/pipelines/reduction
+   modules/pipelines/foces
+   modules/pipelines/xinglonghrs

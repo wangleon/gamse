@@ -59,7 +59,7 @@ def make_log(instrument, path):
         from .foces import make_log
         make_log(path)
     elif instrument == 'Xinglong216HRS':
-        from .xl216hrs import make_log
+        from .xinglonghrs import make_log
         make_log(path)
     else:
         print('Cannot recognize the instrument name: %s'%instrument)
