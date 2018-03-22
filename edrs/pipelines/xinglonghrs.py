@@ -25,6 +25,8 @@ class XinglongHRS(Reduction):
 
     def overscan(self):
         '''
+        Overscan correction for Xinglong 2.16m Telescope HRS.
+
         '''
 
         from scipy.signal import savgol_filter
@@ -52,59 +54,69 @@ class XinglongHRS(Reduction):
         # keywords for mask
         saturation_adu = 65535
 
+        # path alias
+        midproc    = self.paths['midproc']
+        rawdata    = self.paths['data']
+        report_img = self.paths['report_img']
+
         # loop over all files (bias, dark, ThAr, flat...)
         # to correct for the overscan
 
-        count = 0
-        for item in self.log:
+        # prepare the item list
+        item_lst = [item for item in self.log]
+
+        for i, item in enumerate(item_lst):
             logger.info('Correct overscan for item %3d: "%s"'%(
                          item.frameid, item.fileid))
 
-            # read in of the data
+            # read FITS data
             filename = '%s%s.fits'%(item.fileid, self.input_surfix)
-            fname = os.path.join(self.paths['data'], filename)
-            data, head = fits.getdata(fname, header=True)
+            filepath = os.path.join(rawdata, filename)
+            data, head = fits.getdata(filepath, header=True)
 
             h, w = data.shape
             x1, x2 = w-head['COVER'], w
 
             # find the overscan level along the y-axis
-            ovr_lst1 = data[0:int(h/2),x1+2:x2].mean(dtype=np.float64, axis=1)
-            ovr_lst2 = data[int(h/2):h,x1+2:x2].mean(dtype=np.float64, axis=1)
+            ovr_lst1 = data[0:h//2,x1+2:x2].mean(dtype=np.float64, axis=1)
+            ovr_lst2 = data[h//2:h,x1+2:x2].mean(dtype=np.float64, axis=1)
 
             ovr_lst1_fix = fix_cr(ovr_lst1)
             ovr_lst2_fix = fix_cr(ovr_lst2)
 
+            # apply the sav-gol fitler to the mean of overscan
             ovrsmooth1 = savgol_filter(ovr_lst1_fix, window_length=201, polyorder=3)
             ovrsmooth2 = savgol_filter(ovr_lst2_fix, window_length=201, polyorder=3)
 
             # plot the overscan regions
-            if count%5 == 0:
+            if i%5 == 0:
                 fig = plt.figure(figsize=(10,6), dpi=150)
 
             ax1 = fig.add_axes([0.08, 0.83-(count%5)*0.185, 0.42, 0.15])
             ax2 = fig.add_axes([0.55, 0.83-(count%5)*0.185, 0.42, 0.15])
 
             ax1.plot([0,0],[ovr_lst1_fix.min(), ovr_lst1_fix.max()], 'w-', alpha=0)
-            y11, y12 = ax1.get_ylim()
-            ax1.plot(np.arange(0, h/2), ovr_lst1, 'r-', alpha=0.3)
-            ax1.set_ylim(y11, y12)
+            _y1, _y2 = ax1.get_ylim()
+            ax1.plot(np.arange(0, h//2), ovr_lst1, 'r-', alpha=0.3)
+            ax1.set_ylim(_y1, _y2)
 
             ax2.plot([0,0],[ovr_lst2_fix.min(), ovr_lst2_fix.max()], 'w-', alpha=0)
-            y21, y22 = ax2.get_ylim()
-            ax2.plot(np.arange(h/2, h), ovr_lst2, 'b-', alpha=0.3)
-            ax2.set_ylim(y21, y22)
+            _y1, _y2 = ax2.get_ylim()
+            ax2.plot(np.arange(h//2, h), ovr_lst2, 'b-', alpha=0.3)
+            ax2.set_ylim(_y1, _y2)
 
-            ax1.plot(np.arange(0, h/2), ovrsmooth1, 'm', ls='-')
-            ax2.plot(np.arange(h/2, h), ovrsmooth2, 'c', ls='-')
+            ax1.plot(np.arange(0, h//2), ovrsmooth1, 'm', ls='-')
+            ax2.plot(np.arange(h//2, h), ovrsmooth2, 'c', ls='-')
             ax1.set_ylabel('ADU')
             ax2.set_ylabel('')
-            ax1.set_xlim(0, h/2)
-            ax2.set_xlim(h/2, h)
+            ax1.set_xlim(0, h//2-1)
+            ax2.set_xlim(h//2, h-1)
             for ax in [ax1, ax2]:
-                x1,x2 = ax.get_xlim()
-                y1,y2 = ax.get_ylim()
-                ax.text(0.95*x1+0.05*x2, 0.2*y1+0.8*y2, item.fileid, fontsize=9)
+                _x1, _x2 = ax.get_xlim()
+                _y1, _y2 = ax.get_ylim()
+                _x = 0.95*_x1 + 0.05*_x2
+                _y = 0.20*_y1 + 0.80*_y2
+                ax.text(_x, _y, item.fileid, fontsize=9)
                 for tick in ax.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(9)
                 for tick in ax.yaxis.get_major_ticks():
@@ -113,11 +125,11 @@ class XinglongHRS(Reduction):
                 ax.yaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
                 ax.xaxis.set_major_locator(tck.MultipleLocator(500))
                 ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
-            if count%5==4:
+            if i%5==4 or i==len(item_lst)-1:
                 ax1.set_xlabel('Y (pixel)')
                 ax2.set_xlabel('Y (pixel)')
-                figpath = os.path.join(self.paths['report_img'],
-                                       'overscan_%02d.png'%(int(count/5)+1))
+                figname = 'overscan_%02d.png'%(i//5+1)
+                figpath = os.path.join(report_img, figname)
                 fig.savefig(figpath)
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
@@ -130,10 +142,10 @@ class XinglongHRS(Reduction):
             mask_sat   = (data[y1:y2,x1:x2]>=saturation_adu)
             mask       = np.int16(mask_sat)*4
             mask_table = array_to_table(mask)
-            mask_fname = os.path.join(self.paths['midproc'],
-                         '%s%s.fits'%(item.fileid, self.mask_surfix))
-
-            save_fits(mask_fname, mask_table)
+            maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
+            maskpath = os.path.join(midproc, maskname)
+            # save the mask
+            save_fits(maskpath, mask_table)
 
             # subtract overscan
             new_data = np.zeros((y2-y1, x2-x1), dtype=np.float64)
@@ -147,12 +159,11 @@ class XinglongHRS(Reduction):
             head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
 
             # save data
-            newfilename = '%s%s.fits'%(item.fileid, self.output_surfix)
-            newpath = os.path.join(self.paths['midproc'], newfilename)
-            save_fits(newpath, new_data, head)
-            print('Correct Overscan {} -> {}'.format(filename, newfilename))
+            outname = '%s%s.fits'%(item.fileid, self.output_surfix)
+            outpath = os.path.join(midproc, outname)
+            save_fits(outpath, new_data, head)
+            print('Correct Overscan {} -> {}'.format(filename, outname))
 
-            count += 1
 
         logger.info('Overscan corrected. Change surfix: %s -> %s'%
                     (self.input_surfix, self.output_surfix))

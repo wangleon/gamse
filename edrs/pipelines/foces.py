@@ -63,17 +63,23 @@ class FOCES(Reduction):
         # saturated CCD count
         saturation_adu = 63000
     
-        # loop over all files to correct for the overscan
+        # path alias
+        midproc    = self.paths['midproc']
+        rawdata    = self.paths['data']
+        report_img = self.paths['report_img']
 
-        count = 0
-        for item in self.log:
+        # loop over all files to correct for the overscan
+        # prepare the item list
+        item_lst = [item for item in self.log]
+
+        for i, item in enumerate(item_lst):
             logger.info('Correct overscan for item %3d: "%s"'%(
                          item.frameid, item.fileid))
 
             # read in of the data
             filename = '%s%s.fits'%(item.fileid, self.input_surfix)
-            fname = os.path.join(self.paths['data'], filename)
-            data, head = fits.getdata(fname, header=True)
+            filepath = os.path.join(rawdata, filename)
+            data, head = fits.getdata(filepath, header=True)
     
             h, w = data.shape
             overdata1 = data[:,0:20]
@@ -94,7 +100,7 @@ class FOCES(Reduction):
             ovrstd2  = ovr_lst2[vy1:vy2].std(dtype=np.float64, ddof=1)
     
             # plot the overscan regions
-            if count%5 == 0:
+            if i%5 == 0:
                 fig = plt.figure(figsize=(12,8), dpi=150)
 
             ax1 = fig.add_axes([0.10, 0.83-(count%5)*0.185, 0.42, 0.15])
@@ -104,24 +110,26 @@ class FOCES(Reduction):
             y = np.arange(vy1, vy2)
             ax1.plot(y, ovr_lst1[vy1:vy2], 'r-', alpha=0.7)
             ax2.plot(y, ovr_lst2[vy1:vy2], 'b-', alpha=0.7)
-            x1,x2 = 0, ovr_lst1.size-1
-            ax1.plot([x1,x2],[ovrmean1,         ovrmean1],         'm-')
-            ax1.plot([x1,x2],[ovrmean1-ovrstd1, ovrmean1-ovrstd1], 'm:')
-            ax1.plot([x1,x2],[ovrmean1+ovrstd1, ovrmean1+ovrstd1], 'm:')
-            ax2.plot([x1,x2],[ovrmean2,         ovrmean2],         'c-')
-            ax2.plot([x1,x2],[ovrmean2-ovrstd2, ovrmean2-ovrstd2], 'c:')
-            ax2.plot([x1,x2],[ovrmean2+ovrstd2, ovrmean2+ovrstd2], 'c:')
+            _x1, _x2 = 0, ovr_lst1.size-1
+            ax1.plot([_x1,_x2], [ovrmean1,         ovrmean1],         'm-')
+            ax1.plot([_x1,_x2], [ovrmean1-ovrstd1, ovrmean1-ovrstd1], 'm:')
+            ax1.plot([_x1,_x2], [ovrmean1+ovrstd1, ovrmean1+ovrstd1], 'm:')
+            ax2.plot([_x1,_x2], [ovrmean2,         ovrmean2],         'c-')
+            ax2.plot([_x1,_x2], [ovrmean2-ovrstd2, ovrmean2-ovrstd2], 'c:')
+            ax2.plot([_x1,_x2], [ovrmean2+ovrstd2, ovrmean2+ovrstd2], 'c:')
             ax1.set_ylabel('ADU')
             ax2.set_ylabel('')
-            y11,y12 = ax1.get_ylim()
-            y21,y22 = ax2.get_ylim()
-            y1 = min(y11,y21)
-            y2 = max(y12,y22)
-            ax1.text(0.95*x1+0.05*x2, 0.2*y1+0.8*y2,
-                     '%s (%s)'%(item.fileid, item.objectname), fontsize=9)
+            _y11, _y12 = ax1.get_ylim()
+            _y21, _y22 = ax2.get_ylim()
+            _y1 = min(_y11, _y21)
+            _y2 = max(_y12, _y22)
+            _x = 0.95*_x1 + 0.05*_x2
+            _y = 0.20*_y1 + 0.80*_y2
+            _text = '%s (%s)'%(item.fileid, item.objectname)
+            ax1.text(_x, _y, _text, fontsize=9)
             for ax in [ax1, ax2]:
-                ax.set_xlim(x1,x2)
-                ax.set_ylim(y1,y2)
+                ax.set_xlim(_x1, _x2)
+                ax.set_ylim(_y1, _y2)
                 for tick in ax.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(9)
                 for tick in ax.yaxis.get_major_ticks():
@@ -129,11 +137,11 @@ class FOCES(Reduction):
                 ax.xaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
                 ax.yaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
             ax2.set_yticklabels([])
-            if count%5==4:
+            if i%5==4 or i==len(item_lst)-1:
                 ax1.set_xlabel('Y (pixel)')
                 ax2.set_xlabel('Y (pixel)')
-                figname = 'overscan_%02d.png'%(int(count/5)+1)
-                figpath = os.path.join(self.paths['report_img'], figname)
+                figname = 'overscan_%02d.png'%(i//5+1)
+                figpath = os.path.join(report_img, figname)
                 fig.savefig(figpath)
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
@@ -145,10 +153,10 @@ class FOCES(Reduction):
             mask_sat   = (data[:,20:2068]>=saturation_adu)
             mask       = np.int16(mask_sat)*4
             mask_table = array_to_table(mask)
-            mask_fname = os.path.join(self.paths['midproc'],
-                         '%s%s.fits'%(item.fileid, self.mask_surfix))
+            maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
+            maskpath = os.path.join(midproc, maskname)
             # save the mask.
-            save_fits(mask_fname, mask_table)
+            save_fits(maskpath, mask_table)
     
             # subtract overscan
             new_data = data[:,20:2068] - ovrmean1
@@ -164,10 +172,10 @@ class FOCES(Reduction):
             head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
     
             # save data
-            newfilename = '%s%s.fits'%(item.fileid, self.output_surfix)
-            newpath = os.path.join(self.paths['midproc'], newfilename)
-            save_fits(newpath, new_data, head)
-            print('Correct Overscan {} -> {}'.format(filename, newfilename))
+            outname = '%s%s.fits'%(item.fileid, self.output_surfix)
+            outpath = os.path.join(midproc, outname)
+            save_fits(outpath, new_data, head)
+            print('Correct Overscan {} -> {}'.format(filename, outname))
     
             # quality check of the mean value of the overscan with time
             # therefore the time and the mean overscan values are stored in 
@@ -180,7 +188,6 @@ class FOCES(Reduction):
             ovr1_std_lst.append(ovrstd1)
             ovr2_std_lst.append(ovrstd2)
 
-            count += 1
     
         info_lst = ['Overscan summary:',
                     ', '.join(['frameid','fileid','UTC-STA',
