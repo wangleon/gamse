@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ..utils    import obslog
-from ..ccdproc  import save_fits, array_to_table
+from ..ccdproc  import save_fits, array_to_table, fix_pixels
 from .reduction import Reduction
 
 class XinglongHRS(Reduction):
@@ -134,25 +134,36 @@ class XinglongHRS(Reduction):
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
 
+            # determine shape of output image (also the shape of science region)
             y1 = head['CRVAL2']
             y2 = y1 + head['NAXIS2'] - head['ROVER']
-            ymid = int((y1 + y2)/2)
+            ymid = (y1 + y2)//2
             x1 = head['CRVAL1']
             x2 = x1 + head['NAXIS1'] - head['COVER']
-            mask_sat   = (data[y1:y2,x1:x2]>=saturation_adu)
-            mask       = np.int16(mask_sat)*4
+            newshape = (y2-y1, x2-x1)
+
+            # find the saturation mask
+            mask_sat = (data[y1:y2,x1:x2]>=saturation_adu)
+            # get bad pixel mask
+            bins = (head['RBIN'], head['CBIN'])
+            mask_bad = self.get_badpixel_mask(newshape, bins=bins)
+
+            mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
+            # save the mask
             mask_table = array_to_table(mask)
             maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
             maskpath = os.path.join(midproc, maskname)
-            # save the mask
             save_fits(maskpath, mask_table)
 
             # subtract overscan
-            new_data = np.zeros((y2-y1, x2-x1), dtype=np.float64)
+            new_data = np.zeros(newshape, dtype=np.float64)
             ovrdata1 = np.transpose(np.repeat([ovrsmooth1],x2-x1,axis=0))
             ovrdata2 = np.transpose(np.repeat([ovrsmooth2],x2-x1,axis=0))
             new_data[y1:ymid, x1:x2] = data[y1:ymid,x1:x2] - ovrdata1
             new_data[ymid:y2, x1:x2] = data[ymid:y2,x1:x2] - ovrdata2
+
+            # fix bad pixels
+            new_data = fix_pixels(new_data, mask_bad, 1, 'cubic')
 
             # update fits header
             head['HIERARCH EDRS OVERSCAN']        = True
@@ -169,8 +180,45 @@ class XinglongHRS(Reduction):
                     (self.input_surfix, self.output_surfix))
         self.input_surfix = self.output_surfix
 
+    def get_badpixel_mask(self, shape, bins):
+        '''Get bad-pixel mask.
+
+        Args:
+            shape (tuple): Shape of the science data region.
+            bins (tuple): Number of pixel bins of (ROW, COLUMN).
+        Returns:
+            :class:`numpy.array`: Binary mask indicating the bad pixels. The
+                shape of the mask is the same as the input shape.
+        '''
+        mask = np.zeros(shape, dtype=np.bool)
+        if bins == (1, 1) and shape == (4136, 4096):
+            h, w = shape
+            mask[280:284,3701]   = True
+            mask[274:h//2, 3702] = True
+            mask[272:h//2, 3703] = True
+            mask[274:282, 3704]  = True
+
+            mask[349:352, 627:630] = True
+            mask[349:h//2: 628]    = True
+
+            mask[1720:1722, 3532:3535] = True
+            mask[1720, 3535]           = True
+            mask[1722, 3532]           = True
+            mask[1720:h//2,3533]       = True
+
+            mask[347:349, 4082:4084] = True
+            mask[347:h//2,4983]      = True
+
+            mask[h//2:2631, 1909] = True
+        else:
+            print('No bad pixel information for this CCD size.')
+            raise ValueError
+        return mask
+
+
+
     def bias(self):
-        '''Bias corrrection.
+        '''Bias corrrection for Xinglong 2.16m Telescope HRS.
 
         '''
         self.output_surfix = self.config.get('reduction','bias.surfix')

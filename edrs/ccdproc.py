@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+import scipy.interpolate as intp
 
 def save_fits(*args):
     '''
@@ -312,3 +313,55 @@ def table_to_array(table, shape):
     array[coords] = table['value']
 
     return array
+
+
+def fix_pixels(data, mask, direction, method):
+    '''Fix specific pixels of the CCD image by interpolating surrounding pixels.
+
+    Args:
+        data (:class:`numpy.array`): Input image as a 2-D array.
+        mask (:class:`numpy.array`): Mask of pixels to be fixed. This array
+            shall has the same shape as **data**.
+        direction (integer): Interpolate along which axis (*X* = 1, *Y* = 0).
+        method (string): Interpolationg method ('linear' means linear
+            interpolation, and 'cubic' means cubic spline interpolation).
+    Returns:
+        :class:`numpy.array`: The fixed image as a 2-D array.
+    '''
+    newdata = np.copy(data)
+    masklist = mask.sum(axis=direction)
+
+    # determine interpolation method
+    if method=='linear':
+        k = 1
+    elif method == 'cubic':
+        k = 3
+    else:
+        print('Unknown method:', method)
+        raise ValueError
+
+    if direction == 0:
+        # fix along Y axis
+        x = np.arange(data.shape[0])
+        cols = np.nonzero(masklist)[0]
+        for col in cols:
+            m = mask[:,col]
+            rm = ~m
+            y = data[:,col]
+            f = intp.InterpolatedUnivariateSpline(x[rm],y[rm],k=k)
+            newdata[:,col][m] = f(x[m])
+    elif direction == 1:
+        # fix along X axis
+        x = np.arange(data.shape[1])
+        rows = np.nonzero(masklist)[0]
+        for row in rows:
+            m = mask[row,:]
+            rm = ~m
+            y = data[row,:]
+            f = intp.InterpolatedUnivariateSpline(x[rm],y[rm],k=k)
+            newdata[row,:][m] = f(x[m])
+    else:
+        print('direction must be 0 or 1')
+        raise ValueError
+
+    return newdata
