@@ -103,8 +103,8 @@ class FOCES(Reduction):
             if i%5 == 0:
                 fig = plt.figure(figsize=(12,8), dpi=150)
 
-            ax1 = fig.add_axes([0.10, 0.83-(count%5)*0.185, 0.42, 0.15])
-            ax2 = fig.add_axes([0.55, 0.83-(count%5)*0.185, 0.42, 0.15])
+            ax1 = fig.add_axes([0.10, 0.83-(i%5)*0.185, 0.42, 0.15])
+            ax2 = fig.add_axes([0.55, 0.83-(i%5)*0.185, 0.42, 0.15])
             ax1.plot(ovr_lst1, 'r-', alpha=0.3)
             ax2.plot(ovr_lst2, 'b-', alpha=0.3)
             y = np.arange(vy1, vy2)

@@ -92,8 +92,8 @@ class XinglongHRS(Reduction):
             if i%5 == 0:
                 fig = plt.figure(figsize=(10,6), dpi=150)
 
-            ax1 = fig.add_axes([0.08, 0.83-(count%5)*0.185, 0.42, 0.15])
-            ax2 = fig.add_axes([0.55, 0.83-(count%5)*0.185, 0.42, 0.15])
+            ax1 = fig.add_axes([0.08, 0.83-(i%5)*0.185, 0.42, 0.15])
+            ax2 = fig.add_axes([0.55, 0.83-(i%5)*0.185, 0.42, 0.15])
 
             ax1.plot([0,0],[ovr_lst1_fix.min(), ovr_lst1_fix.max()], 'w-', alpha=0)
             _y1, _y2 = ax1.get_ylim()
@@ -163,7 +163,7 @@ class XinglongHRS(Reduction):
             new_data[ymid:y2, x1:x2] = data[ymid:y2,x1:x2] - ovrdata2
 
             # fix bad pixels
-            new_data = fix_pixels(new_data, mask_bad, 1, 'cubic')
+            new_data = fix_pixels(new_data, mask_bad, 'x', 'linear')
 
             # update fits header
             head['HIERARCH EDRS OVERSCAN']        = True
@@ -193,13 +193,16 @@ class XinglongHRS(Reduction):
         mask = np.zeros(shape, dtype=np.bool)
         if bins == (1, 1) and shape == (4136, 4096):
             h, w = shape
+
+            mask[349:352, 627:630] = True
+            mask[349:h//2, 628]    = True
+
+            mask[1604:h//2, 2452] = True
+
             mask[280:284,3701]   = True
             mask[274:h//2, 3702] = True
             mask[272:h//2, 3703] = True
             mask[274:282, 3704]  = True
-
-            mask[349:352, 627:630] = True
-            mask[349:h//2: 628]    = True
 
             mask[1720:1722, 3532:3535] = True
             mask[1720, 3535]           = True
@@ -207,7 +210,7 @@ class XinglongHRS(Reduction):
             mask[1720:h//2,3533]       = True
 
             mask[347:349, 4082:4084] = True
-            mask[347:h//2,4983]      = True
+            mask[347:h//2,4083]      = True
 
             mask[h//2:2631, 1909] = True
         else:

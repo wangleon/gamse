@@ -322,23 +322,25 @@ def fix_pixels(data, mask, direction, method):
         data (:class:`numpy.array`): Input image as a 2-D array.
         mask (:class:`numpy.array`): Mask of pixels to be fixed. This array
             shall has the same shape as **data**.
-        direction (integer): Interpolate along which axis (*X* = 1, *Y* = 0).
+        direction (string or integer): Interpolate along which axis (*X* = 1,
+            *Y* = 0).
         method (string): Interpolationg method ('linear' means linear
             interpolation, and 'cubic' means cubic spline interpolation).
     Returns:
         :class:`numpy.array`: The fixed image as a 2-D array.
     '''
+    # make a new copy of the input data
     newdata = np.copy(data)
+
+    # determine the axis
+    if isinstance(direction, str):
+        direction = {'x':1, 'y':0}[direction.lower()]
+
+    # find the rows or columns to interpolate
     masklist = mask.sum(axis=direction)
 
     # determine interpolation method
-    if method=='linear':
-        k = 1
-    elif method == 'cubic':
-        k = 3
-    else:
-        print('Unknown method:', method)
-        raise ValueError
+    k = {'linear':1, 'cubic':3}[method]
 
     if direction == 0:
         # fix along Y axis

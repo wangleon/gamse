@@ -28,7 +28,7 @@ def reduce_echelle(instrument):
         reduction = FOCES()
         reduction.reduce()
     elif instrument == 'XinglongHRS':
-        from .xl216hrs import XinglongHRS
+        from .xinglonghrs import XinglongHRS
         reduction = XinglongHRS()
         reduction.reduce()
     else:
