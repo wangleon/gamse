@@ -702,3 +702,431 @@ def test():
                             x1+1,y1+1,x2+1,y2+1)+os.linesep)
     outfile2.close()
 
+def get_flatfielding(infilename, mskfilename, outfilename, apertureset):
+    '''Get the flat fielding file.
+
+    Args:
+        infilename (string): Name of the input file.
+        mskfilename (string): Name of the input mask.
+
+
+    '''
+    data = fits.getdata('../midproc/flat_A_1.500.fits')
+    h, w = data.shape
+
+    aperset = load_aperture_set('../midproc/flat_A_1.500_trc.txt')
+    newx = np.arange(w)
+    positions = aperset.get_positions(newx)
+    bounds = aperset.get_boundaries(newx)
+
+    plot_single = False
+    plot_overlay = True
+    plot_aperpar = True
+
+    left, right, step = -4, +4, 0.1
+    xnodes = np.arange(left, right+1e-5, step)
+
+    x_lst = np.arange(0,w,64)
+    x_lst = np.append(x_lst, w-1)
+    slit_array = np.zeros((xnodes.size, x_lst.size))
+    fitting_lst = {'A': {}, 'fwhm': {}, 'bkg': {}, 'c': {}}
+    for ix, x in enumerate(x_lst):
+        x = int(x)
+
+        if plot_overlay:
+            fig2 = plt.figure(figsize=(8,6), dpi=150)
+            ax21 = fig2.add_subplot(211)
+            ax22 = fig2.add_subplot(212)
+
+        all_x, all_y, all_r = [], [], []
+
+        if False:
+            fig = plt.figure(figsize=(8,6),dpi=150)
+            ax = fig.gca()
+            ax.plot(data[:, x], 'r-')
+            y1, y2 = ax.get_ylim()
+            for cen in cen_lst:
+                yy = data[int(cen), x]
+                ax.plot([cen,cen], [yy+0.05*(y2-y1), yy+0.1*(y2-y1)], 'k-')
+            for bor in bor_lst:
+                ax.axvline(bor, color='k', ls='--')
+            ax.set_xlim(0, h-1)
+
+
+        for aper in sorted(aperset.keys()):
+            cen = positions[aper][x]
+            b1 = bounds[aper][0][x]
+            b2 = bounds[aper][1][x]
+            b1 = np.int32(np.round(np.maximum(b1, 0)))
+            b2 = np.int32(np.round(np.minimum(b2, h)))
+            xdata = np.arange(b1, b2)
+            ydata = data[b1:b2, x]
+
+            # plot a single fitting
+            if plot_single:
+                n = aper%9
+                if n==0:
+                    figi = plt.figure(figsize=(12,8), dpi=150)
+                    figi.suptitle('X = %d'%x)
+                axi = figi.add_axes([0.06+(n%3)*0.32, 0.08+(2-n//3)*0.305, 0.27,0.24])
+                axi.plot(xdata, ydata, 'wo')
+                axi.axvline(cen, color='k', ls='--')
+
+            # iterative fitting
+            p0 = [ydata.max()-ydata.min(), (b1+b2)/2., 3.0, ydata.min()]
+            mask = np.ones_like(xdata, dtype=np.bool)
+            for i in range(10):
+                p1, succ = opt.leastsq(errfunc, p0, args=(xdata[mask], ydata[mask], fitfunc))
+                res = errfunc(p1, xdata, ydata, fitfunc)
+                std = res[mask].std()
+                mean= res[mask].mean()
+                new_mask = res < mean + 3*std
+                if mask.sum() == new_mask.sum():
+                    break
+                mask = new_mask
+
+            A, c, fwhm, bkg = p1
+            snr = A/std
+            s = fwhm/2./math.sqrt(2*math.log(2))
+            if b1 < c < b2 and A>50 and fwhm>2 and fwhm<10:
+                # pack the fitting parameters
+                fitting_lst['A'][(aper, x)]    = A
+                fitting_lst['c'][(aper, x)]    = c
+                fitting_lst['fwhm'][(aper, x)] = fwhm
+                fitting_lst['bkg'][(aper, x)]  = bkg
+        
+                color = 'rgbcmyk'[aper%7]
+
+                norm_x = (xdata[mask]-c)/s
+                norm_y = (ydata[mask]-bkg)/A
+                norm_r = res[mask]/A
+
+                #ax21.plot(norm_x, norm_y, 'o', color=color, alpha=0.4,
+                #            ms=3, markeredgewidth=0)
+                #ax22.plot(norm_x, norm_r, 'o', color=color, alpha=0.4,
+                #            ms=3, markeredgewidth=0)
+                for _norm_x, _norm_y, _norm_r in zip(norm_x, norm_y, norm_r):
+                    all_x.append(_norm_x)
+                    all_y.append(_norm_y)
+                    all_r.append(_norm_r)
+
+                if plot_single:
+                    axi.plot(xdata[mask], ydata[mask], 'ko')
+                    newx = np.arange(b1, b2+1e-3, 0.1)
+                    axi.plot(newx, fitfunc(p1, newx),'r-')
+                    axi.axvline(c, color='r', ls='--')
+
+            if plot_single:
+                axi.set_xlim(b1, b2)
+                if icen%9==8 or icen==len(cen_lst)-1:
+                    figi.savefig('img/x-%04d_cen-%03d.png'%(x,icen))
+                    plt.close(figi)
+
+
+        all_x = np.array(all_x)
+        all_y = np.array(all_y)
+        all_r = np.array(all_r)
+
+        # construct slit function for each column
+        step = 0.1
+        mask = np.ones_like(all_x, dtype=np.bool)
+        for k in range(20):
+            ynodes = []
+            for _c in xnodes:
+                _c1 = _c - step/2.
+                _c2 = _c + step/2.
+                mask1 = (all_x[mask]>_c1)*(all_x[mask]<=_c2)
+                #if mask1.sum()>3:
+                #    ynodes.append(all_y[mask][mask1].mean())
+                #else:
+                #    ynodes.append(0)
+                ynodes.append(all_y[mask][mask1].mean())
+
+            ynodes = np.array(ynodes)
+            ynodes = sg.savgol_filter(ynodes, window_length=9, polyorder=5)
+            f = intp.InterpolatedUnivariateSpline(xnodes, ynodes, k=3, ext=3)
+            #f = intp.UnivariateSpline(xnodes, ynodes, k=3, s=10, ext=3)
+            res = all_y - f(all_x)
+            std = res[mask].std()
+            newmask = np.abs(res)<3*std
+            if newmask.sum() == mask.sum():
+                break
+            mask = newmask
+            #ax22.plot(xnodes, ynodes, 'go-')
+        slit_array[:,ix] = ynodes
+
+        # plot the overlayed slit functions
+        if plot_overlay:
+            ax21.plot(all_x, all_y, 'ro', ms=3, alpha=0.3, markeredgewidth=0)
+            ax21.plot(all_x[mask], all_y[mask], 'ko', ms=1, markeredgewidth=0)
+            ax21.plot(xnodes, ynodes, 'b-')
+            ax22.plot(all_x, all_y-gaussian_bkg(1, 0, 2.35482, 0, all_x),
+                      'ro', ms=3, alpha=0.3, markeredgewidth=0)
+            ax22.plot(all_x[mask],
+                      all_y[mask]-gaussian_bkg(1, 0, 2.35482, 0, all_x[mask]),
+                      'ko', ms=1, markeredgewidth=0)
+            ax22.plot(xnodes, ynodes - gaussian_bkg(1, 0, 2.35482, 0, xnodes), 'b-')
+            newxx = np.arange(-5, 5+1e-5, 0.01)
+            ax21.plot(newxx, gaussian_bkg(1, 0, 2.35482, 0, newxx), 'k-', alpha=0.5)
+            ax21.grid(True)
+            ax22.grid(True)
+            ax21.set_xlim(-7,7)
+            ax22.set_xlim(-7,7)
+            ax21.set_ylim(-0.2, 1.2)
+            ax22.set_ylim(-0.25, 0.25)
+            ax21.set_ylim(-0.2, 1.2)
+            fig2.savefig('img/fitting_%04d.png'%x)
+            plt.close(fig2)
+
+    # write the slit function into an ascii file
+    slit_file = open('slit_function.dat', 'w')
+    for row in np.arange(xnodes.size):
+        slit_file.write('%5.2f'%xnodes[row])
+        for col in np.arange(x_lst.size):
+            slit_file.write(' %12.8f'%slit_array[row, col])
+        slit_file.write(os.linesep)
+    slit_file.close()
+
+
+    # plot the slit function
+    if True:
+        fig = plt.figure()
+        ax = fig.gca()
+        #ax.imshow(slit_array, cmap='jet')
+        for ix in np.arange(slit_array.shape[1]):
+            ax.plot(xnodes, slit_array[:,ix] + ix*0.1, 'b-')
+        ax.set_xlim(xnodes[0], xnodes[-1])
+        ax.set_xlabel('$\sigma$')
+        ax.set_ylabel('Intensity')
+
+    # plot a parameter map
+    fig3 = plt.figure(figsize=(8,6), dpi=150)
+    ax31 = fig3.add_subplot(221)
+    ax32 = fig3.add_subplot(222)
+    ax33 = fig3.add_subplot(223)
+    ax34 = fig3.add_subplot(224)
+    for ipara, para in enumerate(['A','fwhm','bkg']):
+        _x_lst, _y_lst, _z_lst = [], [], []
+        for key, v in fitting_lst[para].items():
+            _x_lst.append(key[1])
+            _y_lst.append(fitting_lst['c'][key])
+            _z_lst.append(v)
+        ax = fig3.get_axes()[ipara]
+        ax.scatter(_x_lst, _y_lst, c=_z_lst, cmap='jet', lw=0, s=15)
+        ax.set_xlim(0, w-1)
+        ax.set_ylim(0, h-1)
+
+    # construct slit functions for all columns
+    full_slit_array = np.zeros((xnodes.size, w))
+    for ix in np.arange(xnodes.size):
+        f = intp.InterpolatedUnivariateSpline(x_lst, slit_array[ix, :], k=3)
+        full_slit_array[ix, :] = f(np.arange(w))
+
+
+    maxlst = full_slit_array.max(axis=0)
+    maxilst = full_slit_array.argmax(axis=0)
+    maxmask = full_slit_array>0.10*maxlst
+    corr_mask_array = []
+    for x in newx:
+        ilst = np.nonzero(maxmask[:,x])[0]
+        il = xnodes[ilst[0]]
+        ir = xnodes[ilst[-1]]
+        corr_mask_array.append((il, ir))
+
+    interf_lst = []
+    for x in np.arange(w):
+        slitfunc = full_slit_array[:, x]
+        nslit = slitfunc.size
+        interf = intp.InterpolatedUnivariateSpline(
+                    #np.arange(nslit)-nslit//2, slitfunc, k=3, ext=1)
+                    xnodes, slitfunc, k=3, ext=1)
+        interf_lst.append(interf)
+
+    flatdata = np.ones_like(data, dtype=np.float64)
+
+    plot_fitting = False
+
+    fitpar_lst = {}
+
+    # prepare a x list
+    newx_lst = np.arange(0, w-1, 10)
+    if newx_lst[-1] != w-1:
+        newx_lst = np.append(newx_lst, w-1)
+
+    for aper in sorted(aperset.keys()):
+        fitpar_lst[aper] = []
+        aperpar_lst = []
+
+        position = positions[aper]
+        lbound, ubound = bounds[aper]
+
+        t1 = time.time()
+        prev_p = None
+
+        is_first_correct = False
+        break_aperture = False
+
+        for x in newx_lst:
+            pos = position[x]
+            y1 = int(max(0, lbound[x]))
+            y2 = int(min(h, ubound[x]))
+            xdata = np.arange(y1,y2)
+            ydata = data[y1:y2, x]
+            _icen = int(round(pos))
+            _i1 = max(0, _icen-5)
+            _i2 = min(h, _icen+6)
+            sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*10.))
+
+            if 0 < pos < h and sn>20:
+                interf = interf_lst[x]
+                if prev_p is None:
+                    p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
+                else:
+                    p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos, max(0,ydata.min())]
+
+                mask = np.ones_like(xdata, dtype=np.bool)
+                for ite in range(10):
+                    p, ier = opt.leastsq(errfunc2, p0,
+                                args=(xdata[mask], ydata[mask], interf))
+                    ydata_fit = fitfunc2(p, xdata, interf)
+                    ydata_res = ydata - ydata_fit
+                    std = ydata_res[mask].std(ddof=1)
+                    new_mask = ydata_res<5*std
+                    if new_mask.sum() == mask.sum():
+                        break
+                    mask = new_mask
+                snr = p[0]/std
+
+                succ = p[0]>0 and p[1]>0 and p[1]<1 and p[2]>y1 and p[2]<y2 and p[3]>0 and snr>3 and ier<=4
+                prev_p = (None, p)[succ]
+
+                if succ:
+                    if not is_first_correct:
+                        is_first_correct = True
+                        if x > 0.25*w:
+                            break_aperture = True
+                            break
+                    fitpar_lst[aper].append(p)
+                else:
+                    fitpar_lst[aper].append(np.array([np.NaN, np.NaN, np.NaN, np.NaN]))
+
+            else:
+                fitpar_lst[aper].append(np.array([np.NaN, np.NaN, np.NaN, np.NaN]))
+
+        if break_aperture:
+            break
+
+        fitpar_lst[aper] = np.array(fitpar_lst[aper])
+
+        if np.isnan(fitpar_lst[aper][:,0]).sum()>0.5*w:
+            break
+
+        if plot_aperpar:
+            fig = plt.figure(figsize=(12,8),dpi=150)
+            ax1 = fig.add_subplot(231)
+            ax2 = fig.add_subplot(232)
+            ax3 = fig.add_subplot(233)
+            ax4 = fig.add_subplot(234)
+            ax5 = fig.add_subplot(235)
+            ax6 = fig.add_subplot(236)
+
+        mask_lst = []
+        for ipara in range(4):
+            # A, k, c, bkg
+            yflux = fitpar_lst[aper][:,ipara]
+
+            mask = ~np.isnan(yflux)
+            if mask.sum() > 0:
+                nonzeroindex = np.nonzero(mask)[0]
+                i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
+                for ite in range(2):
+                    coeff = np.polyfit(newx_lst[mask]/w,yflux[mask],deg=7)
+                    yfit = np.polyval(coeff, newx_lst/w)
+                    yres = yflux - yfit
+                    std = yres[mask].std(ddof=1)
+                    new_mask = mask*(np.abs(yres)<5*std)
+                    if new_mask.sum()==mask.sum():
+                        break
+                    mask = new_mask
+
+            mask_lst.append(mask)
+
+            aperpar_lst.append(coeff)
+
+            if plot_aperpar:
+                ax = fig.get_axes()[ipara]
+                ax.plot(newx_lst, yflux, 'b-', lw=0.5)
+                ax.plot(newx_lst[i1:i2], yfit[i1:i2], 'r-', lw=0.5)
+                ax.plot(newx_lst[~mask],yflux[~mask],'ro',lw=0.5, ms=3, alpha=0.5)
+                _y1, _y2 = ax.get_ylim()
+                ax.set_ylim(_y1, _y2)
+                ax.set_xlim(0, w-1)
+
+        mask_lst = np.array(mask_lst)
+        apermask = mask_lst.sum(axis=0)>0
+        ax6.plot(newx_lst[i1:i2],apermask[i1:i2], 'b-',lw=0.5)
+        ax6.set_xlim(0, w-1)
+        ax6.set_ylim(-0.5, 1.5)
+
+        if plot_aperpar:
+            fig.suptitle('Aperture %d'%aper)
+            fig.savefig('img/flat/apernew_%02d.png'%aper)
+            plt.close(fig)
+
+
+        for x in newx:
+            interf = interf_lst[x]
+            pos = position[x]
+            y1 = int(max(0, lbound[x]))
+            y2 = int(min(h, ubound[x]))
+            xdata = np.arange(y1,y2)
+            ydata = data[y1:y2, x]
+            _icen = int(round(pos))
+            _i1 = max(0, _icen-5)
+            _i2 = min(h, _icen+6)
+            sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*10.))
+
+            if sn>20:
+                coeff_A, coeff_k, coeff_c, coeff_bkg = aperpar_lst
+
+                A   = np.polyval(coeff_A, x/w)
+                k   = np.polyval(coeff_k, x/w)
+                c   = np.polyval(coeff_c, x/w)
+                bkg = np.polyval(coeff_bkg, x/w)
+                                                                  
+                lcorr, rcorr = corr_mask_array[x]
+                normx = (xdata-c)*k
+                corr_mask = (normx > lcorr)*(normx < rcorr)
+                flat = ydata/fitfunc2([A,k,c,bkg], xdata, interf)
+                flatmask = corr_mask
+                flatdata[y1:y2, x][flatmask] = flat[flatmask]
+
+                if aper==20:
+                    fig= plt.figure(dpi=150)
+                    ax1 = fig.add_subplot(211)
+                    ax2 = fig.add_subplot(212)
+                    ax1.plot(xdata, ydata, 'ko')
+                    ax2.plot(xdata, flat, 'r-', alpha=0.5)
+                    ax2.plot(xdata[flatmask], flat[flatmask], 'r-')
+                    ax2.axhline(y=1, color='k', ls='--')
+                    ax1.axvline(x=c, color='k', ls='--')
+                    ax1.axvline(x=c+1/k, color='k', ls=':')
+                    ax1.axvline(x=c-1/k, color='k', ls=':')
+                    ax2.axvline(x=c, color='k', ls='--')
+
+                    newxx=np.arange(y1, y2, 0.1)
+                    ax1.plot(newxx, fitfunc2([A,k,c,bkg], newxx, interf), 'r-')
+
+
+                    ax1.set_xlim(xdata[0], xdata[-1])
+                    ax2.set_xlim(xdata[0], xdata[-1])
+                    fig.savefig('img/flat/new_%02d_%04d.png'%(aper,x))
+                    plt.close(fig)
+            
+        t2 = time.time()
+        print(aper, (t2-t1)*1e3)
+
+    if os.path.exists('flat.fits'):
+        os.remove('flat.fits')
+    fits.writeto('flat.fits', flatdata)
+
