@@ -24,6 +24,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     Args:
         infilename (string): Name of the input file.
+        mskfilename (string): Name of the input mask file.
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
         channels (list): List of channels as strings.

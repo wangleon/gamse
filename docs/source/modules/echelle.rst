@@ -24,6 +24,8 @@ Flat Fielding Correction
     mosaic_flat_interact
     save_mosaic_reg
     detect_gap
+    get_slitfunc
+    get_flatfielding
 
 .. automodule:: edrs.echelle.flat
    :members:

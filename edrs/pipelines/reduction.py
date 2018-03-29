@@ -1145,6 +1145,9 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
+        # path alias
+        midproc= self.paths['midproc']
+
         mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
 
         reg_color_lst = ['green', 'yellow', 'red', 'blue']
@@ -1155,14 +1158,14 @@ class Reduction(object):
             flat_group = self.flat_groups[channel]
             aperset_lst = self.aperture_set_lst[channel]
 
-            flat_file = os.path.join(self.paths['midproc'], 'flat_%s.fits'%channel)
-            trc_file  = os.path.join(self.paths['midproc'], 'flat_%s_trc.txt'%channel)
-            reg_file  = os.path.join(self.paths['midproc'], 'flat_%s_trc.reg'%channel)
+            flat_file = os.path.join(midproc, 'flat_%s.fits'%channel)
+            trc_file  = os.path.join(midproc, 'flat_%s_trc.txt'%channel)
+            reg_file  = os.path.join(midproc, 'flat_%s_trc.reg'%channel)
 
             if len(flat_group) == 1:
                 # only 1 type of flat
                 flatname = flat_group.keys()[0]
-                infile  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                infile  = os.path.join(midproc, '%s.fits'%flatname)
                 if infile != flat_file:
                     # copy the flat
                     shutil.copyfile(infile, flat_file)
@@ -1178,7 +1181,7 @@ class Reduction(object):
                 max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
 
                 # prepare input list
-                filename_lst = [os.path.join(self.paths['midproc'], '%s.fits'%flatname)
+                filename_lst = [os.path.join(midproc, '%s.fits'%flatname)
                                 for flatname in sorted(flat_group.keys())]
 
                 mosaic_aperset = mosaic_flat_auto(
@@ -1213,9 +1216,9 @@ class Reduction(object):
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
-            input_file = os.path.join(self.paths['midproc'],
+            input_file = os.path.join(midproc,
                             '%s%s.fits'%(item.fileid, self.input_surfix))
-            output_file = os.path.join(self.paths['midproc'],
+            output_file = os.path.join(midproc,
                             '%s%s.fits'%(item.fileid, self.output_surfix))
             shutil.copy(input_file, output_file)
             logger.info('Correct Flat: "{}"->"{}"'.format(input_file, output_file))
