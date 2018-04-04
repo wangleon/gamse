@@ -731,6 +731,19 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
             * **fitting_lst** (*dict*): A dict of fitting parameters.
 
     '''
+
+    # define the fitting and error functions
+    def gaussian_bkg(A, center, fwhm, bkg, x):
+        s = fwhm/2./math.sqrt(2*math.log(2))
+        return A*np.exp(-(x-center)**2/2./s**2) + bkg
+
+    def errfunc(p, x, y, fitfunc):
+        return y - fitfunc(p, x)
+
+    def fitfunc(p, x):
+        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+
+
     # initialize the array for slit function
     slit_array = np.zeros((xnodes.size, x_lst.size))
     # prepare the fitting list
@@ -918,6 +931,16 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
         No returns.
 
     '''
+
+    # define fitting and error functions
+    def errfunc(p, xdata, ydata, interf):
+        n = xdata.size
+        return ydata - fitfunc(p, xdata, interf)
+
+    def fitfunc(p, xdata, interf):
+        A, k, c, bkg = p
+        return A*interf((xdata-c)*k) + bkg
+
     data = fits.getdata(infile)
     h, w = data.shape
 
@@ -1029,9 +1052,9 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
 
                 mask = np.ones_like(xdata, dtype=np.bool)
                 for ite in range(10):
-                    p, ier = opt.leastsq(errfunc2, p0,
+                    p, ier = opt.leastsq(errfunc, p0,
                                 args=(xdata[mask], ydata[mask], interf))
-                    ydata_fit = fitfunc2(p, xdata, interf)
+                    ydata_fit = fitfunc(p, xdata, interf)
                     ydata_res = ydata - ydata_fit
                     std = ydata_res[mask].std(ddof=1)
                     new_mask = ydata_res<5*std
