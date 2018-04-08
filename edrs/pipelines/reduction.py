@@ -53,9 +53,9 @@ class Reduction(object):
         Main loop of the reduction procedure.
         '''
         # initiliaze file surfix
-        self.input_surfix  = ''
-        self.output_surfix = ''
-        self.mask_surfix = self.config.get('reduction', 'mask_surfix')
+        self.input_suffix  = ''
+        self.output_suffix = ''
+        self.mask_surfix = self.config.get('reduction', 'mask_suffix')
         # read steps from config file
         steps_string = self.config.get('reduction', 'steps')
 
@@ -96,20 +96,19 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           **obslog_file**,     *string*, (*optional*) Name of the observing log file
-           **path.data**,       *string*, Path to the raw images
-           **path.midproc**,    *string*, Path to the mid-process files
-           **path.report**,     *string*, Path to the report file
-           **path.report_img**, *string*, (*optional*) Path to the images of report file
+           **obslog_file**, *string*, (*optional*) Name of the observing log file.
+           **data**,        *string*, Path to raw images.
+           **midproc**,     *string*, Path to midprocess files.
+           **report**,      *string*, Path to reduction report.
+           **result**,      *string*, Path to result files
 
         '''
         self.config = read_config(instrument=self.instrument)
 
         # get a dict of paths
         self.paths = {}
-        for option in self.config.options('reduction'):
-            if option[0:5]=='path.':
-                self.paths[option[5:]] = self.config.get('reduction', option)
+        for option in self.config.options('path'):
+            self.paths[option] = self.config.get('path', option)
 
         # Check whether the necessary paths exist
 
@@ -1111,11 +1110,7 @@ class Reduction(object):
                                    'fig_file'   : fig_file,
                                    })
 
-                    if False:
-                        #temporarily added for debug
-                        aperture_set = load_aperture_set(trc_file)
-                    else:
-                        aperture_set = find_apertures(data, **kwargs)
+                    aperture_set = find_apertures(data, **kwargs)
 
                     logger.info('Found %d apertures in "%s.fits"'%(len(aperture_set), flatname))
 
@@ -1145,12 +1140,27 @@ class Reduction(object):
             self.input_surfix = self.output_surfix
             return True
 
+        from ..echelle.flat import get_flatfielding
+
         # path alias
         midproc= self.paths['midproc']
 
         mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
 
         reg_color_lst = ['green', 'yellow', 'red', 'blue']
+
+        # temporarily added for debug purpose
+        #--------------------------------------
+        aperture_set_lst = {}
+        for ichannel in range(self.nchannels):
+            channel = chr(ichannel+65)
+            aperture_set_lst[channel] = {}
+            for flatname in sorted(self.flat_groups[channel]):
+                trc_file = os.path.join(midproc, '%s_trc.txt'%flatname)
+                aperture_set = load_aperture_set(trc_file)
+                aperture_set_lst[channel][flatname] = aperture_set
+        self.aperture_set_lst = aperture_set_lst
+        #--------------------------------------
 
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
@@ -1161,6 +1171,9 @@ class Reduction(object):
             flat_file = os.path.join(midproc, 'flat_%s.fits'%channel)
             trc_file  = os.path.join(midproc, 'flat_%s_trc.txt'%channel)
             reg_file  = os.path.join(midproc, 'flat_%s_trc.reg'%channel)
+            for flatname in sorted(flat_group):
+                print(channel, flatname)
+            exit()
 
             if len(flat_group) == 1:
                 # only 1 type of flat

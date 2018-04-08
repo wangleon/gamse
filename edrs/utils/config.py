@@ -1,7 +1,7 @@
 import os
 import logging
 logger = logging.getLogger(__name__)
-from configparser import ConfigParser
+import configparser
 
 def read_config(instrument):
     '''
@@ -34,7 +34,10 @@ def read_config(instrument):
         logger.error('There are %d config files (*.cfg)'%len(filename_lst))
         return None
 
-    config = ConfigParser()
+    config = configparser.ConfigParser(
+                inline_comment_prefixes=(';','#'),
+                interpolation=configparser.ExtendedInterpolation(),
+                )
     config.read(conf_file)
     return config
 
