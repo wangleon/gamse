@@ -232,24 +232,35 @@ class XinglongHRS(Reduction):
     def bias(self):
         '''Bias corrrection for Xinglong 2.16m Telescope HRS.
 
-        '''
-        self.output_surfix = self.config.get('reduction','bias.surfix')
+        .. csv-table:: Accepted options in config file
+           :header: Option, Type, Description
+           :widths: 20, 10, 50
 
-        if self.config.getboolean('reduction', 'bias.skip'):
+           **skip**,        *bool*,   Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,      *string*, Suffix of the corrected files.
+           **cosmic_clip**, *float*,  Upper clipping threshold to remove cosmic-rays.
+           **file**,        *string*, Name of bias file.
+
+        '''
+        self.output_suffix = self.config.get('bias', 'suffix')
+
+        if self.config.getboolean('bias', 'skip'):
             logger.info('Skip [bias] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
+
+        midproc = self.paths['midproc']
 
         bias_id_lst = self.find_bias()
 
         if len(bias_id_lst) == 0:
             # no bias frame found. quit this method.
-            # update surfix
+            # update suffix
             logger.info('No bias found.')
             return True
 
-        infile_lst = [os.path.join(self.paths['midproc'],
-                        '%s%s.fits'%(item.fileid, self.input_surfix))
+        infile_lst = [os.path.join(midproc,
+                        '%s%s.fits'%(item.fileid, self.input_suffix))
                         for item in self.log if item.frameid in bias_id_lst]
 
         # import and stack all bias files in a data cube
@@ -257,9 +268,9 @@ class XinglongHRS(Reduction):
         all_data, all_head = list(zip(*tmp))
         all_data = np.array(all_data)
 
-        if self.config.has_option('reduction', 'bias.cosmic_clip'):
+        if self.config.has_option('bias', 'cosmic_clip'):
             # use sigma-clipping method to mask cosmic rays
-            cosmic_clip = self.config.getfloat('reduction', 'bias.cosmic_clip')
+            cosmic_clip = self.config.getfloat('bias', 'cosmic_clip')
 
             all_mask = np.ones_like(all_data, dtype=np.bool)
 
@@ -291,11 +302,11 @@ class XinglongHRS(Reduction):
         head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
 
         # get final bias filename from the config file
-        bias_file = self.config.get('reduction', 'bias.file')
+        bias_file = self.config.get('bias', 'file')
 
-        if self.config.has_option('reduction', 'bias.smooth_method'):
+        if self.config.has_option('bias', 'smooth_method'):
             # perform smoothing for bias
-            smooth_method = self.config.get('reduction', 'bias.smooth_method')
+            smooth_method = self.config.get('bias', 'smooth_method')
             smooth_method = smooth_method.strip().lower()
 
             logger.info('Smoothing bias: %s'%smooth_method)
@@ -303,10 +314,8 @@ class XinglongHRS(Reduction):
             if smooth_method in ['gauss','gaussian']:
                 # perform 2D gaussian smoothing
 
-                smooth_sigma = self.config.getint('reduction',
-                                                  'bias.smooth_sigma')
-                smooth_mode  = self.config.get('reduction',
-                                               'bias.smooth_mode')
+                smooth_sigma = self.config.getint('bias', 'smooth_sigma')
+                smooth_mode  = self.config.get('bias', 'smooth_mode')
 
                 logger.info('Smoothing bias: sigma = %f'%smooth_sigma)
                 logger.info('Smoothing bias: mode = %s'%smooth_mode)
@@ -351,10 +360,10 @@ class XinglongHRS(Reduction):
         # finally all files are corrected for the bias
         for item in self.log:
             if item.frameid not in bias_id_lst:
-                infile  = '%s%s.fits'%(item.fileid, self.input_surfix)
-                outfile = '%s%s.fits'%(item.fileid, self.output_surfix)
-                inpath  = os.path.join(self.paths['midproc'], infile)
-                outpath = os.path.join(self.paths['midproc'], outfile)
+                infile  = '%s%s.fits'%(item.fileid, self.input_suffix)
+                outfile = '%s%s.fits'%(item.fileid, self.output_suffix)
+                inpath  = os.path.join(midproc, infile)
+                outpath = os.path.join(midproc, outfile)
                 data, head = fits.getdata(inpath, header=True)
                 data_new = data - bias_data
                 # write information into FITS header
@@ -366,10 +375,10 @@ class XinglongHRS(Reduction):
                 logger.info((os.linesep+'  ').join(info))
                 print('Correct bias: {} => {}'.format(infile, outfile))
 
-        # update surfix
-        logger.info('Bias corrected. Change surfix: %s -> %s'%
-                    (self.input_surfix, self.output_surfix))
-        self.input_surfix = self.output_surfix
+        # update suffix
+        logger.info('Bias corrected. Change suffix: %s -> %s'%
+                    (self.input_suffix, self.output_suffix))
+        self.input_suffix = self.output_suffix
         return True
 
 def find_orders(filename, **kwargs):

@@ -348,13 +348,13 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           **bias.skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **bias.surfix**,        *string*,  Surfix of the corrected files
-           **bias.file**,          *string*,  Name of bias file
-           **bias.cosmic_clip**,   *float*,   Upper clipping threshold to remove cosmic-rays
-           **bias.smooth_method**, *string*,  "Method of smoothing, including *Gauss*"
-           **bias.smooth_sigma**,  *integer*, Sigma of the smoothing filter
-           **bias.smooth_mode**,   *string*,  Mode of the smoothing
+           **skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **suffix**,        *string*,  Suffix of the corrected files.
+           **cosmic_clip**,   *float*,   Upper clipping threshold to remove cosmic-rays.
+           **smooth_method**, *string*,  "Method of smoothing, including *Gauss*".
+           **smooth_sigma**,  *integer*, Sigma of the smoothing filter.
+           **smooth_mode**,   *string*,  Mode of the smoothing.
+           **file**,          *string*,  Name of bias file.
 
         To calculate the correct bias level for every individual pixel position
         several individual steps are performed. In the beginning a datacube
@@ -373,20 +373,22 @@ class Reduction(object):
         #. final_bias = mean_bias - smooth_bias
           
         '''
-        # find output surfix for fits
-        self.output_surfix = self.config.get('reduction','bias.surfix')
+        # find output suffix for fits
+        self.output_suffix = self.config.get('bias','suffix')
 
-        if self.config.getboolean('reduction', 'bias.skip'):
+        if self.config.getboolean('bias', 'skip'):
             logger.info('Skip [bias] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
         self.report_file.write('    <h2>Bias Correction</h2>'+os.linesep)
 
+        midproc = self.paths['midproc']
+
         bias_id_lst = self.find_bias()
 
-        infile_lst = [os.path.join(self.paths['midproc'],
-                        '%s%s.fits'%(item.fileid, self.input_surfix))
+        infile_lst = [os.path.join(midproc,
+                        '%s%s.fits'%(item.fileid, self.input_suffix))
                         for item in self.log if item.frameid in bias_id_lst]
         
         # import and stack all bias files in a data cube
@@ -394,9 +396,9 @@ class Reduction(object):
         all_data, all_head = zip(*tmp)
         all_data = np.array(all_data)
 
-        if self.config.has_option('reduction', 'bias.cosmic_clip'):
+        if self.config.has_option('bias', 'cosmic_clip'):
             # use sigma-clipping method to mask cosmic rays
-            cosmic_clip = self.config.getfloat('reduction', 'bias.cosmic_clip')
+            cosmic_clip = self.config.getfloat('bias', 'cosmic_clip')
 
             # a data cube with the same dimensions as the bias data cube but
             # entierly filled with 'True' is created
@@ -442,11 +444,11 @@ class Reduction(object):
         head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
 
         # get final bias filename from the config file
-        bias_file = self.config.get('reduction', 'bias.file')
+        bias_file = self.config.get('bias', 'file')
 
-        if self.config.has_option('reduction', 'bias.smooth_method'):
+        if self.config.has_option('bias', 'smooth_method'):
             # perform smoothing for bias
-            smooth_method = self.config.get('reduction', 'bias.smooth_method')
+            smooth_method = self.config.get('bias', 'smooth_method')
             smooth_method = smooth_method.strip().lower()
 
             logger.info('Smoothing bias: %s'%smooth_method)
@@ -454,8 +456,8 @@ class Reduction(object):
             if smooth_method.lower().strip() == 'gaussian':
                 # perform 2D gaussian smoothing
 
-                smooth_sigma = self.config.getint('reduction', 'bias.smooth_sigma')
-                smooth_mode  = self.config.get('reduction',    'bias.smooth_mode')
+                smooth_sigma = self.config.getint('bias', 'smooth_sigma')
+                smooth_mode  = self.config.get('bias',    'smooth_mode')
 
                 logger.info('Smoothing bias: sigma = %f'%smooth_sigma)
                 logger.info('Smoothing bias: mode = %s'%smooth_mode)
@@ -495,10 +497,10 @@ class Reduction(object):
         for item in self.log:
             if item.frameid in bias_id_lst:
                 continue
-            infile  = '%s%s.fits'%(item.fileid, self.input_surfix)
-            outfile = '%s%s.fits'%(item.fileid, self.output_surfix)
-            inpath  = os.path.join(self.paths['midproc'], infile)
-            outpath = os.path.join(self.paths['midproc'], outfile)
+            infile  = '%s%s.fits'%(item.fileid, self.input_suffix)
+            outfile = '%s%s.fits'%(item.fileid, self.output_suffix)
+            inpath  = os.path.join(midproc, infile)
+            outpath = os.path.join(midproc, outfile)
             data, head = fits.getdata(inpath, header=True)
             data_new = data - bias_data
             # write information into FITS header
@@ -510,12 +512,10 @@ class Reduction(object):
             logger.info((os.linesep+'  ').join(info))
             print('Correct bias: {} => {}'.format(infile, outfile))
         
-        
-        
-        # update surfix
-        logger.info('Bias corrected. Change surfix: %s -> %s'%
-                    (self.input_surfix, self.output_surfix))
-        self.input_surfix = self.output_surfix
+        # update suffix
+        logger.info('Bias corrected. Change suffix: %s -> %s'%
+                    (self.input_suffix, self.output_suffix))
+        self.input_suffix = self.output_suffix
    
     def plot_bias_variation(self, data_lst, head_lst, time_key='UTC-STA'):
         '''
