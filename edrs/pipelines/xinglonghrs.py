@@ -27,6 +27,15 @@ class XinglongHRS(Reduction):
         '''
         Overscan correction for Xinglong 2.16m Telescope HRS.
 
+        .. csv-table:: Accepted options in config file
+           :header: Option, Type, Description
+           :widths: 20, 10, 50
+
+           **skip**,    *bool*,   Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,  *string*, Suffix of the corrected files.
+           **plot**,    *bool*,   Plot the overscan levels if *yes*.
+           **var_fig**, *string*, Filename of the overscan variation figure.
+
         '''
 
         from scipy.signal import savgol_filter
@@ -43,12 +52,12 @@ class XinglongHRS(Reduction):
             else:
                 return a
         
-        # find output surfix for fits
-        self.output_surfix = self.config.get('reduction', 'overscan.surfix')
+        # find output suffix for fits
+        self.output_suffix = self.config.get('overscan', 'suffix')
 
-        if self.config.getboolean('reduction', 'overscan.skip'):
+        if self.config.getboolean('overscan', 'skip'):
             logger.info('Skip [overscan] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
         # keywords for mask
@@ -70,7 +79,7 @@ class XinglongHRS(Reduction):
                          item.frameid, item.fileid))
 
             # read FITS data
-            filename = '%s%s.fits'%(item.fileid, self.input_surfix)
+            filename = '%s%s.fits'%(item.fileid, self.input_suffix)
             filepath = os.path.join(rawdata, filename)
             data, head = fits.getdata(filepath, header=True)
 
@@ -151,7 +160,7 @@ class XinglongHRS(Reduction):
             mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
             # save the mask
             mask_table = array_to_table(mask)
-            maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
+            maskname = '%s%s.fits'%(item.fileid, self.mask_suffix)
             maskpath = os.path.join(midproc, maskname)
             save_fits(maskpath, mask_table)
 
@@ -170,15 +179,15 @@ class XinglongHRS(Reduction):
             head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
 
             # save data
-            outname = '%s%s.fits'%(item.fileid, self.output_surfix)
+            outname = '%s%s.fits'%(item.fileid, self.output_suffix)
             outpath = os.path.join(midproc, outname)
             save_fits(outpath, new_data, head)
             print('Correct Overscan {} -> {}'.format(filename, outname))
 
 
-        logger.info('Overscan corrected. Change surfix: %s -> %s'%
-                    (self.input_surfix, self.output_surfix))
-        self.input_surfix = self.output_surfix
+        logger.info('Overscan corrected. Change suffix: %s -> %s'%
+                    (self.input_suffix, self.output_suffix))
+        self.input_suffix = self.output_suffix
 
     def get_badpixel_mask(self, shape, bins):
         '''Get bad-pixel mask.

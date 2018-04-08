@@ -36,23 +36,23 @@ class FOCES(Reduction):
         Then are subtracted for every pixel in the science region.
 
         .. csv-table:: Accepted options in config file
-           :header: "Option", "Type", "Description"
+           :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           "**overscan.skip**",    "*bool*",   "Skip this step if *yes* and **mode** = *'debug'*."
-           "**overscan.surfix**",  "*string*", "Surfix of the corrected files."
-           "**overscan.plot**",    "*bool*",   "Plot the overscan levels if *yes*."
-           "**overscan.var_fig**", "*string*", "Filename of the overscan variation figure."
+           **skip**,    *bool*,   Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,  *string*, Suffix of the corrected files.
+           **plot**,    *bool*,   Plot the overscan levels if *yes*.
+           **var_fig**, *string*, Filename of the overscan variation figure.
 
 
         '''
 
-        # find output surfix for fits
-        self.output_surfix = self.config.get('reduction', 'overscan.surfix')
+        # find output suffix for fits
+        self.output_suffix = self.config.get('overscan', 'suffix')
 
-        if self.config.getboolean('reduction', 'overscan.skip'):
+        if self.config.getboolean('overscan', 'skip'):
             logger.info('Skip [overscan] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
         self.report_file.write('    <h2>Overscan</h2>'+os.linesep)
@@ -77,7 +77,7 @@ class FOCES(Reduction):
                          item.frameid, item.fileid))
 
             # read in of the data
-            filename = '%s%s.fits'%(item.fileid, self.input_surfix)
+            filename = '%s%s.fits'%(item.fileid, self.input_suffix)
             filepath = os.path.join(rawdata, filename)
             data, head = fits.getdata(filepath, header=True)
     
@@ -153,7 +153,7 @@ class FOCES(Reduction):
             mask_sat   = (data[:,20:2068]>=saturation_adu)
             mask       = np.int16(mask_sat)*4
             mask_table = array_to_table(mask)
-            maskname = '%s%s.fits'%(item.fileid, self.mask_surfix)
+            maskname = '%s%s.fits'%(item.fileid, self.mask_suffix)
             maskpath = os.path.join(midproc, maskname)
             # save the mask.
             save_fits(maskpath, mask_table)
@@ -172,7 +172,7 @@ class FOCES(Reduction):
             head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
     
             # save data
-            outname = '%s%s.fits'%(item.fileid, self.output_surfix)
+            outname = '%s%s.fits'%(item.fileid, self.output_suffix)
             outpath = os.path.join(midproc, outname)
             save_fits(outpath, new_data, head)
             print('Correct Overscan {} -> {}'.format(filename, outname))
@@ -208,9 +208,9 @@ class FOCES(Reduction):
     
         self.plot_overscan_variation(t_lst, ovr1_lst)
 
-        logger.info('Overscan corrected. Change surfix: %s -> %s'%
-                    (self.input_surfix, self.output_surfix))
-        self.input_surfix = self.output_surfix
+        logger.info('Overscan corrected. Change suffix: %s -> %s'%
+                    (self.input_suffix, self.output_suffix))
+        self.input_suffix = self.output_suffix
 
 def make_log(path):
     '''
