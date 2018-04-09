@@ -18,7 +18,7 @@ class FOCES(Reduction):
     '''
 
     def __init__(self):
-        super(FOCES, self).__init__()
+        super(FOCES, self).__init__(instrument='FOCES')
 
     def overscan(self):
         '''
