@@ -644,7 +644,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     def find_local_peak(xdata, ydata, mask):
 
         if mask.sum()>=2:
-            core = np.hanning(9)
+            core = np.hanning(min(5, ydata.size))
+            # length of core should not be smaller than length of ydata
+            # otherwise the length of ydata after convolution is reduced
             ydata = np.convolve(ydata, core, mode='same')
 
         argmax = ydata.argmax()
@@ -940,6 +942,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
                     local_sep = ystep/1000*sep_der + seperation
                     y1 = max(0, int(ystep-local_sep/2))
                     y2 = min(h, int(ystep+local_sep/2))
+                    if y2 - y1 <= 5:
+                        # number of points is not enough to get a local peak
+                        continue
                     xdata = np.arange(y1, y2)
                     ydata = data[y1:y2, x1]
                     m = sat_mask[y1:y2, x1]
