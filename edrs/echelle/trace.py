@@ -572,6 +572,19 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax1.set_ylim(h-1,0)
     ax1.set_xlabel('X')
     ax1.set_ylabel('Y')
+
+    # create an image shown in paper
+    #figp = plt.figure(figsize=(7,20),dpi=150)
+    #ax1p = figp.add_axes([0.12,0.44,0.85,0.54])
+    #ax2p = figp.add_axes([0.12,0.06,0.85,0.33])
+    #ax1p.imshow(logdata,cmap='gray',interpolation='none')
+    #ax1p.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
+    #ax1p.set_xlim(0,w-1)
+    #ax1p.set_ylim(h-1,0)
+    #ax1p.set_xlabel('X')
+    #ax1p.set_ylabel('Y')
+
+
     # define a scroll function, which is used for mouse manipulation on pop-up
     # window
     def on_scroll(event):
@@ -809,6 +822,13 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax2.set_ylabel('Count')
     ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
 
+    # plot the figure in paper
+    #ax2p.plot(csec_ylst[istart:iend], csec_lst[istart:iend], 'g-')
+    #ax2p.set_yscale('log')
+    #ax2p.set_xlabel('Y')
+    #ax2p.set_ylabel('Count')
+    #ax2p.set_xlim(csec_ylst[istart], csec_ylst[iend])
+
     #for x1,y_lst in nodes_lst.items():
     #    ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
 
@@ -833,6 +853,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
     #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
     ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='r')
+    #ax2p.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='r')
 
     # find central positions along Y axis for all apertures
     message = ['Aperture Detection Information for "%s"'%filename,
@@ -908,10 +929,14 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
         ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
+        #ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
 
     # set tickers for ax2
     ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
     ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
+
+    #ax2p.xaxis.set_major_locator(tck.MultipleLocator(500))
+    #ax2p.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -974,6 +999,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         # generate a curve using for plot
         newx, newy = poly.linspace()
         ax1.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
+        #ax1p.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))
@@ -1012,6 +1038,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
     fig.canvas.draw()
     fig.savefig(fig_file)
+    #figp.savefig(fig_file+'.pdf')
+    #plt.close(figp)
     # for debug purpose
     #ax2.set_xlim(3400, 3500)
     #ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
