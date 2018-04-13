@@ -139,14 +139,15 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     xnodes = np.array(xnodes)
     ynodes = np.array(ynodes)
     znodes = np.array(znodes)
-    
+
+    logger.info('Found %d nodes in "%s" for background fitting'%(xnodes.size, infilename))
+
     # if scale='log', filter the negative values
     if scale=='log':
         pmask = znodes > 0
         xnodes = xnodes[pmask]
         ynodes = ynodes[pmask]
         znodes = znodes[pmask]
-
 
     if plot:
         # initialize figures
@@ -208,6 +209,10 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         m1 = residual < mean + upper_clip*sigma
         m2 = residual > mean - lower_clip*sigma
         new_fitmask = m1*m2
+
+        # write info to running log
+        logger.debug('Background fitting iteration %d: sigma=%g, N=%d, N(new)=%d'%(
+            niter, sigma, fitmask.sum(), new_fitmask.sum()))
         if new_fitmask.sum() == fitmask.sum():
             break
         fitmask = new_fitmask

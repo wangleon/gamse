@@ -1250,41 +1250,43 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 80
 
-           **background.skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **background.surfix**,     *string*,  Surfix of the background correceted files
-           **background.display**,    *bool*,    Display a graphics if *yes*
-           **background.scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
-           **background.xorder**,     *integer*, Degree of 2D polynomial along *x*-axis (dispersion direction)
-           **background.yorder**,     *integer*, Degree of 2D polynomial along *y*-axis (cross-dispersion direction)
-           **background.maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting
-           **background.upper_clip**, *float*,   Upper sigma clipping threshold
-           **background.lower_clip**, *float*,   Lower sigma clipping threshold
-           **background.extend**,     *bool*,    Extend the grid to the whole image if *True*
-
+           **skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
+           **suffix**,     *string*,  Suffix of the background correceted files
+           **display**,    *bool*,    Display a graphics if *yes*
+           **scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
+           **xorder**,     *integer*, Degree of 2D polynomial along *x*-axis (dispersion direction)
+           **yorder**,     *integer*, Degree of 2D polynomial along *y*-axis (cross-dispersion direction)
+           **maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting
+           **upper_clip**, *float*,   Upper sigma clipping threshold
+           **lower_clip**, *float*,   Lower sigma clipping threshold
+           **extend**,     *bool*,    Extend the grid to the whole image if *True*
 
         '''
 
         from ..echelle.background import correct_background
         
+        section = self.config['background']
         # find output surfix for fits
-        self.output_surfix = self.config.get('reduction','background.surfix')
+        self.output_suffix = section.get('suffix')
 
-        if self.config.getboolean('reduction', 'background.skip'):
+        if section.getboolean('skip'):
             logger.info('Skip [background] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
+        # path alias
         midproc = self.paths['midproc']
+        repimag = self.paths['report_img']
 
         # read config parameters
-        display    = self.config.getboolean('reduction', 'background.display')
-        scan_step  = self.config.getint('reduction', 'background.scan_step')
-        xorder     = self.config.getint('reduction', 'background.xorder')
-        yorder     = self.config.getint('reduction', 'background.yorder')
-        maxiter    = self.config.getint('reduction', 'background.maxiter')
-        upper_clip = self.config.getfloat('reduction', 'background.upper_clip')
-        lower_clip = self.config.getfloat('reduction', 'background.lower_clip')
-        extend     = self.config.getboolean('reduction', 'background.extend')
+        display    = section.getboolean('display')
+        scan_step  = section.getint('scan_step')
+        xorder     = section.getint('xorder')
+        yorder     = section.getint('yorder')
+        maxiter    = section.getint('maxiter')
+        upper_clip = section.getfloat('upper_clip')
+        lower_clip = section.getfloat('lower_clip')
+        extend     = section.getboolean('extend')
 
         # load aperture set for different channels
         aperset_lst = {}
@@ -1307,13 +1309,19 @@ class Reduction(object):
 
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
+            infilename  = '%s%s.fits'%(item.fileid, self.input_suffix)
+            mskfilename = '%s%s.fits'%(item.fileid, self.mask_suffix)
+            outfilename = '%s%s.fits'%(item.fileid, self.output_suffix)
+            scafilename = '%s%s.fits'%(item.fileid, '_sca')
+            regfilename = '%s%s.reg'%(item.fileid, self.output_suffix)
+            imgfilename = 'bkg-%s.png'%item.fileid
 
-            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
-            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
-            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
-            scafile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, '_sca')))
-            regfile_lst.append(os.path.join(midproc, '%s%s.reg'%(item.fileid, self.output_surfix)))
-            figfile_lst.append(os.path.join(self.paths['report_img'], 'bkg-%s.png'%item.fileid))
+            infile_lst.append(os.path.join(midproc, infilename))
+            mskfile_lst.append(os.path.join(midproc, mskfilename))
+            outfile_lst.append(os.path.join(midproc, outfilename))
+            scafile_lst.append(os.path.join(midproc, scafilename))
+            regfile_lst.append(os.path.join(midproc, regfilename))
+            figfile_lst.append(os.path.join(repimag, imgfilename))
 
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
