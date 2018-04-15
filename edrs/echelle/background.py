@@ -71,8 +71,14 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     min_aper = min([min(apertureset_lst[ch].keys()) for ch in channels])
     max_aper = max([max(apertureset_lst[ch].keys()) for ch in channels])
 
+    # generate the horizontal scan list
+    x_lst = np.arange(0, w-1, scan_step)
+    # add the last column to the list
+    if x_lst[-1] != w-1:
+        x_lst = np.append(x_lst, w-1)
+
     # find intra-order pixels
-    for x in np.arange(1, w, scan_step):
+    for x in x_lst:
         xsection = meddata[:,x]
         inter_aper = []
         prev_newy = None
@@ -145,9 +151,10 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     # if scale='log', filter the negative values
     if scale=='log':
         pmask = znodes > 0
-        xnodes = xnodes[pmask]
-        ynodes = ynodes[pmask]
-        znodes = znodes[pmask]
+        #xnodes = xnodes[pmask]
+        #ynodes = ynodes[pmask]
+        #znodes = znodes[pmask]
+        znodes[~pmask] = 0.1
 
     if plot:
         # initialize figures
@@ -187,6 +194,12 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
                 tick.label1.set_fontsize(9)
 
         if display: plt.show(block=False)
+
+        # plot the figure used in paper
+        figp1 = plt.figure(figsize=(6,6), dpi=150)
+        axp1 = figp1.add_axes([0.00, 0.05, 1.00, 0.95], projection='3d')
+        figp2 = plt.figure(figsize=(6.5,6), dpi=150)
+        axp2 = figp2.add_axes([0.12, 0.1, 0.84, 0.86])
 
     # normalize to 0 ~ 1 for x and y nodes
     xfit = np.float64(xnodes)/w
@@ -254,16 +267,29 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         #    ax24.scatter(xnodes[fitmask], ynodes[fitmask], log_residual[fitmask], linewidth=0)
 
         for ax in [ax21, ax22]:
-            #ax.set_xlim(0, w-1)
-            #ax.set_ylim(0, h-1)
             ax.xaxis.set_major_locator(tck.MultipleLocator(500))
             ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
             ax.yaxis.set_major_locator(tck.MultipleLocator(500))
             ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
-            #ax.set_xlabel('X (pixel)', fontsize=10)
-            #ax.set_ylabel('Y (pixel)', fontsize=10)
 
         if display: fig.canvas.draw()
+
+        # plot figure for paper
+        axp1.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
+                            linewidth=0, antialiased=True, alpha=0.5)
+        axp1.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask], linewidth=0)
+        axp1.xaxis.set_major_locator(tck.MultipleLocator(500))
+        axp1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        axp1.yaxis.set_major_locator(tck.MultipleLocator(500))
+        axp1.yaxis.set_minor_locator(tck.MultipleLocator(100))
+        axp1.set_xlim(0, w-1)
+        axp1.set_ylim(0, h-1)
+        axp1.set_xlabel('X')
+        axp1.set_ylabel('Y')
+        #for tick in axp1.xaxis.get_major_ticks():
+        #    tick.label1.set_fontsize(15)
+        #for tick in axp1.yaxis.get_major_ticks():
+        #    tick.label1.set_fontsize(15)
 
     # calculate the background
     xx, yy = np.meshgrid(np.arange(w), np.arange(h))
@@ -288,6 +314,30 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
             tick.label2.set_fontsize(9)
 
         if display: fig.canvas.draw()
+
+        # plot for figure in paper
+        pmask = data>0
+        logdata = np.zeros_like(data)-1
+        logdata[pmask] = np.log(data[pmask])
+        axp2.imshow(logdata, cmap='gray')
+        axp2.scatter(xnodes, ynodes, c='b', s=8, linewidth=0, alpha=0.8)
+        cs = axp2.contour(background_data, linewidth=1)
+        axp2.clabel(cs, inline=1, fontsize=11, use_clabeltext=True)
+        axp2.set_xlim(0, w-1)
+        axp2.set_ylim(h-1, 0)
+        axp2.set_xlabel('X')
+        axp2.set_ylabel('Y')
+        #for tick in axp2.xaxis.get_major_ticks():
+        #    tick.label1.set_fontsize(15)
+        #for tick in axp2.yaxis.get_major_ticks():
+        #    tick.label1.set_fontsize(15)
+        figp1.savefig('fig_background1.png')
+        figp2.savefig('fig_background2.png')
+        figp1.savefig('fig_background1.pdf')
+        figp2.savefig('fig_background2.pdf')
+        plt.close(figp1)
+        plt.close(figp2)
+        exit()
 
     # correct background
     corrected_data = data - background_data
