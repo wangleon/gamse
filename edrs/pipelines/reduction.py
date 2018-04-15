@@ -933,7 +933,7 @@ class Reduction(object):
 
         if self.config.getboolean('reduction', 'flat.skip'):
             logger.info('Skip [flat] according to the config file')
-            #self.input_surfix = self.output_surfix
+            #self.input_suffix = self.output_suffix
             return True
 
         from ..echelle.flat import mosaic_flat
@@ -966,7 +966,7 @@ class Reduction(object):
             # mosaic flats with different colors (different exposure times)
             mosaic_flat(filename_lst, flat_file, mosaicfile, regfile,
                         disp_axis   = 1,
-                        mask_surfix = self.mask_surfix
+                        mask_suffix = self.mask_suffix
                         )
     
             # write to the running log
@@ -1023,7 +1023,7 @@ class Reduction(object):
 
         # path alias
         midproc = self.paths['midproc']
-        repimag = self.paths['report_img']
+        report_img = self.paths['report_img']
 
         for ichannel in range(self.nchannels):
             channel = chr(ichannel + 65)
@@ -1102,7 +1102,7 @@ class Reduction(object):
                     # determine the result file and figure file
                     trc_file = os.path.join(midproc, '%s_trc.txt'%flatname)
                     reg_file = os.path.join(midproc, '%s_trc.reg'%flatname)
-                    fig_file = os.path.join(repimag, 'trace_%s.png'%flatname)
+                    fig_file = os.path.join(report_img, 'trace_%s.png'%flatname)
 
                     # find the apertures
 
@@ -1129,10 +1129,10 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 70
 
-           **flat.skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **flat.suffix**,          *string*,  Surfix of the flat correceted files
-           **flat.cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays
-           **flat.mosaic_maxcount**, *integer*, Maximum count of the flat mosaic
+           **skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,          *string*,  Surfix of the flat correceted files.
+           **cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
+           **mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
         '''
 
         # find output suffix for fits
@@ -1146,7 +1146,7 @@ class Reduction(object):
         from ..echelle.flat import get_flatfielding
 
         # path alias
-        midproc= self.paths['midproc']
+        midproc = self.paths['midproc']
 
         mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
 
@@ -1233,13 +1233,13 @@ class Reduction(object):
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
             input_file = os.path.join(midproc,
-                            '%s%s.fits'%(item.fileid, self.input_surfix))
+                            '%s%s.fits'%(item.fileid, self.input_suffix))
             output_file = os.path.join(midproc,
-                            '%s%s.fits'%(item.fileid, self.output_surfix))
+                            '%s%s.fits'%(item.fileid, self.output_suffix))
             shutil.copy(input_file, output_file)
             logger.info('Correct Flat: "{}"->"{}"'.format(input_file, output_file))
 
-        self.input_surfix = self.output_surfix
+        self.input_suffix = self.output_suffix
 
 
     def background(self):
@@ -1250,23 +1250,23 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 80
 
-           **skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **suffix**,     *string*,  Suffix of the background correceted files
-           **display**,    *bool*,    Display a graphics if *yes*
-           **scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction
-           **xorder**,     *integer*, Degree of 2D polynomial along *x*-axis (dispersion direction)
-           **yorder**,     *integer*, Degree of 2D polynomial along *y*-axis (cross-dispersion direction)
-           **maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting
-           **upper_clip**, *float*,   Upper sigma clipping threshold
-           **lower_clip**, *float*,   Lower sigma clipping threshold
-           **extend**,     *bool*,    Extend the grid to the whole image if *True*
+           **skip**,       *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,     *string*,  Suffix of the background correceted files.
+           **display**,    *bool*,    Display a graphics if *yes*.
+           **scan_step**,  *integer*, Steps of pixels used to scan along the main dispersion direction.
+           **xorder**,     *integer*, Degree of 2D polynomial along *x*-axis (dispersion direction).
+           **yorder**,     *integer*, Degree of 2D polynomial along *y*-axis (cross-dispersion direction).
+           **maxiter**,    *integer*, Maximum number of iteration of 2D polynomial fitting.
+           **upper_clip**, *float*,   Upper sigma clipping threshold.
+           **lower_clip**, *float*,   Lower sigma clipping threshold.
+           **extend**,     *bool*,    Extend the grid to the whole image if *True*.
 
         '''
 
         from ..echelle.background import correct_background
         
         section = self.config['background']
-        # find output surfix for fits
+        # find output suffix for fits
         self.output_suffix = section.get('suffix')
 
         if section.getboolean('skip'):
@@ -1276,7 +1276,7 @@ class Reduction(object):
 
         # path alias
         midproc = self.paths['midproc']
-        repimag = self.paths['report_img']
+        report_img = self.paths['report_img']
 
         # read config parameters
         display    = section.getboolean('display')
@@ -1321,7 +1321,7 @@ class Reduction(object):
             outfile_lst.append(os.path.join(midproc, outfilename))
             scafile_lst.append(os.path.join(midproc, scafilename))
             regfile_lst.append(os.path.join(midproc, regfilename))
-            figfile_lst.append(os.path.join(repimag, imgfilename))
+            figfile_lst.append(os.path.join(report_img, imgfilename))
 
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
@@ -1339,6 +1339,7 @@ class Reduction(object):
             channel = channel_lst[i]
             scale   = scale_lst[i]
 
+            print('Correct background: %s -> %s'%(infile, outfile))
             correct_background(infile, mskfile, outfile, scafile,
                                channels        = channel,
                                apertureset_lst = aperset_lst,
@@ -1356,6 +1357,10 @@ class Reduction(object):
                                reg_file        = regfile,
                                )
 
+        # update suffix
+        self.input_suffix = self.output_suffix
+        return True
+
         if False:    
             # prepare the file queue
             infile_lst, mskfile_lst, outfile_lst, scafile_lst = [], [], [], []
@@ -1366,8 +1371,8 @@ class Reduction(object):
             if self.config.has_option('reduction', 'fileid.flat'):
                 # there only 1 flats in the dataset
                 flat_file = self.config.get('reduction', 'flat.file')
-                msk_file  = '%s%s.fits'%(flat_file[0:-5], self.mask_surfix)
-                out_file  = '%s%s.fits'%(flat_file[0:-5], self.output_surfix)
+                msk_file  = '%s%s.fits'%(flat_file[0:-5], self.mask_suffix)
+                out_file  = '%s%s.fits'%(flat_file[0:-5], self.output_suffix)
                 sca_file  = '%s_sca.fits'%(flat_file[0:-5])
                 infile_lst.append(flat_file)
                 mskfile_lst.append(msk_file)
@@ -1379,8 +1384,8 @@ class Reduction(object):
             if len(self.flat_groups)>0:
                 for flatname in sorted(self.flat_groups.keys()):
                     infilename  = os.path.join(self.paths['midproc'], '%s.fits'%flatname)
-                    mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_surfix))
-                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.output_surfix))
+                    mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.mask_suffix))
+                    outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname, self.output_suffix))
                     scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%flatname)
                     infile_lst.append(infilename)
                     mskfile_lst.append(mskfilename)
@@ -1395,9 +1400,9 @@ class Reduction(object):
             for item in self.log:
                 if item.frameid not in id_lst:
                     continue
-                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_suffix))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_suffix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_suffix))
                 scafilename = os.path.join(self.paths['midproc'], '%s_sca.fits'%item.fileid)
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
@@ -1433,8 +1438,6 @@ class Reduction(object):
                 plt.close(fig1)
                 plt.close(fig2)
             
-            # update surfix
-            self.input_surfix = self.output_surfix
 
     def extract(self):
         '''
@@ -1444,26 +1447,29 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 60
 
-           **skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **suffix**,      *string*,  Suffix of the extracted files
-           **upper_limit**, *float*,   Upper limit of extracted aperture
-           **lower_limit**, *float*,   Lower limit of extracted aperture
+           **skip**,        *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,      *string*,  Suffix of the extracted files.
+           **upper_limit**, *float*,   Upper limit of extracted aperture.
+           **lower_limit**, *float*,   Lower limit of extracted aperture.
 
         '''
-        # find output surfix for fits
-        self.output_surfix = self.config.get('reduction', 'extract.surfix')
+        section = self.config['extract']
+
+        # find output suffix for fits
+        self.output_suffix = section.get('suffix')
     
-        if self.config.getboolean('reduction', 'extract.skip'):
+        if section.getboolean('skip'):
             logger.info('Skip [extract] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
         from ..echelle.extract import sum_extract
 
+        # path alias
         midproc = self.paths['midproc']
 
-        upper_limit = self.config.getfloat('reduction', 'extract.upper_limit')
-        lower_limit = self.config.getfloat('reduction', 'extract.lower_limit')
+        upper_limit = section.getfloat('upper_limit')
+        lower_limit = section.getfloat('lower_limit')
 
         # load aperture set for different channels
         aperset_lst = {}
@@ -1483,9 +1489,15 @@ class Reduction(object):
         # add comparison lamps to the queue
         comp_item_lst = self.find_comp()
         for item in comp_item_lst:
-            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, '_ovr')))
-            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
-            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
+
+            infilename  = '%s%s.fits'%(item.fileid, '_ovr')
+            mskfilename = '%s%s.fits'%(item.fileid, self.mask_suffix)
+            outfilename = '%s%s.fits'%(item.fileid, self.output_suffix)
+
+            infile_lst.append(os.path.join(midproc, infilename))
+            mskfile_lst.append(os.path.join(midproc, mskfilename))
+            outfile_lst.append(os.path.join(midproc, outfilename))
+
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
             channel_lst.append(channels)
@@ -1493,9 +1505,15 @@ class Reduction(object):
         # add scientific frames to the queue
         sci_item_lst = self.find_science()
         for item in sci_item_lst:
-            infile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.input_surfix)))
-            mskfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.mask_surfix)))
-            outfile_lst.append(os.path.join(midproc, '%s%s.fits'%(item.fileid, self.output_surfix)))
+
+            infilename  = '%s%s.fits'%(item.fileid, self.input_suffix)
+            mskfilename = '%s%s.fits'%(item.fileid, self.mask_suffix)
+            outfilename = '%s%s.fits'%(item.fileid, self.output_suffix)
+
+            infile_lst.append(os.path.join(midproc, infilename))
+            mskfile_lst.append(os.path.join(midproc, mskfilename))
+            outfile_lst.append(os.path.join(midproc, outfilename))
+
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
             channel_lst.append(channels)
@@ -1506,13 +1524,14 @@ class Reduction(object):
             outfile = outfile_lst[i]
             channel = channel_lst[i]
 
+            print('Extract: %s -> %s'%(infile, outfile))
             sum_extract(infile, mskfile, outfile,
                         channels        = channel,
                         apertureset_lst = aperset_lst,
                         upper_limit     = upper_limit,
                         lower_limit     = lower_limit,
                         )
-        exit()
+        return True
 
         #--------------
 
@@ -1526,11 +1545,11 @@ class Reduction(object):
         # check combined flat
         if self.config.has_option('reduction', 'fileid.flat'):
             infilename  = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(flat_file[0:-5],self.input_surfix))
+                            '%s%s.fits'%(flat_file[0:-5],self.input_suffix))
             mskfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(flat_file[0:-5],self.mask_surfix))
+                            '%s%s.fits'%(flat_file[0:-5],self.mask_suffix))
             outfilename = os.path.join(self.paths['midproc'],
-                            '%s%s.fits'%(flat_file[0:-5],self.output_surfix))
+                            '%s%s.fits'%(flat_file[0:-5],self.output_suffix))
             infile_lst.append(infilename)
             mskfile_lst.append(mskfilename)
             outfile_lst.append(outfilename)
@@ -1538,9 +1557,9 @@ class Reduction(object):
     
         if len(self.flat_groups)>0:
             for flatname in sorted(self.flat_groups.keys()):
-                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.input_surfix))
-                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.output_surfix))
+                infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.input_suffix))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.mask_suffix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(flatname,self.output_suffix))
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
@@ -1548,8 +1567,8 @@ class Reduction(object):
         
             # add mosaiced flat file
             infilename = flat_file
-            mskfilename = '%s%s.fits'%(flat_file[0:-5],self.mask_surfix)
-            outfilename = '%s%s.fits'%(flat_file[0:-5],self.output_surfix)
+            mskfilename = '%s%s.fits'%(flat_file[0:-5],self.mask_suffix)
+            outfilename = '%s%s.fits'%(flat_file[0:-5],self.output_suffix)
             infile_lst.append(infilename)
             mskfile_lst.append(mskfilename)
             outfile_lst.append(outfilename)
@@ -1563,9 +1582,9 @@ class Reduction(object):
                 if item.frameid not in id_lst:
                     continue
                 infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid,
-                              self.config.get('reduction','bias.surfix')))
-                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
-                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+                              self.config.get('reduction','bias.suffix')))
+                mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_suffix))
+                outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_suffix))
                 infile_lst.append(infilename)
                 mskfile_lst.append(mskfilename)
                 outfile_lst.append(outfilename)
@@ -1578,9 +1597,9 @@ class Reduction(object):
         for item in self.log:
             if item.frameid not in id_lst:
                 continue
-            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_surfix))
-            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_surfix))
-            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_surfix))
+            infilename  = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.input_suffix))
+            mskfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.mask_suffix))
+            outfilename = os.path.join(self.paths['midproc'], '%s%s.fits'%(item.fileid, self.output_suffix))
             infile_lst.append(infilename)
             mskfile_lst.append(mskfilename)
             outfile_lst.append(outfilename)
@@ -1610,24 +1629,24 @@ class Reduction(object):
         if display:
             plt.close(fig)
 
-        # update surfix
-        self.input_surfix = self.output_surfix
+        # update suffix
+        self.input_suffix = self.output_suffix
 
     def deblaze(self):
         '''
         Correct the blaze funtions of the 1-D spectra
         '''
 
-        # find output surfix for fits
-        self.output_surfix = self.config.get('reduction','deblaze.surfix')
+        # find output suffix for fits
+        self.output_suffix = self.config.get('reduction','deblaze.suffix')
 
         if self.config.getboolean('reduction', 'deblaze.skip'):
             logger.info('Skip [deblaze] according to the config file')
-            self.input_surfix = self.output_surfix
+            self.input_suffix = self.output_suffix
             return True
 
         flat_file = self.config.get('reduction','flat.file')
-        flat_ext_file = '%s%s.fits'%(flat_file[0:-5], self.input_surfix)
+        flat_ext_file = '%s%s.fits'%(flat_file[0:-5], self.input_suffix)
         flatdata = fits.getdata(flat_ext_file)
 
         # extent the structrured array
@@ -1684,53 +1703,56 @@ class Reduction(object):
            :header: Option, Type, Description
            :widths: 25, 10, 60
 
-           **skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*
-           **suffix**,        *string*,  Surfix of the extracted files
-           **linelist**,      *string*,  Name of the wavelength standard list
-           **window_size**,   *integer*, Size of the window in pixel to search for the lines
-           **xorder**,        *integer*, Order of polynomial along main dispersion direction
-           **yorder**,        *integer*, Order of polynomial along cross-dispersion direction
-           **maxiter**,       *integer*, Mximum number of polnomial fitting
-           **clipping**,      *float*,   Sigma-clipping threshold
-           **snr_threshold**, *float*,   Signal-to-noise ratio threshold of the emission line fitting
+           **skip**,          *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,        *string*,  Surfix of the extracted files.
+           **linelist**,      *string*,  Name of the wavelength standard list.
+           **window_size**,   *integer*, Size of the window in pixel to search for the lines.
+           **xorder**,        *integer*, Order of polynomial along main dispersion direction.
+           **yorder**,        *integer*, Order of polynomial along cross-dispersion direction.
+           **maxiter**,       *integer*, Mximum number of polnomial fitting.
+           **clipping**,      *float*,   Sigma-clipping threshold.
+           **snr_threshold**, *float*,   Signal-to-noise ratio threshold of the emission line fitting.
 
         '''
 
-        # find output suffix for fits
-        self.output_suffix = self.config.get('wvcalib','suffix')
+        section = self.config['wvcalib']
 
-        if self.config.getboolean('wvcalib', 'skip'):
+        # find output suffix for fits
+        self.output_suffix = section.get('suffix')
+
+        if section.getboolean('skip'):
             logger.info('Skip [wavcalib] according to the config file')
             self.input_suffix = self.output_suffix
             return True
-
-        from ..echelle.wvcalib import wvcalib, recalib, reference_wv
-
-        # get parameters from config file
-        linelist      = self.config.get('wvcalib', 'linelist')
-        window_size   = self.config.getint('wvcalib', 'window_size')
-        xorder        = self.config.getint('wvcalib', 'xorder')
-        yorder        = self.config.getint('wvcalib', 'yorder')
-        maxiter       = self.config.getint('wvcalib', 'maxiter')
-        clipping      = self.config.getfloat('wvcalib', 'clipping')
-        snr_threshold = self.config.getfloat('wvcalib', 'snr_threshold')
 
         # path alias
         midproc    = self.paths['midproc']
         report_img = self.paths['report_img']
 
-        if self.nchannels == 1:
+        from ..echelle.wvcalib import wvcalib, recalib, reference_wv
+
+        # get parameters from config file
+        linelist      = section.get('linelist')
+        window_size   = section.getint('window_size')
+        xorder        = section.getint('xorder')
+        yorder        = section.getint('yorder')
+        maxiter       = section.getint('maxiter')
+        clipping      = section.getfloat('clipping')
+        snr_threshold = section.getfloat('snr_threshold')
+
+        if self.nchannels == 0:
             # single fiber calibration
 
             # check comparison lamp
             if self.config.has_option('reduction', 'fileid.thar'):
-            
+                print('kkkkkkk') 
                 # find comparison file list
                 string = self.config.get('reduction', 'fileid.thar')
                 id_lst = parse_num_seq(string)
+                print(id_lst)
             
                 # find linelist
-                linelistname = self.config.get('wvcalib', 'linelist')
+                linelistname = section.get('linelist')
             
                 extract_suffix = self.config.get('extract', 'suffix')
             
@@ -1776,7 +1798,10 @@ class Reduction(object):
             #       ... ...
             #       }
             for ich, (channel, item_lst) in enumerate(sorted(thar_lst.items())):
+                # loop for every fiber channel
+
                 for i, item in enumerate(item_lst):
+                    # loop for item
                     infilename  = '%s%s.fits'%(item.fileid, self.input_suffix)
                     idtfilename = '%s_idt.dat'%item.fileid
                     figfilename = 'wvcalib-%s-%s.png'%(item.fileid, channel)
