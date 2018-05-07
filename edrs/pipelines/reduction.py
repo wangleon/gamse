@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
-from scipy.optimize import leastsq
+import scipy.optimize as opt
 import matplotlib.pyplot as plt
 import matplotlib.dates  as mdates
 from mpl_toolkits.mplot3d import Axes3D
@@ -374,7 +374,7 @@ class Reduction(object):
           
         '''
         # find output suffix for fits
-        self.output_suffix = self.config.get('bias','suffix')
+        self.output_suffix = self.config.get('bias', 'suffix')
 
         if self.config.getboolean('bias', 'skip'):
             logger.info('Skip [bias] according to the config file')
@@ -679,15 +679,12 @@ class Reduction(object):
                 x = (np.roll(bins,1) + bins)/2
                 x = x[1:]
                 # use least square minimization function in scipy
-                p1,succ = leastsq(errfunc,[y.max(),0.,1.],args=(x,y))
+                p1,succ = opt.leastsq(errfunc,[y.max(),0.,1.],args=(x,y))
                 ax = fig2.get_axes()[iy*3+ix]
-                if idata == 0:
-                    color1, color2 = 'r', 'm'
-                else:
-                    color1, color2 = 'b', 'c'
+                color1 = ('r', 'b')[idata]
+                color2 = ('m', 'c')[idata]
                 # plot the histogram
-                ax.bar(x, y, align='center', color=color1, width=0.2,
-                       alpha=0.5)
+                ax.bar(x, y, align='center', color=color1, width=0.2, alpha=0.5)
                 # plot the gaussian fitting of histogram
                 xnew = np.linspace(x[0], x[-1], 201)
                 ax.plot(xnew, fitfunc(p1, xnew), color2+'-', lw=2)
