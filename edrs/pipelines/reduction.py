@@ -76,7 +76,7 @@ class Reduction(object):
         self.report_file.write(os.linesep.join(text))
 
         # main loop
-        step_lst = [v.strip() for v in steps_string.split(',') ]
+        step_lst = [v.strip() for v in steps_string.split(',') if v.strip()!='']
         logger.info('Reduction steps = %s'%(','.join(step_lst)))
         for step in step_lst:
             if hasattr(self, step):
