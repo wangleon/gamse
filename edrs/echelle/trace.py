@@ -573,16 +573,19 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax1.set_xlabel('X')
     ax1.set_ylabel('Y')
 
-    # create an image shown in paper
-    #figp = plt.figure(figsize=(7,20),dpi=150)
-    #ax1p = figp.add_axes([0.12,0.44,0.85,0.54])
-    #ax2p = figp.add_axes([0.12,0.06,0.85,0.33])
-    #ax1p.imshow(logdata,cmap='gray',interpolation='none')
-    #ax1p.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
-    #ax1p.set_xlim(0,w-1)
-    #ax1p.set_ylim(h-1,0)
-    #ax1p.set_xlabel('X')
-    #ax1p.set_ylabel('Y')
+    plot_paper_fig = False
+
+    if plot_paper_fig:
+        # create an image shown in paper
+        fig1p = plt.figure(figsize=(7,6.7), dpi=150)
+        ax1p = fig1p.add_axes([0.13, 0.10, 0.85, 0.87])
+        ax1m = fig1p.add_axes([0.53, 0.10, 0.45, 0.45])
+        ax1p.imshow(logdata,cmap='gray',interpolation='none')
+        ax1m.imshow(logdata,cmap='gray',interpolation='none', vmin=0.9, vmax=2.2)
+        ax1p.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
+
+        fig2p = plt.figure(figsize=(7,4), dpi=150)
+        ax2p = fig2p.add_axes([0.13, 0.16, 0.84, 0.80])
 
 
     # define a scroll function, which is used for mouse manipulation on pop-up
@@ -816,18 +819,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
     logger.debug((os.linesep+' '*3).join(message))
 
-    ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], 'g-')
+    ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0')
     ax2.set_yscale('log')
     ax2.set_xlabel('Y')
     ax2.set_ylabel('Count')
     ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
 
-    # plot the figure in paper
-    #ax2p.plot(csec_ylst[istart:iend], csec_lst[istart:iend], 'g-')
-    #ax2p.set_yscale('log')
-    #ax2p.set_xlabel('Y')
-    #ax2p.set_ylabel('Count')
-    #ax2p.set_xlim(csec_ylst[istart], csec_ylst[iend])
+    if plot_paper_fig:
+        # plot the stacked cross-section in paper figure
+        ax2p.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0', lw=1)
 
     #for x1,y_lst in nodes_lst.items():
     #    ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
@@ -852,8 +852,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     cuty = np.arange(cutn.size) + csec_i1
 
     #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='r')
-    #ax2p.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='r')
+    ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
+    if plot_paper_fig:
+        # plot stacked peaks with yello in paper figure
+        ax2p.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
 
     # find central positions along Y axis for all apertures
     message = ['Aperture Detection Information for "%s"'%filename,
@@ -909,19 +911,26 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
     # check the first and last peak. If the seperation is larger than 2x of 
     # the local seperation, remove them
-    if len(mid_lst)>3:
-        # check the last peak
+    # check the last peak
+    while(len(mid_lst)>3):
         sep = seperation + mid_lst[-1]*sep_der/1000.
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
             logger.info('Remove the last aperture at %d for "%s" (distance=%d > 2 x %d)'%(
                         mid_lst[-1], filename, mid_lst[-1]-mid_lst[-2], sep))
             mid_lst.pop(-1)
-        # check the first peak
+        else:
+            break
+
+    # check the first peak
+    while(len(mid_lst)>3):
         sep = seperation + mid_lst[0]*sep_der/1000.
+        print(sep, mid_lst[0], mid_lst[1])
         if mid_lst[1] - mid_lst[0] > 2*sep:
             logger.info('Remove the first aperture at %d for "%s" (distance=%d > 2 x %d)'%(
                         mid_lst[0], filename, mid_lst[1]-mid_lst[0], sep))
             mid_lst.pop(0)
+        else:
+            break
 
 
     # plot the aperture positions
@@ -929,14 +938,13 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
         ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
-        #ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
+        if plot_paper_fig:
+            ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
 
     # set tickers for ax2
     ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
     ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
-    #ax2p.xaxis.set_major_locator(tck.MultipleLocator(500))
-    #ax2p.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -998,8 +1006,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
         # generate a curve using for plot
         newx, newy = poly.linspace()
-        ax1.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
-        #ax1p.plot(newx, newy, 'g-',lw=0.5, alpha=0.6)
+        ax1.plot(newx, newy, '-',lw=0.8, alpha=1, color='C0')
+
+        if plot_paper_fig:
+            # plot the order in paper figure and the mini-figure
+            ax1p.plot(newx, newy, '-',lw=0.7, alpha=1, color='C0')
+            ax1m.plot(newx, newy, '-',lw=1.0, alpha=1, color='C0')
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))
@@ -1037,9 +1049,44 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         aperture_set.save_reg(reg_file)
 
     fig.canvas.draw()
-    fig.savefig(fig_file)
-    #figp.savefig(fig_file+'.pdf')
-    #plt.close(figp)
+    if fig_file is not None:
+        fig.savefig(fig_file)
+    
+    if plot_paper_fig:
+        # adjust figure 1 in paper
+        ax1p.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax1p.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        ax1p.yaxis.set_major_locator(tck.MultipleLocator(500))
+        ax1p.yaxis.set_minor_locator(tck.MultipleLocator(100))
+        for tick in ax1p.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        for tick in ax1p.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        ax1p.set_xlim(0,w-1)
+        ax1p.set_ylim(h-1,0)
+        ax1p.set_xlabel('X', fontsize=18)
+        ax1p.set_ylabel('Y', fontsize=18)
+        ax1m.set_xlim(1600, w-1)
+        ax1m.set_ylim(h-1, 1600)
+        ax1m.set_xticks([])
+        ax1m.set_yticks([])
+        fig1p.savefig(fig_file+'.pdf')
+
+        # adjust figure 2 in paper
+        ax2p.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax2p.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        for tick in ax2p.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        for tick in ax2p.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        ax2p.set_yscale('log')
+        ax2p.set_xlabel('Y', fontsize=18)
+        ax2p.set_ylabel('Count', fontsize=18)
+        ax2p.set_xlim(csec_ylst[istart], csec_ylst[iend])
+        fig2p.savefig(fig_file+'_2.pdf')
+        plt.close(fig1p)
+        plt.close(fig2p)
+
     # for debug purpose
     #ax2.set_xlim(3400, 3500)
     #ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
@@ -1057,7 +1104,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax2.plot(center_lst, derivative(center_lst), 'bo', alpha=0.6)
     ax2.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation, 'r-')
     ax2.set_xlim(0, h-1)
-    fig2.savefig(fig_file[0:-4]+'-order_sep.png')
+    if fig_file is not None:
+        fig2.savefig(fig_file[0:-4]+'-order_sep.png')
     plt.close(fig2)
 
     return aperture_set
