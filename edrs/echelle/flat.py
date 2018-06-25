@@ -1,4 +1,5 @@
 import os
+import time
 import math
 import logging
 
@@ -6,8 +7,12 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+import scipy.interpolate as intp
+import scipy.optimize as opt
+import scipy.signal as sg
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 from ..ccdproc import save_fits, array_to_table, table_to_array
 from ..utils.onedarray import pairwise
@@ -702,61 +707,77 @@ def test():
                             x1+1,y1+1,x2+1,y2+1)+os.linesep)
     outfile2.close()
 
-def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
-    overlap_fig=None, slit_fig=None, slitfile=None):
-    '''Get slit function by overlapping cross-dispersion profiles.
+def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
+        fig_aperpar=None, fig_overlap=None, fig_slit=None, slit_file=None,
+    ):
+    '''Get the flat fielding image from the input file.
 
     Args:
-        positions (tuple): A tuple containing the central coordinates of all
-            echelle apertures.
-        bounds (tuple): A tuple containing the lower and upper coordinates
-            (*upper*, *lower*) of all echelle apertures.
-        xnodes (:class:`numpy.array`): Coordinates iof the slit functions, in
-            unit of *σ*.
-        x_lst (:class:`numpy.array`): An array of X columns to scan.
-        fitting_fig (string): Names of single profile fitting figures. If given,
-            it shall contain format strings for column numbers and aperture
-            numbers (e.g. *'debug/slitfit_%04d_%02d.png'*).
-        overlap_fig (string): Names of overlapping profile figures. If given,
-            it shall contain format strings for apeture numbers (e.g.
-            *'debug/slit_%02d.png'*).
-        slit_fig (string): Name of slit functions.
-        slitfile (string): Name of slit function file.
+        infile (string): Name of the input file.
+        mskfile (string): Name of the input mask.
+        outfile (string): Name of the output file.
+        apertureset (:class:`ApertureSet`): Echelle apertures detected in the
+            input file.
+        scan_step (integer): Step of column scanning.
+        fig_aperpar (string): Path to the image of aperture profile parameters.
+        fig_overlap (string): Path to the image of overlapped slit profiles.
+        fig_slit (string): Path to the image of slit functions.
+        slit_file (string): Path to the ASCII file of slit functions.
 
     Returns:
-        tuple: A tuple containing:
-
-            * **slit_array** (:class:`numpy.array`): An array with shape of
-              `(xnodes.size, x_lst.size)` containing the slit funtions.
-            * **fitting_lst** (*dict*): A dict of fitting parameters.
+        No returns.
 
     '''
-
     # define the fitting and error functions
     def gaussian_bkg(A, center, fwhm, bkg, x):
         s = fwhm/2./math.sqrt(2*math.log(2))
         return A*np.exp(-(x-center)**2/2./s**2) + bkg
-
+    def fitfunc(p, x):
+        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
     def errfunc(p, x, y, fitfunc):
         return y - fitfunc(p, x)
 
-    def fitfunc(p, x):
-        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+    # define fitting and error functions
+    def fitfunc2(p, xdata, interf):
+        A, k, c, bkg = p
+        return A*interf((xdata-c)*k) + bkg
+    def errfunc2(p, xdata, ydata, interf):
+        n = xdata.size
+        return ydata - fitfunc2(p, xdata, interf)
 
+    data = fits.getdata(infile)
+    h, w = data.shape
+
+    # find the central positions and boundaries for each aperture
+    newx = np.arange(w)
+    positions = apertureset.get_positions(newx)
+    bounds = apertureset.get_boundaries(newx)
+
+    plot_overlap = (fig_overlap is not None)
+    plot_aperpar = (fig_aperpar is not None)
+    plot_slit    = (fig_slit is not None)
+    plot_single  = False
+    plot_fitting = False
+
+    # construct the x-coordinates for slit function
+    left, right, step = -4, +4, 0.1
+    xnodes = np.arange(left, right+1e-5, step)
+
+    # scanning column list
+    x_lst = np.arange(0, w, scan_step)
+    if x_lst[-1] != w-1:
+        x_lst = np.append(x_lst, w-1)
 
     # initialize the array for slit function
     slit_array = np.zeros((xnodes.size, x_lst.size))
     # prepare the fitting list
     fitting_lst = {'A': {}, 'fwhm': {}, 'bkg': {}, 'c': {}}
-
-    plot_fitting = (fitting_fig is not None)
-    plot_overlap = (overlap_fig is not None)
-    plot_slit    = (slit_fig is not None)
-
     # scan each column
     for ix, x in enumerate(x_lst):
+        x = int(x)
 
         if plot_overlap:
+            # fig2 is the overlapped profiles
             fig2 = plt.figure(figsize=(8,6), dpi=150)
             ax21 = fig2.add_subplot(211)
             ax22 = fig2.add_subplot(212)
@@ -765,17 +786,19 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
         all_x, all_y, all_r = [], [], []
 
         # loop over all apertures
-        for aper in sorted(aperset.keys()):
+        for aper in sorted(apertureset.keys()):
             cen = positions[aper][x]
             b1 = bounds[aper][0][x]
             b2 = bounds[aper][1][x]
             b1 = np.int32(np.round(np.maximum(b1, 0)))
             b2 = np.int32(np.round(np.minimum(b2, h)))
+            if b2-b1 <= 5:
+                continue
             xdata = np.arange(b1, b2)
             ydata = data[b1:b2, x]
 
             # plot a single profile fitting
-            if plot_fitting:
+            if plot_single:
                 n = aper%9
                 if n==0:
                     figi = plt.figure(figsize=(12,8), dpi=150)
@@ -799,7 +822,7 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
             A, c, fwhm, bkg = p1
             snr = A/std
             s = fwhm/2./math.sqrt(2*math.log(2))
-            if b1 < c < b2 and A>50 and 2 < fwhm < 10:
+            if b1 < c < b2 and A > 50 and 2 < fwhm < 10:
                 # pack the fitting parameters
                 fitting_lst['A'][(aper, x)]    = A
                 fitting_lst['c'][(aper, x)]    = c
@@ -816,26 +839,17 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
                     all_y.append(_norm_y)
                     all_r.append(_norm_r)
 
-                if plot_fitting:
+                if plot_single:
                     axi.plot(xdata[mask], ydata[mask], 'ko')
                     newx = np.arange(b1, b2+1e-3, 0.1)
                     axi.plot(newx, fitfunc(p1, newx), 'r-')
                     axi.axvline(c, color='r', ls='--')
 
-                # below codes draw overlapped profiles with different colors
-                #if plot_overlap:
-                #   color = 'rgbcmyk'[aper%7]
-                #   ax21.plot(norm_x, norm_y, 'o', color=color, alpha=0.4, ms=3,
-                #               markeredgewidth=0)
-                #   ax22.plot(norm_x, norm_r, 'o', color=color, alpha=0.4, ms=3,
-                #               markeredgewidth=0)
-
-            if plot_fitting:
+            if plot_single:
                 axi.set_xlim(b1, b2)
                 if n%9==8 or aper==max(aperset.keys()):
                     figi.savefig(fitting_fig%(x, aper))
                     plt.close(figi)
-
         # now aperture loop ends
 
         # convert all_x, all_y, all_r to numpy arrays
@@ -847,14 +861,12 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
         step = 0.1
         mask = np.ones_like(all_x, dtype=np.bool)
         for k in range(20):
-
             #find y nodes
             ynodes = []
             for c in xnodes:
                 mask1 = np.abs(all_x[mask]-c) < step/2
                 ynodes.append(all_y[mask][mask1].mean(dtype=np.float64))
             ynodes = np.array(ynodes)
-
             # smoothing
             ynodes = sg.savgol_filter(ynodes, window_length=9, polyorder=5)
             f = intp.InterpolatedUnivariateSpline(xnodes, ynodes, k=3, ext=3)
@@ -886,84 +898,32 @@ def get_slitfunc(positions, bounds, xnodes, x_lst, fitting_fig=None,
             ax21.set_ylim(-0.2, 1.2)
             ax22.set_ylim(-0.25, 0.25)
             ax21.set_ylim(-0.2, 1.2)
-            fig2.savefig(overlap_fig%x)
+            fig2.savefig(fig_overlap%x)
             plt.close(fig2)
-
     # column loop ends here
 
     # write the slit function into an ascii file
-    if slitfile is not None:
-        outfile = open(slitfile, 'w')
+    if slit_file is not None:
+        slitoutfile = open(slit_file, 'w')
         for row in np.arange(xnodes.size):
-            outfile.write('%5.2f'%xnodes[row])
+            slitoutfile.write('%5.2f'%xnodes[row])
             for col in np.arange(x_lst.size):
-                outfile.write(' %12.8f'%slit_array[row, col])
-            outfile.write(os.linesep)
-        outfile.close()
+                slitoutfile.write(' %12.8f'%slit_array[row, col])
+            slitoutfile.write(os.linesep)
+        slitoutfile.close()
 
     # plot the slit function
     if plot_slit:
-        fig = plt.figure()
-        ax = fig.gca()
+        fig = plt.figure(figsize=(5,9), dpi=150)
+        ax  = fig.add_axes([0.13, 0.07, 0.81, 0.90])
         for ix in np.arange(slit_array.shape[1]):
-            ax.plot(xnodes, slit_array[:,ix] + ix*0.2, 'b-')
+            ax.plot(xnodes, slit_array[:,ix] + ix*0.15, '-', color='C0')
+            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=10)
         ax.set_xlim(xnodes[0], xnodes[-1])
-        ax.set_xlabel('$\sigma$')
-        ax.set_ylabel('Intensity')
-        fig.savefig(slit_fig)
+        ax.set_xlabel('$\sigma$', fontsize=16)
+        ax.set_ylabel('Intensity', fontsize=16)
+        fig.savefig(fig_slit)
         plt.close(fig)
-
-    return slit_array, fitting_lst
-
-def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
-    ):
-    '''Get the flat fielding image from the input file.
-
-    Args:
-        infile (string): Name of the input file.
-        mskfile (string): Name of the input mask.
-        outfile (string): Name of the output file.
-        apertureset (:class:`ApertureSet`): Echelle apertures detected in the
-            input file.
-        scan_step (integer): Step of column scanning.
-
-    Returns:
-        No returns.
-
-    '''
-
-    # define fitting and error functions
-    def errfunc(p, xdata, ydata, interf):
-        n = xdata.size
-        return ydata - fitfunc(p, xdata, interf)
-
-    def fitfunc(p, xdata, interf):
-        A, k, c, bkg = p
-        return A*interf((xdata-c)*k) + bkg
-
-    data = fits.getdata(infile)
-    h, w = data.shape
-
-    # find the central positions and boundaries for each aperture
-    newx = np.arange(w)
-    positions = apertureset.get_positions(newx)
-    bounds = apertureset.get_boundaries(newx)
-
-    plot_single = False
-    plot_overlay = True
-    plot_aperpar = True
-
-    # construct the x-coordinates for slit function
-    left, right, step = -4, +4, 0.1
-    xnodes = np.arange(left, right+1e-5, step)
-
-    # scanning column list
-    x_lst = np.arange(0, w, scan_step)
-    if x_lst[-1] != w-1:
-        x_lst = np.append(x_lst, w-1)
-
-    slit_array, fitting_lst = get_slitfunc(positions, bounds, xnodes, x_lst,
-                            slit_fig=None, slitfile=None)
 
     # plot the fitting list as a parameter map
     fig3 = plt.figure(figsize=(8,6), dpi=150)
@@ -988,7 +948,6 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
         f = intp.InterpolatedUnivariateSpline(x_lst, slit_array[ix, :], k=3)
         full_slit_array[ix, :] = f(np.arange(w))
 
-
     maxlst = full_slit_array.max(axis=0)
     maxilst = full_slit_array.argmax(axis=0)
     maxmask = full_slit_array>0.10*maxlst
@@ -1010,8 +969,6 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
 
     flatdata = np.ones_like(data, dtype=np.float64)
 
-    plot_fitting = False
-
     fitpar_lst = {}
 
     # prepare a x list
@@ -1019,7 +976,7 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
     if newx_lst[-1] != w-1:
         newx_lst = np.append(newx_lst, w-1)
 
-    for aper in sorted(aperset.keys()):
+    for aper in sorted(apertureset.keys()):
         fitpar_lst[aper] = []
         aperpar_lst = []
 
@@ -1043,7 +1000,7 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
             _i2 = min(h, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*10.))
 
-            if 0 < pos < h and sn>20:
+            if 0 < pos < h and sn > 20:
                 interf = interf_lst[x]
                 if prev_p is None:
                     p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
@@ -1052,9 +1009,9 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
 
                 mask = np.ones_like(xdata, dtype=np.bool)
                 for ite in range(10):
-                    p, ier = opt.leastsq(errfunc, p0,
+                    p, ier = opt.leastsq(errfunc2, p0,
                                 args=(xdata[mask], ydata[mask], interf))
-                    ydata_fit = fitfunc(p, xdata, interf)
+                    ydata_fit = fitfunc2(p, xdata, interf)
                     ydata_res = ydata - ydata_fit
                     std = ydata_res[mask].std(ddof=1)
                     new_mask = ydata_res<5*std
@@ -1063,7 +1020,8 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
                     mask = new_mask
                 snr = p[0]/std
 
-                succ = p[0]>0 and p[1]>0 and p[1]<1 and p[2]>y1 and p[2]<y2 and p[3]>0 and snr>3 and ier<=4
+                # p[0]: amplitude; p[1]: k; p[2]: pos, p[3]:background
+                succ = p[0]>0 and p[1]>0 and p[1]<1 and p[2]>y1 and p[2]<y2 and snr>3 and ier<=4
                 prev_p = (None, p)[succ]
 
                 if succ:
@@ -1125,26 +1083,42 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
                 ax.plot(newx_lst[i1:i2], yfit[i1:i2], 'r-', lw=0.5)
                 ax.plot(newx_lst[~mask],yflux[~mask],'ro',lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax.get_ylim()
-                ax.set_ylim(_y1, _y2)
+                #ax.set_ylim(_y1, _y2)
+                if ipara == 0:
+                    ax.text(0.05*w, 0.15*_y1+0.85*_y2,'Aperture %d'%aper)
                 ax.set_xlim(0, w-1)
 
         mask_lst = np.array(mask_lst)
         apermask = mask_lst.sum(axis=0)>0
-        ax6.plot(newx_lst[i1:i2],apermask[i1:i2], 'b-',lw=0.5)
-        ax6.set_xlim(0, w-1)
-        ax6.set_ylim(-0.5, 1.5)
+        #ax6.plot(newx_lst[i1:i2],apermask[i1:i2], 'b-',lw=0.5)
+        #ax6.set_xlim(0, w-1)
+        #ax6.set_ylim(-0.5, 1.5)
 
         if plot_aperpar:
+            for ax in fig.get_axes():
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label1.set_fontsize(10)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label1.set_fontsize(10)
+                ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+                ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax1.set_ylabel('A',fontsize=15)
+            ax2.set_ylabel('k',fontsize=15)
+            ax3.set_ylabel('center',fontsize=15)
+            ax4.set_ylabel('background',fontsize=15)
+            ax3.set_xlabel('x',fontsize=15)
+            ax4.set_xlabel('x',fontsize=15)
             fig.suptitle('Aperture %d'%aper)
-            fig.savefig('img/flat/apernew_%02d.png'%aper)
+            fig.savefig(fig_aperpar%aper)
             plt.close(fig)
-
 
         for x in newx:
             interf = interf_lst[x]
             pos = position[x]
             y1 = int(max(0, lbound[x]))
             y2 = int(min(h, ubound[x]))
+            if (y2-y1)<5:
+                continue
             xdata = np.arange(y1,y2)
             ydata = data[y1:y2, x]
             _icen = int(round(pos))
@@ -1167,32 +1141,28 @@ def get_flatfielding(infile, mskfile, outfile, apertureset, scan_step=64,
                 flatmask = corr_mask
                 flatdata[y1:y2, x][flatmask] = flat[flatmask]
 
-                if aper==20:
-                    fig= plt.figure(dpi=150)
-                    ax1 = fig.add_subplot(211)
-                    ax2 = fig.add_subplot(212)
-                    ax1.plot(xdata, ydata, 'ko')
-                    ax2.plot(xdata, flat, 'r-', alpha=0.5)
-                    ax2.plot(xdata[flatmask], flat[flatmask], 'r-')
-                    ax2.axhline(y=1, color='k', ls='--')
-                    ax1.axvline(x=c, color='k', ls='--')
-                    ax1.axvline(x=c+1/k, color='k', ls=':')
-                    ax1.axvline(x=c-1/k, color='k', ls=':')
-                    ax2.axvline(x=c, color='k', ls='--')
-
-                    newxx=np.arange(y1, y2, 0.1)
-                    ax1.plot(newxx, fitfunc2([A,k,c,bkg], newxx, interf), 'r-')
-
-
-                    ax1.set_xlim(xdata[0], xdata[-1])
-                    ax2.set_xlim(xdata[0], xdata[-1])
-                    fig.savefig('img/flat/new_%02d_%04d.png'%(aper,x))
-                    plt.close(fig)
+                #if aper==20:
+                #    fig= plt.figure(dpi=150)
+                #    ax1 = fig.add_subplot(211)
+                #    ax2 = fig.add_subplot(212)
+                #    ax1.plot(xdata, ydata, 'ko')
+                #    ax2.plot(xdata, flat, 'r-', alpha=0.5)
+                #    ax2.plot(xdata[flatmask], flat[flatmask], 'r-')
+                #    ax2.axhline(y=1, color='k', ls='--')
+                #    ax1.axvline(x=c, color='k', ls='--')
+                #    ax1.axvline(x=c+1/k, color='k', ls=':')
+                #    ax1.axvline(x=c-1/k, color='k', ls=':')
+                #    ax2.axvline(x=c, color='k', ls='--')
+                #    newxx=np.arange(y1, y2, 0.1)
+                #    ax1.plot(newxx, fitfunc([A,k,c,bkg], newxx, interf), 'r-')
+                #    ax1.set_xlim(xdata[0], xdata[-1])
+                #    ax2.set_xlim(xdata[0], xdata[-1])
+                #    fig.savefig('img/flat/new_%02d_%04d.png'%(aper,x))
+                #    plt.close(fig)
             
         t2 = time.time()
         print(aper, (t2-t1)*1e3)
 
-    if os.path.exists(outfilename):
-        os.remove(outfilename)
-    fits.writeto(outfilename, flatdata)
+    print(outfile)
+    fits.writeto(outfile, flatdata, overwrite=True)
 
