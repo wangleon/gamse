@@ -51,6 +51,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     
     plot = (display or fig_file is not None)
 
+    plot_paper_fig = False
+
     data, head = fits.getdata(infilename, header=True)
 
     h, w = data.shape
@@ -196,10 +198,11 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         if display: plt.show(block=False)
 
         # plot the figure used in paper
-        #figp1 = plt.figure(figsize=(6,6), dpi=150)
-        #axp1 = figp1.add_axes([0.00, 0.05, 1.00, 0.95], projection='3d')
-        #figp2 = plt.figure(figsize=(6.5,6), dpi=150)
-        #axp2 = figp2.add_axes([0.12, 0.1, 0.84, 0.86])
+        if plot_paper_fig:
+            figp1 = plt.figure(figsize=(6,6), dpi=150)
+            axp1 = figp1.add_axes([0.00, 0.05, 1.00, 0.95], projection='3d')
+            figp2 = plt.figure(figsize=(6.5,6), dpi=150)
+            axp2 = figp2.add_axes([0.12, 0.1, 0.84, 0.86])
 
     # normalize to 0 ~ 1 for x and y nodes
     xfit = np.float64(xnodes)/w
@@ -275,17 +278,19 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         if display: fig.canvas.draw()
 
         # plot figure for paper
-        #axp1.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
-        #                    linewidth=0, antialiased=True, alpha=0.5)
-        #axp1.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask], linewidth=0)
-        #axp1.xaxis.set_major_locator(tck.MultipleLocator(500))
-        #axp1.xaxis.set_minor_locator(tck.MultipleLocator(100))
-        #axp1.yaxis.set_major_locator(tck.MultipleLocator(500))
-        #axp1.yaxis.set_minor_locator(tck.MultipleLocator(100))
-        #axp1.set_xlim(0, w-1)
-        #axp1.set_ylim(0, h-1)
-        #axp1.set_xlabel('X')
-        #axp1.set_ylabel('Y')
+        if plot_paper_fig:
+            axp1.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
+                                linewidth=0, antialiased=True, alpha=0.5)
+            axp1.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask], linewidth=0)
+            axp1.xaxis.set_major_locator(tck.MultipleLocator(500))
+            axp1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            axp1.yaxis.set_major_locator(tck.MultipleLocator(500))
+            axp1.yaxis.set_minor_locator(tck.MultipleLocator(100))
+            axp1.set_xlim(0, w-1)
+            axp1.set_ylim(0, h-1)
+            axp1.set_xlabel('X')
+            axp1.set_ylabel('Y')
+            axp1.set_zlabel('Count')
 
     # calculate the background
     xx, yy = np.meshgrid(np.arange(w), np.arange(h))
@@ -312,24 +317,24 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         if display: fig.canvas.draw()
 
         # plot for figure in paper
-        #pmask = data>0
-        #logdata = np.zeros_like(data)-1
-        #logdata[pmask] = np.log(data[pmask])
-        #axp2.imshow(logdata, cmap='gray')
-        #axp2.scatter(xnodes, ynodes, c='b', s=8, linewidth=0, alpha=0.8)
-        #cs = axp2.contour(background_data, linewidth=1)
-        #axp2.clabel(cs, inline=1, fontsize=11, use_clabeltext=True)
-        #axp2.set_xlim(0, w-1)
-        #axp2.set_ylim(h-1, 0)
-        #axp2.set_xlabel('X')
-        #axp2.set_ylabel('Y')
-        #figp1.savefig('fig_background1.png')
-        #figp2.savefig('fig_background2.png')
-        #figp1.savefig('fig_background1.pdf')
-        #figp2.savefig('fig_background2.pdf')
-        #plt.close(figp1)
-        #plt.close(figp2)
-        #exit()
+        if plot_paper_fig:
+            pmask = data>0
+            logdata = np.zeros_like(data)-1
+            logdata[pmask] = np.log(data[pmask])
+            axp2.imshow(logdata, cmap='gray')
+            axp2.scatter(xnodes, ynodes, c='b', s=8, linewidth=0, alpha=0.8)
+            cs = axp2.contour(background_data, linewidth=1, cmap='jet')
+            axp2.clabel(cs, inline=1, fontsize=11, fmt='%d', use_clabeltext=True)
+            axp2.set_xlim(0, w-1)
+            axp2.set_ylim(h-1, 0)
+            axp2.set_xlabel('X')
+            axp2.set_ylabel('Y')
+            figp1.savefig('fig_background1.png')
+            figp2.savefig('fig_background2.png')
+            figp1.savefig('fig_background1.pdf')
+            figp2.savefig('fig_background2.pdf')
+            plt.close(figp1)
+            plt.close(figp2)
 
     # correct background
     corrected_data = data - background_data
