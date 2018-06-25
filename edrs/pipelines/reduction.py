@@ -1144,6 +1144,7 @@ class Reduction(object):
 
         # path alias
         midproc = self.paths['midproc']
+        report  = self.paths['report']
 
         mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
 
@@ -1172,8 +1173,30 @@ class Reduction(object):
             trc_file  = os.path.join(midproc, 'flat_%s_trc.txt'%channel)
             reg_file  = os.path.join(midproc, 'flat_%s_trc.reg'%channel)
             for flatname in sorted(flat_group):
+                # make a sub directory
+                subdir = os.path.join(report, flatname)
+                if not os.path.exists(subdir):
+                    os.mkdir(subdir)
+
                 print(channel, flatname)
-            exit()
+
+                infile  = os.path.join(midproc, '%s.fits'%flatname)
+                mskfile = os.path.join(midproc, '%s_msk.fits'%flatname)
+                outfile = os.path.join(midproc, '%s_rsp.fits'%flatname)
+                aperset = self.aperture_set_lst[channel][flatname]
+                fig_aperpar = os.path.join(subdir,  'flat_aperpar_%02d.png')
+                fig_overlap = os.path.join(subdir,  'flat_overlap_%04d.png')
+                fig_slit    = os.path.join(report,  '%s_slit.png'%flatname)
+                slit_file   = os.path.join(midproc, '%s.slt'%flatname)
+                get_flatfielding(infile, mskfile, outfile,
+                        apertureset = aperset,
+                        scan_step   = 64,
+                        fig_aperpar = fig_aperpar,
+                        fig_overlap = fig_overlap,
+                        fig_slit    = fig_slit,
+                        slit_file   = slit_file,
+                        )
+                exit()
 
             if len(flat_group) == 1:
                 # only 1 type of flat
