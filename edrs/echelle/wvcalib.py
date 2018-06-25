@@ -1223,8 +1223,9 @@ class CalibWindow(tk.Frame):
 
 
 
-def wvcalib(filename, identfilename, figfilename, linelist, channel, window_size=13,
-        xorder=3, yorder=3, maxiter=10, clipping=3, snr_threshold=10):
+def wvcalib(filename, identfilename, figfilename, linelist, channel,
+    window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
+    snr_threshold=10):
     '''Wavelength calibration.
 
     Args:
@@ -1540,7 +1541,7 @@ def find_order(identlist, npixel):
         identlist (dict): Dict of identified lines.
         npixel (integer): Number of pixels along the main dispersion direction.
     Returns:
-        tuple: A tuple containg (`k`, `offset`), where
+        tuple: A tuple containing
 
             * **k** (*integer*): Coefficient in the relationship
               `order = k*aperture + offset`.
@@ -1648,7 +1649,7 @@ def load_ident(filename, channel):
         filename (string): Name of the identification file.
         channel (string): Name of channel.
     Returns:
-        tuple: A tuple (`identlist`, `coeff`), where
+        tuple: A tuple containing
 
             * **identlist** (*dict*):  Identified lines for all orders
             * **coeff** (:class:`numpy.array`): Coefficients of wavelengths
@@ -1716,7 +1717,7 @@ def find_local_peak(flux, x, width):
         x (integer): The approximate coordinate of the peak pixel.
         width (integer): Window of profile fitting.
     Returns:
-        tuple: A tuple containing (`i1`, `i2`, `p1`, `std`), where
+        tuple: A tuple containing
 
             * **i1** (*integer*): Index of the left side.
             * **i2** (*integer*): Index of the right side.
