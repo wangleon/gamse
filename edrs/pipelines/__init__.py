@@ -13,9 +13,9 @@ def reduce_echelle(instrument):
 
     Available instruments include:
         
-        * *FOCES*: FOCES on 2.2m Fraunhofer Telescope on Wendelstein
-          Observatory.
-        * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station.
+        * *FOCES*: FOCES on 2m Fraunhofer Telescope in Wendelstein Observatory,
+            Germany.
+        * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station, China.
 
     Args:
         instrument (string): Name of the instrument.

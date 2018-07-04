@@ -305,7 +305,7 @@ def make_log(path):
     #date = log[0].fileid.split('_')[0]
     #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
     #outfile = open(outfilename,'w')
-    string = '% columns = '+', '.join(columns)
+    string = '%' + ', '.join(columns)
     #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:

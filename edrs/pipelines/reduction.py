@@ -110,29 +110,20 @@ class Reduction(object):
         for option in self.config.options('path'):
             self.paths[option] = self.config.get('path', option)
 
-        # Check whether the necessary paths exist
-
         # check if data path exist
-        if not os.path.exists(self.paths['data']):
-            logger.error('data path: "%s" does not exist'%self.paths['data'])
+        _rawdata = self.paths['rawdata']
+        if not os.path.exists(_rawdata):
+            logger.error('data path: "%s" does not exist'%_rawdata)
             exit()
 
-        # check if midproc path exist
-        if not os.path.exists(self.paths['midproc']):
-            os.mkdir(self.paths['midproc'])
-            logger.info('Create a new directory (midproc path: "%s")'%self.paths['midproc'])
-
-        # check if report path exists
-        if not os.path.exists(self.paths['report']):
-            os.mkdir(self.paths['report'])
-            logger.info('Create a new directory (report path: "%s")'%self.paths['report'])
-
-        # check if image subdirectory of report path exists
-        if 'report_img' not in self.paths:
-            self.paths['report_img'] = os.path.join(self.paths['report'], 'images')
-        if not os.path.exists(self.paths['report_img']):
-            os.mkdir(self.paths['report_img'])
-            logger.info('Create a new directory: "%s"'%self.paths['report_img'])
+        # Check whether the necessary paths exist
+        for _pathname in ['midproc', 'report', 'result']:
+            _path = self.paths[_pathname]
+            if not os.path.exists(_path):
+                os.mkdir(_path)
+                logger.info('Create a new directory (%s path: "%s")'%(
+                    _pathname, _path)
+                    )
 
     def find_flat_groups(self):
         '''Find flat groups.

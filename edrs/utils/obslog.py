@@ -3,7 +3,6 @@ import re
 import logging
 logger = logging.getLogger(__name__)
 
-
 class LogItem(object):
     '''Class for observing log items
     '''
