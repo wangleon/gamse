@@ -73,7 +73,7 @@ class Reduction(object):
             '</head>',
             '<body>',
             '    <h1>Reduction Report</h1>']
-        self.report_file.write(os.linesep.join(text))
+        self.report_file.write(os.linesep.join(text)+os.linesep)
 
         # main loop
         step_lst = [v.strip() for v in steps_string.split(',') if v.strip()!='']
@@ -200,44 +200,6 @@ class Reduction(object):
 
         # find flat groups
         self.find_flat_groups()
-
-    def plot_overscan_variation(self, t_lst, overscan_lst):
-        '''
-        Plot the variation of overscan.
-        '''
-        
-        # Quality check plot of the mean overscan value over time 
-        fig = plt.figure(figsize=(8,6), dpi=150)
-        ax2  = fig.add_axes([0.1,0.60,0.85,0.35])
-        ax1  = fig.add_axes([0.1,0.15,0.85,0.35])
-        #conversion of the DATE-string to a number
-        date_lst = [dateutil.parser.parse(t) for t in t_lst]
-        datenums = mdates.date2num(date_lst)
-
-        ax1.plot_date(datenums, overscan_lst, 'r-', label='mean')
-        ax2.plot(overscan_lst, 'r-', label='mean')
-        for ax in fig.get_axes():
-            leg = ax.legend(loc='upper right')
-            leg.get_frame().set_alpha(0.1)
-        ax1.set_xlabel('Time')
-        ax2.set_xlabel('Frame')
-        ax1.set_ylabel('Overscan mean ADU')
-        ax2.set_ylabel('Overscan mean ADU')
-        # adjust x and y limit
-        y11,y12 = ax1.get_ylim()
-        y21,y22 = ax2.get_ylim()
-        z1 = min(y11,y21)
-        z2 = max(y21,y22)
-        ax1.set_ylim(z1,z2)
-        ax2.set_ylim(z1,z2)
-        ax2.set_xlim(0, len(overscan_lst)-1)
-        # adjust rotation angle of ticks in time axis
-        plt.setp(ax1.get_xticklabels(),rotation=30)
-        # save figure
-        figpath = os.path.join(self.paths['report_img'], 'overscan_variation.png')
-        fig.savefig(figpath)
-        logger.info('Save the variation of overscan figure: "%s"'%figpath)
-        plt.close(fig)
 
 
     def find_bias(self):

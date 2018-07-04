@@ -1,6 +1,7 @@
 import os
 import datetime
 import logging
+import dateutil.parser
 
 logger = logging.getLogger(__name__)
 
@@ -8,6 +9,7 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+import matplotlib.dates  as mdates
 
 from ..utils    import obslog
 from ..ccdproc  import save_fits, array_to_table
@@ -44,7 +46,6 @@ class FOCES(Reduction):
            **plot**,    *bool*,   Plot the overscan levels if *yes*.
            **var_fig**, *string*, Filename of the overscan variation figure.
 
-
         '''
 
         # find output suffix for fits
@@ -64,9 +65,9 @@ class FOCES(Reduction):
         saturation_adu = 63000
     
         # path alias
-        midproc    = self.paths['midproc']
-        rawdata    = self.paths['data']
-        report_img = self.paths['report_img']
+        midproc = self.paths['midproc']
+        rawdata = self.paths['rawdata']
+        report  = self.paths['report']
 
         # loop over all files to correct for the overscan
         # prepare the item list
@@ -101,15 +102,15 @@ class FOCES(Reduction):
     
             # plot the overscan regions
             if i%5 == 0:
-                fig = plt.figure(figsize=(12,8), dpi=150)
+                fig = plt.figure(figsize=(8,6), dpi=150)
 
             ax1 = fig.add_axes([0.10, 0.83-(i%5)*0.185, 0.42, 0.15])
             ax2 = fig.add_axes([0.55, 0.83-(i%5)*0.185, 0.42, 0.15])
-            ax1.plot(ovr_lst1, 'r-', alpha=0.3)
-            ax2.plot(ovr_lst2, 'b-', alpha=0.3)
+            ax1.plot(ovr_lst1, 'r-', alpha=0.3, lw=0.5)
+            ax2.plot(ovr_lst2, 'b-', alpha=0.3, lw=0.5)
             y = np.arange(vy1, vy2)
-            ax1.plot(y, ovr_lst1[vy1:vy2], 'r-', alpha=0.7)
-            ax2.plot(y, ovr_lst2[vy1:vy2], 'b-', alpha=0.7)
+            ax1.plot(y, ovr_lst1[vy1:vy2], 'r-', alpha=0.7, lw=0.5)
+            ax2.plot(y, ovr_lst2[vy1:vy2], 'b-', alpha=0.7, lw=0.5)
             _x1, _x2 = 0, ovr_lst1.size-1
             ax1.plot([_x1,_x2], [ovrmean1,         ovrmean1],         'm-')
             ax1.plot([_x1,_x2], [ovrmean1-ovrstd1, ovrmean1-ovrstd1], 'm:')
@@ -131,22 +132,22 @@ class FOCES(Reduction):
                 ax.set_xlim(_x1, _x2)
                 ax.set_ylim(_y1, _y2)
                 for tick in ax.xaxis.get_major_ticks():
-                    tick.label1.set_fontsize(9)
+                    tick.label1.set_fontsize(7)
                 for tick in ax.yaxis.get_major_ticks():
-                    tick.label1.set_fontsize(9)
+                    tick.label1.set_fontsize(7)
                 ax.xaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
                 ax.yaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
             ax2.set_yticklabels([])
             if i%5==4 or i==len(item_lst)-1:
-                ax1.set_xlabel('Y (pixel)')
-                ax2.set_xlabel('Y (pixel)')
+                ax1.set_xlabel('Y (pixel)',fontsize=9)
+                ax2.set_xlabel('Y (pixel)',fontsize=9)
                 figname = 'overscan_%02d.png'%(i//5+1)
-                figpath = os.path.join(report_img, figname)
+                figpath = os.path.join(report, figname)
                 fig.savefig(figpath)
                 logger.info('Save image: %s'%figpath)
                 plt.close(fig)
                 self.report_file.write(
-                    '        <img src="images/%s">'%figname+os.linesep
+                    '        <img src="%s">'%figname+os.linesep
                     )
     
             # find saturated pixels and saved them in FITS files
@@ -211,6 +212,44 @@ class FOCES(Reduction):
         logger.info('Overscan corrected. Change suffix: %s -> %s'%
                     (self.input_suffix, self.output_suffix))
         self.input_suffix = self.output_suffix
+
+    def plot_overscan_variation(self, t_lst, overscan_lst):
+        '''
+        Plot the variation of overscan.
+        '''
+        
+        # Quality check plot of the mean overscan value over time 
+        fig = plt.figure(figsize=(8,6), dpi=150)
+        ax2  = fig.add_axes([0.1,0.60,0.85,0.35])
+        ax1  = fig.add_axes([0.1,0.15,0.85,0.35])
+        #conversion of the DATE-string to a number
+        date_lst = [dateutil.parser.parse(t) for t in t_lst]
+        datenums = mdates.date2num(date_lst)
+
+        ax1.plot_date(datenums, overscan_lst, 'r-', label='mean')
+        ax2.plot(overscan_lst, 'r-', label='mean')
+        for ax in fig.get_axes():
+            leg = ax.legend(loc='upper right')
+            leg.get_frame().set_alpha(0.1)
+        ax1.set_xlabel('Time')
+        ax2.set_xlabel('Frame')
+        ax1.set_ylabel('Overscan mean ADU')
+        ax2.set_ylabel('Overscan mean ADU')
+        # adjust x and y limit
+        y11,y12 = ax1.get_ylim()
+        y21,y22 = ax2.get_ylim()
+        z1 = min(y11,y21)
+        z2 = max(y21,y22)
+        ax1.set_ylim(z1,z2)
+        ax2.set_ylim(z1,z2)
+        ax2.set_xlim(0, len(overscan_lst)-1)
+        # adjust rotation angle of ticks in time axis
+        plt.setp(ax1.get_xticklabels(),rotation=30)
+        # save figure
+        figpath = os.path.join(self.paths['report'], 'overscan_variation.png')
+        fig.savefig(figpath)
+        logger.info('Save the variation of overscan figure: "%s"'%figpath)
+        plt.close(fig)
 
 def make_log(path):
     '''
