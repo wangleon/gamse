@@ -201,22 +201,28 @@ class Reduction(object):
         self.find_flat_groups()
 
 
-    def find_bias(self):
+    def _find_bias(self):
         '''Find bias frames.
 
-        Scan the log file and find items with "objectname" containg "bias".
+        Scan the log file and find items with "objectname" containing "bias".
 
         Returns:
             list: A list containing the IDs of bias frames.
         '''
-        
+        # first try to search the bias in config file
+        if self.config.has_section('objects') and \
+           self.config.has_option('objects', 'bias'):
+            logger.info('Find bias fileids in config file')
+            return parse_num_seq(self.config.get('objects', 'bias'))
+
         # find bias in log
-        bias_id_lst = []
-        for item in self.log:
-            for name in item.objectname:
-                if name.lower().strip() == 'bias':
-                    bias_id_lst.append(item.frameid)
-        return bias_id_lst
+        bias_id_lst = [item.frameid for item in self.log
+                                    for name in item.objectname
+                                    if name.lower().strip() == 'bias'
+                      ]
+        if len(bias_id_lst) > 0:
+            logger.info('Find bias fileids in log')
+            return bias_id_lst
 
     def find_trace(self):
         '''Scan the log file and find trace items in any channel.

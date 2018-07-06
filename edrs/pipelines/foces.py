@@ -10,6 +10,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
+import scipy.optimize as opt
 
 from ..utils    import obslog
 from ..ccdproc  import save_fits, array_to_table
@@ -208,7 +209,7 @@ class FOCES(Reduction):
         logger.info(separator.join(info_lst))
 
         # plot overscan variation
-        figfile = os.path.join(self.paths['report'], 'overscan_variation.png')
+        figfile = os.path.join(report, 'overscan_variation.png')
         plot_overscan_variation(t_lst, ovr1_lst, figfile)
         logger.info('Save the variation of overscan figure: "%s"'%figfile)
 
@@ -264,7 +265,7 @@ class FOCES(Reduction):
         midproc = self.paths['midproc']
         report  = self.paths['report']
 
-        bias_id_lst = self.find_bias()
+        bias_id_lst = self._find_bias()
 
         infile_lst = [os.path.join(midproc,
                         '%s%s.fits'%(item.fileid, self.input_suffix))
@@ -326,14 +327,14 @@ class FOCES(Reduction):
         bias_file = self.config.get('bias', 'file')
 
         if self.config.has_option('bias', 'smooth_method'):
-            # perform smoothing for bias
+            # smooth 2D bias
             smooth_method = self.config.get('bias', 'smooth_method')
             smooth_method = smooth_method.strip().lower()
 
             logger.info('Smoothing bias: %s'%smooth_method)
 
             if smooth_method.lower().strip() == 'gaussian':
-                # perform 2D gaussian smoothing
+                # 2D gaussian smoothing
 
                 smooth_sigma = self.config.getint('bias', 'smooth_sigma')
                 smooth_mode  = self.config.get('bias',    'smooth_mode')
@@ -359,15 +360,16 @@ class FOCES(Reduction):
             bias_data = bias_smooth
 
             # plot comparison between un-smoothed and smoothed data
-            comp_figfile = os.path.join(report,'bias_smooth.png')
-            hist_figfile = os.path.join(report,'bias_smooth_hist.png')
-            self.plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile)
+            comp_figfile = os.path.join(report, 'bias_smooth.png')
+            hist_figfile = os.path.join(report, 'bias_smooth_hist.png')
+            plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile)
             self.report_file.write(
                 ' '*8 + '<img src="%s" alt="smoothed bias">'%comp_figfile +
                 os.linesep)
             logger.info('Plot smoothed bias in figure: "%s"'%comp_figfile)
             self.report_file.write(
-                ' '*8 + '<img src="%s" alt="histogram of smoothed bias">'%hist_figfile +
+                ' '*8 + '<img src="%s"'%hist_figfile +
+                'alt="histogram of smoothed bias">' +
                 os.linesep)
             logger.info('Plot histograms of smoothed bias in figure: "%s"'%hist_figfile)
 
@@ -480,14 +482,15 @@ class FOCES(Reduction):
                 tick.label1.set_fontsize(10)
 
         # save the figure
-        figpath = os.path.join(self.paths['report_img'], 'bias_variation.png')
-        self.report_file.write('        <img src="images/bias_variation.png">'+os.linesep)
-        fig.savefig(figpath)
-        logger.info('Plot variation of bias with time in figure: "%s"'%figpath)
+        figfile = os.path.join(self.paths['report'], 'bias_variation.png')
+        self.report_file.write('        <img src="%s">'%figfile
+            +os.linesep)
+        fig.savefig(figfile)
+        logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
-    
-    def plot_bias_smooth(self, bias, bias_smooth):
 
+
+    
 def make_log(path):
     '''
     Scan the raw data, and generated a log file containing the detail
@@ -581,7 +584,7 @@ def make_log(path):
     #date = log[0].fileid.split('_')[0]
     #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
     #outfile = open(outfilename,'w')
-    string = '% ' + ', '.join(columns)
+    string = '% columns = ' + ', '.join(columns)
     #outfile.write(string+os.linesep)
     print(string)
     for info_lst in all_info_lst:
