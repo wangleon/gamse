@@ -500,6 +500,10 @@ def make_log(path):
         obsdate = head['DATE-STA']
         exptime = head['EXPTIME']
         objectname = head['OBJECT']
+        if objectname.lower().strip() in ['bias', 'flat', 'dark', 'i2', 'thar']:
+            imagetype = 'cal'
+        else:
+            imagetype = 'sci'
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (data>=65535)
@@ -514,6 +518,8 @@ def make_log(path):
                    fileid     = fileid,
                    obsdate    = obsdate,
                    exptime    = exptime,
+                   imagetype  = imagetype,
+                   i2         = 0,
                    objectname = objectname,
                    saturation = prop,
                    brightness = bri_index,
@@ -524,8 +530,9 @@ def make_log(path):
 
     # make info list
     all_info_lst = []
-    columns = ['frameid (i)', 'fileid (s)', 'objectname (s)', 'exptime (f)',
-               'obsdate (s)', 'saturation (f)', 'brightness (f)']
+    columns = ['frameid (i)', 'fileid (s)', 'imagetype (s)', 'objectname (s)',
+                'i2 (i)', 'exptime (f)', 'obsdate (s)', 'saturation (f)',
+                'brightness (f)']
     prev_frameid = -1
     for logitem in log:
         frameid = int(logitem.fileid[8:])
@@ -534,7 +541,9 @@ def make_log(path):
         info_lst = [
                     str(frameid),
                     str(logitem.fileid),
+                    logitem.imagetype,
                     str(logitem.objectname),
+                    str(logitem.i2),
                     '%8.3f'%logitem.exptime,
                     str(logitem.obsdate),
                     '%.3f'%logitem.saturation,
