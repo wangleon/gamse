@@ -13,10 +13,10 @@ from ..utils    import obslog
 from ..ccdproc  import save_fits, array_to_table, fix_pixels
 from .reduction import Reduction
 
-class XinglongHRS(Reduction):
+class Xinglong216HRS(Reduction):
 
     def __init__(self):
-        super(XinglongHRS, self).__init__(instrument='XinglongHRS')
+        super(Xinglong216HRS, self).__init__(instrument='Xinglong216HRS')
 
     def config_ccd(self):
         '''Set CCD images configurations.
@@ -64,9 +64,9 @@ class XinglongHRS(Reduction):
         saturation_adu = 65535
 
         # path alias
-        midproc    = self.paths['midproc']
-        rawdata    = self.paths['data']
-        report_img = self.paths['report_img']
+        midproc = self.paths['midproc']
+        rawdata = self.paths['data']
+        report  = self.paths['report']
 
         # loop over all files (bias, dark, ThAr, flat...)
         # to correct for the overscan

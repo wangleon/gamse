@@ -27,9 +27,9 @@ def reduce_echelle(instrument):
         from .foces import FOCES
         reduction = FOCES()
         reduction.reduce()
-    elif instrument == 'XinglongHRS':
-        from .xinglonghrs import XinglongHRS
-        reduction = XinglongHRS()
+    elif instrument == 'Xinglong216HRS':
+        from .xinglong216hrs import Xinglong216HRS
+        reduction = Xinglong216HRS()
         reduction.reduce()
     else:
         print('Unknown Instrument: %s'%instrument)
@@ -95,7 +95,8 @@ def find_rawdata():
     else:
         config_file = find_config('./')
         config = read_config(config_file)
-        if config.has_option('reduction', 'path.data'):
-            return config.get_option('reduction', 'path.data')
+        if config.has_section('path') and \
+           config.has_option('path', 'rawdata'):
+            return config.get_option('path', 'rawdata')
         else:
             return None
