@@ -124,7 +124,7 @@ class Reduction(object):
                     _pathname, _path)
                     )
 
-    def find_flat_groups(self):
+    def _find_flat_groups(self):
         '''Find flat groups.
         
         A flat group is a series of flat frames that have the same exposure
@@ -198,7 +198,7 @@ class Reduction(object):
         self.nchannels = self.log.nchannels
 
         # find flat groups
-        self.find_flat_groups()
+        self._find_flat_groups()
 
 
     def _find_bias(self):
@@ -224,7 +224,7 @@ class Reduction(object):
             logger.info('Find bias fileids in log')
             return bias_id_lst
 
-    def find_trace(self):
+    def _find_trace(self):
         '''Scan the log file and find trace items in any channel.
 
         Returns:
@@ -565,13 +565,13 @@ class Reduction(object):
             'degree'    : self.config.getint('trace', 'degree'),
             }
 
-        trace_lst = self.find_trace()
+        trace_lst = self._find_trace()
 
         aperture_set_lst = {}
 
         # path alias
         midproc = self.paths['midproc']
-        report_img = self.paths['report_img']
+        report  = self.paths['report']
 
         for ichannel in range(self.nchannels):
             channel = chr(ichannel + 65)
@@ -609,9 +609,9 @@ class Reduction(object):
                     mask = table_to_array(mask_table, data.shape)
                     mask = (mask&4 == 4)
 
-                trc_file = os.path.join(midproc,   '%s_trc.txt'%tracename)
-                reg_file = os.path.join(midproc,   '%s_trc.reg'%tracename)
-                fig_file = os.path.join(self.paths['report_img'],'trace_%s.png'%tracename)
+                trc_file = os.path.join(midproc, '%s.trc'%tracename)
+                reg_file = os.path.join(midproc, '%s_trc.reg'%tracename)
+                fig_file = os.path.join(report,  'trace_%s.png'%tracename)
 
                 kwargs.update({'mask'       : mask,
                                'filename'   : trace_file,
@@ -648,9 +648,9 @@ class Reduction(object):
                     mask = (mask&4 == 4)
 
                     # determine the result file and figure file
-                    trc_file = os.path.join(midproc, '%s_trc.txt'%flatname)
+                    trc_file = os.path.join(midproc, '%s.trc'%flatname)
                     reg_file = os.path.join(midproc, '%s_trc.reg'%flatname)
-                    fig_file = os.path.join(report_img, 'trace_%s.png'%flatname)
+                    fig_file = os.path.join(report,  'trace_%s.png'%flatname)
 
                     # find the apertures
 
@@ -680,6 +680,8 @@ class Reduction(object):
            **skip**,            *bool*,    Skip this step if *yes* and **mode** = *'debug'*.
            **suffix**,          *string*,  Surfix of the flat correceted files.
            **cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
+           **slit_step**,       *integer*, Step of slit function scanning.
+           **q_threshold**,     *float*,   Threshold of *Q*-factor.
            **mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
         '''
 
@@ -692,6 +694,10 @@ class Reduction(object):
             return True
 
         from ..echelle.flat import get_flatfielding
+
+        slit_step   = self.config.getint('flat', 'slit_step')
+        q_threshold = self.config.getfloat('flat', 'q_threshold')
+
 
         # path alias
         midproc = self.paths['midproc']
@@ -708,7 +714,7 @@ class Reduction(object):
             channel = chr(ichannel+65)
             aperture_set_lst[channel] = {}
             for flatname in sorted(self.flat_groups[channel]):
-                trc_file = os.path.join(midproc, '%s_trc.txt'%flatname)
+                trc_file = os.path.join(midproc, '%s.trc'%flatname)
                 aperture_set = load_aperture_set(trc_file)
                 aperture_set_lst[channel][flatname] = aperture_set
         self.aperture_set_lst = aperture_set_lst
@@ -721,7 +727,7 @@ class Reduction(object):
             aperset_lst = self.aperture_set_lst[channel]
 
             flat_file = os.path.join(midproc, 'flat_%s.fits'%channel)
-            trc_file  = os.path.join(midproc, 'flat_%s_trc.txt'%channel)
+            trc_file  = os.path.join(midproc, 'flat_%s.trc'%channel)
             reg_file  = os.path.join(midproc, 'flat_%s_trc.reg'%channel)
             for flatname in sorted(flat_group):
                 # make a sub directory
@@ -731,22 +737,41 @@ class Reduction(object):
 
                 print(channel, flatname)
 
+                # read flat fielding image
                 infile  = os.path.join(midproc, '%s.fits'%flatname)
+                data = fits.getdata(infile)
+
+                # read flat fielding mask
                 mskfile = os.path.join(midproc, '%s_msk.fits'%flatname)
-                outfile = os.path.join(midproc, '%s_rsp.fits'%flatname)
+                mask_table = fits.getdata(mskfile)
+                if mask_table.size==0:
+                    mask = np.zeros_like(data, dtype=np.int16)
+                else:
+                    mask = table_to_array(mask_table, data.shape)
+
                 aperset = self.aperture_set_lst[channel][flatname]
                 fig_aperpar = os.path.join(subdir,  'flat_aperpar_%02d.png')
                 fig_overlap = os.path.join(subdir,  'flat_overlap_%04d.png')
                 fig_slit    = os.path.join(report,  '%s_slit.png'%flatname)
                 slit_file   = os.path.join(midproc, '%s.slt'%flatname)
-                get_flatfielding(infile, mskfile, outfile,
-                        apertureset = aperset,
-                        scan_step   = 64,
-                        fig_aperpar = fig_aperpar,
-                        fig_overlap = fig_overlap,
-                        fig_slit    = fig_slit,
-                        slit_file   = slit_file,
-                        )
+
+                nflat = len(flat_group[flatname])
+                print(nflat, slit_step, q_threshold)
+
+                flatmap = get_flatfielding(data, mask,
+                            apertureset = aperset,
+                            slit_step   = slit_step,
+                            nflat       = nflat,
+                            q_threshold = q_threshold,
+                            fig_aperpar = fig_aperpar,
+                            fig_overlap = fig_overlap,
+                            fig_slit    = fig_slit,
+                            slit_file   = slit_file,
+                            )
+
+                # save flat result to fits file
+                outfile = os.path.join(midproc, '%s_rsp.fits'%flatname)
+                fits.writeto(outfile, flatmap, overwrite=True)
                 exit()
 
             if len(flat_group) == 1:

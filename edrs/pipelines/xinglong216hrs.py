@@ -64,8 +64,8 @@ class Xinglong216HRS(Reduction):
         saturation_adu = 65535
 
         # path alias
+        rawdata = self.paths['rawdata']
         midproc = self.paths['midproc']
-        rawdata = self.paths['data']
         report  = self.paths['report']
 
         # loop over all files (bias, dark, ThAr, flat...)
@@ -94,8 +94,8 @@ class Xinglong216HRS(Reduction):
             ovr_lst2_fix = fix_cr(ovr_lst2)
 
             # apply the sav-gol fitler to the mean of overscan
-            ovrsmooth1 = savgol_filter(ovr_lst1_fix, window_length=201, polyorder=3)
-            ovrsmooth2 = savgol_filter(ovr_lst2_fix, window_length=201, polyorder=3)
+            ovrsmooth1 = savgol_filter(ovr_lst1_fix, window_length=301, polyorder=3)
+            ovrsmooth2 = savgol_filter(ovr_lst2_fix, window_length=301, polyorder=3)
 
             # plot the overscan regions
             if i%5 == 0:
@@ -138,9 +138,9 @@ class Xinglong216HRS(Reduction):
                 ax1.set_xlabel('Y (pixel)')
                 ax2.set_xlabel('Y (pixel)')
                 figname = 'overscan_%02d.png'%(i//5+1)
-                figpath = os.path.join(report_img, figname)
-                fig.savefig(figpath)
-                logger.info('Save image: %s'%figpath)
+                figfile = os.path.join(report, figname)
+                fig.savefig(figfile)
+                logger.info('Save image: %s'%figfile)
                 plt.close(fig)
 
             # determine shape of output image (also the shape of science region)
@@ -155,7 +155,7 @@ class Xinglong216HRS(Reduction):
             mask_sat = (data[y1:y2,x1:x2]>=saturation_adu)
             # get bad pixel mask
             bins = (head['RBIN'], head['CBIN'])
-            mask_bad = self.get_badpixel_mask(newshape, bins=bins)
+            mask_bad = self._get_badpixel_mask(newshape, bins=bins)
 
             mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
             # save the mask
@@ -189,8 +189,9 @@ class Xinglong216HRS(Reduction):
                     (self.input_suffix, self.output_suffix))
         self.input_suffix = self.output_suffix
 
-    def get_badpixel_mask(self, shape, bins):
+    def _get_badpixel_mask(self, shape, bins):
         '''Get bad-pixel mask.
+
 
         Args:
             shape (tuple): Shape of the science data region.
@@ -198,6 +199,9 @@ class Xinglong216HRS(Reduction):
         Returns:
             :class:`numpy.array`: Binary mask indicating the bad pixels. The
                 shape of the mask is the same as the input shape.
+
+        The bad pixels are found when readout mode = Left Top & Bottom.
+
         '''
         mask = np.zeros(shape, dtype=np.bool)
         if bins == (1, 1) and shape == (4136, 4096):
