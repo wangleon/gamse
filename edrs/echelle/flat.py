@@ -16,6 +16,7 @@ import matplotlib.ticker as tck
 
 from ..ccdproc import save_fits, array_to_table, table_to_array
 from ..utils.onedarray import pairwise
+from ..echelle.trace import ApertureSet
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     disp_axis=0, mask_surfix = '_msk'):
@@ -38,7 +39,6 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
         :func:`mosaic_flat_auto`
 
     '''
-    import matplotlib.pyplot as plt
 
     # parse dispersion axis
     if disp_axis in ['x','X']:
@@ -336,8 +336,6 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
 
 
     '''
-    from scipy.interpolate import InterpolatedUnivariateSpline
-    from scipy.optimize    import minimize
 
     h, w = data.shape
     row0, row1 = h//2, h//2
@@ -367,7 +365,7 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
         except:
             row1 = row2
             continue
-        f = InterpolatedUnivariateSpline(np.arange(data2.size),data2,k=3)
+        f = intp.InterpolatedUnivariateSpline(np.arange(data2.size),data2,k=3)
         shift_lst = np.arange(-10, 10, dtype=np.float32)
         corre_lst = []
         n1 = math.sqrt((data1**2).sum())
@@ -380,7 +378,7 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
         corre_lst = np.array(corre_lst)/n1
         f2 = InterpolatedUnivariateSpline(shift_lst,-corre_lst,k=3)
         # find the maximum value of cross correlation function
-        result = minimize(f2, 0.0, method='BFGS')
+        result = opt.minimize(f2, 0.0, method='BFGS')
         shift = result.x
         xpoint += shift
         row1 = row2
@@ -477,8 +475,6 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
         :func:`mosaic_flat_interact`
 
     '''
-    from ..echelle.trace import ApertureSet
-
 
     all_aperloc_lst = []
     # all_aperloc_lst  = [
@@ -490,14 +486,12 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     tracename_lst = []
 
     for itrace, (tracename, aperset) in enumerate(aperture_set_lst.items()):
-        print(tracename, len(aperset))
 
         # add tracename ot tracename list
         if tracename not in tracename_lst:
             tracename_lst.append(tracename)
 
-        for o in aperset:
-            aper_loc = aperset[o]
+        for aper, aper_loc in aperset.items():
             if itrace == 0:
                 # append all the apertures in the first trace file into the
                 # aperloc list
@@ -505,14 +499,16 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
             else:
                 insert = False
                 for ilist, list1 in enumerate(all_aperloc_lst):
-                    # one aperture should no contain more than 1 apertures
+                    # one aperture should not contain more than 1 apertures
                     # from the same trace file.
                     if tracename in list1:
                         continue
                     # calculate the relative distances.
                     for _tracename, _aperloc in list1.items():
                         distance = aper_loc.get_distance(_aperloc)
-                        if abs(distance)<3:
+                        # get local seperations
+                        loc_sep = aperset.get_local_seperation(aper)
+                        if abs(distance)<0.3*loc_sep:
                             # append this aperture to an existing aperture
                             all_aperloc_lst[ilist][tracename] = aper_loc
                             insert = True

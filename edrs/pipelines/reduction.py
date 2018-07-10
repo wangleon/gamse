@@ -745,8 +745,8 @@ class Reduction(object):
                 data = fits.getdata(infile)
 
                 # read flat fielding mask
-                mskfile = os.path.join(midproc, '%s_msk.fits'%flatname)
-                mask_table = fits.getdata(mskfile)
+                mask_file = os.path.join(midproc, '%s%s.fits'%(flatname, self.mask_suffix))
+                mask_table = fits.getdata(mask_file)
                 if mask_table.size==0:
                     mask = np.zeros_like(data, dtype=np.int16)
                 else:
