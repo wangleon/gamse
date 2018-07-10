@@ -14,12 +14,12 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..ccdproc import save_fits, array_to_table, table_to_array
+from ..ccdproc import array_to_table, table_to_array
 from ..utils.onedarray import pairwise
 from ..echelle.trace import ApertureSet
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
-    disp_axis=0, mask_surfix = '_msk'):
+    disp_axis=0, mask_suffix = '_msk'):
     '''
     Display an interacitve GUI to mosaic the flat images.
 
@@ -31,7 +31,7 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
         reg_file (string): Name of the `.reg` file to be displayed in SAO-DS9.
         disp_axis (integer): Main dispersion axis of the input image. 0 means
             the echelle orders are along the *y* axis. 1 means along *x* axis.
-        mask_surfix (string): Surfix of the filenames of masks.
+        mask_suffix (string): Surfix of the filenames of masks.
     Returns:
         No returns.
 
@@ -274,7 +274,7 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
         m = (y >= yfrom)*(y < yto)
         colorflat,head = fits.getdata(filename,header=True)
         # now get the filename for mask
-        mask_filename = '%s%s.fits'%(filename[0:-5],mask_surfix)
+        mask_filename = '%s%s.fits'%(filename[0:-5], mask_suffix)
         # read data from mask file
         mtable = fits.getdata(mask_filename)
         colorflat_mask  = table_to_array(mtable, colorflat.shape)
@@ -290,10 +290,10 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     if disp_axis == 0:
         flat = np.transpose(flat)
         flat_mask = np.transpose(flat_mask)
-    save_fits(outfile,flat,header)
-    outfile_mask = '%s%s.fits'%(outfile[0:-5],mask_surfix)
+    fits.writeto(outfile, flat, header, overwrite=True)
+    outfile_mask = '%s%s.fits'%(outfile[0:-5], mask_suffix)
     mtable = array_to_table(flat_mask)
-    save_fits(outfile_mask, mtable)
+    fits.writeto(outfile_mask, mtable, overwrite=True)
 
     # save boundary coefficients into an ascii file
     outfile1 = open(mosaic_file,'w')
@@ -628,12 +628,9 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
         mos_flatdata += flatdata*maskdata
 
     # save the mosaic flat as FITS file
-    save_fits(outfile, mos_flatdata)
+    fits.writeto(outfile, mos_flatdata, overwrite=True)
 
     return mosaic_aperset
-
-def mosaic_image(data_lst, head_lst, outfile, coeff_lst, disp_axis):
-    mos_data = np.zeros(shape)
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''

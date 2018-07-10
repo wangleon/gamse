@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ..utils    import obslog
-from ..ccdproc  import save_fits, array_to_table, fix_pixels
+from ..ccdproc  import array_to_table, fix_pixels
 from .reduction import Reduction
 
 class Xinglong216HRS(Reduction):
@@ -162,7 +162,7 @@ class Xinglong216HRS(Reduction):
             mask_table = array_to_table(mask)
             maskname = '%s%s.fits'%(item.fileid, self.mask_suffix)
             maskpath = os.path.join(midproc, maskname)
-            save_fits(maskpath, mask_table)
+            fits.writeto(maskpath, mask_table, overwrite=True)
 
             # subtract overscan
             new_data = np.zeros(newshape, dtype=np.float64)
@@ -181,7 +181,7 @@ class Xinglong216HRS(Reduction):
             # save data
             outname = '%s%s.fits'%(item.fileid, self.output_suffix)
             outpath = os.path.join(midproc, outname)
-            save_fits(outpath, new_data, head)
+            fits.writeto(outpath, new_data, head, overwrite=True)
             print('Correct Overscan {} -> {}'.format(filename, outname))
 
 
@@ -357,7 +357,7 @@ class Xinglong216HRS(Reduction):
             bias_data = bias
 
         # save the bias to FITS
-        save_fits(bias_file, bias_data, head)
+        fits.writeto(bias_file, bias_data, head, overwrite=True)
         
         self.plot_bias_variation(all_data, all_head, time_key='DATE-STA')
 
@@ -373,7 +373,7 @@ class Xinglong216HRS(Reduction):
                 # write information into FITS header
                 head['HIERARCH EDRS BIAS'] = True
                 # save the bias corrected data
-                save_fits(outpath, data_new, head)
+                fits.writeto(outpath, data_new, head, overwrite=True)
                 info = ['Correct bias for item no. %d.'%item.frameid,
                         'Save bias corrected file: "%s"'%outpath]
                 logger.info((os.linesep+'  ').join(info))

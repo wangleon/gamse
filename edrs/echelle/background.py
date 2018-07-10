@@ -13,7 +13,7 @@ import matplotlib.cm     as cmap
 import matplotlib.ticker as tck
 
 from ..utils.regression import polyfit2d, polyval2d
-from ..ccdproc import save_fits, table_to_array, array_to_table
+from ..ccdproc import table_to_array, array_to_table
 
 def correct_background(infilename, mskfilename, outfilename, scafilename,
         channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
@@ -339,8 +339,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     # correct background
     corrected_data = data - background_data
 
-    save_fits(outfilename, corrected_data,  head) 
-    save_fits(scafilename, background_data, head) 
+    fits.writeto(outfilename, corrected_data,  head, overwrite=True)
+    fits.writeto(scafilename, background_data, head, overwrite=True)
 
 
     # save nodes to DS9 region file

@@ -26,7 +26,6 @@ else:
     import tkinter as tk
     import tkinter.ttk as ttk
 
-from ..ccdproc import save_fits
 from ..utils.regression import polyfit2d, polyval2d
 from ..utils.onedarray import pairwise
 

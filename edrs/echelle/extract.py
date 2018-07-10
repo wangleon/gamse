@@ -7,7 +7,7 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
-from ..ccdproc import save_fits, table_to_array
+from ..ccdproc import table_to_array
 from ..utils.memoize import memoized
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
@@ -135,9 +135,6 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     pri_hdu = fits.PrimaryHDU(header=head)
     tbl_hdu = fits.BinTableHDU(spec)
     hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
-    if os.path.exists(outfilename):
-        os.remove(outfilename)
-        logger.warning('File "%s" is overwritten'%outfilename)
-    hdu_lst.writeto(outfilename)
+    hdu_lst.writeto(outfilename, overwrite=True)
     logger.info('Write 1D spectra file "%s"'%outfilename)
 

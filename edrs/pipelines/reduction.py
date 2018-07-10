@@ -15,7 +15,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from ..utils.config       import read_config
 from ..utils.obslog       import read_log, parse_num_seq, find_log
-from ..ccdproc            import save_fits, table_to_array, array_to_table
+from ..ccdproc            import table_to_array, array_to_table
 from ..echelle.trace      import find_apertures, load_aperture_set
 from ..echelle.flat       import mosaic_flat_auto, get_flatfielding
 from ..echelle.background import correct_background
@@ -410,13 +410,13 @@ class Reduction(object):
             newhead['HIERARCH EDRS FLAT MEANEXPTIME'] = mexptime
             newhead['EXPTIME'] = mexptime
         
-            save_fits(out_flatpath, data_mean, newhead)
+            fits.writeto(out_flatpath, data_mean, newhead, overwrite=True)
             logger.info('Save combined flat image: "%s"'%out_flatpath)
             print('save %s'%out_flatfile)
             
             # save the mask for each individual flat frame
             mtable = array_to_table(all_mask)
-            save_fits(out_maskpath, mtable)
+            fits.writeto(out_maskpath, mtable, overwrite=True)
             logger.info('Save mask image for combined flat: "%s"'%out_maskpath)
 
     def combine_trace(self):
@@ -474,7 +474,7 @@ class Reduction(object):
         newhead['EXPTIME'] = total_exptime
 
         # save the final combined image
-        save_fits(trace_file, data_sum, newhead)
+        fits.writeto(trace_file, data_sum, newhead, overwrite=True)
         logger.info('Save trace image: "%s"'%trace_file)
 
     def flat2(self):

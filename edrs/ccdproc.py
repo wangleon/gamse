@@ -7,20 +7,6 @@ import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 
-def save_fits(*args):
-    '''
-    Save the fits file.
-
-    A wrapper of `astropy.io.fits.writeto()`. If the output file exists, it will
-    be removed without any warnings.
-    
-    '''
-    if os.path.exists(args[0]):
-        os.remove(args[0])
-        logger.warning('Overwrite FITS file: %s'%args[0])
-    fits.writeto(*args)
-    logger.info('Save FITS file: %s'%args[0])
-
 def combine_fits(filename_lst,dst_filename,
         mode       = 'mean',  # mode = ['mean'|'sum']
         header     = True,    # keep fits header?

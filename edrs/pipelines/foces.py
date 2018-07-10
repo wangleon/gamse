@@ -14,7 +14,7 @@ import scipy.optimize as opt
 from scipy.ndimage.filters import gaussian_filter
 
 from ..utils    import obslog
-from ..ccdproc  import save_fits, array_to_table
+from ..ccdproc  import array_to_table
 from .reduction import Reduction
 
 class FOCES(Reduction):
@@ -159,7 +159,7 @@ class FOCES(Reduction):
             maskname = '%s%s.fits'%(item.fileid, self.mask_suffix)
             maskpath = os.path.join(midproc, maskname)
             # save the mask.
-            save_fits(maskpath, mask_table)
+            fits.writeto(maskpath, mask_table, overwrite=True)
     
             # subtract overscan
             new_data = data[:,20:2068] - ovrmean1
@@ -177,7 +177,7 @@ class FOCES(Reduction):
             # save data
             outname = '%s%s.fits'%(item.fileid, self.output_suffix)
             outpath = os.path.join(midproc, outname)
-            save_fits(outpath, new_data, head)
+            fits.writeto(outpath, new_data, head, overwrite=True)
             print('Correct Overscan {} -> {}'.format(filename, outname))
     
             # quality check of the mean value of the overscan with time
@@ -380,7 +380,7 @@ class FOCES(Reduction):
             bias_data = bias
         
         # save the bias to FITS
-        save_fits(bias_file, bias_data, head)
+        fits.writeto(bias_file, bias_data, head, overwrite=True)
         
         self.plot_bias_variation(all_data, all_head)
 
@@ -397,7 +397,7 @@ class FOCES(Reduction):
             # write information into FITS header
             head['HIERARCH EDRS BIAS'] = True
             # save the bias corrected data
-            save_fits(outpath, data_new, head)
+            fits.writeto(outpath, data_new, head, overwrite=True)
             info = ['Correct bias for item no. %d.'%item.frameid,
                     'Save bias corrected file: "%s"'%outpath]
             logger.info((os.linesep+'  ').join(info))
