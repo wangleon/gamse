@@ -13,10 +13,13 @@ import matplotlib.pyplot as plt
 import matplotlib.dates  as mdates
 from mpl_toolkits.mplot3d import Axes3D
 
-from ..utils.config  import read_config
-from ..utils.obslog  import read_log, parse_num_seq, find_log
-from ..ccdproc       import save_fits, table_to_array, array_to_table
-from ..echelle.trace import load_aperture_set
+from ..utils.config       import read_config
+from ..utils.obslog       import read_log, parse_num_seq, find_log
+from ..ccdproc            import save_fits, table_to_array, array_to_table
+from ..echelle.trace      import find_apertures, load_aperture_set
+from ..echelle.flat       import mosaic_flat_auto, get_flatfielding
+from ..echelle.background import correct_background
+from ..echelle.extract    import sum_extract
 
 class Reduction(object):
     '''General echelle reduction.
@@ -552,7 +555,6 @@ class Reduction(object):
             logger.info('Skip [trace] according to the config file')
             return True
 
-        from ..echelle.trace import find_apertures, load_aperture_set
 
         # find the parameters for order tracing
         kwargs = {
@@ -682,22 +684,23 @@ class Reduction(object):
            **cosmic_clip**,     *float*,   Upper clipping threshold to remove cosmis-rays.
            **slit_step**,       *integer*, Step of slit function scanning.
            **q_threshold**,     *float*,   Threshold of *Q*-factor.
+           **param_deg**,       *integer*, Degree of polynomial in parameters fitting.
+           **file**,            *string*,  
            **mosaic_maxcount**, *integer*, Maximum count of the flat mosaic.
         '''
+        section = self.config['flat']
 
         # find output suffix for fits
-        self.output_suffix = self.config.get('flat','suffix')
+        self.output_suffix = section.get('suffix')
 
-        if self.config.getboolean('flat', 'skip'):
+        if section.getboolean('skip'):
             logger.info('Skip [flat] according to the config file')
             self.input_suffix = self.output_suffix
             return True
 
-        from ..echelle.flat import get_flatfielding
-
-        slit_step   = self.config.getint('flat', 'slit_step')
-        q_threshold = self.config.getfloat('flat', 'q_threshold')
-
+        slit_step   = section.getint('slit_step')
+        q_threshold = section.getfloat('q_threshold')
+        param_deg   = section.getint('param_deg')
 
         # path alias
         midproc = self.paths['midproc']
@@ -756,15 +759,15 @@ class Reduction(object):
                 slit_file   = os.path.join(midproc, '%s.slt'%flatname)
 
                 nflat = len(flat_group[flatname])
-                print(nflat, slit_step, q_threshold)
 
                 flatmap = get_flatfielding(data, mask,
                             apertureset = aperset,
                             slit_step   = slit_step,
                             nflat       = nflat,
                             q_threshold = q_threshold,
-                            fig_aperpar = fig_aperpar,
-                            fig_overlap = fig_overlap,
+                            param_deg   = param_deg,
+                            #fig_aperpar = fig_aperpar,
+                            #fig_overlap = fig_overlap,
                             fig_slit    = fig_slit,
                             slit_file   = slit_file,
                             )
@@ -772,7 +775,6 @@ class Reduction(object):
                 # save flat result to fits file
                 outfile = os.path.join(midproc, '%s_rsp.fits'%flatname)
                 fits.writeto(outfile, flatmap, overwrite=True)
-                exit()
 
             if len(flat_group) == 1:
                 # only 1 type of flat
@@ -787,10 +789,8 @@ class Reduction(object):
             elif len(flat_group) > 1:
                 # mosaic flat
 
-                from ..echelle.flat import mosaic_flat_auto
-
                 # get filename from config file
-                max_count     = self.config.getfloat('reduction','flat.mosaic_maxcount')
+                max_count = section.getfloat('mosaic_maxcount')
 
                 # prepare input list
                 filename_lst = [os.path.join(midproc, '%s.fits'%flatname)
@@ -859,8 +859,6 @@ class Reduction(object):
 
         '''
 
-        from ..echelle.background import correct_background
-        
         section = self.config['background']
         # find output suffix for fits
         self.output_suffix = section.get('suffix')
@@ -1058,8 +1056,6 @@ class Reduction(object):
             logger.info('Skip [extract] according to the config file')
             self.input_suffix = self.output_suffix
             return True
-
-        from ..echelle.extract import sum_extract
 
         # path alias
         midproc = self.paths['midproc']

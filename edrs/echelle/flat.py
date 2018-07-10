@@ -708,8 +708,8 @@ def test():
     outfile2.close()
 
 def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
-        q_threshold=30, fig_aperpar=None, fig_overlap=None, fig_slit=None,
-        slit_file=None,
+        q_threshold=30, param_deg=7, fig_aperpar=None, fig_overlap=None,
+        fig_slit=None, slit_file=None,
     ):
     '''Get the flat fielding image from the input file.
 
@@ -718,7 +718,10 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
         mask (:class:`numpy.array`): Mask data of flat fielding.
         apertureset (:class:`ApertureSet`): Echelle apertures detected in the
             input file.
+        nflat (integer): Number of flat fielding frames combined.
         slit_step (integer): Step of slit scanning.
+        q_threshold (float): Threshold of *Q*-factor.
+        param_deg (integer): Degee of parameters fitting.
         fig_aperpar (string): Path to the image of aperture profile parameters.
         fig_overlap (string): Path to the image of overlapped slit profiles.
         fig_slit (string): Path to the image of slit functions.
@@ -749,6 +752,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
 
     # find saturation mask
     sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
 
     # find the central positions and boundaries for each aperture
     newx = np.arange(w)
@@ -762,6 +766,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
     fig_fitting = 'flat_single_%04d_%02d.png'
     plot_fitting = False
 
+    ##########first step, scan each column and get the slit function############
     # construct the x-coordinates for slit function
     left, right, step = -4, +4, 0.1
     xnodes = np.arange(left, right+1e-5, step)
@@ -800,6 +805,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
             xdata = np.arange(b1, b2)
             ydata = data[b1:b2, x]
             _satmask = sat_mask[b1:b2, x]
+            _badmask = bad_mask[b1:b2, x]
 
             # plot a single profile fitting
             if plot_single:
@@ -813,18 +819,20 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
                         markeredgewidth=1, markeredgecolor='k')
                 axi.axvline(cen, color='k', ls='--')
 
-            if _satmask.sum() < 3:
+            # fit the profile if saturated pixels less than 3 and bad pixels
+            # less than 3
+            if _satmask.sum() < 3 and _badmask.sum() < 3:
 
                 # iterative fitting using gaussian + bkg function
                 p0 = [ydata.max()-ydata.min(), (b1+b2)/2., 3.0, ydata.min()]
                 #_m = np.ones_like(xdata, dtype=np.bool)
-                _m = ~_satmask
+                _m = (~_satmask)*(~_badmask)
                 for i in range(10):
                     p1, succ = opt.leastsq(errfunc, p0,
                                 args=(xdata[_m], ydata[_m], fitfunc))
                     res = errfunc(p1, xdata, ydata, fitfunc)
                     std = res[_m].std(ddof=1)
-                    _new_m = (res < 3*std)*_m
+                    _new_m = (np.abs(res) < 3*std)*_m
                     if _m.sum() == _new_m.sum():
                         break
                     _m = _new_m
@@ -855,6 +863,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
                         axi.plot(newx, fitfunc(p1, newx), 'r-')
                         axi.axvline(c, color='r', ls='--')
                         axi.plot(xdata[_satmask], ydata[_satmask],'yo',ms=2)
+                        axi.plot(xdata[_badmask], ydata[_badmask],'go',ms=2)
 
             if plot_single:
                 _y1, _y2 = axi.get_ylim()
@@ -957,6 +966,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
         ax.set_xlim(0, w-1)
         ax.set_ylim(0, h-1)
 
+    #####second step, scan each column and find the fitting parameters##########
     # construct slit functions using cubic spline interpolation for all columns
     full_slit_array = np.zeros((xnodes.size, w))
     for ix in np.arange(xnodes.size):
@@ -1011,26 +1021,29 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
             xdata = np.arange(y1,y2)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
+            _badmask = bad_mask[y1:y2, x]
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
             _i2 = min(h, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
 
-            if 0 < pos < h and _satmask.sum()<3 and sn > q_threshold:
+            if 0 < pos < h and _satmask.sum()<3 and _badmask.sum()<3 and \
+                sn > q_threshold:
                 interf = interf_lst[x]
                 if prev_p is None:
                     p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
                 else:
                     p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos, max(0,ydata.min())]
 
-                _m = np.ones_like(xdata, dtype=np.bool)
+                #_m = np.ones_like(xdata, dtype=np.bool)
+                _m = (~_satmask)*(~_badmask)
                 for ite in range(10):
                     p, ier = opt.leastsq(errfunc2, p0,
                                 args=(xdata[_m], ydata[_m], interf))
                     ydata_fit = fitfunc2(p, xdata, interf)
                     ydata_res = ydata - ydata_fit
                     std = ydata_res[_m].std(ddof=1)
-                    _new_m = ydata_res<5*std
+                    _new_m = (np.abs(ydata_res) < 5*std)*_m
                     if _new_m.sum() == _m.sum():
                         break
                     _m = _new_m
@@ -1081,10 +1094,12 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
                 nonzeroindex = np.nonzero(_m)[0]
                 i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
                 for ite in range(2):
-                    coeff = np.polyfit(newx_lst[_m]/w, yflux[_m], deg=7)
+                    coeff = np.polyfit(newx_lst[_m]/w, yflux[_m], deg=param_deg)
                     yfit = np.polyval(coeff, newx_lst/w)
                     yres = yflux - yfit
                     std = yres[_m].std(ddof=1)
+                    # replace np.nan by np.inf to avoid runtime warning
+                    yres[~_m] = np.inf
                     _new_m = _m*(np.abs(yres)<5*std)
                     if _new_m.sum()==_m.sum():
                         break
@@ -1145,12 +1160,13 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
             xdata = np.arange(y1,y2)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
+            _badmask = bad_mask[y1:y2, x]
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
             _i2 = min(h, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
 
-            if sn>q_threshold and _satmask.sum()<3:
+            if sn>q_threshold and _satmask.sum()<3 and _badmask.sum()<3:
                 coeff_A, coeff_k, coeff_c, coeff_bkg = aperpar_lst
 
                 A   = np.polyval(coeff_A, x/w)
@@ -1162,7 +1178,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
                 normx = (xdata-c)*k
                 corr_mask = (normx > lcorr)*(normx < rcorr)
                 flat = ydata/fitfunc2([A,k,c,bkg], xdata, interf)
-                flatmask = corr_mask*~_satmask
+                flatmask = corr_mask*~_satmask*~_badmask
                 flatdata[y1:y2, x][flatmask] = flat[flatmask]
 
                 #if aper==20:
