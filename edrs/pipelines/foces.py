@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 import scipy.optimize as opt
+from scipy.ndimage.filters import gaussian_filter
 
 from ..utils    import obslog
 from ..ccdproc  import save_fits, array_to_table
@@ -342,7 +343,6 @@ class FOCES(Reduction):
                 logger.info('Smoothing bias: sigma = %f'%smooth_sigma)
                 logger.info('Smoothing bias: mode = %s'%smooth_mode)
 
-                from scipy.ndimage.filters import gaussian_filter
                 bias_smooth = gaussian_filter(bias, smooth_sigma, mode=smooth_mode)
 
                 logger.info('Smoothing bias: Update bias FITS header')
