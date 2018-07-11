@@ -15,7 +15,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from ..utils.config       import read_config
 from ..utils.obslog       import read_log, parse_num_seq, find_log
-from ..ccdproc            import table_to_array, array_to_table
+from ..echelle.imageproc  import table_to_array, array_to_table
 from ..echelle.trace      import find_apertures, load_aperture_set
 from ..echelle.flat       import mosaic_flat_auto, get_flatfielding
 from ..echelle.background import correct_background

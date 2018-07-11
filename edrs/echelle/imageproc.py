@@ -190,16 +190,6 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
         return (scipy.signal.fftconvolve(Z, -r, mode='valid'),
                 scipy.signal.fftconvolve(Z, -c, mode='valid'))
 
-class CCDImage(object):
-    '''Class for CCD image.
-
-    Attributes:
-        data_region_lst (list): List containing Data Regions.
-
-    '''
-    def __init__(self):
-        self.data_region_lst = []
-
 def array_to_table(array):
     '''Convert the non-zeros elements of a Numpy array to a stuctured array.
 

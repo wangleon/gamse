@@ -9,9 +9,9 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils    import obslog
-from ..ccdproc  import array_to_table, fix_pixels
-from .reduction import Reduction
+from ..utils     import obslog
+from ..imageproc import array_to_table, fix_pixels
+from .reduction  import Reduction
 
 class Xinglong216HRS(Reduction):
 

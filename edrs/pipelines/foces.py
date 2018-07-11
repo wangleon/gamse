@@ -13,9 +13,9 @@ import matplotlib.dates  as mdates
 import scipy.optimize as opt
 from scipy.ndimage.filters import gaussian_filter
 
-from ..utils    import obslog
-from ..ccdproc  import array_to_table
-from .reduction import Reduction
+from ..utils              import obslog
+from ..echelle.imageproc  import array_to_table
+from .reduction           import Reduction
 
 class FOCES(Reduction):
     '''Reduction pipleline for FOCES.
