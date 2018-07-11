@@ -16,7 +16,6 @@ Modules
    :glob:
 
    modules/utils
-   modules/ccdproc
    modules/echelle
    modules/pipelines/reduction
    modules/pipelines/foces

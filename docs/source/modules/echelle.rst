@@ -1,6 +1,21 @@
 Echelle Module
 ==============
 
+CCD Image Processing
+--------------------
+.. currentmodule:: edrs.imageproc
+.. autosummary::
+    combine_fits
+    savitzky_golay_2d
+    array_to_table
+    table_to_array
+
+.. automodule:: edrs.imageproc
+   :members:
+   :private-members:
+   :undoc-members:
+
+
 Order Location and Tracing
 --------------------------
 .. currentmodule:: edrs.echelle.trace
