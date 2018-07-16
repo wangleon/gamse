@@ -14,9 +14,9 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..ccdproc import array_to_table, table_to_array
 from ..utils.onedarray import pairwise
-from ..echelle.trace import ApertureSet
+from .imageproc        import array_to_table, table_to_array
+from .trace            import ApertureSet
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     disp_axis=0, mask_suffix = '_msk'):
@@ -459,17 +459,23 @@ def load_mosaic(filename):
     return coeff_lst, select_area
 
 
-def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
+def mosaic_flat_auto(data_lst, mask_lst, aperture_set_lst, max_count):
     '''
     Mosaic flat images automatically.
 
     Args:
-        filename_lst (list): A list containing filenames of flat images.
-        outfile (string): Filename of the output image.
+        data_lst (dict): A dict containing flatnames as keys and image data as
+            their values.
+        mask_lst (dict):
         aperture_set_lst (list): Dict of :class:`ApertureSet`.
         max_count (float): Maximum count.
     Returns:
-        No returns.
+        tuple: A tuple containing:
+            * mosaic_data (:class:`numpy.array`): The mosaiced image as a 2D
+                numpy array.
+            * mask_data (:class:`numpy.array`): The mosaiced mask as a 2D numpy
+                array.
+            * mosaic_aperset (ApertureSet): The mosaiced aperture set.
 
     See Also:
         :func:`mosaic_flat_interact`
@@ -478,39 +484,36 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
 
     all_aperloc_lst = []
     # all_aperloc_lst  = [
-    #  [tracename1: aper_loc, tracename2: aper_loc],
-    #  [tracename1: aper_loc, tracename2: aper_loc],
-    #  [tracename1: aper_loc, tracename2: aper_loc],
+    #  [name1: aper_loc, name2: aper_loc],
+    #  [name1: aper_loc, name2: aper_loc],
+    #  [name1: aper_loc, name2: aper_loc],
     # ]
 
-    tracename_lst = []
 
-    for itrace, (tracename, aperset) in enumerate(aperture_set_lst.items()):
-
-        # add tracename ot tracename list
-        if tracename not in tracename_lst:
-            tracename_lst.append(tracename)
+    for iaperset, (name, aperset) in enumerate(aperture_set_lst.items()):
 
         for aper, aper_loc in aperset.items():
-            if itrace == 0:
+
+            # get local seperations
+            loc_sep = aperset.get_local_seperation(aper)
+
+            if iaperset == 0:
                 # append all the apertures in the first trace file into the
                 # aperloc list
-                all_aperloc_lst.append({tracename: aper_loc})
+                all_aperloc_lst.append({name: aper_loc})
             else:
                 insert = False
-                for ilist, list1 in enumerate(all_aperloc_lst):
+                for iaperloc_lst, aperloc_lst in enumerate(all_aperloc_lst):
                     # one aperture should not contain more than 1 apertures
                     # from the same trace file.
-                    if tracename in list1:
+                    if name in aperloc_lst:
                         continue
                     # calculate the relative distances.
-                    for _tracename, _aperloc in list1.items():
+                    for _name, _aperloc in aperloc_lst.items():
                         distance = aper_loc.get_distance(_aperloc)
-                        # get local seperations
-                        loc_sep = aperset.get_local_seperation(aper)
                         if abs(distance)<0.3*loc_sep:
                             # append this aperture to an existing aperture
-                            all_aperloc_lst[ilist][tracename] = aper_loc
+                            all_aperloc_lst[iaperloc_lst][name] = aper_loc
                             insert = True
                             break
                     # if already added to an existing aperture, skip the rest
@@ -521,15 +524,15 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
                 # if this aperture does not belong to any existing aperture,
                 # append it as a new aperture
                 if not insert:
-                    all_aperloc_lst.append({tracename: aper_loc})
+                    all_aperloc_lst.append({name: aper_loc})
 
-    # sort the tracename list
-    tracename_lst.sort()
+    # the sorted name list
+    name_lst = sorted(aperture_set_lst.keys())
 
     # prepare the information written to running log
     message = ['Aperture Information for Different Flat Files:']
-    _msg1 = ['%-20s'%tracename for tracename in tracename_lst]
-    _msg2 = ['center, N (sat), max' for tracename in tracename_lst]
+    _msg1 = ['%-20s'%name for name in name_lst]
+    _msg2 = ['center, N (sat), max' for name in name_lst]
     message.append('| '+(' | '.join(_msg1))+' |')
     message.append('| '+(' | '.join(_msg2))+' |')
 
@@ -538,9 +541,9 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
     for list1 in all_aperloc_lst:
         # add information to running log
         _msg = []
-        for tracename in tracename_lst:
-            if tracename in list1:
-                aper_loc = list1[tracename]
+        for name in name_lst:
+            if name in list1:
+                aper_loc = list1[name]
                 _msg.append('%4d %4d %10.1f'%(
                     aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
             else:
@@ -548,23 +551,23 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
         message.append('| '+(' | '.join(_msg))+' |')
 
         # pick up the best trace file for each aperture
-        nosat_lst = {tracename: aper_loc
-                    for tracename, aper_loc in list1.items()
-                    if aper_loc.nsat == 0 and aper_loc.max<max_count}
+        nosat_lst = {name: aper_loc
+                        for name, aper_loc in list1.items()
+                        if aper_loc.nsat == 0 and aper_loc.max<max_count}
 
         if len(nosat_lst)>0:
             # if there's aperture without saturated pixels, find the one
             # with largest median values
             nosat_sort_lst = sorted(nosat_lst.items(),
                                 key=lambda item: item[1].median)
-            pick_tracename, pick_aperloc = nosat_sort_lst[-1]
+            pick_name, pick_aperloc = nosat_sort_lst[-1]
         else:
             # all apertures are saturated. Then find the aperture that has
             # the least number of saturated pixels.
             sat_sort_lst = sorted(list1.items(), key=lambda item: item[1].nsat)
-            pick_tracename, pick_aperloc = sat_sort_lst[0]
+            pick_name, pick_aperloc = sat_sort_lst[0]
 
-        setattr(pick_aperloc, 'tracename', pick_tracename)
+        setattr(pick_aperloc, 'tracename', pick_name)
         mosaic_aperset.add_aperture(pick_aperloc)
 
     logger.info((os.linesep+' '*3).join(message))
@@ -580,20 +583,16 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
 
     # read flat data and check the shape consistency
     prev_shape = None
-    flatdata_lst, maskdata_lst = {}, {}
-    for tracename in aperture_set_lst:
-        for filename in filename_lst:
-            if os.path.basename(filename)[0:-5]==tracename:
-                data = fits.getdata(filename)
-                flatdata_lst[tracename] = data
-                maskdata_lst[tracename] = np.zeros_like(data, dtype=np.bool)
-                shape = data.shape
-                if prev_shape is not None and shape != prev_shape:
-                    logger.error(
-                        'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
-                        tracename, shape[0], shape[1], prev_shape[0], prev_shape[1])
-                    )
-                prev_shape = shape
+    maskdata_lst = {}
+    for name, data in data_lst.items():
+        maskdata_lst[name] = np.zeros_like(data, dtype=np.bool)
+        shape = data.shape
+        if prev_shape is not None and shape != prev_shape:
+            logger.error(
+                'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
+                name, shape[0], shape[1], prev_shape[0], prev_shape[1])
+            )
+        prev_shape = shape
     
     for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
         tracename = aper_loc.tracename
@@ -619,18 +618,18 @@ def mosaic_flat_auto(filename_lst, outfile, aperture_set_lst, max_count):
                 m = yy > np.round(cut_bound)
             maskdata_lst[prev_tracename][m] = False
             maskdata_lst[tracename][m] = True
+        else:
+            pass
 
         prev_tracename = tracename
 
-    mos_flatdata = np.zeros(shape, dtype=np.float32)
-    for tracename, maskdata in sorted(maskdata_lst.items()):
-        flatdata = flatdata_lst[tracename]
-        mos_flatdata += flatdata*maskdata
+    mosaic_data = np.zeros(shape, dtype=np.float32)
+    mask_data   = np.zeros(shape, dtype=np.int16)
+    for name, _maskdata in sorted(maskdata_lst.items()):
+        mosaic_data += data_lst[name]*_maskdata
+        mask_data   += mask_lst[name]*_maskdata
 
-    # save the mosaic flat as FITS file
-    fits.writeto(outfile, mos_flatdata, overwrite=True)
-
-    return mosaic_aperset
+    return mosaic_data, mask_data, mosaic_aperset
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''
