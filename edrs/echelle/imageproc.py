@@ -210,7 +210,7 @@ def array_to_table(array):
         .. code-block:: python
 
             >>> import numpy as np
-            >>> from edrs.ccdproc import array_to_table
+            >>> from edrs.echelle.imageproc import array_to_table
 
             >>> a = np.arange(12).reshape(3,4)
             >>> a
@@ -263,7 +263,7 @@ def table_to_array(table, shape):
         .. code-block:: python
 
             >>> import numpy as np
-            >>> from edrs.ccdproc import array_to_table
+            >>> from edrs.echelle.imageproc import array_to_table
 
             >>> a = np.arange(12).reshape(3,4)
             >>> a

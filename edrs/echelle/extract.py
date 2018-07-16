@@ -7,8 +7,7 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
-from ..ccdproc import table_to_array
-from ..utils.memoize import memoized
+from .imageproc      import table_to_array
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     upper_limit=5, lower_limit=5, figure=None):

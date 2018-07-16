@@ -13,7 +13,7 @@ import matplotlib.cm     as cmap
 import matplotlib.ticker as tck
 
 from ..utils.regression import polyfit2d, polyval2d
-from ..ccdproc import table_to_array, array_to_table
+from .imageproc         import table_to_array, array_to_table
 
 def correct_background(infilename, mskfilename, outfilename, scafilename,
         channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
