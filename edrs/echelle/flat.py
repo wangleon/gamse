@@ -702,32 +702,6 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
                            x1+1,y1+1,x2+1,y2+1, os.linesep))
     outfile.close()
 
-def test():
-    outfile2 = open(reg_file, 'w')
-    outfile2.write('# Region file format: DS9 version 4.1'+os.linesep)
-    outfile2.write('# Filename: flat.fits'+os.linesep)
-    outfile2.write('global color=green dashlist=8 3 width=1 font="normal" ')
-    outfile2.write('select=0 highlite=1 dash=0 fixed=1 edit=0 move=0 ')
-    outfile2.write('delete=0 include=1 source=1'+os.linesep)
-    outfile2.write('physical'+os.linesep)
-    # save data every 50 points
-    step = 50
-    ynode_lst = np.arange(0, yrows, step)
-    if ynode_lst[-1] != yrows - 1:
-        ynode_lst = np.append(ynode_lst, yrows-1)
-    for bound in fig.bound_lst[1:]:
-        for j,x in enumerate(ynode_lst[0:-1]):
-            y1 = x
-            x1 = bound[y1]
-            y2 = ynode_lst[j+1]
-            x2 = bound[y2]
-            if disp_axis == 0:
-                x1, y1 = y1, x1
-                x2, y2 = y2, x2
-            outfile2.write('line(%d,%d,%d,%d) # line=0 0'%(
-                            x1+1,y1+1,x2+1,y2+1)+os.linesep)
-    outfile2.close()
-
 def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
         q_threshold=30, param_deg=7, fig_aperpar=None, fig_overlap=None,
         fig_slit=None, slit_file=None,
