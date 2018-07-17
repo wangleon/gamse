@@ -731,98 +731,22 @@ class Reduction(object):
 
             flat_file = os.path.join(midproc, '%s.fits'%channel_name)
             mask_file = os.path.join(midproc, '%s%s.fits'%(channel_name, self.mask_suffix))
+            resp_file = os.path.join(midproc, '%s_rsp.fits'%channel_name)
             trc_file  = os.path.join(midproc, '%s.trc'%channel_name)
             reg_file  = os.path.join(midproc, '%s_trc.reg'%channel_name)
 
             flat_group = self.flat_groups[channel]
             aperset_lst = self.aperture_set_lst[channel]
 
-            # mosaic different colors of flats
-            if len(flat_group) == 1:
-                # only 1 type of flat
-                flatname = flat_group.keys()[0]
-                if flatname != channel_name:
-                    # if names are different, copy the flat, trc and reg files
-                    inflt_file = os.path.join(midproc, '%s.fits'%flatname)
-                    inmsk_file = os.path.join(midproc, '%s%s.fits'%(flatname, self.mask_suffix))
-                    intrc_file = os.path.join(midproc, '%s.trc'%flatname)
-                    inreg_file = os.path.join(midproc, '%s_trc.reg'%flatname)
-                    shutil.copyfile(inflt_file, flat_file)
-                    shutil.copyfile(inmsk_file, mask_file)
-                    shutil.copyfile(intrc_file, trc_file)
-                    shutil.copyfile(inreg_file, reg_file)
-                    logger.info('Copy "%s" to "%s"'%(inflt_file, flat_file))
-                    logger.info('Copy "%s" to "%s"'%(inmsk_file, mask_file))
-                    logger.info('Copy "%s" to "%s"'%(intrc_file, trc_file))
-                    logger.info('Copy "%s" to "%s"'%(inreg_file, reg_file))
-                else:
-                    # if names are the same, do nothing
-                    pass
+            # loop over all kinds of flats in this channel, and get the map of
+            # pixel-to-pixel respondings.
 
-                flat_data = fits.getdata(flat_file)
-
-            elif len(flat_group) > 1:
-                # multiple kinds of flats. do mosaic
-
-                # get filename from config file
-                max_count = section.getfloat('mosaic_maxcount')
-
-                # prepare input list
-                data_lst, mask_lst = {}, {}
-                # prepare the message in the running log
-                _msg = ['Mosaic flat images:']
-                for flatname in flat_group.keys():
-                    filename = os.path.join(midproc, '%s.fits'%flatname)
-                    data = fits.getdata(filename)
-                    data_lst[flatname] = data
-                    mask_filename = os.path.join(midproc,
-                                    '%s%s.fits'%(flatname, self.mask_suffix))
-                    mask_table = fits.getdata(mask_filename)
-                    mask = table_to_array(mask_table, data.shape)
-                    mask_lst[flatname] = mask
-                    
-                    _msg.append('"%s, %s"'%(filename,mask_filename))
-
-                mosaic_aperset = mosaic_flat_auto(
-                                    aperture_set_lst = aperset_lst,
-                                    max_count        = max_count,
-                                    )
-                # mosaic flat images
-                flat_data = mosaic_images(data_lst, mosaic_aperset)
-                fits.writeto(flat_file, flat_data, overwrite=True)
-
-                # mosaic flat masks
-                mask_data = mosaic_images(mask_lst, mosaic_aperset)
-                mask_table = array_to_table(mask_data)
-                fits.writeto(mask_file, mask_table, overwrite=True)
-
-                # write to the running log
-                logger.info((os.linesep+'  ').join(_msg))
-
-                # align different channels
-                if ichannel > 0:
-                    # align this channel relative to channel A
-                    ref_aperset = mosaic_aperset_lst['A']
-                    offset = mosaic_aperset.find_aper_offset(ref_aperset)
-                    _fmt = 'Offset = {} for channel {} relative to channel A'
-                    logger.info(_fmt.format(offset, channel))
-                    mosaic_aperset.shift_aperture(offset)
-                mosaic_aperset_lst[channel] = mosaic_aperset
-
-                # save mosaiced aperset to .txt and .reg files
-                mosaic_aperset.save_txt(trc_file)
-                mosaic_aperset.save_reg(reg_file,
-                                        channel = channel,
-                                        color   = reg_color_lst[ichannel%4]
-                                        )
-            else:
-                print('Unknown flat_groups')
-                raise ValueError
-            # flat mosaic ended here
+            # prepare for data list to aviod duplicate reading.
+            data_lst = {}
+            mask_lst = {}
+            resp_lst = {}
 
             for flatname in sorted(flat_group):
-                # loop over all kinds of flats in this channel
-
                 # make a sub directory
                 subdir = os.path.join(report, flatname)
                 if not os.path.exists(subdir):
@@ -833,14 +757,19 @@ class Reduction(object):
                 # read flat fielding image
                 infile = os.path.join(midproc, '%s.fits'%flatname)
                 data = fits.getdata(infile)
+                # pack the data to data_lst
+                data_lst[flatname] = data
 
                 # read flat fielding mask
-                mask_file = os.path.join(midproc, '%s%s.fits'%(flatname, self.mask_suffix))
+                mask_file = os.path.join(midproc,
+                                '%s%s.fits'%(flatname, self.mask_suffix))
                 mask_table = fits.getdata(mask_file)
                 if mask_table.size==0:
                     mask = np.zeros_like(data, dtype=np.int16)
                 else:
                     mask = table_to_array(mask_table, data.shape)
+                # pack the mask to mask_lst
+                mask_lst[flatname] = mask
 
                 aperset = aperset_lst[flatname]
                 fig_aperpar = os.path.join(subdir,  'flat_aperpar_%02d.png')
@@ -865,6 +794,85 @@ class Reduction(object):
                 # save flat result to fits file
                 outfile = os.path.join(midproc, '%s_rsp.fits'%flatname)
                 fits.writeto(outfile, flatmap, overwrite=True)
+                resp_lst[flatname] = flatmap
+
+                _message = 'Get sensitivity map for %s in channel %s and saved to "%s"'%(
+                        flatname, channel, outfile)
+            # sensitivity map for each color ends here
+
+            # mosaic different colors of flats
+            if len(flat_group) == 1:
+                # only 1 type of flat
+                flatname = flat_group.keys()[0]
+                if flatname != channel_name:
+                    # if names are different, copy the flat, trc and reg files
+                    inflt_file = os.path.join(midproc, '%s.fits'%flatname)
+                    inmsk_file = os.path.join(midproc, '%s%s.fits'%(flatname, self.mask_suffix))
+                    intrc_file = os.path.join(midproc, '%s.trc'%flatname)
+                    inreg_file = os.path.join(midproc, '%s_trc.reg'%flatname)
+                    shutil.copyfile(inflt_file, flat_file)
+                    shutil.copyfile(inmsk_file, mask_file)
+                    shutil.copyfile(intrc_file, trc_file)
+                    shutil.copyfile(inreg_file, reg_file)
+                    # write to running log
+                    _message = [
+                            'Copy "%s" to "%s"'%(inflt_file, flat_file),
+                            'Copy "%s" to "%s"'%(inmsk_file, mask_file),
+                            'Copy "%s" to "%s"'%(intrc_file, trc_file),
+                            'Copy "%s" to "%s"'%(inreg_file, reg_file),
+                            ]
+                    logger.info(os.linesep.join(_message))
+                else:
+                    # if names are the same, do nothing
+                    _message = 'Flatname = channel name. nothing to do.'
+                    logger.info(_message)
+
+            elif len(flat_group) > 1:
+                # multiple kinds of flats. do mosaic
+
+                # get filename from config file
+                max_count = section.getfloat('mosaic_maxcount')
+
+                # mosaic apertures
+                mosaic_aperset = mosaic_flat_auto(
+                                    aperture_set_lst = aperset_lst,
+                                    max_count        = max_count,
+                                    )
+
+                # mosaic original flat images
+                flat_data = mosaic_images(data_lst, mosaic_aperset)
+                fits.writeto(flat_file, flat_data, overwrite=True)
+
+                # mosaic flat mask images
+                mask_data = mosaic_images(mask_lst, mosaic_aperset)
+                mask_table = array_to_table(mask_data)
+                fits.writeto(mask_file, mask_table, overwrite=True)
+
+                # mosaic sensitivity map
+                resp_data = mosaic_images(resp_lst, mosaic_aperset)
+                fits.writeto(resp_file, resp_data, overwrite=True)
+
+                # align different channels
+                if ichannel > 0:
+                    # align this channel relative to channel A
+                    ref_aperset = mosaic_aperset_lst['A']
+                    offset = mosaic_aperset.find_aper_offset(ref_aperset)
+                    _fmt = 'Offset = {} for channel {} relative to channel A'
+                    logger.info(_fmt.format(offset, channel))
+                    mosaic_aperset.shift_aperture(offset)
+                mosaic_aperset_lst[channel] = mosaic_aperset
+
+                # save mosaiced aperset to .txt and .reg files
+                mosaic_aperset.save_txt(trc_file)
+                mosaic_aperset.save_reg(reg_file,
+                                        channel = channel,
+                                        color   = reg_color_lst[ichannel%4]
+                                        )
+            else:
+                print('Unknown flat_groups')
+                raise ValueError
+            # flat mosaic ended here
+
 
         # channel loop ends here
 
