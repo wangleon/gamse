@@ -464,21 +464,11 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
     Mosaic flat images automatically.
 
     Args:
-        data_lst (dict): A dict containing flatnames as keys and image data as
-            values.
         aperture_set_lst (list): Dict of :class:`ApertureSet`.
         max_count (float): Maximum count.
-        mask_lst (dict): A dict containing flatnames as keys and mask data as
-            values.
-        resp_lst (dict): A dict containing flatnames as keys and response map as
-            values.
+
     Returns:
-        tuple: A tuple containing:
-            * mosaic_data (:class:`numpy.array`): The mosaiced image as a 2D
-                numpy array.
-            * mask_data (:class:`numpy.array`): The mosaiced mask as a 2D numpy
-                array.
-            * mosaic_aperset (ApertureSet): The mosaiced aperture set.
+        :class:`ApertureSet`: The mosaiced aperture set.
 
     See Also:
         :func:`mosaic_flat_interact`
@@ -601,16 +591,18 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
 
 def mosaic_images(image_lst, mosaic_aperset):
     '''
-    Mosaic images.
+    Mosaic input images with the identifications in the input aperture set.
 
     Args:
         images_lst (dict): A dict containing {*names*: *images*}, where *names*
-            are strings, and *images* are 
-        mosaic_aperset (dict): A dict containing {*names*: *masks*}, where *names* are
-            srings, and *masks* are 2d booleans :class:`numpy.array` objects
-            indicating the mosaic pixels.
+            are strings, and *images* are the corresponding 2d
+            :class:`numpy.array` objects.
+        mosaic_aperset (:class:`ApertureSet`): The mosaiced aperture set.
+
     Returns:
-        :class:`numpy.array`: The final mosaiced image.
+        :class:`numpy.array`: The final mosaiced image with the shapes and
+            datatypes as images in **images_lst**.
+
     See Also:
         :func: `mosaic_flat_auto`
 
