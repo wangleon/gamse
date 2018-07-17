@@ -459,16 +459,19 @@ def load_mosaic(filename):
     return coeff_lst, select_area
 
 
-def mosaic_flat_auto(data_lst, mask_lst, aperture_set_lst, max_count):
+def mosaic_flat_auto(aperture_set_lst, max_count):
     '''
     Mosaic flat images automatically.
 
     Args:
         data_lst (dict): A dict containing flatnames as keys and image data as
-            their values.
-        mask_lst (dict):
+            values.
         aperture_set_lst (list): Dict of :class:`ApertureSet`.
         max_count (float): Maximum count.
+        mask_lst (dict): A dict containing flatnames as keys and mask data as
+            values.
+        resp_lst (dict): A dict containing flatnames as keys and response map as
+            values.
     Returns:
         tuple: A tuple containing:
             * mosaic_data (:class:`numpy.array`): The mosaiced image as a 2D
@@ -479,6 +482,7 @@ def mosaic_flat_auto(data_lst, mask_lst, aperture_set_lst, max_count):
 
     See Also:
         :func:`mosaic_flat_interact`
+        :func:`mosaic_images`
 
     '''
 
@@ -575,61 +579,94 @@ def mosaic_flat_auto(data_lst, mask_lst, aperture_set_lst, max_count):
 
     message = ['Flat Mosaic Information',
                 'aper, yposition, flatname, N (sat), Max (count)']
-    for aper, aper_loc in mosaic_aperset.items():
+    for aper, aper_loc in sorted(mosaic_aperset.items()):
         message.append('%4d %5d %-15s %4d %10.1f'%(
             aper, aper_loc.get_center(), aper_loc.tracename, aper_loc.nsat,
             aper_loc.max))
     logger.info((os.linesep+' '*3).join(message))
 
-    # read flat data and check the shape consistency
-    prev_shape = None
-    maskdata_lst = {}
-    for name, data in data_lst.items():
-        maskdata_lst[name] = np.zeros_like(data, dtype=np.bool)
-        shape = data.shape
-        if prev_shape is not None and shape != prev_shape:
+    # check the shape consistency of mosaic_aperset
+    # get the shape of the first aperloc in mosaic_aperset
+    shape = list(mosaic_aperset.values())[0].shape
+
+    for aper, aper_loc in sorted(mosaic_aperset.items()):
+        if aper_loc.shape != shape:
             logger.error(
-                'Image shape of "%s" (%d x %d) does not match previous (%d x %d)'%(
-                name, shape[0], shape[1], prev_shape[0], prev_shape[1])
+                'Shape of Aper %d (%d, %d) does not match the shape (%d, %d)'%(
+                aper, aper_loc.shape[0], aper_loc.shape[1], shape[0], shape[1])
             )
-        prev_shape = shape
-    
+
+    return mosaic_aperset
+
+
+def mosaic_images(image_lst, mosaic_aperset):
+    '''
+    Mosaic images.
+
+    Args:
+        images_lst (dict): A dict containing {*names*: *images*}, where *names*
+            are strings, and *images* are 
+        mosaic_aperset (dict): A dict containing {*names*: *masks*}, where *names* are
+            srings, and *masks* are 2d booleans :class:`numpy.array` objects
+            indicating the mosaic pixels.
+    Returns:
+        :class:`numpy.array`: The final mosaiced image.
+    See Also:
+        :func: `mosaic_flat_auto`
+
+    '''
+
+    # get the shape of the first aperloc in mosaic_aperset
+    shape = list(mosaic_aperset.values())[0].shape
+
+    # check the shape consistency of images
+    for name, image in sorted(image_lst.items()):
+        if image.shape != shape:
+            logger.error(
+                'Image shape of %s (%d, %d) does not match the shape (%d, %d)'%(
+                name, image.shape[0], image.shape[1], shape[0], shape[1])
+            )
+
+    # get mosaic mask for each tracename
+    maskdata_lst = {name: np.zeros(shape, dtype=np.bool)
+                    for name in image_lst.keys()}
+
+    h, w = shape
+    yy, xx = np.mgrid[:h:, :w:]
+    xlst = np.arange(w)
+    ylst = np.arange(h)
+
     for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
         tracename = aper_loc.tracename
-        if aper == 0:
+        if iaper == 0:
             maskdata_lst[tracename][:,:] = True
         elif tracename != prev_tracename:
             prev_aper_loc = mosaic_aperset[iaper-1]
-
-            h, w = aper_loc.shape
             if aper_loc.direct == 0:
                 # aperture along Y axis
-                center_line = aper_loc.position(np.arange(h))
-                prev_center_line = prev_aper_loc.position(np.arange(h))
+                center_line = aper_loc.position(ylst)
+                prev_center_line = prev_aper_loc.position(ylst)
                 cut_bound = (center_line + prev_center_line)/2.
-                yy, xx = np.mgrid[:h:,:w:]
                 m = xx > np.round(cut_bound)
             elif aper_loc.direct == 1:
                 # aperture along X axis
-                center_line = aper_loc.position(np.arange(w))
-                prev_center_line = prev_aper_loc.position(np.arange(w))
+                center_line = aper_loc.position(xlst)
+                prev_center_line = prev_aper_loc.position(xlst)
                 cut_bound = (center_line + prev_center_line)/2.
-                yy, xx = np.mgrid[:h:,:w:]
                 m = yy > np.round(cut_bound)
             maskdata_lst[prev_tracename][m] = False
             maskdata_lst[tracename][m] = True
         else:
             pass
-
         prev_tracename = tracename
 
-    mosaic_data = np.zeros(shape, dtype=np.float32)
-    mask_data   = np.zeros(shape, dtype=np.int16)
-    for name, _maskdata in sorted(maskdata_lst.items()):
-        mosaic_data += data_lst[name]*_maskdata
-        mask_data   += mask_lst[name]*_maskdata
+    dtype = list(image_lst.values())[0].dtype
+    # finally mosaic the images
+    mosaic_image = np.zeros(shape, dtype=dtype)
+    for _name, _maskdata in sorted(maskdata_lst.items()):
+        mosaic_image += image_lst[_name]*_maskdata
 
-    return mosaic_data, mask_data, mosaic_aperset
+    return mosaic_image
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''

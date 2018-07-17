@@ -17,7 +17,7 @@ from ..utils.config       import read_config
 from ..utils.obslog       import read_log, parse_num_seq, find_log
 from ..echelle.imageproc  import table_to_array, array_to_table
 from ..echelle.trace      import find_apertures, load_aperture_set
-from ..echelle.flat       import mosaic_flat_auto, get_flatfielding
+from ..echelle.flat       import mosaic_flat_auto, mosaic_images, get_flatfielding
 from ..echelle.background import correct_background
 from ..echelle.extract    import sum_extract
 
@@ -783,13 +783,16 @@ class Reduction(object):
                     
                     _msg.append('"%s, %s"'%(filename,mask_filename))
 
-                flat_data, mask_data, mosaic_aperset = mosaic_flat_auto(
-                                                data_lst         = data_lst,
-                                                mask_lst         = mask_lst,
-                                                aperture_set_lst = aperset_lst,
-                                                max_count        = max_count,
-                                                )
+                mosaic_aperset = mosaic_flat_auto(
+                                    aperture_set_lst = aperset_lst,
+                                    max_count        = max_count,
+                                    )
+                # mosaic flat images
+                flat_data = mosaic_images(data_lst, mosaic_aperset)
                 fits.writeto(flat_file, flat_data, overwrite=True)
+
+                # mosaic flat masks
+                mask_data = mosaic_images(mask_lst, mosaic_aperset)
                 mask_table = array_to_table(mask_data)
                 fits.writeto(mask_file, mask_table, overwrite=True)
 
