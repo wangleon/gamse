@@ -50,7 +50,7 @@ def find_config(path):
         string or None: Path to the config file with filename ended with `.cfg`.
             If not found, return *None*.
     '''
-    cfg_lst = [fname for fname in sorted(os.path.listdir(path))
+    cfg_lst = [fname for fname in sorted(os.listdir(path))
                         if fname[-4:]=='.cfg']
     if len(cfg_lst)==1:
         return cfg_lst[0]
