@@ -6,6 +6,10 @@ import getpass
 import platform
 import subprocess
 
+from edrs import pipelines
+from edrs.pipelines import find_rawdata, get_instrument, make_log, plot, \
+                           reduce_echelle
+from edrs.utils.config import read_config, find_config
 
 def print_help():
     pass
@@ -74,54 +78,17 @@ def main():
         print_help()
         exit()
 
-    from edrs import pipelines
-    from edrs.pipelines import find_rawdata, get_instrument
-
     if sys.argv[1] == 'reduce':
         # reduce the spectra
-
         record_system_info()
-
-        # find path to the raw data
-        rawpath = find_rawdata()
-        if rawpath is None:
-            print('Rawdata not found')
-            exit()
-
-        # find the instrument name
-        if len(sys.argv)>=3:
-            instrument = sys.argv[2]
-        else:
-            instrument = get_instrument(rawpath)
-
-        # reduce the spectra
-        from edrs.pipelines import reduce_echelle
-        logger.info('Start reducing %s data'%instrument)
-        reduce_echelle(instrument=instrument)
+        reduce_echelle()
 
     elif sys.argv[1] == 'plot':
-        from edrs.pipelines import plot
-
         plot()
 
     elif sys.argv[1] == 'list':
         # list the observing log of raw data
-
-        # find path to the raw data
-        rawpath = find_rawdata()
-        if rawpath is None:
-            print('Rawdata not found')
-            exit()
-
-        # find the instrument name
-        if len(sys.argv)>=3:
-            instrument = sys.argv[2]
-        else:
-            instrument = get_instrument(rawpath)
-
-        # print the log
-        from edrs.pipelines import make_log
-        make_log(instrument, rawpath)
+        make_log()
     else:
         print('Unknow argument: %s'%sys.argv[1])
         exit()

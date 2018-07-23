@@ -706,7 +706,8 @@ class Reduction(object):
         midproc = self.paths['midproc']
         report  = self.paths['report']
 
-        mosaic_aperset_lst = {} # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
+        mosaic_aperset_lst = {}
+        # e.g. {'A': ApertureSet instance, 'B': ApertureSet instance,...}
 
         reg_color_lst = ['green', 'yellow', 'red', 'blue']
 
@@ -723,6 +724,7 @@ class Reduction(object):
         self.aperture_set_lst = aperture_set_lst
         #--------------------------------------
 
+        channel_flatmap_lst = {}
         # loop for each channels
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
@@ -796,13 +798,15 @@ class Reduction(object):
                 fits.writeto(outfile, flatmap, overwrite=True)
                 resp_lst[flatname] = flatmap
 
-                _message = 'Get sensitivity map for %s in channel %s and saved to "%s"'%(
-                        flatname, channel, outfile)
+                # write to running log
+                _string = 'Channel %s, $s: Flat map saved as "%s"'
+                _message = _string%(channel, flatname, outfile)
+                logger.info(_message)
             # sensitivity map for each color ends here
 
             # mosaic different colors of flats
             if len(flat_group) == 1:
-                # only 1 type of flat
+                # only 1 type of flat, no mosaic. just copy the file (if needed)
                 flatname = flat_group.keys()[0]
                 if flatname != channel_name:
                     # if names are different, copy the flat, trc and reg files
@@ -826,6 +830,9 @@ class Reduction(object):
                     # if names are the same, do nothing
                     _message = 'Flatname = channel name. nothing to do.'
                     logger.info(_message)
+
+                # pack the image to channel_flatmap_lst
+                channel_flatmap_lst[channel] = fits.getdata(flat_file)
 
             elif len(flat_group) > 1:
                 # multiple kinds of flats. do mosaic
@@ -872,6 +879,10 @@ class Reduction(object):
                 print('Unknown flat_groups')
                 raise ValueError
             # flat mosaic ended here
+
+            
+            # pack the mosaiced flat map
+            channel_flatmap_lst[channel] = resp_data
 
 
         # channel loop ends here

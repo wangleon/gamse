@@ -4,10 +4,11 @@ import astropy.io.fits as fits
 from .reduction import Reduction
 from .plot import plot_spectra1d
 from ..utils.config import read_config, find_config
+from . import foces, xinglong216hrs, apf_levy
 
 instrument_lst =  ['FOCES', 'Xinglong216HRS']
 
-def reduce_echelle(instrument):
+def reduce_echelle():
     '''Automatically select the instrument and reduce echelle spectra
     accordingly.
 
@@ -18,21 +19,27 @@ def reduce_echelle(instrument):
         * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station, China.
 
     Args:
-        instrument (string): Name of the instrument.
+        No args.
     Returns:
         No returns.
 
     '''
-    if instrument == 'FOCES':
-        from .foces import FOCES
-        reduction = FOCES()
-        reduction.reduce()
-    elif instrument == 'Xinglong216HRS':
-        from .xinglong216hrs import Xinglong216HRS
-        reduction = Xinglong216HRS()
-        reduction.reduce()
+
+    key = get_instrument()
+
+    if key == ('Fraunhofer', 'FOCES'):
+        reduction = foces.FOCES()
+    elif key == ('Xinglong2.16m', 'HRS'):
+        reduction = xinglong216hrs.Xinglong216HRS()
+    elif key == ('APF', 'Levy'):
+        reduction = apf_levy.APF_Levy()
     else:
-        print('Unknown Instrument: %s'%instrument)
+        print('Unknown Instrument: %s, %s'%(telescope, instrument))
+        exit()
+
+    logger.info('Start reducing %s, %s data'%(telescope, instrument))
+    reduction.reduce()
+
 
 def plot():
     '''Plot the 1-D spectra.
@@ -44,42 +51,48 @@ def plot():
     '''
     plot_spectra1d()
 
-
-
-def make_log(instrument, path):
+def make_log():
     '''Scan the path to the raw FITS files and generate an observing log.
     
     Args:
-        instrument (string): Name of the instrument.
-        path (string): Path to the raw FITS files.
+        No args
     Returns:
         No returns.
     '''
-    if instrument == 'FOCES':
-        from .foces import make_log
-        make_log(path)
-    elif instrument == 'Xinglong216HRS':
-        from .xinglonghrs import make_log
-        make_log(path)
+    config_file = find_config('./')
+    config = read_config(config_file)
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+    rawdata    = section['rawdata']
+    key = get_instrument()
+
+    if key == ('Fraunhofer', 'FOCES'):
+        foces.make_log(rawdata)
+    elif key == ('Xinglong2.16m', 'HRS'):
+        xinglong216hrs.make_log(rawdata)
+    elif key == ('APF', 'Levy'):
+        apf_levy.make_log(rawdata)
     else:
-        print('Cannot recognize the instrument name: %s'%instrument)
+        print('Unknown Instrument: %s, %s'%(telescope, instrument))
         exit()
 
-def get_instrument(path):
+def get_instrument():
     '''Find the telescope and instrument by checking the raw FITS files.
 
     Args:
-        path (string): Path to the raw files.
+        No args
     Returns:
         string: Name of the instrument.
     '''
-    fname_lst = [name for name in os.listdir(path) if name[-5:]=='.fits']
-    head = fits.getheader(os.path.join(path, fname_lst[0]))
-    if 'INSTRUME' in head and head['INSTRUME']=='FOCES':
-        return 'FOCES'
-    else:
-        print('Cannot recognize the instrument')
-        return ''
+    config_file = find_config('./')
+    config = read_config(config_file)
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+    rawdata    = section['rawdata']
+    return telescope, instrument
+
 
 def find_rawdata():
     '''Find the path to the raw images.
