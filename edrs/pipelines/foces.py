@@ -515,12 +515,22 @@ def make_log(path):
         exptime = None
         data, head = fits.getdata(os.path.join(path, fname), header=True)
         scidata = data[:,20:-20]
-        obsdate = head['UTC-STA']
-        exptime = head['EXPTIME']
-        try:
-            objectname = head['OBJECT']
-        except:
+        obsdate = head['FRAME']
+        exptime = head['EXPOSURE']
+
+        if fileid[22:25]=='BIA':
+            objectname = 'Bias'
+            imagetype  = 'cal'
+        elif fileid[22:25]=='FLA':
+            objectname = 'Flat'
+            imagetype  = 'cal'
+        elif fileid[22:25]=='THA':
+            objectname = 'ThAr'
+            imagetype  = 'cal'
+        else:
             objectname = 'Unknown'
+            if fileid[22:25]=='SCI':
+                imagetype  = 'sci'
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (scidata>=63000)
@@ -536,6 +546,7 @@ def make_log(path):
                    obsdate    = obsdate,
                    exptime    = exptime,
                    objectname = objectname,
+                   imagetype  = imagetype,
                    saturation = prop,
                    brightness = brightness,
                    )
@@ -545,18 +556,20 @@ def make_log(path):
 
     # make info list
     all_info_lst = []
-    columns = ['frameid (i)', 'fileid (s)', 'objectname (s) ', 'exptime (f)',
-               'obsdate (s)', 'saturation (f)', 'brightness (f)']
+    columns = ['frameid (i)', 'fileid (s)', 'imagetype (s)', 'objectname (s)',
+                'exptime (f)', 'obsdate (s)', 'saturation (f)', 'brightness (f)']
     prev_frameid = -1
     for item in log:
         frameid = int(item.fileid.split('_')[1])
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(frameid, prev_frameid))
+
         info_lst = [
                     str(frameid),
                     str(item.fileid),
+                    str(item.imagetype),
                     str(item.objectname),
-                    '%.3f'%item.exptime,
+                    '%g'%item.exptime,
                     str(item.obsdate),
                     '%.3f'%item.saturation,
                     '%.1f'%item.brightness,
