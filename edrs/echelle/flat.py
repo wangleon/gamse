@@ -1069,6 +1069,10 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
         if np.isnan(fitpar_lst[aper][:,0]).sum()>0.5*w:
             break
 
+        if (~np.isnan(fitpar_lst[aper][:,0])).sum()<10:
+            break
+
+
         if plot_aperpar:
             if iaper%5==0:
                 fig = plt.figure(figsize=(12,8),dpi=150, tight_layout=True)
@@ -1086,6 +1090,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
 
             _m = ~np.isnan(yflux)
             if _m.sum() > 0:
+                # there's real number in yflux
                 nonzeroindex = np.nonzero(_m)[0]
                 i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
                 for ite in range(2):
@@ -1099,6 +1104,9 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
                     if _new_m.sum()==_m.sum():
                         break
                     _m = _new_m
+            else:
+                #???
+                pass
 
             mask_lst.append(_m)
 
