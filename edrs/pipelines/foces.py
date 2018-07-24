@@ -166,7 +166,8 @@ class FOCES(Reduction):
     
             # update fits header
             # head['BLANK'] is only valid for integer arrays.
-            del head['BLANK']
+            if 'BLANK' in head:
+                del head['BLANK']
             head['HIERARCH EDRS OVERSCAN']        = True
             head['HIERARCH EDRS OVERSCAN METHOD'] = 'mean'
             head['HIERARCH EDRS OVERSCAN AXIS-1'] = '1:20'
@@ -183,7 +184,8 @@ class FOCES(Reduction):
             # quality check of the mean value of the overscan with time
             # therefore the time and the mean overscan values are stored in 
             # a list to be analyzed later
-            t_lst.append(head['UTC-STA'])
+            #t_lst.append(head['UTC-STA'])
+            t_lst.append(head['FRAME'])
             frameid_lst.append(item.frameid)
             fileid_lst.append(item.fileid)
             ovr1_lst.append(ovrmean1)
@@ -408,7 +410,7 @@ class FOCES(Reduction):
                     (self.input_suffix, self.output_suffix))
         self.input_suffix = self.output_suffix
    
-    def plot_bias_variation(self, data_lst, head_lst, time_key='UTC-STA'):
+    def plot_bias_variation(self, data_lst, head_lst, time_key='FRAME'):
         '''
         Plot the variation of bias level with time.
         A figure will be generated in the report directory of the reduction. The

@@ -1,4 +1,7 @@
 import os
+import logging
+logger = logging.getLogger(__name__)
+
 import astropy.io.fits as fits
 
 from .reduction import Reduction
@@ -34,10 +37,10 @@ def reduce_echelle():
     elif key == ('APF', 'Levy'):
         reduction = apf_levy.APF_Levy()
     else:
-        print('Unknown Instrument: %s, %s'%(telescope, instrument))
+        print('Unknown Instrument: %s, %s'%(key[0], key[1]))
         exit()
 
-    logger.info('Start reducing %s, %s data'%(telescope, instrument))
+    logger.info('Start reducing %s, %s data'%(key[0], key[1]))
     reduction.reduce()
 
 
