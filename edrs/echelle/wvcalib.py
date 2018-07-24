@@ -2263,7 +2263,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
 
     # find aperture locations
     aperture_coeffs = get_aperture_coeffs_in_header(head)
-
+    
     # loop all channels
     for channel in sorted(channel_lst):
 
@@ -2281,19 +2281,26 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             self_reference = False
             # find the closet ThAr
             refcalib_lst = []
-            for direction in [-1, +1]:
-                _frameid = frameid
-                while(True):
-                    _frameid += direction
-                    if _frameid in calib_lst and channel in calib_lst[_frameid]:
-                        calib = calib_lst[_frameid][channel]
-                        refcalib_lst.append(calib)
-                        #print(item.frameid, 'append',channel, frameid)
-                        break
-                    elif _frameid <= min(calib_lst) or _frameid >= max(calib_lst):
-                        break
-                    else:
-                        continue
+            if frameid <= min(calib_lst):
+                calib = calib_lst[min(calib_lst)][channel]
+                refcalib_lst.append(calib)
+            elif frameid >= max(calib_lst):
+                calib = calib_lst[max(calib_lst)][channel]
+                refcalib_lst.append(calib)
+            else:
+                for direction in [-1, +1]:
+                    _frameid = frameid
+                    while(True):
+                        _frameid += direction
+                        if _frameid in calib_lst and channel in calib_lst[_frameid]:
+                            calib = calib_lst[_frameid][channel]
+                            refcalib_lst.append(calib)
+                            #print(item.frameid, 'append',channel, frameid)
+                            break
+                        elif _frameid <= min(calib_lst) or _frameid >= max(calib_lst):
+                            break
+                        else:
+                            continue
 
         # get variable shortcuts.
         # in principle, these parameters in refcalib_lst should have the same
@@ -2360,6 +2367,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
                 string = '# text(%7.2f, %7.2f) text={A%d, O%d} color=%s'
                 text = string%(x+1, y+1, aperture, order, color)
                 regfile.write(text+os.linesep)
+                print('-------'+text)
 
                 # write text in the right edge
                 x = npixel-1+6
