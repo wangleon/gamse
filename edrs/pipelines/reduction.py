@@ -20,6 +20,7 @@ from ..echelle.trace      import find_apertures, load_aperture_set
 from ..echelle.flat       import mosaic_flat_auto, mosaic_images, get_flatfielding
 from ..echelle.background import correct_background
 from ..echelle.extract    import sum_extract
+from ..echelle.wvcalib    import wvcalib, recalib, reference_wv
 
 class Reduction(object):
     '''General echelle reduction.
@@ -32,7 +33,7 @@ class Reduction(object):
             * *'rawdata'*: Path to raw images.
             * *'midproc'*: Path to mid-process files.
             * *'report'*: Path to report file.
-            * *'report_img'*: Path to images used in report.
+            * *'report'*: Path to images used in report.
 
         input_suffix (string): Surfix of filenames before each step.
         output_suffix (string): Surfix of filenames after each step.
@@ -108,9 +109,15 @@ class Reduction(object):
         self.config = read_config(instrument=self.instrument)
 
         # get a dict of paths
-        self.paths = {}
-        for option in self.config.options('path'):
-            self.paths[option] = self.config.get('path', option)
+        #for option in self.config.options('path'):
+        #    self.paths[option] = self.config.get('path', option)
+        section = self.config['data']
+        self.paths = {
+                'rawdata': section['rawdata'],
+                'midproc': section['midproc'],
+                'report':  section['report'],
+                'result':  section['result'],
+        }
 
         # check if data path exist
         _rawdata = self.paths['rawdata']
@@ -301,7 +308,7 @@ class Reduction(object):
                         break
         return item_lst
 
-    def combine_flat(self, item_list, flatname):
+    def combine_flat(self, item_list, flatname, exptime_key='EXPOSURE'):
         '''
         Combine flat fielding frames.
 
@@ -368,7 +375,7 @@ class Reduction(object):
                     all_mask = np.zeros_like(data, dtype=np.int16)
 
                 all_data.append(data)
-                total_exptime += head['EXPTIME']
+                total_exptime += head[exptime_key]
             
                 # load mask data
                 maskname = '%s%s.fits'%(item.fileid, self.mask_suffix)
@@ -408,7 +415,7 @@ class Reduction(object):
 
             mexptime  = total_exptime/float(nfile)
             newhead['HIERARCH EDRS FLAT MEANEXPTIME'] = mexptime
-            newhead['EXPTIME'] = mexptime
+            newhead[exptime_key] = mexptime
         
             fits.writeto(out_flatpath, data_mean, newhead, overwrite=True)
             logger.info('Save combined flat image: "%s"'%out_flatpath)
@@ -787,8 +794,8 @@ class Reduction(object):
                             nflat       = nflat,
                             q_threshold = q_threshold,
                             param_deg   = param_deg,
-                            #fig_aperpar = fig_aperpar,
-                            #fig_overlap = fig_overlap,
+                            fig_aperpar = fig_aperpar,
+                            fig_overlap = fig_overlap,
                             fig_slit    = fig_slit,
                             slit_file   = slit_file,
                             )
@@ -799,7 +806,7 @@ class Reduction(object):
                 resp_lst[flatname] = flatmap
 
                 # write to running log
-                _string = 'Channel %s, $s: Flat map saved as "%s"'
+                _string = 'Channel %s, %s: Flat map saved as "%s"'
                 _message = _string%(channel, flatname, outfile)
                 logger.info(_message)
             # sensitivity map for each color ends here
@@ -932,7 +939,7 @@ class Reduction(object):
 
         # path alias
         midproc = self.paths['midproc']
-        report_img = self.paths['report_img']
+        report  = self.paths['report']
 
         # read config parameters
         display    = section.getboolean('display')
@@ -948,7 +955,7 @@ class Reduction(object):
         aperset_lst = {}
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
-            trcfilename = 'flat_%s_trc.txt'%channel
+            trcfilename = 'flat_%s.trc'%channel
             trcfile = os.path.join(midproc, trcfilename)
             aperset = load_aperture_set(trcfile)
             aperset_lst[channel] = aperset
@@ -977,7 +984,7 @@ class Reduction(object):
             outfile_lst.append(os.path.join(midproc, outfilename))
             scafile_lst.append(os.path.join(midproc, scafilename))
             regfile_lst.append(os.path.join(midproc, regfilename))
-            figfile_lst.append(os.path.join(report_img, imgfilename))
+            figfile_lst.append(os.path.join(report, imgfilename))
 
             channels = [chr(ich+65) for ich, objectname in enumerate(item.objectname)
                             if len(objectname)>0]
@@ -1086,7 +1093,7 @@ class Reduction(object):
                                    expand_grid     = expand_grid,
                                    fig1            = fig1,
                                    fig2            = fig2,
-                                   report_img_path = self.paths['report_img'],
+                                   report_img_path = self.paths['report'],
                                    )
             
             if display:
@@ -1129,7 +1136,7 @@ class Reduction(object):
         aperset_lst = {}
         for ichannel in range(self.nchannels):
             channel = chr(ichannel+65)
-            trcfilename = 'flat_%s_trc.txt'%channel
+            trcfilename = 'flat_%s.trc'%channel
             trcfile = os.path.join(midproc, trcfilename)
             aperset = load_aperture_set(trcfile)
             aperset_lst[channel] = aperset
@@ -1380,10 +1387,8 @@ class Reduction(object):
             return True
 
         # path alias
-        midproc    = self.paths['midproc']
-        report_img = self.paths['report_img']
-
-        from ..echelle.wvcalib import wvcalib, recalib, reference_wv
+        midproc = self.paths['midproc']
+        report  = self.paths['report']
 
         # get parameters from config file
         linelist      = section.get('linelist')
@@ -1462,7 +1467,7 @@ class Reduction(object):
 
                     infilepath  = os.path.join(midproc, infilename)
                     idtfilepath = os.path.join(midproc, idtfilename)
-                    figfilepath = os.path.join(report_img, figfilename)
+                    figfilepath = os.path.join(report, figfilename)
 
                     if ich == 0 and i == 0:
                         calib = wvcalib(infilepath,
