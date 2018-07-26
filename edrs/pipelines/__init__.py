@@ -7,7 +7,7 @@ import astropy.io.fits as fits
 from .reduction import Reduction
 from .plot import plot_spectra1d
 from ..utils.config import read_config, find_config
-from . import foces, xinglong216hrs, apf_levy
+from . import foces, xinglong216hrs, levy
 
 instrument_lst =  ['FOCES', 'Xinglong216HRS']
 
@@ -35,7 +35,7 @@ def reduce_echelle():
     elif key == ('Xinglong2.16m', 'HRS'):
         reduction = xinglong216hrs.Xinglong216HRS()
     elif key == ('APF', 'Levy'):
-        reduction = apf_levy.APF_Levy()
+        levy.reduce()
     else:
         print('Unknown Instrument: %s, %s'%(key[0], key[1]))
         exit()
@@ -75,7 +75,7 @@ def make_log():
     elif key == ('Xinglong2.16m', 'HRS'):
         xinglong216hrs.make_log(rawdata)
     elif key == ('APF', 'Levy'):
-        apf_levy.make_log(rawdata)
+        levy.make_log(rawdata)
     else:
         print('Unknown Instrument: %s, %s'%(telescope, instrument))
         exit()

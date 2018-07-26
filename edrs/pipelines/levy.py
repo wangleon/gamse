@@ -1,10 +1,23 @@
 import os
+import numpy as np
 import astropy.io.fits as fits
 
 from ..utils import obslog
 
+def reduce():
+    '''Reduce the APF/Levy spectra.
+
+    '''
+    obslogfile = obslog.find_log(os.curdir)
+    log = obslog.read_log(obslogfile)
+    for item in log:
+        print(item)
+
+
+
 def make_log(path):
     '''
+
     Args:
         path (string): Path to the raw FITS files.
     '''
@@ -22,14 +35,12 @@ def make_log(path):
         obstype    = head['OBSTYPE']
         exptime    = head['EXPTIME']
         objectname = head['OBJECT']
-        dateobs    = head['DATE-OBS']
+        obsdate    = head['DATE-OBS']
+        i2cell     = {'In': 1, 'Out': 0}[head['ICELNAM']]
 
         f.close()
 
-        if objectname.lower().strip() in cal_objects:
-            imgtype = 'cal'
-        else:
-            imgetype = 'sci'
+        imagetype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (data>=65535)
@@ -40,24 +51,25 @@ def make_log(path):
         data1 = data[h//2-2:h//2+3, int(w*0.3):int(w*0.7)]
         bri_index = np.median(data1,axis=1).mean()
 
-        item = obslog.LotItem(
-                fileld     = fileid,
+        item = obslog.LogItem(
+                fileid     = fileid,
                 obsdate    = obsdate,
                 exptime    = exptime,
                 imagetype  = imagetype,
                 objectname = objectname,
                 obstype    = obstype,
-                saturation = pop,
+                i2cell     = i2cell,
+                saturation = prop,
                 brightness = bri_index,
                 )
         log.add_item(item)
 
-    log.sort('obsdata')
+    log.sort('obsdate')
 
     # make info_lst
     all_info_lst = []
     columns = ['frameid (i)', 'fileid (s)', 'imagetype (s)', 'obstype (s)',
-               'objectname (s)', 'i2 (i)', 'exptime (f)', 'obsdate (s)',
+               'objectname (s)', 'i2cell (i)', 'exptime (f)', 'obsdate (s)',
                'saturation (f)', 'brightness (f)']
     prev_frameid = -1
     for logitem in log:
@@ -65,10 +77,11 @@ def make_log(path):
         info_lst = [
                 str(frameid),
                 logitem.fileid,
+                logitem.objectname,
                 logitem.imagetype,
                 logitem.obstype,
-                str(logitem.i2),
-                '%8.3f'%logitem.exptime,
+                str(logitem.i2cell),
+                '%g'%logitem.exptime,
                 str(logitem.obsdate),
                 '%.3f'%logitem.saturation,
                 '%.1f'%logitem.brightness,
