@@ -5,7 +5,7 @@ CCD Image Processing
 --------------------
 .. currentmodule:: edrs.imageproc
 .. autosummary::
-    combine_fits
+    combine_images
     savitzky_golay_2d
     array_to_table
     table_to_array
