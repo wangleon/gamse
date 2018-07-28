@@ -7,54 +7,34 @@ import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 
-def combine_fits(filename_lst,dst_filename,
+def combine_image(data_lst,
         mode       = 'mean',  # mode = ['mean'|'sum']
-        header     = True,    # keep fits header?
         upper_clip = None,
         lower_clip = None,
-        nite       = None,
+        niter      = None,
         maxiter    = None,
-        key_exptime= 'EXPTIME'
         ):
     '''Combine multiple FITS images.
 
     Args:
-        filename_lst (list): A list containing names of files to be combined.
-        dst_filename (str): Name of the output FITS file.
-        mode (str): Combine mode. Either "mean" or "sum".
-        header (bool): Whether the FITS headers are kept in the output file.
+        data_lst (list): A list of 2D `numpy.array`.
+        mode (string): Combine mode. Either "mean" or "sum".
         upper_clip (float): Upper threshold of the sigma-clipping. Default is
             *None*.
-        lower_cli (float): Lower threshold of the sigma-cipping. Default is
+        lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
-        nite (int): Number of iterations.
+        niter (integer): Number of iterations.
         maxiter (maxiter): Maximum number of iterations.
-        key_exptime (str): Keyword of the exposuretime.
     Returns:
-        No returns.
+        :class:`numpy.array`.
 
     '''
 
     clip = not (upper_clip == None and lower_clip == None)
 
-    if mode in ['mean','sum']:
-        for ifile,filename in enumerate(filename_lst):
-            data, head = fits.getdata(filename, header=True)
-            if ifile == 0:
-                head0 = head
-                exptime = 0.0
-                if clip:
-                    all_data = []
-                else:
-                    data_sum = np.zeros_like(data)
-            if clip:
-                all_data.append(data)
-            else:
-                data_sum += data
-            exptime += head[key_exptime]
 
     if clip:
-        all_data = np.array(all_data)
+        data_lst = np.array(data_lst)
         all_mask = np.ones_like(all_data)>0
         mask = (all_data == all_data.max(axis=0))
         nite = 0
