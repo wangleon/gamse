@@ -30,53 +30,62 @@ def combine_image(data_lst,
 
     '''
 
-    clip = not (upper_clip == None and lower_clip == None)
+    # if anyone of upper_clip and lower_clip is not None, then clip is True
+    clip = (upper_clip is not None) or (lower_clip is not None)
 
+    nimage = len(data_lst)
+    data_lst = np.array(data_lst)
 
     if clip:
-        data_lst = np.array(data_lst)
-        all_mask = np.ones_like(all_data)>0
-        mask = (all_data == all_data.max(axis=0))
-        nite = 0
+        mask_lst = (data_lst == data_lst.max(axis=0))
+        niter = 0
         while(True):
-            nite += 1
-            mdata = np.ma.masked_array(all_data, mask=mask)
-            m = mdata.mean(axis=0,dtype='float64').data
-            s = mdata.std(axis=0,dtype='float64').data
-            new_mask = np.ones_like(mask)>0
-            for i,filename in enumerate(filename_lst):
-                data = all_data[i,:,:]
-                if upper_clip != None:
-                    mask1 = data > m + abs(upper_clip)*s
-                else:
+            niter += 1
+            mdata = np.ma.masked_array(data_lst, mask=max_mask)
+            m = mdata.mean(axis=0, dtype=np.float64).data
+            s = mdata.std(axis=0, dtype=np.float64).data
+            new_mask_lst = np.ones(mask_lst, dtype=np.bool)
+            for i, data in enumerate(data_lst):
+
+                # parse upper clipping
+                if upper_clip is None:
                     # mask1 = [False....]
-                    mask1 = np.ones_like(data)<0
-                if lower_clip != None:
-                    mask2 = data < m - abs(lower_clip)*s
+                    mask1 = np.zeros(data.shape, dtype=np.bool)
                 else:
+                    mask1 = data > m + abs(upper_clip)*s
+
+                # parse lower clipping
+                if lower_clip is None:
                     # mask2 = [False....]
-                    mask2 = np.ones_like(data)<0
-                new_mask[i,:,:] = np.logical_or(mask1, mask2)
-            if nite >= maxiter:
+                    mask2 = np.zeros(data.shape, dtype=np.bool)
+                else:
+                    mask2 = data < m - abs(lower_clip)*s
+
+                new_mask_lst[i,:,:] = np.logical_or(mask1, mask2)
+            if niter >= maxiter:
                 break
-            if new_mask.sum() == mask.sum():
+            if new_mask_lst.sum() == mask_lst.sum():
                 break
-            mask = new_mask
+            mask_lst = new_mask_lst
 
-        mdata = np.ma.masked_array(all_data, mask=mask)
-        mean = mdata.mean(axis=0,dtype='float64').data
-        data_sum = mean*len(filename_lst)
+        mdata = np.ma.masked_array(data_lst, mask=mask_lst)
+        mean = mdata.mean(axis=0, dtype=np.float64).data
 
-    if mode == 'mean':
-        data_sum /= len(filename_lst)
-        exptime  /= len(filename_lst)
-
-    head0[key_exptime] = exptime
-
-    if header:
-        save_fits(dst_filename,data_sum,head0)
+        if mode == 'mean':
+            return mean
+        elif mode == 'sum':
+            return mean*nimage
+        else:
+            raise ValueError
+            return None
     else:
-        save_fits(dst_filename,data_sum)
+        if mode == 'mean':
+            return data_lst.mean(axis=0, dtype=np.float64)
+        elif mode == 'sum':
+            return data_lst.sum(axis=0, dtype=np.float64)
+        else:
+            raise ValueError
+            return None
 
 def make_mask():
     '''
@@ -95,8 +104,8 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
 
     Args:
         z (:class:`numpy.array`): Input 2-d array.
-        xwindow (int): Window size along *x*-axis.
-        ywindow (int): Window size along *y*-axis.
+        xwindow (integer): Window size along *x*-axis.
+        ywindow (integer): Window size along *y*-axis.
         xorder (float): Degree of polynomial along *x*-axis.
         yorder (float): Degree of polynomial along *y*-axis.
         derivative (str): *None*, *col*, *row*, or *both*.
