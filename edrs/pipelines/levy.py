@@ -1,8 +1,48 @@
 import os
 import numpy as np
 import astropy.io.fits as fits
+import matplotlib.pyplot as plt
 
 from ..utils import obslog
+from ..utils.config import read_config
+from ..echelle.imageproc import combine_images
+
+def parse_bias_data(filename):
+    '''Parse singl bias data by fitting the data with polynomial to remove the
+    cosmic rays'''
+
+    data = fits.getdata(filename)
+    h, w = data.shape
+
+    ysum = data[:,::3].mean(axis=1)
+    x = np.arange(ysum.size)
+
+    fig = plt.figure()
+    ax = fig.gca()
+    ax.plot(x, ysum, alpha=0.3)
+
+    mask = np.ones_like(ysum, dtype=np.bool)
+    niter = 0
+    maxiter = 5
+    while(niter < maxiter):
+        niter += 1
+        coeff = np.polyfit(x[mask], ysum[mask], deg=6)
+        yfit = np.polyval(coeff, x)
+        res  = ysum - yfit
+        std = res[mask].std()
+        new_mask = ysum < yfit + 5.*std
+        if new_mask.sum() == mask.sum():
+            break
+        mask = new_mask
+        ax.plot(x, yfit, label='Iter %d'%niter)
+
+    leg = ax.legend(loc='upper right')
+    leg.get_frame().set_alpha(0.1)
+    fig.savefig('bias.%s.ymean.png'%os.path.basename(filename))
+
+    ygrid, xgrid = np.mgrid[0:h, 0:w]
+    bias = np.polyval(coeff, ygrid)
+    return bias
 
 def reduce():
     '''Reduce the APF/Levy spectra.
@@ -10,9 +50,27 @@ def reduce():
     '''
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
-    for item in log:
-        print(item)
 
+    config = read_config('Levy')
+
+    rawdata = config['data']['rawdata']
+
+    # parse bias
+    bias_lst = []
+    for item in log:
+        if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
+            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+            bias = parse_bias_data(filename)
+            bias_lst.append(bias)
+
+    bias = np.array(bias_lst).mean(axis=0)
+    fits.writeto('bias.fits', bias, overwrite=True)
+
+    # trace the order
+    trace_lst = [fits.getdata(os.path.join(rawdata, '%s.fits'%item.fileid))
+                 for item in log if item.objectname[0]=='NarrowFlat']
+    trace = combine_images(trace_lst, mode='mean', upper_clip=10, maxiter=5)
+    fits.writeto('trace.fits', trace, overwrite=True)
 
 
 def make_log(path):
