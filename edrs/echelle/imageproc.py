@@ -7,11 +7,10 @@ import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 
-def combine_image(data_lst,
+def combine_images(data_lst,
         mode       = 'mean',  # mode = ['mean'|'sum']
         upper_clip = None,
         lower_clip = None,
-        niter      = None,
         maxiter    = None,
         ):
     '''Combine multiple FITS images.
@@ -23,7 +22,6 @@ def combine_image(data_lst,
             *None*.
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
-        niter (integer): Number of iterations.
         maxiter (maxiter): Maximum number of iterations.
     Returns:
         :class:`numpy.array`.
@@ -41,23 +39,23 @@ def combine_image(data_lst,
         niter = 0
         while(True):
             niter += 1
-            mdata = np.ma.masked_array(data_lst, mask=max_mask)
+            mdata = np.ma.masked_array(data_lst, mask=mask_lst)
             m = mdata.mean(axis=0, dtype=np.float64).data
             s = mdata.std(axis=0, dtype=np.float64).data
-            new_mask_lst = np.ones(mask_lst, dtype=np.bool)
+            new_mask_lst = np.ones_like(mask_lst, dtype=np.bool)
             for i, data in enumerate(data_lst):
 
                 # parse upper clipping
                 if upper_clip is None:
                     # mask1 = [False....]
-                    mask1 = np.zeros(data.shape, dtype=np.bool)
+                    mask1 = np.zeros_like(data, dtype=np.bool)
                 else:
                     mask1 = data > m + abs(upper_clip)*s
 
                 # parse lower clipping
                 if lower_clip is None:
                     # mask2 = [False....]
-                    mask2 = np.zeros(data.shape, dtype=np.bool)
+                    mask2 = np.zeros_like(data, dtype=np.bool)
                 else:
                     mask2 = data < m - abs(lower_clip)*s
 

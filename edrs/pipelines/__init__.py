@@ -41,8 +41,6 @@ def reduce_echelle():
         exit()
 
     logger.info('Start reducing %s, %s data'%(key[0], key[1]))
-    reduction.reduce()
-
 
 def plot():
     '''Plot the 1-D spectra.
