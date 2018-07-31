@@ -30,17 +30,20 @@ def reduce_echelle():
 
     key = get_instrument()
 
+    logger.info('Start reducing %s, %s data'%(key[0], key[1]))
+
     if key == ('Fraunhofer', 'FOCES'):
         reduction = foces.FOCES()
+        reduction.reduce()
     elif key == ('Xinglong2.16m', 'HRS'):
         reduction = xinglong216hrs.Xinglong216HRS()
+        reduction.reduce()
     elif key == ('APF', 'Levy'):
         levy.reduce()
     else:
         print('Unknown Instrument: %s, %s'%(key[0], key[1]))
         exit()
 
-    logger.info('Start reducing %s, %s data'%(key[0], key[1]))
 
 def plot():
     '''Plot the 1-D spectra.
