@@ -6,25 +6,28 @@ from ..utils.config  import read_config
 from ..utils.obslog  import read_log, find_log
 
 def plot_spectra1d():
-    config = read_config()
+    config = read_config('')
 
     obslog_file = find_log(os.curdir)
     log = read_log(obslog_file)
 
+    section = config['data']
 
-    midproc = config.get('reduction', 'path.midproc')
-    path_report  = config.get('reduction', 'path.report')
+    midproc = section['midproc']
+    report  = section['report']
 
-    steps_string = config.get('reduction', 'steps')
+    steps_string = config['reduction']['steps']
     step_lst = steps_string.split(',')
-    surfix = config.get('reduction', step_lst[-1].strip()+'.surfix')
-    image_path = os.path.join(path_report, 'images/')
+    suffix = config[step_lst[-1].strip()]['suffix']
+    image_path = os.path.join(report, 'images/')
+    if not os.path.exists(image_path):
+        os.mkdir(image_path)
 
     color_lst = 'rgbcmyk'
 
     for item in log:
         if item.imagetype == 'sci':
-            filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, surfix))
+            filename = os.path.join(midproc, '%s%s.fits'%(item.fileid, suffix))
             if not os.path.exists(filename):
                 continue
             data = fits.getdata(filename)
