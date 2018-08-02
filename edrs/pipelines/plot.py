@@ -19,7 +19,7 @@ def plot_spectra1d():
     steps_string = config['reduction']['steps']
     step_lst = steps_string.split(',')
     suffix = config[step_lst[-1].strip()]['suffix']
-    image_path = os.path.join(report, 'images/')
+    image_path = 'images'
     if not os.path.exists(image_path):
         os.mkdir(image_path)
 
