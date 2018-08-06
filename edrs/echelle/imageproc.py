@@ -1,5 +1,4 @@
 import os
-import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -9,8 +8,6 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 
 def combine_images(data_lst,
-        mask       = None,
-        fill       = None,
         mode       = 'mean',  # mode = ['mean'|'sum']
         upper_clip = None,
         lower_clip = None,
@@ -56,10 +53,12 @@ def combine_images(data_lst,
             y2 = y1 + dy
             for x1 in np.arange(0, w, dx):
                 x2 = x1 + dx
-                print(y1, y2, x1, x2)
 
                 _data_lst = data_lst[:,y1:y2,x1:x2]
-                mask_lst = (_data_lst == _data_lst.max(axis=0))
+                nz, ny, nx = _data_lst.shape
+                # generate a mask containing the positions of maximum pixel
+                # along the first dimension
+                mask_lst = (np.mgrid[0:nz,0:ny,0:nx][0]==_data_lst.argmax(axis=0))
                 
                 niter = 0
                 while(True):
@@ -94,10 +93,10 @@ def combine_images(data_lst,
                 mdata = np.ma.masked_array(_data_lst, mask=mask_lst)
                 
                 if mode == 'mean':
-                    mean = mdata.mean(axis=0, dtype=np.float64).data
+                    mean = mdata.mean(axis=0).data
                     res_array[y1:y2,x1:x2] = mean
                 elif mode == 'sum':
-                    mean = mdata.mean(axis=0, dtype=np.float64).data
+                    mean = mdata.mean(axis=0).data
                     res_array[y1:y2,x1:x2] = mean*nimage
                 elif mode == 'median':
                     res_array[y1:y2,x1:x2] = np.median(mdata, axis=0).data
@@ -107,9 +106,9 @@ def combine_images(data_lst,
         return res_array
     else:
         if mode == 'mean':
-            return data_lst.mean(axis=0, dtype=np.float64)
+            return data_lst.mean(axis=0)
         elif mode == 'sum':
-            return data_lst.sum(axis=0, dtype=np.float64)
+            return data_lst.sum(axis=0)
         elif mode == 'median':
             return np.median(data_lst, axis=0)
         else:
