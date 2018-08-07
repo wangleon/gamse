@@ -1,52 +1,37 @@
 import os
 import numpy as np
 import astropy.io.fits as fits
+import scipy.signal as sg
+from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
 from ..utils import obslog
 from ..utils.config import read_config
-from ..echelle.imageproc import combine_images
+from ..echelle.imageproc import combine_images, table_to_array, array_to_table
+from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.flat import get_slit_flat
+from ..echelle.extract import extract_aperset
 
-def parse_bias_data(filename):
-    '''Parse singl bias data by fitting the data with polynomial to remove the
-    cosmic rays'''
-
-    data = fits.getdata(filename)
-    h, w = data.shape
-
-    ysum = data[:,::3].mean(axis=1)
-    x = np.arange(ysum.size)
-
-    fig = plt.figure()
-    ax = fig.gca()
-    ax.plot(x, ysum, alpha=0.3)
-
-    mask = np.ones_like(ysum, dtype=np.bool)
-    niter = 0
-    maxiter = 5
-    while(niter < maxiter):
-        niter += 1
-        coeff = np.polyfit(x[mask], ysum[mask], deg=6)
-        yfit = np.polyval(coeff, x)
-        res  = ysum - yfit
-        std = res[mask].std()
-        new_mask = ysum < yfit + 5.*std
-        if new_mask.sum() == mask.sum():
-            break
-        mask = new_mask
-        ax.plot(x, yfit, label='Iter %d'%niter)
-
-    leg = ax.legend(loc='upper right')
-    leg.get_frame().set_alpha(0.1)
-    fig.savefig('bias.%s.ymean.png'%os.path.basename(filename))
-
-    ygrid, xgrid = np.mgrid[0:h, 0:w]
-    bias = np.polyval(coeff, ygrid)
-    return bias
+def correct_overscan(data):
+    if data.shape==(4608, 2080):
+        overmean = data[:,2049:2088].mean(axis=1)
+        oversmooth = sg.savgol_filter(overmean, window_length=1201, polyorder=3)
+        #coeff = np.polyfit(np.arange(overmean.size), overmean, deg=7)
+        #oversmooth2 = np.polyval(coeff, np.arange(overmean.size))
+        res = (overmean - oversmooth).std()
+        #fig = plt.figure(dpi=150)
+        #ax = fig.gca()
+        #ax.plot(overmean)
+        #ax.plot(oversmooth)
+        #ax.plot(oversmooth2)
+        #plt.show()
+        #plt.close(fig)
+        overdata = np.tile(oversmooth, (2048, 1)).T
+        corrdata = data[:,0:2048] - overdata
+        return corrdata
 
 def reduce():
     '''Reduce the APF/Levy spectra.
-
     '''
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
@@ -56,22 +41,138 @@ def reduce():
     rawdata = config['data']['rawdata']
 
     # parse bias
-    bias_lst = []
+    if True:
+        bias_lst = []
+        for item in log:
+            if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data = fits.getdata(filename)
+                data = correct_overscan(data)
+                bias_lst.append(data)
+
+        bias = combine_images(bias_lst, mode='mean', upper_clip=10, maxiter=5)
+        bias = gaussian_filter(bias, 3, mode='nearest')
+        fits.writeto('bias.fits', bias, overwrite=True)
+    else:
+        bias = fits.getdata('bias.fits')
+    exit()
+
+    # trace the orders
+    if False:
+        trace_lst = []
+        for item in log:
+            if item.objectname[0]=='NarrowFlat':
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data = fits.getdata(filename)
+                trace_lst.append(data - bias)
+        trace = combine_images(trace_lst, mode='mean', upper_clip=10, maxiter=5)
+        trace = trace.T
+        fits.writeto('trace.fits', trace, overwrite=True)
+    else:
+        trace = fits.getdata('trace.fits')
+
+    if False:
+        mask = np.zeros_like(trace, dtype=np.int8)
+
+        aperset = find_apertures(trace, mask,
+            scan_step  = 50,
+            minimum    = 8,
+            seperation = 15,
+            sep_der    = 3,
+            filling    = 0.3,
+            degree     = 3,
+            display    = True,
+            filename   = 'trace.fits',
+            fig_file   = 'trace.png',
+            trace_file = 'trace.trc',
+            reg_file   = 'trace.reg',
+            )
+    else:
+        aperset = load_aperture_set('trace.trc')
+
+
+    # combine flat images
+    flat_groups = {}
     for item in log:
-        if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
-            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
-            bias = parse_bias_data(filename)
-            bias_lst.append(bias)
+        if item.objectname[0]=='WideFlat':
+            flatname = 'flat_%d'%item.exptime
+            if flatname not in flat_groups:
+                flat_groups[flatname] = []
+            flat_groups[flatname].append(item.fileid)
+    # print how many flats in each flat name
+    for flatname in flat_groups:
+        n = len(flat_groups[flatname])
+        print('%3d images in %s'%(n, flatname))
 
-    bias = np.array(bias_lst).mean(axis=0)
-    fits.writeto('bias.fits', bias, overwrite=True)
+    flat_data_lst = {}
+    flat_mask_lst = {}
+    if True:
+        for flatname, fileids in flat_groups.items():
+            data_lst = []
+            for ifile, fileid in enumerate(fileids):
+                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                data = fits.getdata(filename)
+                mask = (data==65535)
+                if ifile==0:
+                    allmask = np.zeros_like(mask, dtype=np.int16)
+                allmask += mask
+                data = data - bias
+                data_lst.append(data)
+            nflat = len(data_lst)
+            print('combine images for', flatname)
+            flat_data = combine_images(data_lst, mode='mean',
+                        upper_clip=10, maxiter=5)
+            fits.writeto('%s.fits'%flatname, flat_data, overwrite=True)
 
-    # trace the order
-    trace_lst = [fits.getdata(os.path.join(rawdata, '%s.fits'%item.fileid))
-                 for item in log if item.objectname[0]=='NarrowFlat']
-    trace = combine_images(trace_lst, mode='mean', upper_clip=10, maxiter=5)
-    fits.writeto('trace.fits', trace, overwrite=True)
+            sat_mask = allmask>nflat/2.
+            mask_array = np.int16(sat_mask)*4
+            mask_table = array_to_table(mask_array)
+            fits.writeto('%s_msk.fits'%flatname, mask_table, overwrite=True)
+            flat_data_lst[flatname] = flat_data
+            flat_mask_lst[flatname] = mask_array
+    else:
+        for flatname in flat_groups:
+            data = fits.getdata('%s.fits'%flatname)
+            mask_table = fits.getdata('%s_msk.fits'%flatname)
+            mask_array = table_to_array(mask_table, data.shape)
+            flat_data_lst[flatname] = data
+            flat_mask_lst[flatname] = mask_array
 
+    # extract flat spectrum
+    if True:
+        flat_spectra1d_lst = {}
+        for flatname in flat_groups:
+            data = flat_data_lst[flatname]
+            mask = flat_mask_lst[flatname]
+            spectra1d = extract_aperset(data.T, mask.T,
+                            apertureset = aperset,
+                            lower_limit = 5,
+                            upper_limit = 5,
+                            )
+            flat_spectra1d_lst[flatname] = spectra1d
+            for aper in aperset:
+                print(flatname, aper, spectra1d[aper]['mask_sat'].sum())
+
+            flatmap = get_slit_flat(data.T, mask.T,
+                                apertureset = aperset,
+                                spectra1d   = spectra1d,
+                                lower_limit = 6,
+                                upper_limit = 5,
+                                deg         = 7,
+                                q_threshold = 20**2,
+                                )
+            fits.writeto('%s_resp.fits'%flatname, flatmap, overwrite=True)
+
+    # mosaic flats
+    #data = fits.getdata('flatmap_40_resp.fits')
+    #shape = data.shape
+    #maskdata_lst = {flatname: np.zeros(shape, dtype=np.bool)
+    #                for flatname in flat_groups}
+    #lower_limit = 5
+    #upper_limit = 5
+    #for iaper, (aper, aper_loc) in enumerate(sorted(aperset.items())):
+
+    
 
 def make_log(path):
     '''
