@@ -175,6 +175,10 @@ class ApertureLocation(object):
         strlst = ['%+15.10e'%c for c in self.position.coef]
         string += 'position = [%s]'%(', '.join(strlst))+os.linesep
 
+        # write domain of polynomial
+        domain = self.position.domain
+        string += '  domain = [%f, %f]'%(domain[0], domain[1])+os.linesep
+
         # find nodes
         for key in ['lower', 'center', 'upper']:
             key1 = 'nodes_%s'%key
@@ -320,23 +324,27 @@ class ApertureSet(object):
         outfile.write('physical'+os.linesep)
 
         for aper, aper_loc in sorted(self.items()):
+
+            domain = aper_loc.position.domain
+            d1, d2 = int(domain[0]), int(domain[1])+1
+
             outfile.write('# aperture %3d'%aper + os.linesep)
 
             if aper_loc.direct == 1:
                 # write text in the left edge
-                x = -6
+                x = d1-6
                 y = aper_loc.position(x)
                 text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the right edge
-                x = aper_loc.shape[aper_loc.direct]-1+6
+                x = d2-1+6
                 y = aper_loc.position(x)
                 text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the center
-                x = aper_loc.shape[aper_loc.direct]/2.
+                x = (d1+d2)/2.
                 y = aper_loc.position(x)
                 if channel is None:
                     text = '# text(%7.2f, %7.2f) text={Aperture %3d} '%(x+1, y+1+5, aper)
@@ -345,7 +353,7 @@ class ApertureSet(object):
                 outfile.write(text+os.linesep)
 
                 # draw lines
-                x = np.linspace(0, aper_loc.shape[aper_loc.direct]-1, 50)
+                x = np.linspace(d1, d2, 50)
                 y = aper_loc.position(x)
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
                     text = 'line(%7.2f,%7.2f,%7.2f,%7.2f)'%(x1+1, y1+1, x2+1, y2+1)
@@ -768,7 +776,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
         x1 += direction*scan_step
-        if x1<20:
+        if x1 <= 10:
+        #if x1 <= scan_step:
             # turn to the other direction
             direction = +1
             x1 = x0 + direction*scan_step
@@ -776,7 +785,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             flux0 = flux1_center
             icol += 1
             continue
-        elif x1 > w-20:
+        elif x1 >= w - 10:
+        #elif x1 >= w - scan_step:
             # scan ends
             break
         else:
@@ -1002,7 +1012,20 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         #ax1.plot(xfit, yfit, 'ro-',lw=0.5,alpha=0.6)
 
         # fit chebyshev polynomial
-        poly = Chebyshev.fit(xfit, yfit, domain=[0, w-1], deg=3)
+        # determine the left and right domain
+        if xfit[0] <= scan_step + 10:
+            left_domain = 0
+        else:
+            left_domain = xfit[0] - scan_step
+
+        if xfit[-1] >= w - scan_step - 10:
+            right_domain = w-1
+        else:
+            right_domain = xfit[-1] + scan_step
+
+        domain = (left_domain, right_domain)
+
+        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
 
         # generate a curve using for plot
         newx, newy = poly.linspace()
@@ -1144,6 +1167,8 @@ def load_aperture_set(filename):
                 n = aperture_loc.shape[aperture_loc.direct]
                 poly = Chebyshev(coef=value, domain=[0, n-1])
                 aperture_loc.set_position(poly)
+            elif key == 'domain':
+                aperture_loc.position.domain = eval(value)
             else:
                 setattr(aperture_set[aperture], key, eval(value))
     infile.close()
