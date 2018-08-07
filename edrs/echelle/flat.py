@@ -1208,8 +1208,8 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
 
     return flatdata
 
-def get_slit_flat(data, mask, apertureset, lower_limit=5, upper_limit=5,
-        deg=7, q_threshold=500
+def get_slit_flat(data, mask, apertureset, spectra1d,
+        lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
     ):
     '''Get the flat fielding image for the slit-fed flat fielding image.
 
@@ -1230,43 +1230,29 @@ def get_slit_flat(data, mask, apertureset, lower_limit=5, upper_limit=5,
     bad_mask = (mask&2 > 0)
 
     newx = np.arange(w)
-    xx, yy = np.meshgrid(np.arange(w),np.arange(h))
-    spectra1d = {}
     flatmap = np.ones_like(data, dtype=np.float64)
+
+    yy, xx = np.mgrid[:h:,:w:]
+
     for aper, aper_loc in sorted(apertureset.items()):
+
+        domain = aper_loc.position.domain
+        d1, d2 = int(domain[0]), int(domain[1])+1
+        newx = np.arange(d1, d2)
+
+        fluxdata = spectra1d[aper]['flux_mean'][d1:d2]
+
         position = aper_loc.position(newx)
         lower_line = position - lower_limit
         upper_line = position + upper_limit
-        lower_line = np.maximum(lower_line, np.zeros(w)-0.5)
-        lower_line = np.minimum(lower_line, np.zeros(w)+h-1-0.5)
-        upper_line = np.maximum(upper_line, np.zeros(w)-0.5)
-        upper_line = np.minimum(upper_line, np.zeros(w)+h-1-0.5)
-        lower_ints = np.int32(np.round(lower_line))
-        upper_ints = np.int32(np.round(upper_line))
-        m1 = yy > lower_ints
-        m2 = yy < upper_ints
-        mask = m1*m2
-        mask = np.float32(mask)
-        # determine the weight in the boundary
-        mask[lower_ints, newx] = 1-(lower_line+0.5)%1
-        mask[upper_ints, newx] = (upper_line+0.5)%1
+        mask = np.zeros_like(data, dtype=np.bool)
+        mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
 
-        ## determine the upper and lower row of summing
-        r1 = int(lower_line.min())
-        r2 = int(upper_line.max())+1
-
-        # summing the data and mask
-        weight_sum = mask[r1:r2].sum(axis=0)
-        fluxdata = (data[r1:r2]*mask[r1:r2]).sum(axis=0)
-        _m = weight_sum>0
-        fluxdata[_m] = fluxdata[_m]/weight_sum[_m]
-        spectra1d[aper] = fluxdata
-
-        # fit
+        # fit flux
         fmask = np.ones_like(fluxdata, dtype=np.bool)
         while(True):
             coeff = np.polyfit(newx[fmask], fluxdata[fmask], deg=deg)
-            yfit = np.polyval(coeff, np.float64(newx))
+            yfit = np.polyval(coeff, newx)
             yres = fluxdata - yfit
             std = yres[fmask].std()
             new_fmask = np.abs(yres) < 3*std
@@ -1279,10 +1265,10 @@ def get_slit_flat(data, mask, apertureset, lower_limit=5, upper_limit=5,
 
         # build a 2-D mask with every row equal to fluxmask
         imgmask = np.zeros_like(data, dtype=np.bool)
-        imgmask[:,] = fluxmask
+        imgmask[:,d1:d2] = fluxmask
 
         # mark the pixels within the the current aperture
-        imgmask = (mask>1e-6)*imgmask
+        imgmask = imgmask*mask
 
         # remove the saturated pixels and bad pixels
         imgmask = imgmask*(~sat_mask)
@@ -1290,7 +1276,7 @@ def get_slit_flat(data, mask, apertureset, lower_limit=5, upper_limit=5,
 
         # initialize the constructed pseudo flat
         fitimg = np.zeros_like(data, dtype=np.float64)
-        fitimg[:,] = yfit
+        fitimg[:,d1:d2] = yfit
 
         # build the sensitivity map
         flatmap[imgmask] = data[imgmask]/fitimg[imgmask]
