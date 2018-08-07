@@ -137,3 +137,58 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     hdu_lst.writeto(outfilename, overwrite=True)
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
+def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
+    '''
+    '''
+    h, w = data.shape
+
+    # find saturation mask and bad pixel mask
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    yy, xx = np.mgrid[:h:,:w:]
+    spectra1d = {}
+    for aper, aper_loc in sorted(apertureset.items()):
+        spectra1d[aper] = {}
+        domain = aper_loc.position.domain
+        d1, d2 = int(domain[0]), int(domain[1])+1
+        newx = np.arange(d1, d2)
+        position = aper_loc.position(newx)
+        lower_line = position - lower_limit
+        upper_line = position + upper_limit
+        lower_line = np.maximum(lower_line, -0.5)
+        lower_line = np.minimum(lower_line, h-1-0.5)
+        upper_line = np.maximum(upper_line, -0.5)
+        upper_line = np.minimum(upper_line, h-1-0.5)
+        lower_ints = np.int32(np.round(lower_line))
+        upper_ints = np.int32(np.round(upper_line))
+        m1 = yy[:,d1:d2] > lower_ints
+        m2 = yy[:,d1:d2] < upper_ints
+        mask = np.zeros_like(data, dtype=np.bool)
+        mask[:,d1:d2] = m1*m2
+        mask = np.float32(mask)
+        # determine the weight in the boundary
+        mask[lower_ints, newx] = 1-(lower_line+0.5)%1
+        mask[upper_ints, newx] = (upper_line+0.5)%1
+
+        ## determine the upper and lower row of summing
+        r1 = int(lower_line.min())
+        r2 = int(upper_line.max())+1
+
+        # summing the data and mask
+        weight_sum = mask[r1:r2].sum(axis=0)
+        # summing the flux
+        fluxsum = (data[r1:r2]*mask[r1:r2]).sum(axis=0)
+        # calculate mean flux
+        # filter the zero values
+        _m = weight_sum>0
+        fluxmean = np.zeros_like(fluxsum)
+        fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
+        spectra1d[aper]['flux_sum']  = fluxsum
+        spectra1d[aper]['flux_mean'] = fluxmean
+
+        # summing the masks
+        fluxsat = (sat_mask[r1:r2]*mask[r1:r2]).sum(axis=0)>0
+        spectra1d[aper]['mask_sat'] = fluxsat
+
+    return spectra1d
