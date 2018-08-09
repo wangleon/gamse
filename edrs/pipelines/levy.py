@@ -11,6 +11,10 @@ from ..echelle.imageproc import combine_images, table_to_array, array_to_table
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat import get_slit_flat
 from ..echelle.extract import extract_aperset
+from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database, 
+                               self_reference_singlefiber,
+                               wv_reference_singlefiber, get_time_weight)
+from ..echelle.background import correct_background
 
 def correct_overscan(data):
     if data.shape==(4608, 2080):
@@ -41,7 +45,7 @@ def reduce():
     rawdata = config['data']['rawdata']
 
     # parse bias
-    if True:
+    if False:
         bias_lst = []
         for item in log:
             if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
@@ -55,7 +59,6 @@ def reduce():
         fits.writeto('bias.fits', bias, overwrite=True)
     else:
         bias = fits.getdata('bias.fits')
-    exit()
 
     # trace the orders
     if False:
@@ -64,12 +67,14 @@ def reduce():
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data = fits.getdata(filename)
+                data = correct_overscan(data)
                 trace_lst.append(data - bias)
         trace = combine_images(trace_lst, mode='mean', upper_clip=10, maxiter=5)
         trace = trace.T
         fits.writeto('trace.fits', trace, overwrite=True)
     else:
         trace = fits.getdata('trace.fits')
+
 
     if False:
         mask = np.zeros_like(trace, dtype=np.int8)
@@ -106,16 +111,17 @@ def reduce():
 
     flat_data_lst = {}
     flat_mask_lst = {}
-    if True:
+    if False:
         for flatname, fileids in flat_groups.items():
             data_lst = []
             for ifile, fileid in enumerate(fileids):
                 filename = os.path.join(rawdata, '%s.fits'%fileid)
                 data = fits.getdata(filename)
-                mask = (data==65535)
+                mask = (data[:,0:2048]==65535)
                 if ifile==0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += mask
+                data = correct_overscan(data)
                 data = data - bias
                 data_lst.append(data)
             nflat = len(data_lst)
@@ -139,7 +145,8 @@ def reduce():
             flat_mask_lst[flatname] = mask_array
 
     # extract flat spectrum
-    if True:
+    if False:
+        flatmap_lst = {}
         flat_spectra1d_lst = {}
         for flatname in flat_groups:
             data = flat_data_lst[flatname]
@@ -150,10 +157,9 @@ def reduce():
                             upper_limit = 5,
                             )
             flat_spectra1d_lst[flatname] = spectra1d
-            for aper in aperset:
-                print(flatname, aper, spectra1d[aper]['mask_sat'].sum())
 
-            flatmap = get_slit_flat(data.T, mask.T,
+            if False:
+                flatmap = get_slit_flat(data.T, mask.T,
                                 apertureset = aperset,
                                 spectra1d   = spectra1d,
                                 lower_limit = 6,
@@ -161,18 +167,199 @@ def reduce():
                                 deg         = 7,
                                 q_threshold = 20**2,
                                 )
-            fits.writeto('%s_resp.fits'%flatname, flatmap, overwrite=True)
+                fits.writeto('%s_resp.fits'%flatname, flatmap, overwrite=True)
+            else:
+                flatmap = fits.getdata('%s_resp.fits'%flatname)
+            flatmap_lst[flatname] = flatmap
+
 
     # mosaic flats
-    #data = fits.getdata('flatmap_40_resp.fits')
-    #shape = data.shape
-    #maskdata_lst = {flatname: np.zeros(shape, dtype=np.bool)
-    #                for flatname in flat_groups}
-    #lower_limit = 5
-    #upper_limit = 5
-    #for iaper, (aper, aper_loc) in enumerate(sorted(aperset.items())):
-
+    if False:
+        mosaic_mask_lst = {flatname:np.zeros_like(flat_data_lst[flatname].T,dtype=np.bool)
+                           for flatname in flat_groups}
+        maxcount = 55000
+        h, w = flat_data_lst[list(flat_groups.keys())[0]].T.shape
+        yy, xx = np.mgrid[:h:,:w:]
+        for iaper, (aper, aper_loc) in enumerate(sorted(aperset.items())):
     
+            # find the maximum count and its belonging flatname of this aperture
+            cmax = -999
+            maxflatname = None
+            for flatname in flat_groups:
+                nsat = flat_spectra1d_lst[flatname][aper]['mask_sat'].sum()
+                cmaxi = np.sort(flat_spectra1d_lst[flatname][aper]['flux_mean'])[-10]
+                if nsat > 0 or cmaxi > maxcount:
+                    continue
+                if cmaxi > cmax:
+                    cmax = cmaxi
+                    maxflatname = flatname
+    
+            print(aper, maxflatname, cmax)
+            #domain = aper_loc.position.domain
+            #d1, d2 = int(domain[0]), int(domain[1])+1
+            #newx = np.arange(d1, d2)
+            newx = np.arange(aper_loc.shape[1])
+            position = aper_loc.position(newx)
+            if iaper==0:
+                mosaic_mask_lst[maxflatname][:,:] = True
+            else:
+                boundary = (position + prev_position)/2
+                _m = yy > boundary
+                for flatname in flat_groups:
+                    if flatname == maxflatname:
+                        mosaic_mask_lst[flatname][_m] = True
+                    else:
+                        mosaic_mask_lst[flatname][_m] = False
+            prev_position = position
+    
+        flatname0 = list(flat_groups.keys())[0]
+        flatmap0 = flatmap_lst[flatname0]
+        flatmap = np.zeros_like(flatmap0, dtype=flatmap0.dtype)
+        for flatname, maskdata in mosaic_mask_lst.items():
+            #fits.writeto('mask_%s.fits'%flatname, np.int16(maskdata), overwrite=True)
+            flatmap += flatmap_lst[flatname]*maskdata
+        fits.writeto('flat_resp.fits', flatmap, overwrite=True)
+    else:
+        flatmap = fits.getdata('flat_resp.fits')
+
+    # extract ThAr
+    h, w = bias.shape
+    spectype = np.dtype({
+                'names':  ('aperture', 'order', 'points', 'wavelength', 'flux'),
+                'formats':('i',       'i',     'i',      '(%d,)f8'%h,  '(%d,)f'%h),
+                })
+
+    if True:
+        calib_lst = {}
+        count_thar = 0
+        for item in log:
+            if item.objectname[0]=='ThAr':
+                count_thar += 1
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data, head = fits.getdata(filename, header=True)
+                mask = np.int16(data == 65535)*4
+                data = correct_overscan(data)
+                spectra1d = extract_aperset(data.T, mask.T,
+                                apertureset = aperset,
+                                lower_limit = 5,
+                                upper_limit = 5,
+                                )
+    
+                spec = [(aper, 0, item['flux_sum'].size,
+                        np.zeros_like(item['flux_sum'].size, dtype=np.float64),
+                        item['flux_sum'])
+                        for aper, item in sorted(spectra1d.items())]
+                spec = np.array(spec, dtype=spectype)
+                
+                if count_thar == 1:
+                    ref_spec, ref_calib = select_calib_from_database('Levy',
+                                            'DATE-OBS',
+                                            head['DATE-OBS'],
+                                            channel=None)
+    
+                if ref_spec is None or ref_calib is None:
+                    calib = wvcalib(spec,
+                                    filename      = '%s.fits'%item.fileid,
+                                    identfilename = 'a.idt',
+                                    figfilename   = 'wvcalib_%s.png'%item.fileid,
+                                    channel       = None,
+                                    linelist      = 'thar.dat',
+                                    window_size   = 13,
+                                    xorder        = 5,
+                                    yorder        = 4,
+                                    maxiter       = 10,
+                                    clipping      = 3,
+                                    snr_threshold = 10,
+                                    )
+                else:
+                    calib = recalib(spec,
+                                    filename      = '%s.fits'%item.fileid,
+                                    figfilename   = 'wvcalib_%s.png'%item.fileid,
+                                    ref_spec      = ref_spec,
+                                    channel       = None,
+                                    linelist      = 'thar.dat',
+                                    identfilename = '',
+                                    coeff         = ref_calib['coeff'],
+                                    npixel        = ref_calib['npixel'],
+                                    window_size   = ref_calib['window_size'],
+                                    xorder        = ref_calib['xorder'],
+                                    yorder        = ref_calib['yorder'],
+                                    maxiter       = ref_calib['maxiter'],
+                                    clipping      = ref_calib['clipping'],
+                                    snr_threshold = ref_calib['snr_threshold'],
+                                    k             = ref_calib['k'],
+                                    offset        = ref_calib['offset'],
+                                    )
+    
+                if count_thar == 1:
+                    ref_calib = calib
+                    ref_spec  = spec
+    
+                hdu_lst = self_wvreference_singlefiber(spec, head, calib)
+                hdu_lst.writeto('%s_wlc.fits'%item.fileid, overwrite=True)
+    
+                calibitem = {
+                             'fileid':   item.fileid,
+                             'date-obs': head['DATE-OBS'],
+                             'calib':    calib,
+                            }
+                calib_lst[item.frameid] = calibitem
+
+        for frameid, calibitem in sorted(calib_lst.items()):
+            print(' [%3d] %s - %4d/%4d r.m.s = %7.5f'%(
+                frameid,
+                calibitem['fileid'],
+                calibitem['calib']['nuse'],
+                calibitem['calib']['ntot'],
+                calibitem['calib']['std'])
+                )
+        string = input('select references: ')
+
+        ref_frameid_lst = [int(s) for s in string.split(',')
+                                    if len(s.strip())>0 and
+                                    s.strip().isdigit() and
+                                    int(s) in calib_lst]
+        ref_calib_lst = [calib_lst[frameid]
+                            for frameid in ref_frameid_lst]
+        ref_datetime_lst = [calib_lst[frameid]['date-obs']
+                            for frameid in reference_frameid_lst]
+
+    # extract science frames
+    for item in log:
+        if item.imagetype=='sci':
+            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+            data, head = fits.getdata(filename, header=True)
+            mask = np.int16(data == 65535)*4
+            data = correct_overscan(data)
+            data = data.T/flatmap
+            mask = mask.T
+            stray = correct_background(data, mask,
+                        channels        = ['A'],
+                        apertureset_lst = {'A': aperset},
+                        scale           = 'log',
+                        block_mask      = 4,
+                        scan_step       = 200,
+                        xorder          = 2,
+                        yorder          = 3,
+                        maxiter         = 5,
+                        upper_clip      = 3,
+                        lower_clip      = 3,
+                        extend          = True,
+                        display         = True,
+                        fig_file        = 'background_%s.png'%item.fileid,
+                        )
+            data = data - stray
+            spec = extract_aperset(data, mask,
+                        apertureset = aperset,
+                        lower_limit = 5,
+                        upper_limit = 5,
+                        )
+
+            weight_lst = get_time_weight(ref_datetime_lst, head['DATE-OBS'])
+            hdu_lst = wv_reference_singlefiber(spec, head, weight_lst
+
+
+
 
 def make_log(path):
     '''
