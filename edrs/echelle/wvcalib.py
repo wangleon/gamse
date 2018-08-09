@@ -2,6 +2,8 @@ import os
 import re
 import sys
 import math
+import datetime
+import dateutil.parser
 import itertools
 
 import numpy as np
@@ -29,10 +31,19 @@ else:
 from ..utils.regression import polyfit2d, polyval2d
 from ..utils.onedarray import pairwise
 
-identlinetype = np.dtype({
+# Identified line table with channel
+identlines_wch = np.dtype({
     'names':  ['channel','aperture','order','pixel','wavelength','snr','mask',
                'residual','method'],
     'formats':['S1', np.int16, np.int16, np.float32, np.float64, np.float32,
+               np.int16, np.float64, 'S1'],
+    })
+
+# Identified line table without channel
+identlines_woch = np.dtype({
+    'names':  ['aperture','order','pixel','wavelength','snr','mask',
+               'residual','method'],
+    'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
                np.int16, np.float64, 'S1'],
     })
 
@@ -551,7 +562,8 @@ class CalibWindow(tk.Frame):
         height (integer): Height of window.
         dpi (integer): DPI of figure.
         spec (:class:`numpy.dtype`): Spectra data.
-        filename (string): Filename of the spectra data.
+        filename (string): Filename of the spectra data. Only to display in the
+            window.
         figfilename (string): Filename of the output wavelength calibration
             figure.
         identlist (dict): Identification line list.
@@ -655,6 +667,7 @@ class CalibWindow(tk.Frame):
                 maxiter   = self.param['maxiter'],
                 clipping  = self.param['clipping'],
                 )
+
         self.param['coeff']  = coeff
         self.param['std']    = std
         self.param['k']      = k
@@ -786,12 +799,20 @@ class CalibWindow(tk.Frame):
                         fig.savefig('tmp/%d-%d-%d.png'%(aperture, i1, i2))
                         plt.close(fig)
 
-                    
+                    # initialize line table
                     if aperture not in self.identlist:
-                        self.identlist[aperture] = np.array([], dtype=identlinetype)
+                        if channel is None:
+                            self.identlist[aperture] = np.array([], dtype=identlines_woch)
+                        else:
+                            self.identlist[aperture] = np.array([], dtype=identlines_wch)
 
-                    item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
-                                    dtype=identlinetype)
+                    if channel is None:
+                        item = np.array((aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                                        dtype=identlines_woch)
+                    else:
+                        item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                                        dtype=identlines_wch)
+
                     self.identlist[aperture] = np.append(self.identlist[aperture], item)
                     has_insert = True
                     #print('insert', aperture, line[0], peak_x, i)
@@ -1093,7 +1114,10 @@ class CalibWindow(tk.Frame):
         line_frame = self.info_frame.line_frame
         
         if aperture not in self.identlist:
-            self.identlist[aperture] = np.array([], dtype=identlinetype)
+            if channel is None:
+                self.identlist[aperture] = np.array([], dtype=identlines_woch)
+            else:
+                self.identlist[aperture] = np.array([], dtype=identlines_wch)
 
         list1 = self.identlist[aperture]
 
@@ -1111,8 +1135,13 @@ class CalibWindow(tk.Frame):
         else:
             order = k*aperture + offset
 
-        item = np.array((channel, aperture, order, pixel, wavelength, -1., True, 0.0, 'm'),
-                        dtype=identlinetype)
+        if channel is None:
+            item = np.array((aperture, order, pixel, wavelength, -1., True, 0.0, 'm'),
+                            dtype=identlines_woch)
+        else:
+            item = np.array((channel, aperture, order, pixel, wavelength, -1., True, 0.0, 'm'),
+                            dtype=identlines_wch)
+
         # insert into identified line list
         self.identlist[aperture] = np.insert(self.identlist[aperture],
                                              insert_pos, item)
@@ -1222,13 +1251,13 @@ class CalibWindow(tk.Frame):
 
 
 
-def wvcalib(filename, identfilename, figfilename, linelist, channel,
+def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
     snr_threshold=10):
     '''Wavelength calibration.
 
     Args:
-        filename (string): Filename of the 1-D spectra.
+        spec (:class:`numpy.dtype`): 1-D spectra.
         identfilename (string): Filename of wavelength identification.
         figfilename (string): Filename of the output wavelength figure.
         linelist (string): Name of wavelength standard file.
@@ -1271,13 +1300,7 @@ def wvcalib(filename, identfilename, figfilename, linelist, channel,
         
     See also:
         :func:`recalib`
-
     '''
-
-    spec = fits.getdata(filename)
-    if channel != '':
-        mask = spec['channel']==channel
-        spec = spec[mask]
 
     # initialize fitting list
     if os.path.exists(identfilename):
@@ -1604,24 +1627,28 @@ def save_ident(identlist, coeff, filename, channel):
         :func:`load_ident`
 
     '''
-    exist_row_lst = []
-    if os.path.exists(filename):
-        # if filename already exist, only overwrite the current channel
-        infile = open(filename)
-        for row in infile:
-            row = row.strip()
-            if len(row)==0 or row[0] in '#$%^@!':
-                continue
-            g = row.split()
-            if g[0] != channel:
-                exist_row_lst.append(row)
-        infile.close()
+    if channel is None:
+        outfile = open(filename, 'w')
+    else:
+        exist_row_lst = []
+        if os.path.exists(filename):
+            # if filename already exist, only overwrite the current channel
+            infile = open(filename)
+            for row in infile:
+                row = row.strip()
+                if len(row)==0 or row[0] in '#$%^@!':
+                    continue
+                g = row.split()
+                if g[0] != channel:
+                    exist_row_lst.append(row)
+            infile.close()
+    
+        outfile = open(filename, 'w')
+    
+        # write other channels
+        if len(exist_row_lst)>0:
+            outfile.write(os.linesep.join(exist_row_lst))
 
-    outfile = open(filename, 'w')
-
-    # write other channels
-    if len(exist_row_lst)>0:
-        outfile.write(os.linesep.join(exist_row_lst))
 
     # write current channel
 
@@ -1630,13 +1657,22 @@ def save_ident(identlist, coeff, filename, channel):
         for pix, wav, mask, res, method in zip(list1['pixel'],
                 list1['wavelength'], list1['mask'], list1['residual'],
                 list1['method']):
-            outfile.write('%1s LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                channel, aperture, pix, wav, int(mask), res, method.decode('ascii'))+os.linesep)
+            if channel is None:
+                outfile.write('LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
+                    aperture, pix, wav, int(mask), res, method.decode('ascii')))
+            else:
+                outfile.write('%1s LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
+                    channel, aperture, pix, wav, int(mask), res, method.decode('ascii')))
+            outfile.write(os.linesep)
 
     # write coefficients
     for irow in range(coeff.shape[0]):
         string = ' '.join(['%18.10e'%v for v in coeff[irow]])
-        outfile.write('%1s COEFF %s'%(channel, string)+os.linesep)
+        if channel is None:
+            outfile.write('COEFF %s'%string)
+        else:
+            outfile.write('%1s COEFF %s'%(channel, string))
+        outfile.write(os.linesep)
 
     outfile.close()
 
@@ -1666,30 +1702,61 @@ def load_ident(filename, channel):
         if len(row)==0 or row[0] in '#$%^@!':
             continue
         g = row.split()
-        if g[0] != channel:
-            continue
-        key = g[1]
-        if key == 'LINE':
-            aperture    = int(g[2])
-            pixel       = float(g[3])
-            wavelength  = float(g[4])
-            mask        = bool(g[5])
-            residual    = float(g[6])
-            method      = g[7].strip()
-            item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,
-                             residual,method),dtype=identlinetype)
 
-            if aperture not in identlist:
-                identlist[aperture] = []
-            identlist[aperture].append(item)
-        elif key == 'COEFF':
-            coeff.append([float(v) for v in g[2:]])
+        if channel is None:
+            key = g[0]
+            if key == 'LINE':
+                aperture    = int(g[1])
+                pixel       = float(g[2])
+                wavelength  = float(g[3])
+                mask        = bool(g[4])
+                residual    = float(g[5])
+                method      = g[6].strip()
+
+                item = np.array((aperture,0,pixel,wavelength,0.,mask,
+                                 residual,method),dtype=identlines_woch)
+                if aperture not in identlist:
+                    identlist[aperture] = []
+                identlist[aperture].append(item)
+
+            elif key == 'COEFF':
+                coeff.append([float(v) for v in g[2:]])
+
+            else:
+                pass
+
+        else:
+            if g[0] != channel:
+                continue
+            key = g[1]
+            if key == 'LINE':
+                aperture    = int(g[2])
+                pixel       = float(g[3])
+                wavelength  = float(g[4])
+                mask        = bool(g[5])
+                residual    = float(g[6])
+                method      = g[7].strip()
+
+                item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,
+                                 residual,method),dtype=identlines_wch)
+                if aperture not in identlist:
+                    identlist[aperture] = []
+                identlist[aperture].append(item)
+
+            elif key == 'COEFF':
+                coeff.append([float(v) for v in g[2:]])
+
+            else:
+                pass
 
     infile.close()
 
     # convert list of every order to numpy structured array
     for aperture, list1 in identlist.items():
-        identlist[aperture] = np.array(list1, dtype=identlinetype)
+        if channel is None:
+            identlist[aperture] = np.array(list1, dtype=identlines_woch)
+        else:
+            identlist[aperture] = np.array(list1, dtype=identlines_wch)
 
     # convert coeff to numpy array
     coeff = np.array(coeff)
@@ -1920,7 +1987,10 @@ class CalibFigure(Figure):
         self._ax3 = self.add_axes([0.65,0.54,0.32,0.4])
 
         # add title
-        title = '%s - channel %s'%(filename, channel)
+        if channel is None:
+            title = '%s'%filename
+        else:
+            title = '%s - channel %s'%(filename, channel)
         self.suptitle(title, fontsize=15)
 
         #draw the aperture number to the corner of ax1
@@ -2034,7 +2104,78 @@ class CalibFigure(Figure):
         self._ax3.set_xlabel('Pixel')
         self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
 
-def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel,
+
+def select_calib_from_database(instrument, time_key, date, channel):
+    path = os.path.join(os.getenv('HOME'), '.edrs/wvcalib/%s'%instrument)
+    if not os.path.exists(path):
+        return None, None
+    filename_lst = []
+    datetime_lst = []
+    for fname in os.listdir(path):
+        if fname[-9:]=='_wlc.fits':
+            filename = os.path.join(path, fname)
+            head = fits.getheader(filename)
+            datetime = dateutil.parser.parse(head[time_key])
+            filename_lst.append(filename)
+            datetime_lst.append(datetime)
+    if len(filename_lst)==0:
+        return None, None
+
+    input_datetime = dateutil.parser.parse(date)
+    deltat_lst = np.array([abs((input_datetime - datetime).total_seconds())
+                            for datetime in datetime_lst])
+    imin = deltat_lst.argmin()
+    sel_filename = filename_lst[imin]
+
+    #
+    f = fits.open(sel_filename)
+    head = f[0].header
+    spec = f[1].data
+
+    if 'channel' in spec.dtype.names:
+        #exp = '^EDRS TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
+        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+    else:
+        leading_str = 'HIERARCH EDRS WVCALIB'
+
+    k      = head[leading_str+' K']
+    offset = head[leading_str+' OFFSET']
+    xorder = head[leading_str+' XORDER']
+    yorder = head[leading_str+' YORDER']
+
+    coeff = np.zeros((yorder+1, xorder+1))
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        coeff[j,i] = head[leading_str+' COEFF %d %d'%(j, i)]
+    
+    npixel        = head[leading_str+' NPIXEL']
+    window_size   = head[leading_str+' WINDOW_SIZE']
+    maxiter       = head[leading_str+' MAXITER']
+    clipping      = head[leading_str+' CLIPPING']
+    snr_threshold = head[leading_str+' SNR_THRESHOLD']
+    ntot          = head[leading_str+' NTOT']
+    nuse          = head[leading_str+' NUSE']
+    std           = head[leading_str+' STDDEV']
+
+    calib = {
+              'coeff':         coeff,
+              'npixel':        npixel,
+              'k':             k,
+              'offset':        offset,
+              'std':           std,
+              'nuse':          nuse,
+              'ntot':          ntot,
+#             'identlist':     calibwindow.identlist,
+              'window_size':   window_size,
+              'xorder':        xorder,
+              'yorder':        yorder,
+              'maxiter':       maxiter,
+              'clipping':      clipping,
+              'snr_threshold': snr_threshold,
+            }
+    return spec, calib
+
+
+def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, channel,
     coeff, npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
     clipping=3, snr_threshold=10):
     '''
@@ -2094,11 +2235,6 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel,
         
     '''
 
-    spec = fits.getdata(filename)
-    if channel != '':
-        mask = spec['channel']==channel
-        spec = spec[mask]
-
     # find initial shift with cross-corelation functions
     shift = find_drift(ref_spec, spec)
 
@@ -2152,12 +2288,21 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel,
                     continue
 
                 if aperture not in identlist:
-                    identlist[aperture] = np.array([], dtype=identlinetype)
+                    if channel is None:
+                        identlist[aperture] = np.array([], dtype=identlines_woch)
+                    else:
+                        identlist[aperture] = np.array([], dtype=identlines_wch)
 
-                item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
-                                dtype=identlinetype)
+                if channel is None:
+                    item = np.array((aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                                    dtype=identlines_woch)
+                else:
+                    item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                                    dtype=identlines_wch)
+
                 identlist[aperture] = np.append(identlist[aperture], item)
                 has_insert = True
+
         if has_insert:
             identlist[aperture] = np.sort(identlist[aperture], order='pixel')
         
@@ -2219,6 +2364,229 @@ def recalib(filename, identfilename, figfilename, ref_spec, linelist, channel,
             }
 
     return result
+
+
+def save_calibrated_thar(head, spec, calib, channel):
+    k      = calib['k']
+    offset = calib['offset']
+    xorder = calib['xorder']
+    yorder = calib['yorder']
+    coeff  = calib['coeff']
+
+    if channel is None:
+        leading_str = 'HIERARCH EDRS WVCALIB'
+    else:
+        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+    head[leading_str+' K']      = k
+    head[leading_str+' OFFSET'] = offset
+    head[leading_str+' XORDER'] = xorder
+    head[leading_str+' YORDER'] = yorder
+
+    # write the coefficients
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+
+    head[leading_str+' MAXITER']    = calib['maxiter']
+    head[leading_str+' STDDEV']     = calib['std']
+    head[leading_str+' WINDOWSIZE'] = calib['window_size']
+    head[leading_str+' NTOT']       = calib['ntot']
+    head[leading_str+' NUSE']       = calib['nuse']
+    head[leading_str+' NPIXEL']     = calib['npixel']
+
+    file_identlist = []
+
+    # pack the identfied line list
+    for aperture, list1 in calib['identlist'].items():
+        for row in list1:
+            file_identlist.append(row)
+
+    pri_hdu  = fits.PrimaryHDU(header=head)
+    tbl_hdu1 = fits.BinTableHDU(spec)
+    lst = [pri_hdu, tbl_hdu1]
+    file_identlist = np.array(file_identlist, dtype=list1.dtype)
+    tbl_hdu2 = fits.BinTableHDU(file_identlist)
+    lst.append(tbl_hdu2)
+    hdu_lst  = fits.HDUList(lst)
+
+    return hdu_lst
+
+def reference_wv_new(spec, calib, head, channel, include_identlist):
+    k      = calib['k']
+    offset = calib['offset']
+    xorder = calib['xorder']
+    yorder = calib['yorder']
+    coeff  = calib['coeff']
+
+    for row in spec:
+       aperture = row['aperture']
+       npixel   = row['points']
+       order = aperture*k + offset
+       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       row['order']      = order
+       row['wavelength'] = wavelength
+
+    if channel is None:
+        leading_str = 'HIERARCH EDRS WVCALIB'
+    else:
+        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+    head[leading_str+' K']      = k
+    head[leading_str+' OFFSET'] = offset
+    head[leading_str+' XORDER'] = xorder
+    head[leading_str+' YORDER'] = yorder
+
+    # write the coefficients
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+
+    head[leading_str+' NPIXEL']        = calib['npixel']
+    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
+    head[leading_str+' MAXITER']       = calib['maxiter']
+    head[leading_str+' CLIPPING']      = calib['clipping']
+    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
+    head[leading_str+' NTOT']          = calib['ntot']
+    head[leading_str+' NUSE']          = calib['nuse']
+    head[leading_str+' STDDEV']        = calib['std']
+
+    pri_hdu  = fits.PrimaryHDU(header=head)
+    tbl_hdu1 = fits.BinTableHDU(spec)
+    hdu_lst = [pri_hdu, tbl_hdu1]
+
+    if include_identlist:
+        file_identlist = []
+
+        # pack the identfied line list
+        for aperture, list1 in calib['identlist'].items():
+            for row in list1:
+                file_identlist.append(row)
+
+        file_identlist = np.array(file_identlist, dtype=list1.dtype)
+        tbl_hdu2 = fits.BinTableHDU(file_identlist)
+        hdu_lst.append(tbl_hdu2)
+
+    return fits.HDUList(hdu_lst)
+
+def get_time_weight(datetime_lst, datetime):
+    input_datetime = dateutil.parser.parse(datetime)
+    dt_lst = [(dateutil.parser.parse(dt) - input_datetime).total_seconds()
+                for dt in datetime_lst]
+    dt_lst = np.array(dt_lst)
+    print(dt_lst)
+    if len(dt_lst)==1:
+        # only one reference in datetime_lst
+        weight_lst = [1.0]
+    elif (dt_lst<0).sum()==0:
+        # all elements in dt_lst > 0. means all references are after the input
+        # datetime. then use the first reference
+        weight_lst = np.zeros_like(dt_lst, dtype=np.float64)
+        weight_lst[0] = 1.0
+    elif (dt_lst>0).sum()==0:
+        # all elements in dt_lst < 0. means all references are before the input
+        # datetime. then use the last reference
+        weight_lst = np.zeros_like(dt_lst, dtype=np.float64)
+        weight_lst[-1] = 1.0
+    else:
+        weight_lst = np.zeros_like(dt_lst, dtype=np.float64)
+        i = np.searchsorted(dt_lst, 0.0)
+        w1 = -dt_lst[i-1]
+        w2 = dt_lst[i]
+        weight_lst[i-1] = w2/(w1+w2)
+        weight_lst[i]   = w1/(w1+w2)
+
+    print(weight_lst)
+    return weight_lst
+
+
+def self_reference_singlefiber(spec, head, calib):
+    k      = calib['k']
+    offset = calib['offset']
+    xorder = calib['xorder']
+    yorder = calib['yorder']
+    coeff  = calib['coeff']
+
+    for row in spec:
+       aperture = row['aperture']
+       npixel   = row['points']
+       order = aperture*k + offset
+       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       row['order']      = order
+       row['wavelength'] = wavelength
+
+    leading_str = 'HIERARCH EDRS WVCALIB'
+    head[leading_str+' K']      = k
+    head[leading_str+' OFFSET'] = offset
+    head[leading_str+' XORDER'] = xorder
+    head[leading_str+' YORDER'] = yorder
+
+    # write the coefficients
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+
+    head[leading_str+' NPIXEL']        = calib['npixel']
+    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
+    head[leading_str+' MAXITER']       = calib['maxiter']
+    head[leading_str+' CLIPPING']      = calib['clipping']
+    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
+    head[leading_str+' NTOT']          = calib['ntot']
+    head[leading_str+' NUSE']          = calib['nuse']
+    head[leading_str+' STDDEV']        = calib['std']
+
+    # pack the identfied line list
+    identlist = []
+    for aperture, list1 in calib['identlist'].items():
+        for row in list1:
+            identlist.append(row)
+    identlist = np.array(identlist, dtype=list1.dtype)
+
+    pri_hdu  = fits.PrimaryHDU(header=head)
+    tbl_hdu1 = fits.BinTableHDU(spec)
+    tbl_hdu2 = fits.BinTableHDU(identlist)
+    hdu_lst = [pri_hdu, tbl_hdu1, tbl_hdu2]
+
+    return fits.HDUList(hdu_lst)
+
+def wv_reference_singlefiber(spec, head, calib_lst, weight_lst):
+    k      = calib_lst[0]['k']
+    offset = calib_lst[0]['offset']
+    xorder = calib_lst[0]['xorder']
+    yorder = calib_lst[0]['yorder']
+
+    coeff = np.zeros_like(calib_lst[0]['coeff'], dtype=np.float64)
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        for calib, w in zip(calib_lst, weight_lst):
+            coeff[j, i] += calib['coeff']*w
+
+    for row in spec:
+       aperture = row['aperture']
+       npixel   = row['points']
+       order = aperture*k + offset
+       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       row['order']      = order
+       row['wavelength'] = wavelength
+
+    leading_str = 'HIERARCH EDRS WVCALIB'
+    head[leading_str+' K']      = k
+    head[leading_str+' OFFSET'] = offset
+    head[leading_str+' XORDER'] = xorder
+    head[leading_str+' YORDER'] = yorder
+
+    # write the coefficients
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+
+    head[leading_str+' NPIXEL']        = calib['npixel']
+    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
+    head[leading_str+' MAXITER']       = calib['maxiter']
+    head[leading_str+' CLIPPING']      = calib['clipping']
+    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
+    head[leading_str+' NTOT']          = calib['ntot']
+    head[leading_str+' NUSE']          = calib['nuse']
+    head[leading_str+' STDDEV']        = calib['std']
+
+    pri_hdu = fits.PrimaryHDU(header=head)
+    tbl_hdu = fits.BinTableHDU(spec)
+    hdu_lst = [pri_hdu, tbl_hdu]
+
+    return fits.HDUList(hdu_lst)
 
 def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     '''
@@ -2294,7 +2662,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
                         _frameid += direction
                         if _frameid in calib_lst and channel in calib_lst[_frameid]:
                             calib = calib_lst[_frameid][channel]
-                            refcalib_lst.append(calib)
+                           refcalib_lst.append(calib)
                             #print(item.frameid, 'append',channel, frameid)
                             break
                         elif _frameid <= min(calib_lst) or _frameid >= max(calib_lst):
@@ -2433,7 +2801,8 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     lst = [pri_hdu, tbl_hdu1]
 
     if len(file_identlist)>0:
-        file_identlist = np.array(file_identlist, dtype=identlinetype)
+        #file_identlist = np.array(file_identlist, dtype=identlinetype)
+        file_identlist = np.array(file_identlist, dtype=list1.dtype)
         tbl_hdu2 = fits.BinTableHDU(file_identlist)
         lst.append(tbl_hdu2)
     hdu_lst  = fits.HDUList(lst)
