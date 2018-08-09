@@ -1469,8 +1469,13 @@ class Reduction(object):
                     idtfilepath = os.path.join(midproc, idtfilename)
                     figfilepath = os.path.join(report, figfilename)
 
+                    spec1d = fits.getdata(infilepath)
+                    mask = spec['channel']==channel
+                    spec = spec[mask]
+
                     if ich == 0 and i == 0:
-                        calib = wvcalib(infilepath,
+                        calib = wvcalib(spec1d,
+                                        filename      = infilepath,
                                         identfilename = idtfilepath,
                                         figfilename   = figfilepath,
                                         channel       = channel,
