@@ -15,9 +15,9 @@ import matplotlib.ticker as tck
 from ..utils.regression import polyfit2d, polyval2d
 from .imageproc         import table_to_array, array_to_table
 
-def correct_background(infilename, mskfilename, outfilename, scafilename,
-        channels, apertureset_lst, scale='linear', block_mask=4, scan_step=200,
-        xorder=2, yorder=2, maxiter=5, upper_clip=3., lower_clip=3.,
+def correct_background(data, mask, channels, apertureset_lst, scale='linear',
+        block_mask=4, scan_step=200, xorder=2, yorder=2, maxiter=5,
+        upper_clip=3., lower_clip=3.,
         extend=True, display=True, fig_file=None, reg_file=None):
 
     '''Subtract the background for an input FITS image.
@@ -53,16 +53,8 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
 
     plot_paper_fig = False
 
-    data, head = fits.getdata(infilename, header=True)
-
     h, w = data.shape
 
-    # read data mask
-    mask_table = fits.getdata(mskfilename)
-    if mask_table.size==0:
-        mask = np.zeros_like(data, dtype=np.int16)
-    else:
-        mask = table_to_array(mask_table, data.shape)
     data_mask = (np.int16(mask) & block_mask > 0)
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
@@ -97,12 +89,13 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
                         # this channel is the first channel in this aperture and
                         # there is a previous y
                         mid_newy = int((prev_newy + this_newy)/2.)
-                        i1 = max(0,  int(prev_newy))
-                        i2 = min(h-1,int(this_newy))
+                        i1 = min(h-1, max(0, int(prev_newy)))
+                        i2 = min(h-1, max(0, int(this_newy)))
                         if len(inter_aper)==0 or \
                             abs(mid_newy - inter_aper[-1])>scan_step*0.6:
-                            mid_newy = i1 + xsection[i1:i2].argmin()
-                            inter_aper.append(mid_newy)
+                            if i2-i1>0:
+                                mid_newy = i1 + xsection[i1:i2].argmin()
+                                inter_aper.append(mid_newy)
                     prev_newy = this_newy
 
         inter_aper = np.array(inter_aper)
@@ -148,7 +141,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
     ynodes = np.array(ynodes)
     znodes = np.array(znodes)
 
-    logger.info('Found %d nodes in "%s" for background fitting'%(xnodes.size, infilename))
+    logger.info('Found %d nodes for background fitting'%xnodes.size)
 
     # if scale='log', filter the negative values
     if scale=='log':
@@ -167,7 +160,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         ax21 = fig.add_axes([0.07, 0.07, 0.39,  0.39], projection='3d')
         ax22 = fig.add_axes([0.52, 0.07, 0.39,  0.39], projection='3d')
 
-        fig.suptitle('Background of %s'%os.path.basename(infilename))
+        fig.suptitle('Background')
         ax11.imshow(data, cmap='gray')
 
         # plot nodes
@@ -234,8 +227,7 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         fitmask = new_fitmask
 
     # write nodes to running log
-    message = ['Background Nodes for "%s":'%infilename,
-                ' x,    y,    value,  mask']
+    message = ['Background Nodes:', ' x,    y,    value,  mask']
     for x,y,z,m in zip(xnodes, ynodes, znodes, fitmask):
         message.append('%4d %4d %+10.8e %2d'%(x,y,z,m))
     logger.info((os.linesep+' '*4).join(message))
@@ -336,11 +328,11 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
             plt.close(figp1)
             plt.close(figp2)
 
-    # correct background
-    corrected_data = data - background_data
+    if fig_file is not None:
+        fig.savefig(fig_file)
+    plt.close(fig)
 
-    fits.writeto(outfilename, corrected_data,  head, overwrite=True)
-    fits.writeto(scafilename, background_data, head, overwrite=True)
+    return background_data
 
 
     # save nodes to DS9 region file
@@ -358,13 +350,4 @@ def correct_background(infilename, mskfilename, outfilename, scafilename,
         outfile.close()
 
 
-    if fig_file is not None:
-        fig.savefig(fig_file)
-        #for ii in xrange(0,360,15):
-        #    for ax in fig2.get_axes():
-        #        ax.view_init(elev=20.,azim=ii)
-        #    fig2.savefig('bkg-overview-3d-%s-%03d.png'%(
-        #              os.path.basename(infilename),ii))
-
-    plt.close(fig)
 
