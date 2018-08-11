@@ -1934,7 +1934,7 @@ def find_shift_ccf2(f1, f2, shift0=0.0):
     return res['x']
 
 
-def find_drift(spec1, spec2, offset=0):
+def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
     '''Find the drift between two spectra. The apertures of the two spectra must
     be aligned.
 
@@ -1950,9 +1950,10 @@ def find_drift(spec1, spec2, offset=0):
     shift_lst = []
     for item1 in spec1:
         aperture1 = item1['aperture']
-        if aperture1 + offset in spec2['aperture']:
-            i = list(spec2['aperture']).index(aperture1 + offset)
-            item2 = spec2[i]
+        aperture2 = aperture1 + aperture_offset
+        m = spec2['aperture'] == aperture2
+        if m.sum()==1:
+            item2 = spec2[m][0]
             flux1 = item1['flux']
             flux2 = item2['flux']
 
@@ -2140,8 +2141,8 @@ def select_calib_from_database(instrument, time_key, date, channel):
 
 
 def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, channel,
-    coeff, npixel, k, offset, window_size=13, xorder=3, yorder=3, maxiter=10,
-    clipping=3, snr_threshold=10):
+    coeff, npixel, k, offset, aperture_offset=0, window_size=13, xorder=3,
+    yorder=3, maxiter=10, clipping=3, snr_threshold=10):
     '''
     Re-calibrate the wavelength of an input spectra file using another spectra
     as reference.
@@ -2200,7 +2201,7 @@ def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, chan
     '''
 
     # find initial shift with cross-corelation functions
-    shift = find_drift(ref_spec, spec)
+    shift = find_drift(ref_spec, spec, aperture_offset=aperture_offset)
 
     string = '%s channel %s shift = %+8.6f pixel'
     print(string%(os.path.basename(filename), channel, shift))
@@ -2220,7 +2221,7 @@ def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, chan
     for row in spec:
         aperture = row['aperture']
         flux     = row['flux']
-        order = k*aperture + offset
+        order = k*(aperture - aperture_offset) + offset
         wvs = get_wv_val(coeff, npixel, x-shift, np.repeat(order, npixel))
         wv1 = min(wvs[0], wvs[-1])
         wv2 = max(wvs[0], wvs[-1])
