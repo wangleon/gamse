@@ -361,6 +361,24 @@ class ApertureSet(object):
 
         outfile.close()
 
+    def to_fitsheader(self, header, channel=None):
+        prefix = 'HIERARCH EDRS TRACE'
+        if channel is not None:
+            prefix += ' CHANNLE %s'%channel
+
+        for aper, aper_loc in sorted(self._dict.items()):
+            header[prefix+' APERTURE %d DIRECT'%aper] = aper_loc.direct
+            header[prefix+' APERTURE %d SHAPE'%aper]  = str(aper_loc.shape)
+            for ic, c in enumerate(aper_loc.position.coef):
+                header[prefix+' APERTURE %d COEFF %d'%(aper, ic)] = c
+            header[prefix+' APERTURE %d DOMAIN'%aper] = str(aper_loc.position.domain)
+            header[prefix+' APERTURE %d NSAT'%aper]   = aper_loc.nsat
+            header[prefix+' APERTURE %d MEAN'%aper]   = aper_loc.mean
+            header[prefix+' APERTURE %d MEDIAN'%aper] = aper_loc.median
+            header[prefix+' APERTURE %d MAX'%aper]    = aper_loc.max
+
+        return header
+
     def __iter__(self):
         return _ApertureSetIterator(self._dict)
 
@@ -1174,6 +1192,67 @@ def load_aperture_set(filename):
     infile.close()
 
     return aperture_set
+
+def load_aperture_set_from_header(header, channel=None):
+    prefix = 'EDRS TRACE'
+    if channel is not None:
+        prefix += ' CHANNEL %s'%channel
+    
+    aperture_set = ApertureSet()
+    coeff = []
+    prev_aper = None
+    has_aperture = False
+    for key, value in header.items():
+        if key[0:len(prefix)] == prefix:
+            has_aperture = True
+            g = key[len(prefix):].strip().split()
+            aperture = int(g[1])
+            if prev_aper is not None and aperture != prev_aper:
+                # at the end of aperture
+                aperture_set[prev_aper] = ApertureLocation(
+                                            direct = direct,
+                                            shape  = shape,
+                                            )
+                poly = Chebyshev(coef=coeff, domain=domain)
+                aperture_set[prev_aper].set_position(poly)
+                aperture_set[prev_aper].nsat   = nsat
+                aperture_set[prev_aper].mean   = mean
+                aperture_set[prev_aper].median = median
+                aperture_set[prev_aper].max    = maxv
+                # reset parameters
+                coeff = []
+            if g[2] == 'COEFF':
+                coeff.append(value)
+            elif g[2] == 'DIRECT':
+                direct = value
+            elif g[2] == 'SHAPE':
+                shape = eval(value)
+            elif g[2] == 'DOMAIN':
+                domain = eval(value)
+            elif g[2] == 'NSAT':
+                nsat = value
+            elif g[2] == 'MEAN':
+                mean = value
+            elif g[2] == 'MEDIAN':
+                median = value
+            elif g[2] == 'MAX':
+                maxv = value
+            else:
+                pass
+            prev_aper = aperture
+
+    # pack the last aperture
+    if has_aperture:
+        aperture_set[aperture] = ApertureLocation(direct=direct, shape=shape)
+        poly = Chebyshev(coef=coeff, domain=domain)
+        aperture_set[aperture].set_position(poly)
+        aperture_set[prev_aper].nsat   = nsat
+        aperture_set[prev_aper].mean   = mean
+        aperture_set[prev_aper].median = median
+        aperture_set[prev_aper].max    = maxv
+
+    return aperture_set
+
 
 
 def gaussian_bkg(A, center, fwhm, bkg, x):
