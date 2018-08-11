@@ -30,6 +30,7 @@ else:
 
 from ..utils.regression import polyfit2d, polyval2d
 from ..utils.onedarray import pairwise
+from .trace import load_aperture_set_from_header
 
 # Identified line table with channel
 identlines_wch = np.dtype({
@@ -2132,47 +2133,10 @@ def select_calib_from_database(instrument, time_key, date, channel):
     head = f[0].header
     spec = f[1].data
 
-    if 'channel' in spec.dtype.names:
-        #exp = '^EDRS TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
-        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
-    else:
-        leading_str = 'HIERARCH EDRS WVCALIB'
+    calib = get_calib_from_header(head, channel=channel)
+    aperset = load_aperture_set_from_header(head, channel=channel)
 
-    k      = head[leading_str+' K']
-    offset = head[leading_str+' OFFSET']
-    xorder = head[leading_str+' XORDER']
-    yorder = head[leading_str+' YORDER']
-
-    coeff = np.zeros((yorder+1, xorder+1))
-    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        coeff[j,i] = head[leading_str+' COEFF %d %d'%(j, i)]
-    
-    npixel        = head[leading_str+' NPIXEL']
-    window_size   = head[leading_str+' WINDOW_SIZE']
-    maxiter       = head[leading_str+' MAXITER']
-    clipping      = head[leading_str+' CLIPPING']
-    snr_threshold = head[leading_str+' SNR_THRESHOLD']
-    ntot          = head[leading_str+' NTOT']
-    nuse          = head[leading_str+' NUSE']
-    std           = head[leading_str+' STDDEV']
-
-    calib = {
-              'coeff':         coeff,
-              'npixel':        npixel,
-              'k':             k,
-              'offset':        offset,
-              'std':           std,
-              'nuse':          nuse,
-              'ntot':          ntot,
-#             'identlist':     calibwindow.identlist,
-              'window_size':   window_size,
-              'xorder':        xorder,
-              'yorder':        yorder,
-              'maxiter':       maxiter,
-              'clipping':      clipping,
-              'snr_threshold': snr_threshold,
-            }
-    return spec, calib
+    return spec, calib, aperset
 
 
 def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, channel,
@@ -2470,7 +2434,6 @@ def get_time_weight(datetime_lst, datetime):
     dt_lst = [(dateutil.parser.parse(dt) - input_datetime).total_seconds()
                 for dt in datetime_lst]
     dt_lst = np.array(dt_lst)
-    print(dt_lst)
     if len(dt_lst)==1:
         # only one reference in datetime_lst
         weight_lst = [1.0]
@@ -2492,17 +2455,60 @@ def get_time_weight(datetime_lst, datetime):
         weight_lst[i-1] = w2/(w1+w2)
         weight_lst[i]   = w1/(w1+w2)
 
-    print(weight_lst)
     return weight_lst
 
+def get_calib_from_header(header, channel):
 
-def self_reference_singlefiber(spec, head, calib):
+    if channel is None:
+        prefix = 'HIERARCH EDRS WVCALIB'
+    else:
+        prefix = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+
+    k      = header[prefix+' K']
+    offset = header[prefix+' OFFSET']
+    xorder = header[prefix+' XORDER']
+    yorder = header[prefix+' YORDER']
+
+    coeff = np.zeros((yorder+1, xorder+1))
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        coeff[j,i] = header[prefix+' COEFF %d %d'%(j, i)]
+    
+    npixel        = header[prefix+' NPIXEL']
+    window_size   = header[prefix+' WINDOW_SIZE']
+    maxiter       = header[prefix+' MAXITER']
+    clipping      = header[prefix+' CLIPPING']
+    snr_threshold = header[prefix+' SNR_THRESHOLD']
+    ntot          = header[prefix+' NTOT']
+    nuse          = header[prefix+' NUSE']
+    std           = header[prefix+' STDDEV']
+
+    calib = {
+              'coeff':         coeff,
+              'npixel':        npixel,
+              'k':             k,
+              'offset':        offset,
+              'std':           std,
+              'nuse':          nuse,
+              'ntot':          ntot,
+#             'identlist':     calibwindow.identlist,
+              'window_size':   window_size,
+              'xorder':        xorder,
+              'yorder':        yorder,
+              'maxiter':       maxiter,
+              'clipping':      clipping,
+              'snr_threshold': snr_threshold,
+            }
+    return calib
+
+def self_reference_singlefiber(spec, header, calib):
     k      = calib['k']
     offset = calib['offset']
     xorder = calib['xorder']
     yorder = calib['yorder']
+    npixel = calib['npixel']
     coeff  = calib['coeff']
 
+    # calculate the wavelength for each aperture
     for row in spec:
        aperture = row['aperture']
        npixel   = row['points']
@@ -2511,24 +2517,25 @@ def self_reference_singlefiber(spec, head, calib):
        row['order']      = order
        row['wavelength'] = wavelength
 
-    leading_str = 'HIERARCH EDRS WVCALIB'
-    head[leading_str+' K']      = k
-    head[leading_str+' OFFSET'] = offset
-    head[leading_str+' XORDER'] = xorder
-    head[leading_str+' YORDER'] = yorder
+    prefix = 'HIERARCH EDRS WVCALIB'
+    header[prefix+' K']      = k
+    header[prefix+' OFFSET'] = offset
+    header[prefix+' XORDER'] = xorder
+    header[prefix+' YORDER'] = yorder
+    header[prefix+' NPIXEL'] = npixel
 
-    # write the coefficients
+    # write the coefficients to fits header
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+        header[prefix+' COEFF %d %d'%(j, i)] = coeff[j,i]
 
-    head[leading_str+' NPIXEL']        = calib['npixel']
-    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
-    head[leading_str+' MAXITER']       = calib['maxiter']
-    head[leading_str+' CLIPPING']      = calib['clipping']
-    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
-    head[leading_str+' NTOT']          = calib['ntot']
-    head[leading_str+' NUSE']          = calib['nuse']
-    head[leading_str+' STDDEV']        = calib['std']
+    # write other information to fits header
+    header[prefix+' WINDOW_SIZE']   = calib['window_size']
+    header[prefix+' MAXITER']       = calib['maxiter']
+    header[prefix+' CLIPPING']      = calib['clipping']
+    header[prefix+' SNR_THRESHOLD'] = calib['snr_threshold']
+    header[prefix+' NTOT']          = calib['ntot']
+    header[prefix+' NUSE']          = calib['nuse']
+    header[prefix+' STDDEV']        = calib['std']
 
     # pack the identfied line list
     identlist = []
@@ -2537,24 +2544,27 @@ def self_reference_singlefiber(spec, head, calib):
             identlist.append(row)
     identlist = np.array(identlist, dtype=list1.dtype)
 
-    pri_hdu  = fits.PrimaryHDU(header=head)
+    pri_hdu  = fits.PrimaryHDU(header=header)
     tbl_hdu1 = fits.BinTableHDU(spec)
     tbl_hdu2 = fits.BinTableHDU(identlist)
     hdu_lst = [pri_hdu, tbl_hdu1, tbl_hdu2]
 
     return fits.HDUList(hdu_lst)
 
-def wv_reference_singlefiber(spec, head, calib_lst, weight_lst):
+def wv_reference_singlefiber(spec, header, calib_lst, weight_lst):
     k      = calib_lst[0]['k']
     offset = calib_lst[0]['offset']
     xorder = calib_lst[0]['xorder']
     yorder = calib_lst[0]['yorder']
+    npixel = calib_lst[0]['npixel']
 
+    # calculate the weighted average coefficients
     coeff = np.zeros_like(calib_lst[0]['coeff'], dtype=np.float64)
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
         for calib, w in zip(calib_lst, weight_lst):
-            coeff[j, i] += calib['coeff']*w
+            coeff[j, i] += calib['coeff'][j, i]*w
 
+    # calculate the wavelength for each aperture
     for row in spec:
        aperture = row['aperture']
        npixel   = row['points']
@@ -2563,30 +2573,30 @@ def wv_reference_singlefiber(spec, head, calib_lst, weight_lst):
        row['order']      = order
        row['wavelength'] = wavelength
 
-    leading_str = 'HIERARCH EDRS WVCALIB'
-    head[leading_str+' K']      = k
-    head[leading_str+' OFFSET'] = offset
-    head[leading_str+' XORDER'] = xorder
-    head[leading_str+' YORDER'] = yorder
+    prefix = 'HIERARCH EDRS WVCALIB'
+    header[prefix+' K']      = k
+    header[prefix+' OFFSET'] = offset
+    header[prefix+' XORDER'] = xorder
+    header[prefix+' YORDER'] = yorder
+    header[prefix+' NPIXEL'] = npixel
 
-    # write the coefficients
+    # write the coefficients to fits header
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
+        header[prefix+' COEFF %d %d'%(j, i)] = coeff[j,i]
 
-    head[leading_str+' NPIXEL']        = calib['npixel']
-    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
-    head[leading_str+' MAXITER']       = calib['maxiter']
-    head[leading_str+' CLIPPING']      = calib['clipping']
-    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
-    head[leading_str+' NTOT']          = calib['ntot']
-    head[leading_str+' NUSE']          = calib['nuse']
-    head[leading_str+' STDDEV']        = calib['std']
+    # write information for every reference
+    c = 0
+    for calib, w in zip(calib_lst, weight_lst):
+        c += 1
+        header[prefix+' REFERENCE %d FILEID'%c]   = calib['fileid']
+        header[prefix+' REFERENCE %d DATE-OBS'%c] = calib['date-obs']
+        header[prefix+' REFERENCE %d EXPTIME'%c]  = calib['exptime']
+        header[prefix+' REFERENCE %d WEIGHT'%c]   = w
+        header[prefix+' REFERENCE %d NTOT'%c]     = calib['ntot']
+        header[prefix+' REFERENCE %d NUSE'%c]     = calib['nuse']
+        header[prefix+' REFERENCE %d STDDEV'%c]   = calib['std']
 
-    pri_hdu = fits.PrimaryHDU(header=head)
-    tbl_hdu = fits.BinTableHDU(spec)
-    hdu_lst = [pri_hdu, tbl_hdu]
-
-    return fits.HDUList(hdu_lst)
+    return spec, header
 
 def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     '''
@@ -2662,7 +2672,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
                         _frameid += direction
                         if _frameid in calib_lst and channel in calib_lst[_frameid]:
                             calib = calib_lst[_frameid][channel]
-                           refcalib_lst.append(calib)
+                            refcalib_lst.append(calib)
                             #print(item.frameid, 'append',channel, frameid)
                             break
                         elif _frameid <= min(calib_lst) or _frameid >= max(calib_lst):
