@@ -367,15 +367,17 @@ class ApertureSet(object):
             prefix += ' CHANNLE %s'%channel
 
         for aper, aper_loc in sorted(self._dict.items()):
-            header[prefix+' APERTURE %d DIRECT'%aper] = aper_loc.direct
-            header[prefix+' APERTURE %d SHAPE'%aper]  = str(aper_loc.shape)
+            header[prefix+' APERTURE %d DIRECT'%aper]  = aper_loc.direct
+            header[prefix+' APERTURE %d SHAPE0'%aper]  = aper_loc.shape[0]
+            header[prefix+' APERTURE %d SHAPE1'%aper]  = aper_loc.shape[1]
             for ic, c in enumerate(aper_loc.position.coef):
                 header[prefix+' APERTURE %d COEFF %d'%(aper, ic)] = c
-            header[prefix+' APERTURE %d DOMAIN'%aper] = str(aper_loc.position.domain)
-            header[prefix+' APERTURE %d NSAT'%aper]   = aper_loc.nsat
-            header[prefix+' APERTURE %d MEAN'%aper]   = aper_loc.mean
-            header[prefix+' APERTURE %d MEDIAN'%aper] = aper_loc.median
-            header[prefix+' APERTURE %d MAX'%aper]    = aper_loc.max
+            header[prefix+' APERTURE %d DOMAIN0'%aper] = aper_loc.position.domain[0]
+            header[prefix+' APERTURE %d DOMAIN1'%aper] = aper_loc.position.domain[1]
+            header[prefix+' APERTURE %d NSAT'%aper]    = aper_loc.nsat
+            header[prefix+' APERTURE %d MEAN'%aper]    = aper_loc.mean
+            header[prefix+' APERTURE %d MEDIAN'%aper]  = aper_loc.median
+            header[prefix+' APERTURE %d MAX'%aper]     = aper_loc.max
 
         return header
 
@@ -1227,8 +1229,18 @@ def load_aperture_set_from_header(header, channel=None):
                 direct = value
             elif g[2] == 'SHAPE':
                 shape = eval(value)
+            elif g[2] == 'SHAPE0':
+                shape0 = value
+            elif g[2] == 'SHAPE1':
+                shape1 = value
+                shape = (shape0, shape1)
             elif g[2] == 'DOMAIN':
                 domain = eval(value)
+            elif g[2] == 'DOMAIN0':
+                domain0 = value
+            elif g[2] == 'DOMAIN1':
+                domain1 = value
+                domain = (domain0, domain1)
             elif g[2] == 'NSAT':
                 nsat = value
             elif g[2] == 'MEAN':

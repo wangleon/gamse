@@ -2032,7 +2032,7 @@ class CalibFigure(Figure):
         nuse   = kwargs.pop('nuse')
         ntot   = kwargs.pop('ntot')
         
-        colors = 'rgbcmyk'
+        #colors = 'rgbcmyk'
 
         self._ax2.cla()
         self._ax3.cla()
@@ -2043,8 +2043,8 @@ class CalibFigure(Figure):
             wv_min, wv_max = 1e9,0
 
         for aperture in aperture_lst:
-            color = colors[aperture%7]
             order = k*aperture + offset
+            color = 'C%d'%(order%10)
 
             if plot_ax1:
                 w = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
