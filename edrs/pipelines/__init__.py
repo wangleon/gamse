@@ -7,7 +7,7 @@ import astropy.io.fits as fits
 from .reduction import Reduction
 from .plot import plot_spectra1d
 from ..utils.config import read_config, find_config
-from . import foces, xinglong216hrs, levy
+from . import foces, xinglong216hrs, levy, sarg
 
 instrument_lst =  ['FOCES', 'Xinglong216HRS']
 
