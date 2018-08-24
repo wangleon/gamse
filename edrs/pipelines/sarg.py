@@ -20,11 +20,13 @@ def make_log(path):
         
         fileid = fname[0:-4]
         objectname = head['IDENT']
+        object_alt = head['OBJCAT']
         exptime    = head['EXPTIME']
         obstype    = head['OBS-TYPE']
         obsdate    = head['DATE-OBS'] + 'T' + head['EXPSTART']
         slit       = head['SLIT_ID']
         grism      = head['GRM_ID']
+        program    = head['PROGRAM']
         binx       = int(round(head['CRDELT1']))
         biny       = int(round(head['CRDELT2']))
         binning    = '%d, %d'%(biny, binx)
@@ -49,11 +51,13 @@ def make_log(path):
                 exptime    = exptime,
                 imagetype  = imagetype,
                 objectname = objectname,
+                object_alt = object_alt,
                 obstype    = obstype,
                 i2cell     = i2cell,
                 slit       = slit,
                 grism      = grism,
                 binning    = binning,
+                program    = program,
                 saturation = prop,
                 brightness = bri_index,
                 )
@@ -64,20 +68,24 @@ def make_log(path):
     # make info_lst
     all_info_lst = []
     columns = ['fileid (s)', 'imagetype (s)', 'obstype (s)', 'objectname (s)',
+               'objectname_alt (s)',
                'i2cell (i)', 'exptime (f)', 'obsdate (s)', 'slit (s)',
-               'grism (s)', 'binning', 'saturation (f)', 'brightness (f)']
+               'grism (s)', 'binning', 'program (s)',
+               'saturation (f)', 'brightness (f)']
     for logitem in log:
         info_lst = [
                 logitem.fileid,
                 logitem.imagetype,
                 logitem.obstype,
                 logitem.objectname,
+                logitem.object_alt,
                 str(logitem.i2cell),
                 '%g'%logitem.exptime,
                 str(logitem.obsdate),
                 '%s'%logitem.slit,
                 '%s'%logitem.grism,
                 '%s'%logitem.binning,
+                '%s'%logitem.program,
                 '%.3f'%logitem.saturation,
                 '%.1f'%logitem.brightness,
                 ]
@@ -92,7 +100,8 @@ def make_log(path):
     # find the output format for each column
     for info_lst in all_info_lst:
         for i, info in enumerate(info_lst):
-            if columns[i].split()[0] in ['obstype','objectname','slit','grism']:
+            if columns[i].split()[0] in ['obstype','objectname','object_alt',
+                                        'slit','grism','program']:
                 fmt = '%%-%ds'%maxlen[i]
             else:
                 fmt = '%%%ds'%maxlen[i]
