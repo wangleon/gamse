@@ -19,4 +19,4 @@ Modules
    modules/echelle
    modules/pipelines/reduction
    modules/pipelines/foces
-   modules/pipelines/xinglonghrs
+   modules/pipelines/xinglong216hrs

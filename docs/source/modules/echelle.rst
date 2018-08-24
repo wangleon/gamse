@@ -3,14 +3,15 @@ Echelle Module
 
 CCD Image Processing
 --------------------
-.. currentmodule:: edrs.imageproc
+.. currentmodule:: edrs.echelle.imageproc
 .. autosummary::
     combine_images
     savitzky_golay_2d
     array_to_table
     table_to_array
+    fix_pixels
 
-.. automodule:: edrs.imageproc
+.. automodule:: edrs.echelle.imageproc
    :members:
    :private-members:
    :undoc-members:
