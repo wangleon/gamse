@@ -11,7 +11,6 @@ Summary
    make_log
    get_mask
    get_badpixel_mask
-   fix_cr
    correct_overscan
    reduce
 

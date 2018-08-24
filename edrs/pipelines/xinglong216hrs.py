@@ -18,18 +18,19 @@ from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array, fix_pixels)
 from .reduction          import Reduction
 
-def fix_cr(data):
-    m = data.mean(dtype=np.float64)
-    s = data.std(dtype=np.float64)
-    mask = data > m + 3.*s
-    if mask.sum()>0:
-        x = np.arange(data.size)
-        f = InterpolatedUnivariateSpline(x[~mask], data[~mask], k=3)
-        return f(x)
-    else:
-        return data
-
 def get_badpixel_mask(shape, bins):
+    '''Get the mask of bad pixels and columns.
+
+    Args:
+        shape (tuple): Shape of image.
+        bins (tuple): CCD bins.
+    Returns:
+        :class:`numpy.array`: 2D binary mask, where bad pixels are marked with
+        *True*, others *False*.
+
+    The bad pixels are found *empirically*.
+        
+    '''
     mask = np.zeros(shape, dtype=np.bool)
     if bins == (1, 1) and shape == (4136, 4096):
         h, w = shape
@@ -62,18 +63,20 @@ def get_mask(data, head):
     '''Get the mask of input image.
 
     Args:
-        data (:class:`numpy.array`):
-        head (:class:`astropy.io.fits.Header`):
+        data (:class:`numpy.array`): Input image data.
+        head (:class:`astropy.io.fits.Header`): Input FITS header.
 
     Returns:
         :class:`numpy.array`: Image mask.
 
     The shape of output mask is determined by the keywords in the input FITS
-    header according to the relation below::
+    header. The numbers of columns and rows are given by::
      
-        *N*:sub:`columns` = head['NAXIS1'] - head['COVER']
+        N (columns) = head['NAXIS1'] - head['COVER']
 
-        *N*:sub:`rows` = head['NAXIS2'] - head['ROVER']
+        N (rows)    = head['NAXIS2'] - head['ROVER']
+
+    where *head* is the input FITS header. 
 
     '''
 
@@ -106,11 +109,23 @@ def correct_overscan(data, head, mask=None):
         mask (:class:`numpy.array`):
     
     Returns:
-        A tuple containing:
+        tuple: A tuple containing:
+
             * data (:class:`numpy.array`): The output image with overscan
-                corrected.
+              corrected.
             * head (:class:`astropy.io.fits.Header`): The updated FITS header.
     '''
+    # define the cosmic ray fixing function
+    def fix_cr(data):
+        m = data.mean(dtype=np.float64)
+        s = data.std(dtype=np.float64)
+        mask = data > m + 3.*s
+        if mask.sum()>0:
+            x = np.arange(data.size)
+            f = InterpolatedUnivariateSpline(x[~mask], data[~mask], k=3)
+            return f(x)
+        else:
+            return data
 
     h, w = data.shape
     x1, x2 = w-head['COVER'], w
