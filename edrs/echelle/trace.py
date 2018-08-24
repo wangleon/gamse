@@ -545,14 +545,14 @@ class _ApertureSetIterator(object):
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         sep_der=0.0, filling=0.3, degree=3, display=True, filename=None,
-        fig_file=None, trace_file=None, reg_file=None):
+        fig_file=None):
     '''
     Find the positions of apertures on a CCD image.
 
     Args:
         data (:class:`numpy.array`): Image data.
-        mask (:class:`numpy.array`): Saturation mask with the same shape as
-            **data**. The saturated pixels are marke as 1.
+        mask (:class:`numpy.array`): Image mask with the same shape as **data**,
+            where saturated pixels are marked with 4, and bad pixels with 2.
         scan_step (integer): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
@@ -567,8 +567,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         filename (string): Name of the input file. Only used to display the
             title in the figure.
         fig_file (string): Path to the output figure.
-        trace_file (string): Path to the output ascii file.
-        reg_file (string): Name of region file that can be loaded in SAO-DS9.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -577,7 +575,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     '''
     from ..utils.onedarray import get_local_minima, derivative
 
-    sat_mask = mask
+    sat_mask = (mask & 4 > 0)
 
     h, w = data.shape
 
@@ -1084,12 +1082,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         aperture_loc.max    = peak_flux.max()
 
         aperture_set[aperture] = aperture_loc
-
-    # write the order set into ascii and reg file
-    if trace_file is not None:
-        aperture_set.save_txt(trace_file)
-    if reg_file is not None:
-        aperture_set.save_reg(reg_file)
 
     fig.canvas.draw()
     if fig_file is not None:

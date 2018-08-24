@@ -82,18 +82,18 @@ def reduce():
         mask = np.zeros_like(trace, dtype=np.int8)
 
         aperset = find_apertures(trace, mask,
-            scan_step  = 50,
-            minimum    = 8,
-            seperation = 14,
-            sep_der    = 3,
-            filling    = 0.2,
-            degree     = 3,
-            display    = True,
-            filename   = 'trace.fits',
-            fig_file   = 'trace.png',
-            trace_file = 'trace.trc',
-            reg_file   = 'trace.reg',
-            )
+                    scan_step  = 50,
+                    minimum    = 8,
+                    seperation = 14,
+                    sep_der    = 3,
+                    filling    = 0.2,
+                    degree     = 3,
+                    display    = True,
+                    filename   = 'trace.fits',
+                    fig_file   = 'trace.png',
+                    )
+        aperset.save_txt('trace.trc')
+        aperset.save_reg('trace.reg')
 
     # combine flat images
     flat_groups = {}
