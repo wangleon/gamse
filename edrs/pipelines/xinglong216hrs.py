@@ -16,6 +16,7 @@ from ..utils import obslog
 from ..utils.config import read_config
 from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array, fix_pixels)
+from ..echelle.trace import find_apertures, load_aperture_set
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
@@ -119,10 +120,10 @@ def correct_overscan(data, head, mask=None):
     def fix_cr(data):
         m = data.mean(dtype=np.float64)
         s = data.std(dtype=np.float64)
-        mask = data > m + 3.*s
-        if mask.sum()>0:
+        _mask = data > m + 3.*s
+        if _mask.sum()>0:
             x = np.arange(data.size)
-            f = InterpolatedUnivariateSpline(x[~mask], data[~mask], k=3)
+            f = InterpolatedUnivariateSpline(x[~_mask], data[~_mask], k=3)
             return f(x)
         else:
             return data
@@ -156,15 +157,16 @@ def correct_overscan(data, head, mask=None):
     new_data[y1:ymid, x1:x2] = data[y1:ymid,x1:x2] - ovrdata1
     new_data[ymid:y2, x1:x2] = data[ymid:y2,x1:x2] - ovrdata2
 
-    # fix bad pixels
-    bad_mask = (mask&2 > 0)
-    new_data = fix_pixels(new_data, bad_mask, 'x', 'linear')
+    if mask is not None:
+        # fix bad pixels
+        bad_mask = (mask&2 > 0)
+        new_data = fix_pixels(new_data, bad_mask, 'x', 'linear')
 
     # update fits header
     head['HIERARCH EDRS OVERSCAN']        = True
     head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
 
-    return newdata, head
+    return new_data, head
 
 def reduce():
     '''Reduce the Xinglong 216/HRS spectra.
@@ -273,6 +275,8 @@ def reduce():
         for flatname, fileids in flat_groups.items():
             flat_filename = '%s.fits'%flatname
             mask_filename = '%s_msk.fits'%flatname
+
+            # get flat_data and mask_array
             if os.path.exists(flat_filename) and os.path.exists(mask_filename):
                 flat_data  = fits.getdata(flat_filename)
                 mask_table = fits.getdata(mask_filename)
@@ -282,18 +286,13 @@ def reduce():
                 for ifile, fileid in enumerate(fileids):
                     filename = os.path.join(rawdata, '%s.fits'%fileid)
                     data, head = fits.getdata(filename, header=True)
-
-                    # determine the science region
-                    y1 = head['CRVAL2']
-                    y2 = y1 + head['NAXIS2'] - head['ROVER']
-                    x1 = head['CRVAL1']
-                    x2 = x1 + head['NAXIS1'] - head['COVER']
-
-                    mask = (data[y1:y2, x1:x2]==65535)
+                    mask = get_mask(data, head)
+                    sat_mask = (mask&4>0)
+                    bad_mask = (mask&2>0)
                     if ifile==0:
                         allmask = np.zeros_like(mask, dtype=np.int16)
-                    allmask += mask
-                    data, head = correct_overscan(data, head)
+                    allmask += sat_mask
+                    data, head = correct_overscan(data, head, mask)
                     data = data - bias
                     data_lst.append(data)
                 nflat = len(data_lst)
@@ -304,10 +303,26 @@ def reduce():
                 fits.writeto(flat_filename, flat_data, overwrite=True)
                 # find saturation mask
                 sat_mask = allmask > nflat/2.
-                mask_array = np.int16(sat_mask)*4
+                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
                 mask_table = array_to_table(mask_array)
                 # write mask to fits
                 fits.writeto(mask_filename, mask_table, overwrite=True)
+            # now flt_data and mask_array are prepared
+
+            aperset = find_apertures(flat_data, mask_array,
+                        scan_step  = config['trace'].getint('scan_step'),
+                        minimum    = config['trace'].getfloat('minimum'),
+                        seperation = config['trace'].getfloat('seperation'),
+                        sep_der    = config['trace'].getfloat('sep_der'),
+                        filling    = config['trace'].getfloat('filling'),
+                        degree     = config['trace'].getint('degree'),
+                        display    = config['trace'].getboolean('display'),
+                        filename   = flat_filename,
+                        fig_file   = 'trace_%s.png'%flatname,
+                        )
+            aperset.save_txt('trace_%s.trc'%flatname)
+            aperset.save_reg('trace_%s.reg'%flatname)
+
 
     
 class Xinglong216HRS(Reduction):
@@ -724,7 +739,7 @@ def make_log(path):
         prop = float(mask_sat.sum())/data.size*1e3
 
         # find the brightness index in the central region
-        h,w = data.shape
+        h, w = data.shape
         data1 = data[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
         bri_index = np.median(data1,axis=1).mean()
 
