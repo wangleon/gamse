@@ -1188,6 +1188,15 @@ def load_aperture_set(filename):
     return aperture_set
 
 def load_aperture_set_from_header(header, channel=None):
+    '''Load Aperture Set from FITS header.
+
+    Args:
+        header (:class:`astropy.io.fits.Header`): Input FITS header
+        channel (string): Name of channel.
+    Returns:
+        :class:`ApertureSet`: An :class:`ApertureSet` instance.
+        
+    '''
     prefix = 'EDRS TRACE'
     if channel is not None:
         prefix += ' CHANNEL %s'%channel
@@ -1257,17 +1266,15 @@ def load_aperture_set_from_header(header, channel=None):
 
     return aperture_set
 
-
-
 def gaussian_bkg(A, center, fwhm, bkg, x):
-    '''Gaussian + background function.
+    '''Gaussian plus constant background function.
 
     Args:
-        A (float):
-        center (float):
-        fwhm (float):
-        bkg (float):
-        x (float or :class:`numpy.array`):
+        A (float): Amplitude of gaussian function.
+        center (float): Central value of gaussian function.
+        fwhm (float): Full-width-half-maximum value of gaussian function.
+        bkg (float): Backgroudn value of gaussian function.
+        x (float or :class:`numpy.array`): Input values.
     Returns:
         :class:`numpy.array`: Output function values.
         
@@ -1277,13 +1284,24 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
 
 def errfunc(p, x, y, fitfunc):
     '''Error function used in fitting.
+
+    Args:
+        p (list): List of parameters.
+        x (:class:`numpy.array`): x values.
+        fitfunc (function): Fitting function.
+    Returns:
+        :class:`numpy.array`: Values of residuals.
     '''
     return y - fitfunc(p, x)
 
 def fitfunc(p, x):
     '''Fitting function used in the least-square fitting.
+
     Args:
-        p (list):
+        p (list): List of parameters.
+        x (:class:`numpy.array`): Input values.
+    Returns:
+        :class:`numpy.array`: Values of function.
     '''
     return gaussian_bkg(p[0], p[1], p[2], p[3], x)
 

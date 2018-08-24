@@ -25,6 +25,10 @@ Order Location and Tracing
     ApertureSet
     find_apertures
     load_aperture_set
+    load_aperture_set_from_header
+    gaussian_bkg
+    fitfunc
+    errfunc
 
 .. automodule:: edrs.echelle.trace
    :members:
@@ -64,6 +68,7 @@ Background Correction
 .. currentmodule:: edrs.echelle.extract
 .. autosummary::
     sum_extract
+    extract_aperset
 
 .. automodule:: edrs.echelle.extract
    :members:

@@ -17,7 +17,7 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         infilename (string): Name of the input image.
         outfilename (string): Name of the output image.
         channels (list): List of channels as strings.
-        apertureset_lst (dict): Dict of :class:`ApertureSet` instances at
+        apertureset_lst (dict): Dict of :class:`ApertureSet` instances for
             different channels.
         upper_limit (float): Upper limit of the extracted aperture.
         lower_limit (float): Lower limit of the extracted aperture.
@@ -138,7 +138,19 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
 def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
-    '''
+    '''Extract 1-D spectra from the input image data following the input
+    :class:`ApertureSet`.
+
+    Args:
+        data (:class:`numpy.array`): Input data image.
+        mask (:class:`numpy.array`): Input mask.
+        apertureset (:class:`ApertureSet`): Input :class:`ApertureSet` instance.
+        lower_limit (float): Lower limit of the extracted aperture.
+        upper_limit (float): Upper limit of the extracted aperture.
+    Returns:
+        dict: A dict of 1-d spectra with the aperture numbers as keys, and a
+            dict of ("flux_sum", "flux_mean", "mask_sat") as values.
+        
     '''
     h, w = data.shape
 
