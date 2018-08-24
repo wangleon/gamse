@@ -35,13 +35,12 @@ def reduce_echelle():
     if key == ('Fraunhofer', 'FOCES'):
         reduction = foces.FOCES()
         reduction.reduce()
-    elif key == ('Xinglong2.16m', 'HRS'):
-        reduction = xinglong216hrs.Xinglong216HRS()
-        reduction.reduce()
+    elif key == ('Xinglong216', 'HRS'):
+        xinglong216hrs.reduce()
     elif key == ('APF', 'Levy'):
         levy.reduce()
     else:
-        print('Unknown Instrument: %s, %s'%(key[0], key[1]))
+        print('Unknown Instrument: %s - %s'%(key[0], key[1]))
         exit()
 
 
@@ -73,12 +72,12 @@ def make_log():
 
     if key == ('Fraunhofer', 'FOCES'):
         foces.make_log(rawdata)
-    elif key == ('Xinglong2.16m', 'HRS'):
+    elif key == ('Xinglong216', 'HRS'):
         xinglong216hrs.make_log(rawdata)
     elif key == ('APF', 'Levy'):
         levy.make_log(rawdata)
     else:
-        print('Unknown Instrument: %s, %s'%(telescope, instrument))
+        print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
 def get_instrument():
