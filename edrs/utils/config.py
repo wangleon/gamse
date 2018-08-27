@@ -13,7 +13,8 @@ def read_config(instrument):
     Args:
         instrument (string): Name of the instrument.
     Returns:
-        :class:`ConfigParser`: A :class:`ConfigParser` instance.
+        :class:`configparser.ConfigParser`: A
+            :class:`configparser.ConfigParser` instance.
     '''
 
     # scan the .cfg files

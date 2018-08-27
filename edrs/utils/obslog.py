@@ -155,7 +155,7 @@ def read_log(filename):
     Returns:
         tuple: A tuple containing:
         
-            * **log** (*:class:`Log`*): The observing log.
+            * **log** (:class:`Log`): The observing log.
             * **frame_lst** (*tuple*): Frame list.
     '''
 

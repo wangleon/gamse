@@ -28,7 +28,8 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
         outfilename (string): Name of the output file.
         scafilename (string): Name of the scatter light file.
         channels (list): List of channels as strings.
-        apertureset_lst (dict): Dict of ApertureSet at different channels.
+        apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
+            at different channels.
         scale (string): Scale of the 2-D polynomial fitting. If 'log', fit the
             polynomial in the logrithm scale.
         block_mask (integer): Block value in the mask file.

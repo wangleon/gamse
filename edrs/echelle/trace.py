@@ -478,7 +478,7 @@ class ApertureSet(object):
         '''Get central positions of all chelle orders.
 
         Args:
-            x (integer or :class:`numpy.array`): Input *X* coordiantes of the
+            x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 central positions to calculate.
         Returns:
             dict: A dict of `{aperture: y}` containing cetral positions of
@@ -491,7 +491,7 @@ class ApertureSet(object):
         '''Get upper and lower boundaries of all echelle orders.
         
         Args:
-            x (integer or :class:`numpy.array`): Input *X* coordiantes of the
+            x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 boundaries to calculate.
         Returns:
             dict: A dict of `{aperture: (lower, upper)}`, where `lower` and
@@ -550,8 +550,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     Find the positions of apertures on a CCD image.
 
     Args:
-        data (:class:`numpy.array`): Image data.
-        mask (:class:`numpy.array`): Image mask with the same shape as **data**,
+        data (:class:`numpy.ndarray`): Image data.
+        mask (:class:`numpy.ndarray`): Image mask with the same shape as **data**,
             where saturated pixels are marked with 4, and bad pixels with 2.
         scan_step (integer): Steps of pixels used to scan along the main
             dispersion direction.
@@ -1274,9 +1274,9 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
         center (float): Central value of gaussian function.
         fwhm (float): Full-width-half-maximum value of gaussian function.
         bkg (float): Backgroudn value of gaussian function.
-        x (float or :class:`numpy.array`): Input values.
+        x (float or :class:`numpy.ndarray`): Input values.
     Returns:
-        :class:`numpy.array`: Output function values.
+        :class:`numpy.ndarray`: Output function values.
         
     '''
     s = fwhm/2./math.sqrt(2*math.log(2))
@@ -1287,10 +1287,10 @@ def errfunc(p, x, y, fitfunc):
 
     Args:
         p (list): List of parameters.
-        x (:class:`numpy.array`): x values.
+        x (:class:`numpy.ndarray`): x values.
         fitfunc (function): Fitting function.
     Returns:
-        :class:`numpy.array`: Values of residuals.
+        :class:`numpy.ndarray`: Values of residuals.
     '''
     return y - fitfunc(p, x)
 
@@ -1299,9 +1299,9 @@ def fitfunc(p, x):
 
     Args:
         p (list): List of parameters.
-        x (:class:`numpy.array`): Input values.
+        x (:class:`numpy.ndarray`): Input values.
     Returns:
-        :class:`numpy.array`: Values of function.
+        :class:`numpy.ndarray`: Values of function.
     '''
     return gaussian_bkg(p[0], p[1], p[2], p[3], x)
 

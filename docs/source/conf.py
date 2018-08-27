@@ -34,6 +34,7 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.extlinks',
     'sphinx.ext.napoleon',
+    'sphinx.ext.intersphinx',
 ]
 
 extlinks = {'ads': ('http://adsabs.harvard.edu/abs/%s','ADS: ')}
@@ -261,7 +262,13 @@ texinfo_documents = [
 #texinfo_no_detailmenu = False
 
 # Example configuration for intersphinx: refer to the Python standard library.
-intersphinx_mapping = {'https://docs.python.org/': None}
+#intersphinx_mapping = {'https://docs.python.org/': None}
+intersphinx_mapping = {
+        #'python': ('https://docs.python.org/', None),
+        'numpy': ('https://docs.scipy.org/doc/numpy/', None),
+        'matplotlib': ('https://matplotlib.org', None),
+        'astropy': ('http://docs.astropy.org/en/stable/', None),
+        }
 
 
 #numpydoc_show_class_members = False

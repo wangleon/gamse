@@ -32,6 +32,7 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
         disp_axis (integer): Main dispersion axis of the input image. 0 means
             the echelle orders are along the *y* axis. 1 means along *x* axis.
         mask_suffix (string): Surfix of the filenames of masks.
+
     Returns:
         No returns.
 
@@ -323,7 +324,7 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
     the position of the maximum value.
 
     Args:
-        data (2-d :class:`numpy.array`): Data image as a numpy 2d-array.
+        data (2-d :class:`numpy.ndarray`): Data image as a numpy 2d-array.
         x0 (integer): Starting coordinate.
         ccf_ulimit (integer): Upper limit to **x0** of the data segment used to
             calculate CCF.
@@ -331,8 +332,9 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
             calculate CCF.
         step (integer): Step of searching the gap.
         order (integer): Degree of polynomial used to fit the boundary.
+
     Returns:
-        :class:`numpy.array`: Cofficients of the polynomial.
+        :class:`numpy.ndarray`: Cofficients of the polynomial.
 
 
     '''
@@ -400,6 +402,7 @@ def load_mosaic(filename):
 
     Args:
         filename (string): Name of the mosaic file.
+
     Returns:
         tuple: A tuple containing (`coeff_lst`, `select_area`), where
 
@@ -460,15 +463,14 @@ def load_mosaic(filename):
 
 
 def mosaic_flat_auto(aperture_set_lst, max_count):
-    '''
-    Mosaic flat images automatically.
+    '''Mosaic flat images automatically.
 
     Args:
-        aperture_set_lst (list): Dict of :class:`ApertureSet`.
+        aperture_set_lst (list): Dict of :class:`~edrs.echelle.trace.ApertureSet`.
         max_count (float): Maximum count.
 
     Returns:
-        :class:`ApertureSet`: The mosaiced aperture set.
+        :class:`~edrs.echelle.trace.ApertureSet`: The mosaiced aperture set.
 
     See Also:
         :func:`mosaic_flat_interact`
@@ -596,15 +598,16 @@ def mosaic_images(image_lst, mosaic_aperset):
     Args:
         images_lst (dict): A dict containing {*names*: *images*}, where *names*
             are strings, and *images* are the corresponding 2d
-            :class:`numpy.array` objects.
-        mosaic_aperset (:class:`ApertureSet`): The mosaiced aperture set.
+            :class:`numpy.ndarray` objects.
+        mosaic_aperset (:class:`~edrs.echelle.trace.ApertureSet`): The mosaiced
+            aperture set.
 
     Returns:
-        :class:`numpy.array`: The final mosaiced image with the shapes and
+        :class:`numpy.ndarray`: The final mosaiced image with the shapes and
             datatypes as images in **images_lst**.
 
     See Also:
-        :func: `mosaic_flat_auto`
+        :func:`mosaic_flat_auto`
 
     '''
 
@@ -661,8 +664,7 @@ def mosaic_images(image_lst, mosaic_aperset):
     return mosaic_image
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
-    '''
-    Save boundaries data in a SAO-DS9 region file.
+    '''Save boundaries data in a SAO-DS9 region file.
 
     Args:
         filename (string): Filename of the output region file.
@@ -709,10 +711,10 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
     '''Get the flat fielding image from the input file.
 
     Args:
-        data (:class:`numpy.array`): Image data of flat fielding.
-        mask (:class:`numpy.array`): Mask data of flat fielding.
-        apertureset (:class:`ApertureSet`): Echelle apertures detected in the
-            input file.
+        data (:class:`numpy.ndarray`): Image data of flat fielding.
+        mask (:class:`numpy.ndarray`): Mask data of flat fielding.
+        apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Echelle
+            apertures detected in the input file.
         nflat (integer): Number of flat fielding frames combined.
         slit_step (integer): Step of slit scanning.
         q_threshold (float): Threshold of *Q*-factor.
@@ -723,7 +725,7 @@ def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
         slit_file (string): Path to the ASCII file of slit functions.
 
     Returns:
-        :class:`numpy.array`: 2D response map.
+        :class:`numpy.ndarray`: 2D response map.
 
     '''
     # define the fitting and error functions
@@ -1214,13 +1216,13 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
     '''Get the flat fielding image for the slit-fed flat fielding image.
 
     Args:
-        data (:class:`numpy.array`): Image data of flat fielding.
-        mask (:class:`numpy.array`): Mask data of flat fielding.
-        apertureset (:class:`ApertureSet`): Echelle apertures detected in the
-            input file.
+        data (:class:`numpy.ndarray`): Image data of flat fielding.
+        mask (:class:`numpy.ndarray`): Mask data of flat fielding.
+        apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Echelle
+            apertures detected in the input file.
     
     Returns:
-        :class:`numpy.array`: 2D response map.
+        :class:`numpy.ndarray`: 2D response map.
 
     '''
     h, w = data.shape

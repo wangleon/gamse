@@ -6,18 +6,18 @@ def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
     '''Get the mean value of an input array using the sigma-clipping method
 
     Args:
-        x (:class:`numpy.array`): The input array
-        err (:class:`numpy.array`): Errors of the input array
-        high (float): Upper rejection threshold
-        low (float): Loweer rejection threshold
-        maxiter (int): Maximum number of iterations
+        x (:class:`numpy.ndarray`): The input array.
+        err (:class:`numpy.ndarray`): Errors of the input array.
+        high (float): Upper rejection threshold.
+        low (float): Loweer rejection threshold.
+        maxiter (integer): Maximum number of iterations.
     Returns:
         tuple: A tuple containing:
 
-            * **mean** (*float*): Mean value after the sigma-clipping
-            * **std** (*float*): Standard deviation after the sigma-clipping
-            * **mask** (:class:`numpy.array`): Mask of accepted values in the
-              input array
+            * **mean** (*float*) – Mean value after the sigma-clipping.
+            * **std** (*float*) – Standard deviation after the sigma-clipping.
+            * **mask** (:class:`numpy.ndarray`) – Mask of accepted values in the
+              input array.
     '''
     x = np.array(x)
     mask = np.zeros_like(x)<1
@@ -50,27 +50,27 @@ def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
     return mean, std, new_mask
 
 def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
-    '''Fit the input arrays using a linear function
+    '''Fit the input arrays using a linear function.
 
     Args:
-        x (:class:`numpy.array`): The input X values
-        y (:class:`numpy.array`): The input Y values
-        yerr (:class:`numpy.array`): Errors of the Y array
-        maxiter (int): Maximum number of interations
-        high (float): Upper rejection threshold
-        low (float): Lower rejection threshold
-        full (bool): `True` if return all information
+        x (:class:`numpy.ndarray`): The input X values.
+        y (:class:`numpy.ndarray`): The input Y values.
+        yerr (:class:`numpy.ndarray`): Errors of the Y array.
+        maxiter (integer): Maximum number of interations.
+        high (float): Upper rejection threshold.
+        low (float): Lower rejection threshold.
+        full (bool): `True` if return all information.
 
     Returns:
         tuple: A tuple containing:
 
-            * **p** (:class:`numpy.array`): Parameters of the fitting
-            * **std** (*float*): Standard deviation of the fitting
-            * **mask** (:class:`numpy.array`): Mask of the accepted values in
-              the input array
-            * **func** (*func*): Function
-            * **r2** (*float*) : *R*:sup:`2`
-            * **p_std** (*tuple*): Standar deviations of the parameters
+            * **p** (:class:`numpy.ndarray`) – Parameters of the fitting.
+            * **std** (*float*) – Standard deviation of the fitting.
+            * **mask** (:class:`numpy.ndarray`) – Mask of the accepted values in
+              the input array.
+            * **func** (*func*) – Function.
+            * **r2** (*float*) – *R*:sup:`2` value.
+            * **p_std** (*tuple*) – Standar deviations of the parameters.
     '''
     x = np.array(x)
     y = np.array(y)
@@ -134,14 +134,14 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
     '''Two-dimensional polynomial fit.
 
     Args:
-        x (:class:`numpy.array`): Input X array
-        y (:class:`numpy.array`): Input Y array
-        z (:class:`numpy.array`): Input Z array
-        xorder (int): X order
-        yorder (int): Y order
-        linear (bool): Return linear solution if `True`
+        x (:class:`numpy.ndarray`): Input X array.
+        y (:class:`numpy.ndarray`): Input Y array.
+        z (:class:`numpy.ndarray`): Input Z array.
+        xorder (integer): X order.
+        yorder (integer): Y order.
+        linear (bool): Return linear solution if `True`.
     Returns:
-        :class:`numpy.array`: Coefficient array
+        :class:`numpy.ndarray`: Coefficient array.
 
     Examples:
 
@@ -201,11 +201,11 @@ def polyval2d(x, y, m):
     '''Get values for the 2-D polynomial values
 
     Args:
-        x (:class:`numpy.array`): Input X array
-        y (:class:`numpy.array`): Input Y array
-        m (:class:`numpy.array`): Coefficients of the 2-D polynomial
+        x (:class:`numpy.ndarray`): Input X array.
+        y (:class:`numpy.ndarray`): Input Y array.
+        m (:class:`numpy.ndarray`): Coefficients of the 2-D polynomial.
     Returns:
-        z (:class:`numpy.array`): Values of the 2-D polynomial
+        z (:class:`numpy.ndarray`): Values of the 2-D polynomial.
     '''
     yorder = m.shape[0] - 1
     xorder = m.shape[1] - 1

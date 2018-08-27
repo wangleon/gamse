@@ -11,17 +11,19 @@ from .imageproc      import table_to_array
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     upper_limit=5, lower_limit=5, figure=None):
-    '''Extract spectra from an individual image.
+    '''
+    Extract spectra from an individual image.
     
     Args:
         infilename (string): Name of the input image.
         outfilename (string): Name of the output image.
         channels (list): List of channels as strings.
-        apertureset_lst (dict): Dict of :class:`ApertureSet` instances for
-            different channels.
+        apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
+            instances for different channels.
         upper_limit (float): Upper limit of the extracted aperture.
         lower_limit (float): Lower limit of the extracted aperture.
-        figure (:class:`matplotlib.figure`): Figure to display the 1d spectra
+        figure (:class:`matplotlib.figure.Figure`): Figure to display the
+            extracted 1d spectra.
     Returns:
         No returns
     '''
@@ -138,13 +140,15 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
 def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
-    '''Extract 1-D spectra from the input image data following the input
-    :class:`ApertureSet`.
+    '''
+    Extract 1-D spectra from the input image data following the input
+    :class:`~edrs.echelle.trace.ApertureSet`.
 
     Args:
-        data (:class:`numpy.array`): Input data image.
-        mask (:class:`numpy.array`): Input mask.
-        apertureset (:class:`ApertureSet`): Input :class:`ApertureSet` instance.
+        data (:class:`numpy.ndarray`): Input data image.
+        mask (:class:`numpy.ndarray`): Input mask.
+        apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Input
+            :class:`~edrs.echelle.trace.ApertureSet` instance.
         lower_limit (float): Lower limit of the extracted aperture.
         upper_limit (float): Upper limit of the extracted aperture.
     Returns:

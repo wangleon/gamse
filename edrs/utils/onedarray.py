@@ -6,7 +6,7 @@ def get_edge_bin(array):
     Detect the edge indcies of a binary 1-D array.
 
     Args:
-        array (:class:`numpy.array`): A list or Numpy 1d array, with binary
+        array (:class:`numpy.ndarray`): A list or Numpy 1d array, with binary
             (0/1) or boolean (True/False) values.
 
     Returns:

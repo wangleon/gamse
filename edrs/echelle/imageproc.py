@@ -16,7 +16,7 @@ def combine_images(data_lst,
     '''Combine multiple FITS images.
 
     Args:
-        data_lst (list): A list of 2D `numpy.array`.
+        data_lst (list): A list of 2D `numpy.ndarray`.
         mode (string): Combine mode. Either "mean" or "sum".
         upper_clip (float): Upper threshold of the sigma-clipping. Default is
             *None*.
@@ -24,7 +24,7 @@ def combine_images(data_lst,
             *None*.
         maxiter (maxiter): Maximum number of iterations.
     Returns:
-        :class:`numpy.array`.
+        :class:`numpy.ndarray`: Combined image array.
 
     '''
 
@@ -131,14 +131,14 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
     and *y* directions.
 
     Args:
-        z (:class:`numpy.array`): Input 2-d array.
+        z (:class:`numpy.ndarray`): Input 2-d array.
         xwindow (integer): Window size along *x*-axis.
         ywindow (integer): Window size along *y*-axis.
         xorder (float): Degree of polynomial along *x*-axis.
         yorder (float): Degree of polynomial along *y*-axis.
-        derivative (str): *None*, *col*, *row*, or *both*.
+        derivative (string): *None*, *col*, *row*, or *both*.
     Returns:
-        :class:`numpy.array` or tuple: Output 2-d array, or a tuple containing
+        :class:`numpy.ndarray` or tuple: Output 2-d array, or a tuple containing
             derivative arries along *x*- and *y*-axes, respetively, if
             derivative = "both".
         
@@ -211,7 +211,7 @@ def array_to_table(array):
     '''Convert the non-zeros elements of a Numpy array to a stuctured array.
 
     Args:
-        array (:class:`numpy.array`): Input Numpy array.
+        array (:class:`numpy.ndarray`): Input Numpy array.
     Returns:
         :class:`numpy.dtype`: Numpy stuctured array.
     See also:
@@ -269,7 +269,7 @@ def table_to_array(table, shape):
         table (:class:`numpy.dtype`): Numpy structured array.
         shape (tuple): Shape of output array.
     Returns:
-        :class:`numpy.array`: Numpy array.
+        :class:`numpy.ndarray`: Mask image array.
     See also:
         :func:`array_to_table`
     Examples:
@@ -312,15 +312,15 @@ def fix_pixels(data, mask, direction, method):
     '''Fix specific pixels of the CCD image by interpolating surrounding pixels.
 
     Args:
-        data (:class:`numpy.array`): Input image as a 2-D array.
-        mask (:class:`numpy.array`): Mask of pixels to be fixed. This array
+        data (:class:`numpy.ndarray`): Input image as a 2-D array.
+        mask (:class:`numpy.ndarray`): Mask of pixels to be fixed. This array
             shall has the same shape as **data**.
         direction (string or integer): Interpolate along which axis (*X* = 1,
             *Y* = 0).
         method (string): Interpolationg method ('linear' means linear
             interpolation, and 'cubic' means cubic spline interpolation).
     Returns:
-        :class:`numpy.array`: The fixed image as a 2-D array.
+        :class:`numpy.ndarray`: The fixed image as a 2-D array.
     '''
     # make a new copy of the input data
     newdata = np.copy(data)
