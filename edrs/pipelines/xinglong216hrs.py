@@ -17,6 +17,9 @@ from ..utils.config import read_config
 from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array, fix_pixels)
 from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
+from ..echelle.extract import extract_aperset
+
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
@@ -26,8 +29,8 @@ def get_badpixel_mask(shape, bins):
         shape (tuple): Shape of image.
         bins (tuple): CCD bins.
     Returns:
-        :class:`numpy.array`: 2D binary mask, where bad pixels are marked with
-        *True*, others *False*.
+        :class:`numpy.ndarray`: 2D binary mask, where bad pixels are marked with
+            *True*, others *False*.
 
     The bad pixels are found *empirically*.
         
@@ -64,11 +67,11 @@ def get_mask(data, head):
     '''Get the mask of input image.
 
     Args:
-        data (:class:`numpy.array`): Input image data.
+        data (:class:`numpy.ndarray`): Input image data.
         head (:class:`astropy.io.fits.Header`): Input FITS header.
 
     Returns:
-        :class:`numpy.array`: Image mask.
+        :class:`numpy.ndarray`: Image mask.
 
     The shape of output mask is determined by the keywords in the input FITS
     header. The numbers of columns and rows are given by::
@@ -102,17 +105,18 @@ def get_mask(data, head):
 
 
 def correct_overscan(data, head, mask=None):
-    '''Correct overscan.
+    '''Correct overscan for an input image and update related information in the
+    FITS header.
     
     Args:
-        data (:class:`numpy.array`):
-        head (:class:`astropy.io.fits.Header`):
-        mask (:class:`numpy.array`):
+        data (:class:`numpy.ndarray`): Input image data.
+        head (:class:`astropy.io.fits.Header`): Input FITS header.
+        mask (:class:`numpy.ndarray`): Input image mask.
     
     Returns:
         tuple: A tuple containing:
 
-            * data (:class:`numpy.array`): The output image with overscan
+            * data (:class:`numpy.ndarray`): The output image with overscan
               corrected.
             * head (:class:`astropy.io.fits.Header`): The updated FITS header.
     '''
@@ -170,6 +174,12 @@ def correct_overscan(data, head, mask=None):
 
 def reduce():
     '''Reduce the Xinglong 216/HRS spectra.
+
+    Args:
+        No args.
+
+    Returns:
+        No returns.
     '''
 
     obslogfile = obslog.find_log(os.curdir)
@@ -179,7 +189,7 @@ def reduce():
 
     rawdata = config['data']['rawdata']
 
-    # parse bias
+    ############################# parse bias ###################################
     if os.path.exists('bias.fits'):
         bias = fits.getdata('bias.fits')
     else:
@@ -240,7 +250,7 @@ def reduce():
             # no bias in this dataset
             bias = 0
 
-    # find flat groups
+    ######################### find flat groups##################################
     # initialize flat_groups for single fiber
     flat_groups = {}
     for item in log:
@@ -265,48 +275,51 @@ def reduce():
                 flat_groups[flatname] = []
             flat_groups[flatname].append(item.fileid)
 
-    # trace the orders
-    if os.path.exists('trace.trc'):
-        aperset = load_aperture_set('trace.trc')
-    else:
-        # use flats to trace the orders
+    ################# Combine the flats and trace the orders ###################
+    flat_data_lst = {}
+    flat_mask_lst = {}
+    aperset_lst   = {}
 
-        # first combine the flats
-        for flatname, fileids in flat_groups.items():
-            flat_filename = '%s.fits'%flatname
-            mask_filename = '%s_msk.fits'%flatname
+    # first combine the flats
+    for flatname, fileids in flat_groups.items():
+        flat_filename = '%s.fits'%flatname
+        mask_filename = '%s_msk.fits'%flatname
+        aperset_filename = 'trace_%s.trc'%flatname
+        aperset_regname  = 'trace_%s.reg'%flatname
 
-            # get flat_data and mask_array
-            if os.path.exists(flat_filename) and os.path.exists(mask_filename):
-                flat_data  = fits.getdata(flat_filename)
-                mask_table = fits.getdata(mask_filename)
-                mask_array = table_to_array(mask_table, flat_data.shape)
-            else:
-                data_lst = []
-                for ifile, fileid in enumerate(fileids):
-                    filename = os.path.join(rawdata, '%s.fits'%fileid)
-                    data, head = fits.getdata(filename, header=True)
-                    mask = get_mask(data, head)
-                    sat_mask = (mask&4>0)
-                    bad_mask = (mask&2>0)
-                    if ifile==0:
-                        allmask = np.zeros_like(mask, dtype=np.int16)
-                    allmask += sat_mask
-                    data, head = correct_overscan(data, head, mask)
-                    data = data - bias
-                    data_lst.append(data)
-                nflat = len(data_lst)
-                print('combine %d images for %s'%(nflat, flatname))
-                flat_data = combine_images(data_lst, mode='mean',
-                                            upper_clip=10, maxiter=5)
-                # write combine result to fits
-                fits.writeto(flat_filename, flat_data, overwrite=True)
-                # find saturation mask
-                sat_mask = allmask > nflat/2.
-                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
-                mask_table = array_to_table(mask_array)
-                # write mask to fits
-                fits.writeto(mask_filename, mask_table, overwrite=True)
+        # get flat_data and mask_array
+        if os.path.exists(flat_filename) and os.path.exists(mask_filename) and \
+           os.path.exists(aperset_filename):
+            flat_data  = fits.getdata(flat_filename)
+            mask_table = fits.getdata(mask_filename)
+            mask_array = table_to_array(mask_table, flat_data.shape)
+            aperset = load_aperture_set(aperset_filename)
+        else:
+            data_lst = []
+            for ifile, fileid in enumerate(fileids):
+                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                data, head = fits.getdata(filename, header=True)
+                mask = get_mask(data, head)
+                sat_mask = (mask&4>0)
+                bad_mask = (mask&2>0)
+                if ifile==0:
+                    allmask = np.zeros_like(mask, dtype=np.int16)
+                allmask += sat_mask
+                data, head = correct_overscan(data, head, mask)
+                data = data - bias
+                data_lst.append(data)
+            nflat = len(data_lst)
+            print('combine %d images for %s'%(nflat, flatname))
+            flat_data = combine_images(data_lst, mode='mean',
+                                        upper_clip=10, maxiter=5)
+            # write combine result to fits
+            fits.writeto(flat_filename, flat_data, overwrite=True)
+            # find saturation mask
+            sat_mask = allmask > nflat/2.
+            mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+            mask_table = array_to_table(mask_array)
+            # write mask to fits
+            fits.writeto(mask_filename, mask_table, overwrite=True)
             # now flt_data and mask_array are prepared
 
             aperset = find_apertures(flat_data, mask_array,
@@ -322,6 +335,110 @@ def reduce():
                         )
             aperset.save_txt('trace_%s.trc'%flatname)
             aperset.save_reg('trace_%s.reg'%flatname)
+
+        # append the flat data and mask
+        flat_data_lst[flatname] = flat_data
+        flat_mask_lst[flatname] = mask_array
+        aperset_lst[flatname]   = aperset
+
+    ########################### Get flat fielding ##############################
+    flatmap_lst = {}
+    for flatname in sorted(flat_groups.keys()):
+        flatmap_filename = '%s_rsp.fits'%flatname
+        if os.path.exists(flatmap_filename):
+            flatmap = fits.getdata(flatmap_filename)
+        else:
+            flatmap = get_fiber_flat(
+                        data        = flat_data_lst[flatname],
+                        mask        = flat_mask_lst[flatname],
+                        apertureset = aperset_lst[flatname],
+                        slit_step   = config['flat'].getint('slit_step'),
+                        nflat       = len(flat_groups[flatname]),
+                        q_threshold = config['flat'].getfloat('q_threshold'),
+                        param_deg   = config['flat'].getint('param_deg'),
+                        fig_aperpar = None,
+                        fig_overlap = None,
+                        fig_slit    = '%s_slit.png'%flatname,
+                        slit_file   = None,
+                        )
+        
+            # save flat result to fits file
+            fits.writeto(flatmap_filename, flatmap, overwrite=True)
+
+        # append the flatmap
+        flatmap_lst[flatname] = flatmap
+
+    ############################# Mosaic Flats #################################
+    if len(flat_groups) == 1:
+        flatname = flat_groups.keys()[0]
+        shutil.copyfile('%s.fits'%flatname, 'flat.fits')
+        shutil.copyfile('%s_msk.fits'%flatname, 'flat_msk.fits')
+        shutil.copyfile('trace_%s.trc', 'trace.trc')
+        shutil.copyfile('trace_%s.reg', 'trace.reg')
+        shutil.copyfile('%s_rsp.fits'%flatname, 'flat_rsp.fits')
+        flat_map = fits.getdata('flat_rsp.fits')
+    else:
+        # mosaic apertures
+        mosaic_aperset = mosaic_flat_auto(
+                aperture_set_lst = aperset_lst,
+                max_count        = config['flat'].getfloat('mosaic_maxcount'),
+                )
+        # mosaic original flat images
+        flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
+        fits.writeto('flat.fits', flat_data, overwrite=True)
+
+        # mosaic flat mask images
+        mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
+        mask_table = array_to_table(mask_data)
+        fits.writeto('flat_msk.fits', mask_table, overwrite=True)
+
+        # mosaic sensitivity map
+        flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
+        fits.writeto('flat_rsp.fits', flat_map, overwrite=True)
+
+        mosaic_aperset.save_txt('trace.trc')
+        mosaic_aperset.save_reg('trace.reg')
+
+    ############################## Extract ThAr ################################
+
+    # find a file and get the data shape
+    filename = os.path.join(rawdata, '%s.fits'%log.item_list[0].fileid)
+    data = fits.getdata(filename)
+    h, w = data.shape
+
+    # define dtype of 1-d spectra
+    names = [
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux',       (np.float32, w)),
+            ]
+    _names, _formats = list(zip(*types))
+    spectype = np.dtype({'names': _names, 'formats'})
+
+    calib_lst = {}
+    count_thar = 0
+    for item in log:
+        if item.objectname[0]=='ThAr':
+            count_thar += 1
+            filename = os.path.join(rawdaa, '%s.fits'%item.fileid)
+            data, head = fits.getdata(filename, header=True)
+            mask = get_mask(data, head)
+            data, head = correct_overscan(data, head, mask)
+            data = data - bias
+            spectra1d = extract_aperset(data, mask,
+                        apertureset = mosaic_aperset,
+                        lower_limit = 5,
+                        upper_limit = 5,
+                        )
+            head = mosaic_aperset.to_fitsheader(head, channel=None)
+            spec = [(aper, 0, item['flux_sum'].size,
+                     np.zeros_lke(item['flux_sum'].size, dtype=np.float64),
+                     iteme['flux_sum'])
+                     for aper, item in sorted(spectra1d.items())]
+            spec = np.array(spec, dtype=spectype)
+
 
 
     
