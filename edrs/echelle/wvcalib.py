@@ -2144,9 +2144,9 @@ def select_calib_from_database(instrument, time_key, date, channel):
     return spec, calib, aperset
 
 
-def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist, channel,
-    coeff, npixel, k, offset, aperture_offset=0, window_size=13, xorder=3,
-    yorder=3, maxiter=10, clipping=3, snr_threshold=10):
+def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist,
+    channel, coeff, npixel, k, offset, aperture_offset=0, window_size=13,
+    xorder=3, yorder=3, maxiter=10, clipping=3, snr_threshold=10):
     '''
     Re-calibrate the wavelength of an input spectra file using another spectra
     as reference.

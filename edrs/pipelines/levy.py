@@ -95,7 +95,7 @@ def reduce():
         aperset.save_txt('trace.trc')
         aperset.save_reg('trace.reg')
 
-    # combine flat images
+    ########################### Combine flat images ############################
     flat_groups = {}
     for item in log:
         if item.objectname[0]=='WideFlat':
@@ -142,7 +142,7 @@ def reduce():
         flat_data_lst[flatname] = flat_data
         flat_mask_lst[flatname] = mask_array
 
-    # extract flat spectrum
+    ######################### Extract flat spectrum ############################
     flatmap_lst = {}
     flat_spectra1d_lst = {}
     for flatname in flat_groups:
@@ -171,7 +171,7 @@ def reduce():
         flatmap_lst[flatname] = flatmap
 
 
-    # mosaic flats
+    ############################ Mosaic flats ##################################
     mosaic_resp_filename = 'flat_resp.fits'
     if os.path.exists(mosaic_resp_filename):
         flatmap = fits.getdata(mosaic_resp_filename)
@@ -221,7 +221,7 @@ def reduce():
             flatmap += flatmap_lst[flatname]*maskdata
         fits.writeto(mosaic_resp_filename, flatmap, overwrite=True)
 
-    # extract ThAr
+    ############################# extract ThAr #################################
     h, w = bias.shape
     spectype = np.dtype({
                 'names':  ('aperture', 'order', 'points', 'wavelength', 'flux'),
@@ -325,7 +325,7 @@ def reduce():
         ref_datetime_lst = [calib_lst[frameid]['date-obs']
                                 for frameid in ref_frameid_lst]
 
-    # extract science frames
+    ###################### Extract science spectra #############################
     for item in log:
         if item.imagetype=='sci':
             filename = os.path.join(rawdata, '%s.fits'%item.fileid)

@@ -704,7 +704,7 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
                            x1+1,y1+1,x2+1,y2+1, os.linesep))
     outfile.close()
 
-def get_flatfielding(data, mask, apertureset, nflat, slit_step=64,
+def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         q_threshold=30, param_deg=7, fig_aperpar=None, fig_overlap=None,
         fig_slit=None, slit_file=None,
     ):

@@ -17,7 +17,7 @@ from ..utils.config       import read_config
 from ..utils.obslog       import read_log, parse_num_seq, find_log
 from ..echelle.imageproc  import table_to_array, array_to_table
 from ..echelle.trace      import find_apertures, load_aperture_set
-from ..echelle.flat       import mosaic_flat_auto, mosaic_images, get_flatfielding
+from ..echelle.flat       import mosaic_flat_auto, mosaic_images, get_fiber_flat
 from ..echelle.background import correct_background
 from ..echelle.extract    import sum_extract
 from ..echelle.wvcalib    import wvcalib, recalib, reference_wv
@@ -788,7 +788,7 @@ class Reduction(object):
 
                 nflat = len(flat_group[flatname])
 
-                flatmap = get_flatfielding(data, mask,
+                flatmap = get_fiber_flat(data, mask,
                             apertureset = aperset,
                             slit_step   = slit_step,
                             nflat       = nflat,
