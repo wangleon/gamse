@@ -15,10 +15,11 @@ import matplotlib.ticker as tck
 from ..utils.regression import polyfit2d, polyval2d
 from .imageproc         import table_to_array, array_to_table
 
-def correct_background(data, mask, channels, apertureset_lst, scale='linear',
+def correct_background(data, mask, channels, apertureset_lst,
+        method='poly', scale='linear',
         block_mask=4, scan_step=200, xorder=2, yorder=2, maxiter=5,
         upper_clip=3., lower_clip=3.,
-        extend=True, display=True, fig_file=None, reg_file=None):
+        extend=True, extrapolate=True, display=True, fig_file=None, reg_file=None):
 
     '''Subtract the background for an input FITS image.
 
@@ -147,14 +148,12 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
     # if scale='log', filter the negative values
     if scale=='log':
         pmask = znodes > 0
-        #xnodes = xnodes[pmask]
-        #ynodes = ynodes[pmask]
-        #znodes = znodes[pmask]
-        znodes[~pmask] = 0.1
+        znodes[~pmask] = znodes[pmask].min()
+        znodes = np.log10(znodes)
 
     if plot:
         # initialize figures
-        fig = plt.figure(figsize=(12,12), dpi=150)
+        fig = plt.figure(figsize=(10,10), dpi=150)
         ax11 = fig.add_axes([0.07, 0.54, 0.39,  0.39])
         ax12 = fig.add_axes([0.52, 0.54, 0.39,  0.39])
         ax13 = fig.add_axes([0.94, 0.54, 0.015, 0.39])
@@ -165,7 +164,6 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
         ax11.imshow(data, cmap='gray')
 
         # plot nodes
-        ax11.scatter(xnodes, ynodes, c='r', s=8, linewidth=0, alpha=0.8)
         for ax in [ax11, ax12]:
             ax.set_xlim(0,w-1)
             ax.set_ylim(h-1,0)
@@ -189,7 +187,7 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
             for tick in ax.zaxis.get_major_ticks():
                 tick.label1.set_fontsize(9)
 
-        if display: plt.show(block=False)
+        #if display: plt.show(block=False)
 
         # plot the figure used in paper
         if plot_paper_fig:
@@ -198,34 +196,18 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
             figp2 = plt.figure(figsize=(6.5,6), dpi=150)
             axp2 = figp2.add_axes([0.12, 0.1, 0.84, 0.86])
 
-    # normalize to 0 ~ 1 for x and y nodes
-    xfit = np.float64(xnodes)/w
-    yfit = np.float64(ynodes)/h
+    if method=='poly':
+        background_data, fitmask = fit_background(data.shape,
+                xnodes, ynodes, znodes, xorder=xorder, yorder=yorder,
+                maxiter=maxiter, upper_clip=upper_clip, lower_clip=lower_clip)
+    elif method=='interp':
+        background_data, fitmask = interpolate_background(data.shape,
+                xnodes, ynodes, znodes)
+    else:
+        print('Unknown method: %s'%method)
+
     if scale=='log':
-        # calculate logarithmic Z
-        zfit = np.log(znodes)
-    elif scale=='linear':
-        zfit = znodes
-
-    # fit the 2-d polynomial
-    fitmask = np.ones_like(zfit, dtype=np.bool)
-    for niter in range(maxiter):
-        coeff = polyfit2d(xfit[fitmask], yfit[fitmask], zfit[fitmask],
-                          xorder=xorder, yorder=yorder)
-        fitvalues = polyval2d(xfit, yfit, coeff)
-        residual = zfit - fitvalues
-        mean  = residual[fitmask].mean(dtype=np.float64)
-        sigma = residual[fitmask].std(dtype=np.float64)
-        m1 = residual < mean + upper_clip*sigma
-        m2 = residual > mean - lower_clip*sigma
-        new_fitmask = m1*m2
-
-        # write info to running log
-        logger.debug('Background fitting iteration %d: sigma=%g, N=%d, N(new)=%d'%(
-            niter, sigma, fitmask.sum(), new_fitmask.sum()))
-        if new_fitmask.sum() == fitmask.sum():
-            break
-        fitmask = new_fitmask
+        background_data = np.power(10, background_data)
 
     # write nodes to running log
     message = ['Background Nodes:', ' x,    y,    value,  mask']
@@ -233,18 +215,14 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
         message.append('%4d %4d %+10.8e %2d'%(x,y,z,m))
     logger.info((os.linesep+' '*4).join(message))
 
-
-    if scale=='log':
-        log_residual = residual
-        residual = znodes - np.exp(fitvalues)
+    residual = znodes - background_data[ynodes, xnodes]
 
     if plot:
         # prepare for plotting the fitted surface with a loose grid
-        xx, yy = np.meshgrid(np.linspace(0,w-1,32), np.linspace(0,h-1,32))
-        zz = polyval2d(xx/w, yy/h, coeff)
-        if scale=='log':
-            log_zz = zz
-            zz = np.exp(log_zz)
+        yy, xx = np.meshgrid(np.linspace(0,h-1,32), np.linspace(0,w-1,32))
+        yy = np.int16(np.round(yy))
+        xx = np.int16(np.round(xx))
+        zz = background_data[yy, xx]
 
         # plot 2d fitting in a 3-D axis in fig2
         # plot the linear fitting
@@ -252,8 +230,15 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
         ax22.set_title('residuals (%s Z)'%scale, fontsize=10)
         ax21.plot_surface(xx, yy, zz, rstride=1, cstride=1, cmap='jet',
                           linewidth=0, antialiased=True, alpha=0.5)
-        ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],   linewidth=0)
-        ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask], linewidth=0)
+        ax21.scatter(xnodes[fitmask], ynodes[fitmask], znodes[fitmask],
+                    color='C0', linewidth=0)
+        ax22.scatter(xnodes[fitmask], ynodes[fitmask], residual[fitmask],
+                    color='C0', linewidth=0)
+        if (~fitmask).sum()>0:
+            ax21.scatter(xnodes[~fitmask], ynodes[~fitmask], znodes[~fitmask],
+                        color='none', edgecolor='C0', linewidth=1)
+            ax22.scatter(xnodes[~fitmask], ynodes[~fitmask], residual[~fitmask],
+                        color='none', edgecolor='C0', linewidth=1)
 
         # plot the logrithm fitting in another fig
         #if scale=='log':
@@ -285,22 +270,24 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
             axp1.set_ylabel('Y')
             axp1.set_zlabel('Count')
 
-    # calculate the background
-    xx, yy = np.meshgrid(np.arange(w), np.arange(h))
-    xx = np.float64(xx)/w
-    yy = np.float64(yy)/h
-    if scale=='log':
-        background_data = np.exp(polyval2d(xx, yy, coeff))
-    elif scale=='linear':
-        background_data = polyval2d(xx, yy, coeff)
-
     if plot:
-        # plot the background light
+        # plot the accepted nodes
+        ax11.scatter(xnodes[fitmask], ynodes[fitmask],
+                    c='r', s=8, linewidth=0, alpha=0.8)
         cnorm = colors.Normalize(vmin = background_data.min(),
                                  vmax = background_data.max())
         scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
+        # plot the background light
         image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
-        ax12.scatter(xnodes, ynodes, c=znodes, s=8, lw=0.5, cmap=scalarmap.get_cmap())
+        # plot the accepted nodes
+        ax12.scatter(xnodes[fitmask], ynodes[fitmask], c=znodes[fitmask],
+                    s=8, linewidth=0.5, cmap=scalarmap.get_cmap())
+        # plot the rejected nodes
+        if (~fitmask).sum()>0:
+            ax11.scatter(xnodes[~fitmask], ynodes[~fitmask],
+                        c='none', s=8, edgecolor='r', linewidth=0.5)
+            ax12.scatter(xnodes[~fitmask], ynodes[~fitmask],
+                        c='none', s=8, edgecolor='k', linewidth=0.5)
         # set colorbar
         plt.colorbar(image, cax=ax13)
         # set font size of colorbar
@@ -329,6 +316,7 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
             plt.close(figp1)
             plt.close(figp2)
 
+    plt.show()
     if fig_file is not None:
         fig.savefig(fig_file)
     plt.close(fig)
@@ -351,4 +339,49 @@ def correct_background(data, mask, channels, apertureset_lst, scale='linear',
         outfile.close()
 
 
+def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
+    maxiter=5, upper_clip=3, lower_clip=3):
 
+    h, w = shape
+    # normalize to 0 ~ 1 for x and y nodes
+    xfit = np.float64(xnodes)/w
+    yfit = np.float64(ynodes)/h
+    zfit = znodes
+
+    # fit the 2-d polynomial
+    _messages = [
+        'Polynomial Background Fitting Xorder=%d, Yorder=%d:'%(xorder, yorder)
+        ]
+    mask = np.ones_like(zfit, dtype=np.bool)
+
+    for niter in range(maxiter):
+        coeff = polyfit2d(xfit[mask], yfit[mask], zfit[mask],
+                          xorder=xorder, yorder=yorder)
+        values = polyval2d(xfit, yfit, coeff)
+        residuals = zfit - values
+        sigma = residuals[mask].std(dtype=np.float64)
+        m1 = residuals < upper_clip*sigma
+        m2 = residuals > -lower_clip*sigma
+        new_mask = m1*m2
+
+        # write info to running log
+        _message = 'Iter. %d: std=%10.6f, N=%4d, N(new)=%4d'%(
+            niter, sigma, mask.sum(), new_mask.sum())
+        _messages.append(_message)
+        if new_mask.sum() == mask.sum():
+            break
+        mask = new_mask
+
+    logger.debug((os.linesep+' '*4).join(_messages))
+
+    yy, xx = np.mgrid[:h:, :w:]
+    background_data = polyval2d(xx/w, yy/h, coeff)
+    return background_data, mask
+
+def interpolate_background(shape, xnodes, ynodes, znodes):
+    h, w = shape
+    yy, xx = np.mgrid[:h:, :w:]
+    background_data = intp.griddata((xnodes, ynodes), znodes, (xx, yy),
+            rescale=True, method='cubic')
+    mask = np.ones_like(znodes, dtype=np.bool)
+    return background_data, mask
