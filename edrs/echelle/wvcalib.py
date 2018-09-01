@@ -2114,7 +2114,7 @@ class CalibFigure(Figure):
 def select_calib_from_database(instrument, time_key, date, channel):
     path = os.path.join(os.getenv('HOME'), '.edrs/wvcalib/%s'%instrument)
     if not os.path.exists(path):
-        return None, None
+        return None, None, None
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
@@ -2125,7 +2125,7 @@ def select_calib_from_database(instrument, time_key, date, channel):
             filename_lst.append(filename)
             datetime_lst.append(datetime)
     if len(filename_lst)==0:
-        return None, None
+        return None, None, None
 
     input_datetime = dateutil.parser.parse(date)
     deltat_lst = np.array([abs((input_datetime - datetime).total_seconds())

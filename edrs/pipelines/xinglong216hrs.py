@@ -19,6 +19,10 @@ from ..echelle.imageproc import (combine_images, array_to_table,
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
+from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
+                               self_reference_singlefiber,
+                               wv_reference_singlefiber, get_time_weight)
+from ..echelle.background import correct_background
 
 from .reduction          import Reduction
 
@@ -187,7 +191,10 @@ def reduce():
 
     config = read_config('Xinglong216HRS')
 
+    # path alias
     rawdata = config['data']['rawdata']
+    report  = config['data']['report']
+    result  = config['data']['result']
 
     ############################# parse bias ###################################
     if os.path.exists('bias.fits'):
@@ -358,7 +365,7 @@ def reduce():
                         param_deg   = config['flat'].getint('param_deg'),
                         fig_aperpar = None,
                         fig_overlap = None,
-                        fig_slit    = '%s_slit.png'%flatname,
+                        fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
                         slit_file   = None,
                         )
         
@@ -401,45 +408,202 @@ def reduce():
 
     ############################## Extract ThAr ################################
 
-    # find a file and get the data shape
-    filename = os.path.join(rawdata, '%s.fits'%log.item_list[0].fileid)
-    data = fits.getdata(filename)
-    h, w = data.shape
+    if False:
+        # get the data shape
+        h, w = flat_map.shape
+    
+        # define dtype of 1-d spectra
+        types = [
+                ('aperture',   np.int16),
+                ('order',      np.int16),
+                ('points',     np.int16),
+                ('wavelength', (np.float64, w)),
+                ('flux',       (np.float32, w)),
+                ]
+        _names, _formats = list(zip(*types))
+        spectype = np.dtype({'names': _names, 'formats': _formats})
+    
+        calib_lst = {}
+        count_thar = 0
+        for item in log:
+            if item.objectname[0].strip().lower()=='thar':
+                count_thar += 1
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data, head = fits.getdata(filename, header=True)
+                mask = get_mask(data, head)
+                data, head = correct_overscan(data, head, mask)
+                data = data - bias
+                spectra1d = extract_aperset(data, mask,
+                            apertureset = mosaic_aperset,
+                            lower_limit = 5,
+                            upper_limit = 5,
+                            )
+                head = mosaic_aperset.to_fitsheader(head, channel=None)
+    
+                spec = []
+                for aper, _item in sorted(spectra1d.items()):
+                    flux_sum = _item['flux_sum']
+                    spec.append(
+                             (aper, 0, flux_sum.size,
+                              np.zeros_like(flux_sum, dtype=np.float64),
+                              flux_sum)
+                             )
+                spec = np.array(spec, dtype=spectype)
+    
+                if count_thar == 1:
+                    # in the first thar, try to find previouse calibration results
+                    ref_spec, ref_calib, ref_aperset = select_calib_from_database(
+                            'Xinglong216HRS', 'DATE-STA', head['DATE-STA'],
+                            channel = None)
+    
+                    if ref_spec is None or ref_calib is None:
+                        # if failed, pop up a calibration window
+                        calib = wvcalib(spec,
+                            filename      = '%s.fits'%item.fileid,
+                            identfilename = 'a.idt',
+                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                            channel       = None,
+                            linelist      = config['wvcalib']['linelist'],
+                            window_size   = int(config['wvcalib']['window_size']),
+                            xorder        = int(config['wvcalib']['xorder']),
+                            yorder        = int(config['wvcalib']['yorder']),
+                            maxiter       = int(config['wvcalib']['maxiter']),
+                            clipping      = float(config['wvcalib']['clipping']),
+                            snr_threshold = float(config['wvcalib']['snr_threshold']),
+                            )
+                    else:
+                        # if success, run recalib
+                        aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                        calib = recalib(spec,
+                            filename      = '%s.fits'%item.fileid,
+                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                            ref_spec      = ref_spec,
+                            channel       = None,
+                            linelist      = config['wvcalib']['linelist'],
+                            identfilename = '',
+                            aperture_offset = aper_offset,
+                            coeff         = ref_calib['coeff'],
+                            npixel        = ref_calib['npixel'],
+                            window_size   = ref_calib['window_size'],
+                            xorder        = ref_calib['xorder'],
+                            yorder        = ref_calib['yorder'],
+                            maxiter       = ref_calib['maxiter'],
+                            clipping      = ref_calib['clipping'],
+                            snr_threshold = ref_calib['snr_threshold'],
+                            k             = ref_calib['k'],
+                            offset        = ref_calib['offset'],
+                            )
+                    # then use this thar as reference
+                    ref_calib = calib
+                    ref_spec  = spec
+                else:
+                    # for other ThArs, no aperture offset
+                    calib = recalib(spec,
+                        filename      = '%s.fits'%item.fileid,
+                        figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                        ref_spec      = ref_spec,
+                        channel       = None,
+                        linelist      = config['wvcalib']['linelist'],
+                        identfilename = '',
+                        aperture_offset = 0,
+                        coeff         = ref_calib['coeff'],
+                        npixel        = ref_calib['npixel'],
+                        window_size   = ref_calib['window_size'],
+                        xorder        = ref_calib['xorder'],
+                        yorder        = ref_calib['yorder'],
+                        maxiter       = ref_calib['maxiter'],
+                        clipping      = ref_calib['clipping'],
+                        snr_threshold = ref_calib['snr_threshold'],
+                        k             = ref_calib['k'],
+                        offset        = ref_calib['offset'],
+                        )
+                
+                hdu_lst = self_reference_singlefiber(spec, head, calib)
+                filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+                hdu_lst.writeto(filename, overwrite=True)
+    
+                # add more infos in calib
+                calib['fileid']   = item.fileid
+                calib['date-obs'] = head['DATE-STA']
+                calib['exptime']  = head['EXPTIME']
+                # pack to calib_lst
+                calib_lst[item.frameid] = calib
+    
+        for frameid, calib in sorted(calib_lst.items()):
+            print(' [%3d] %s - %4d/%4d r.m.s = %7.5f'%(frameid,
+                    calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
+    
+        # print promotion and read input frameid list
+        string = input('select references: ')
+        ref_frameid_lst = [int(s) for s in string.split(',')
+                                    if len(s.strip())>0 and
+                                    s.strip().isdigit() and
+                                    int(s) in calib_lst]
+        ref_calib_lst    = [calib_lst[frameid]
+                                for frameid in ref_frameid_lst]
+        ref_datetime_lst = [calib_lst[frameid]['date-obs']
+                                for frameid in ref_frameid_lst]
 
-    # define dtype of 1-d spectra
-    names = [
-            ('aperture',   np.int16),
-            ('order',      np.int16),
-            ('points',     np.int16),
-            ('wavelength', (np.float64, w)),
-            ('flux',       (np.float32, w)),
-            ]
-    _names, _formats = list(zip(*types))
-    spectype = np.dtype({'names': _names, 'formats'})
 
-    calib_lst = {}
-    count_thar = 0
+    #################### Extract Science Spectrum ##############################
     for item in log:
-        if item.objectname[0]=='ThAr':
-            count_thar += 1
-            filename = os.path.join(rawdaa, '%s.fits'%item.fileid)
+        if item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2' \
+            or item.imagetype=='sci':
+            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
+            # correct overscan
             data, head = correct_overscan(data, head, mask)
+            # correct bias
             data = data - bias
+            # correct flat
+            data = data/flat_map
+            # correct background
+            stray = correct_background(data, mask,
+                    channels        = ['A'],
+                    apertureset_lst = {'A': mosaic_aperset},
+                    scale           = 'linear',
+                    method          = 'interp',
+                    scan_step       = int(config['background']['scan_step']),
+                    xorder          = int(config['background']['xorder']),
+                    yorder          = int(config['background']['yorder']),
+                    maxiter         = int(config['background']['maxiter']),
+                    upper_clip      = float(config['background']['upper_clip']),
+                    lower_clip      = float(config['background']['lower_clip']),
+                    extend          = config['background'].getboolean('extend'),
+                    display         = config['background'].getboolean('display'),
+                    fig_file        = os.path.join(report, 'background_%s.png'%item.fileid),
+                    )
+            fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
+            exit()
+            data = data - stray
             spectra1d = extract_aperset(data, mask,
                         apertureset = mosaic_aperset,
                         lower_limit = 5,
                         upper_limit = 5,
                         )
-            head = mosaic_aperset.to_fitsheader(head, channel=None)
-            spec = [(aper, 0, item['flux_sum'].size,
-                     np.zeros_lke(item['flux_sum'].size, dtype=np.float64),
-                     iteme['flux_sum'])
-                     for aper, item in sorted(spectra1d.items())]
+            spec = []
+            for aper, _item in sorted(spectra1d.items()):
+                flux_sum = _item['flux_sum']
+                spec.append(
+                        (aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64),
+                        flux_sum)
+                        )
             spec = np.array(spec, dtype=spectype)
 
+            # wavelength calibration
+            weight_lst = get_time_weight(ref_datetime_lst, head['DATE-STA'])
+            spec, head = wv_reference_singlefiber(spec, head,
+                            ref_calib_lst, weight_lst)
 
+            # pack and save wavelength referenced spectra
+            pri_hdu = fits.PrimaryHDU(header=head)
+            tbl_hdu = fits.BinTableHDU(spec)
+            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
+            filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+            hdu_lst.writeto(filename, overwrite=True)
+            exit()
 
     
 class Xinglong216HRS(Reduction):
@@ -822,6 +986,9 @@ def make_log(path):
 
     Args:
         path (string): Path to the raw FITS files.
+
+    Returns:
+        No returns
 
     '''
 

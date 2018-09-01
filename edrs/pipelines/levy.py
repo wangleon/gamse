@@ -256,8 +256,6 @@ def reduce():
                                                         'DATE-OBS',
                                                         head['DATE-OBS'],
                                                         channel=None)
-                    aper_offset = ref_aperset.find_aper_offset(aperset)
-                    print(aper_offset)
     
                 if ref_spec is None or ref_calib is None:
                     calib = wvcalib(spec,
@@ -275,6 +273,7 @@ def reduce():
                                     )
                     aper_offset = 0
                 else:
+                    aper_offset = ref_aperset.find_aper_offset(aperset)
                     calib = recalib(spec,
                                     filename      = '%s.fits'%item.fileid,
                                     figfilename   = 'wvcalib_%s.png'%item.fileid,
@@ -312,7 +311,7 @@ def reduce():
 
         for frameid, calib in sorted(calib_lst.items()):
             print(' [%3d] %s - %4d/%4d r.m.s = %7.5f'%(frameid,
-                  calib['fileid'], calib['nuse'], calib['ntot'],calib['std']))
+                  calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
 
         # print promotion and read input frameid list
         string = input('select references: ')
@@ -371,7 +370,8 @@ def reduce():
             spec = np.array(spec, dtype=spectype)
 
             weight_lst = get_time_weight(ref_datetime_lst, head['DATE-OBS'])
-            spec, head = wv_reference_singlefiber(spec, head, ref_calib_lst, weight_lst)
+            spec, head = wv_reference_singlefiber(spec, head,
+                            ref_calib_lst, weight_lst)
 
             # pack and save wavelength referenced spectra
             pri_hdu = fits.PrimaryHDU(header=head)
