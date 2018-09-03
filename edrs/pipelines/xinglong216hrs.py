@@ -408,7 +408,7 @@ def reduce():
 
     ############################## Extract ThAr ################################
 
-    if False:
+    if True:
         # get the data shape
         h, w = flat_map.shape
     
@@ -564,18 +564,17 @@ def reduce():
                     apertureset_lst = {'A': mosaic_aperset},
                     scale           = 'linear',
                     method          = 'interp',
-                    scan_step       = int(config['background']['scan_step']),
-                    xorder          = int(config['background']['xorder']),
-                    yorder          = int(config['background']['yorder']),
-                    maxiter         = int(config['background']['maxiter']),
-                    upper_clip      = float(config['background']['upper_clip']),
-                    lower_clip      = float(config['background']['lower_clip']),
+                    scan_step       = config['background'].getint('scan_step'),
+                    xorder          = config['background'].getint('xorder'),
+                    yorder          = config['background'].getint('yorder'),
+                    maxiter         = config['background'].getint('maxiter'),
+                    upper_clip      = config['background'].getfloat('upper_clip'),
+                    lower_clip      = config['background'].getfloat('lower_clip'),
                     extend          = config['background'].getboolean('extend'),
                     display         = config['background'].getboolean('display'),
                     fig_file        = os.path.join(report, 'background_%s.png'%item.fileid),
                     )
-            fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
-            exit()
+            #fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
             data = data - stray
             spectra1d = extract_aperset(data, mask,
                         apertureset = mosaic_aperset,
@@ -594,6 +593,7 @@ def reduce():
 
             # wavelength calibration
             weight_lst = get_time_weight(ref_datetime_lst, head['DATE-STA'])
+            print(item.fileid, ['%8.4f'%w for w in weight_lst])
             spec, head = wv_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
 
@@ -603,7 +603,6 @@ def reduce():
             hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
             filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
             hdu_lst.writeto(filename, overwrite=True)
-            exit()
 
     
 class Xinglong216HRS(Reduction):
