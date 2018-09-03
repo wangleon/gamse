@@ -16,39 +16,41 @@ from ..utils.regression import polyfit2d, polyval2d
 from .imageproc         import table_to_array, array_to_table
 
 def correct_background(data, mask, channels, apertureset_lst,
-        method='poly', scale='linear',
-        block_mask=4, scan_step=200, xorder=2, yorder=2, maxiter=5,
-        upper_clip=3., lower_clip=3.,
-        extend=True, extrapolate=True, display=True, fig_file=None, reg_file=None):
+        method='poly', scale='linear', scan_step=200,
+        xorder=2, yorder=2, maxiter=5, upper_clip=3, lower_clip=3,
+        extend=True, display=True, fig_file=None, reg_file=None):
 
     '''Subtract the background for an input FITS image.
 
     Args:
-        infilename (string): Name of the input file.
-        mskfilename (string): Name of the input mask file.
-        outfilename (string): Name of the output file.
-        scafilename (string): Name of the scatter light file.
+        data (:class:`numpy.ndarray`): Input data image.
+        mask (:class:`numpy.ndarray`): Mask of input data image.
         channels (list): List of channels as strings.
         apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
             at different channels.
+        method (string): Method of finding background light.
         scale (string): Scale of the 2-D polynomial fitting. If 'log', fit the
             polynomial in the logrithm scale.
-        block_mask (integer): Block value in the mask file.
         scan_step (integer): Steps of scan in pixels.
         xorder (integer): Order of 2D polynomial along the main dispersion
-            direction.
+            direction (only valid when **method** = "poly").
         yorder (integer): Order of 2D polynomial along the cross-dispersion
-            direction.
-        maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
-        upper_clip (float): Upper sigma clipping threshold.
-        lower_clip (float): Lower sigma clipping threshold.
+            direction (only valid when **method** = "poly").
+        maxiter (integer): Maximum number of iteration of 2D polynomial fitting
+            (only valid when **method** = "poly").
+        upper_clip (float): Upper sigma clipping threshold (only valid when
+            **method** = "poly").
+        lower_clip (float): Lower sigma clipping threshold (only valid when
+            **method** = "poly").
         extend (bool): Extend the grid to the whole CCD image if *True*.
         display (bool): Display figures on the screen if *True*.
-        fig_file (string): Name of the output figure.
-        reg_file (string): Name of the output DS9 region file.
+        fig_file (string): Name of the output figure. No image file generated if
+            *None*.
+        reg_file (string): Name of the output DS9 region file. No file generated
+            if *None*.
 
     Returns:
-        No returns.
+        :class:`numpy.ndarray`: Array of background light.
     '''
     
     plot = (display or fig_file is not None)
@@ -56,8 +58,6 @@ def correct_background(data, mask, channels, apertureset_lst,
     plot_paper_fig = False
 
     h, w = data.shape
-
-    data_mask = (np.int16(mask) & block_mask > 0)
 
     meddata = median_filter(data, size=(3,3), mode='reflect')
 
@@ -90,11 +90,11 @@ def correct_background(data, mask, channels, apertureset_lst,
                     if count_channel == 1 and prev_newy is not None:
                         # this channel is the first channel in this aperture and
                         # there is a previous y
-                        mid_newy = int((prev_newy + this_newy)/2.)
+                        mid_newy = (prev_newy + this_newy)//2
                         i1 = min(h-1, max(0, int(prev_newy)))
                         i2 = min(h-1, max(0, int(this_newy)))
                         if len(inter_aper)==0 or \
-                            abs(mid_newy - inter_aper[-1])>scan_step*0.6:
+                            abs(mid_newy - inter_aper[-1])>scan_step*0.7:
                             if i2-i1>0:
                                 mid_newy = i1 + xsection[i1:i2].argmin()
                                 inter_aper.append(mid_newy)
@@ -126,17 +126,38 @@ def correct_background(data, mask, channels, apertureset_lst,
         m2 = inter_aper < h-1
         inter_aper = inter_aper[np.nonzero(m1*m2)[0]]
 
+        # filter those masked pixels
+        m = mask[inter_aper, x]==0
+        inter_aper = inter_aper[m]
+
         # remove backward points
         tmp = np.insert(inter_aper,0,0.)
-        mask = np.diff(tmp)>0
-        inter_aper = inter_aper[np.nonzero(mask)[0]]
+        m = np.diff(tmp)>0
+        inter_aper = inter_aper[np.nonzero(m)[0]]
 
+        # pack all nodes
         for y in inter_aper:
-            # avoid including masked pixels in fitting
-            if not data_mask[y,x]:
-                xnodes.append(x)
-                ynodes.append(y)
-                znodes.append(meddata[y,x])
+            xnodes.append(x)
+            ynodes.append(y)
+            znodes.append(meddata[y,x])
+
+        # extrapolate
+        #if extrapolate:
+        if False:
+            _y0, _y1 = inter_aper[0], inter_aper[1]
+            newy = _y0 - (_y1 - _y0)
+            newz = meddata[_y0, x] - (meddata[_y1, x] - meddata[_y0, x])
+            xnodes.append(x)
+            ynodes.append(newy)
+            znodes.append(newz)
+
+            _y1, _y2 = inter_aper[-2], inter_aper[-1]
+            newy = _y2 + (_y2 - _y1)
+            newz = meddata[_y2, x] + (meddata[_y2, x] - meddata[_y1, x])
+            xnodes.append(x)
+            ynodes.append(newy)
+            znodes.append(newz)
+
 
     # convert to numpy array
     xnodes = np.array(xnodes)
@@ -187,7 +208,8 @@ def correct_background(data, mask, channels, apertureset_lst,
             for tick in ax.zaxis.get_major_ticks():
                 tick.label1.set_fontsize(9)
 
-        #if display: plt.show(block=False)
+        if display:
+            plt.show(block=False)
 
         # plot the figure used in paper
         if plot_paper_fig:
@@ -206,8 +228,28 @@ def correct_background(data, mask, channels, apertureset_lst,
     else:
         print('Unknown method: %s'%method)
 
+    m = (ynodes >= 0)*(ynodes <= h-1)
+    xnodes = xnodes[m]
+    ynodes = ynodes[m]
+    znodes = znodes[m]
+    fitmask = fitmask[m]
+
     if scale=='log':
         background_data = np.power(10, background_data)
+
+    # save nodes to DS9 region file
+    if reg_file is not None:
+        outfile = open(reg_file, 'w')
+        outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
+        outfile.write('global color=green dashlist=8 3 width=1 ')
+        outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
+        outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
+        outfile.write('source=1'+os.linesep)
+        outfile.write('physical'+os.linesep)
+        for x, y in zip(xnodes, ynodes):
+            text = ('point(%4d %4d) # point=circle'%(x+1, y+1))
+            outfile.write(text+os.linesep)
+        outfile.close()
 
     # write nodes to running log
     message = ['Background Nodes:', ' x,    y,    value,  mask']
@@ -316,27 +358,11 @@ def correct_background(data, mask, channels, apertureset_lst,
             plt.close(figp1)
             plt.close(figp2)
 
-    plt.show()
     if fig_file is not None:
         fig.savefig(fig_file)
     plt.close(fig)
 
     return background_data
-
-
-    # save nodes to DS9 region file
-    if reg_file is not None:
-        outfile = open(reg_file, 'w')
-        outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
-        outfile.write('global color=green dashlist=8 3 width=1 ')
-        outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
-        outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
-        outfile.write('source=1'+os.linesep)
-        outfile.write('physical'+os.linesep)
-        for x, y in zip(xnodes, ynodes):
-            text = ('point(%4d %4d) # point=circle'%(x+1, y+1))
-            outfile.write(text+os.linesep)
-        outfile.close()
 
 
 def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
@@ -384,4 +410,18 @@ def interpolate_background(shape, xnodes, ynodes, znodes):
     background_data = intp.griddata((xnodes, ynodes), znodes, (xx, yy),
             rescale=True, method='cubic')
     mask = np.ones_like(znodes, dtype=np.bool)
+
+    # fix non values
+    notnan_mask = ~np.isnan(background_data)
+    for j in np.arange(w):
+        array = background_data[:, j]
+        m = notnan_mask[:, j]
+        notnan_index = np.nonzero(m)[0]
+        i1 = notnan_index[0]
+        if i1 > 0:
+            background_data[0:i1, j] = array[i1]
+        i2 = notnan_index[-1]
+        if i2 < h-1:
+            background_data[i2+1:, j] = array[i2]
+
     return background_data, mask
