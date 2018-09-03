@@ -17,6 +17,60 @@ from ..utils              import obslog
 from ..echelle.imageproc  import array_to_table
 from .reduction           import Reduction
 
+def correct_overscan(data, head, mask=None):
+    '''Correct overscan for an input image and update related information in the
+    FITS header.
+    
+    Args:
+        data (:class:`numpy.ndarray`): Input image data.
+        head (:class:`astropy.io.fits.Header`): Input FITS header.
+        mask (:class:`numpy.ndarray`): Input image mask.
+    
+    Returns:
+        tuple: A tuple containing:
+
+            * data (:class:`numpy.ndarray`): The output image with overscan
+              corrected.
+            * head (:class:`astropy.io.fits.Header`): The updated FITS header.
+    '''
+    h, w = data.shape
+    overdata1 = data[:, 0:20]
+    overdata2 = data[:, w-18:w]
+    overdata_tot = np.hstack((overdata1, overdata2))
+
+    # find the overscan level along the y axis
+    # 1 for the left region, 2 for the right region
+    # calculate the mean of overscan region along x direction
+    ovr_lst1 = overdata1.mean(dtype=np.float64, axis=1)
+    ovr_lst2 = overdata2.mean(dtype=np.float64, axis=1)
+    
+    # only used the upper ~1/2 regions for culculating mean of overscan
+    #vy1, vy2 = h//2, h
+    vy1, vy2 = 0, h//2
+    # find the mean and standard deviation for left & right overscan
+    ovrmean1 = ovr_lst1[vy1:vy2].mean(dtype=np.float64)
+    ovrmean2 = ovr_lst2[vy1:vy2].mean(dtype=np.float64)
+    ovrstd1  = ovr_lst1[vy1:vy2].std(dtype=np.float64, ddof=1)
+    ovrstd2  = ovr_lst2[vy1:vy2].std(dtype=np.float64, ddof=1)
+
+    # subtract overscan
+    new_data = data[:,20:2068] - ovrmean1
+    
+    # update fits header
+    # head['BLANK'] is only valid for integer arrays.
+    if 'BLANK' in head:
+        del head['BLANK']
+
+    head['HIERARCH EDRS OVERSCAN']        = True
+    head['HIERARCH EDRS OVERSCAN METHOD'] = 'mean'
+    head['HIERARCH EDRS OVERSCAN AXIS-1'] = '1:20'
+    head['HIERARCH EDRS OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
+    head['HIERARCH EDRS OVERSCAN MEAN']   = ovrmean1
+    head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
+
+    return new_data, head
+
+
 class FOCES(Reduction):
     '''Reduction pipleline for FOCES.
     '''

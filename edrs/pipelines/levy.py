@@ -14,7 +14,7 @@ from ..echelle.extract import extract_aperset
 from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database, 
                                self_reference_singlefiber,
                                wv_reference_singlefiber, get_time_weight)
-from ..echelle.background import correct_background
+from ..echelle.background import find_background
 
 def correct_overscan(data):
     if data.shape==(4608, 2080):
@@ -35,7 +35,8 @@ def correct_overscan(data):
         return corrdata
 
 def reduce():
-    '''Reduce the APF/Levy spectra.
+    '''
+    Reduce the APF/Levy spectra.
     '''
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
@@ -341,7 +342,7 @@ def reduce():
             mask = mask.T
 
             # background correction
-            stray = correct_background(data, mask,
+            stray = find_background(data, mask,
                         channels        = ['A'],
                         apertureset_lst = {'A': aperset},
                         scale           = 'log',

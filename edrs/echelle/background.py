@@ -15,7 +15,7 @@ import matplotlib.ticker as tck
 from ..utils.regression import polyfit2d, polyval2d
 from .imageproc         import table_to_array, array_to_table
 
-def correct_background(data, mask, channels, apertureset_lst,
+def find_background(data, mask, channels, apertureset_lst,
         method='poly', scale='linear', scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clip=3, lower_clip=3,
         extend=True, display=True, fig_file=None, reg_file=None):
@@ -33,14 +33,14 @@ def correct_background(data, mask, channels, apertureset_lst,
             polynomial in the logrithm scale.
         scan_step (integer): Steps of scan in pixels.
         xorder (integer): Order of 2D polynomial along the main dispersion
-            direction (only valid when **method** = "poly").
+            direction (only applicable when **method** = "poly").
         yorder (integer): Order of 2D polynomial along the cross-dispersion
-            direction (only valid when **method** = "poly").
+            direction (only applicable when **method** = "poly").
         maxiter (integer): Maximum number of iteration of 2D polynomial fitting
-            (only valid when **method** = "poly").
-        upper_clip (float): Upper sigma clipping threshold (only valid when
+            (only applicable when **method** = "poly").
+        upper_clip (float): Upper sigma clipping threshold (only applicable when
             **method** = "poly").
-        lower_clip (float): Lower sigma clipping threshold (only valid when
+        lower_clip (float): Lower sigma clipping threshold (only applicable when
             **method** = "poly").
         extend (bool): Extend the grid to the whole CCD image if *True*.
         display (bool): Display figures on the screen if *True*.
@@ -367,6 +367,33 @@ def correct_background(data, mask, channels, apertureset_lst,
 
 def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     maxiter=5, upper_clip=3, lower_clip=3):
+    '''
+    Find the background light by fitting a 2D polynomial.
+
+    Args:
+        shape (tuple): Shape of image.
+        xnodes (:class:`numpy.ndarray`): List of X coordinates of the nodes.
+        ynodes (:class:`numpy.ndarray`): List of Y coordinates of the nodes.
+        znodes (:class:`numpy.ndarray`): List of pixel values of the nodes.
+        xorder (integer): Order of 2D polynomial along the main dispersion
+            direction.
+        yorder (integer): Order of 2D polynomial along the cross-dispersion
+            direction.
+        maxiter (integer): Maximum number of iteration of 2D polynomial fitting.
+        upper_clip (float): Upper sigma clipping threshold.
+        lower_clip (float): Lower sigma clipping threshold.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **background_data** (:class:`numpy.ndarray`) – Array of background
+              light.
+            * **mask** (:class:`numpy.ndarray`) – Mask of used nodes in the
+              fitting.
+
+    See also:
+        :func:`interpolate_background`
+    '''
 
     h, w = shape
     # normalize to 0 ~ 1 for x and y nodes
@@ -405,6 +432,26 @@ def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     return background_data, mask
 
 def interpolate_background(shape, xnodes, ynodes, znodes):
+    '''
+    Find the background light by interpolating 2D cubic splines.
+
+    Args:
+        shape (tuple): Shape of image.
+        xnodes (:class:`numpy.ndarray`): List of X coordinates of the nodes.
+        ynodes (:class:`numpy.ndarray`): List of Y coordinates of the nodes.
+        znodes (:class:`numpy.ndarray`): List of pixel values of the nodes.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **background_data** (:class:`numpy.ndarray`) – Array of background
+              light.
+            * **mask** (:class:`numpy.ndarray`) – Mask of used nodes in the
+              fitting.
+
+    See also:
+        :func:`fit_background`
+    '''
     h, w = shape
     yy, xx = np.mgrid[:h:, :w:]
     background_data = intp.griddata((xnodes, ynodes), znodes, (xx, yy),

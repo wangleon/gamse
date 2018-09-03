@@ -22,7 +22,7 @@ from ..echelle.extract import extract_aperset
 from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wv_reference_singlefiber, get_time_weight)
-from ..echelle.background import correct_background
+from ..echelle.background import find_background
 
 from .reduction          import Reduction
 
@@ -559,7 +559,7 @@ def reduce():
             # correct flat
             data = data/flat_map
             # correct background
-            stray = correct_background(data, mask,
+            stray = find_background(data, mask,
                     channels        = ['A'],
                     apertureset_lst = {'A': mosaic_aperset},
                     scale           = 'linear',
