@@ -404,7 +404,7 @@ def load_mosaic(filename):
         filename (string): Name of the mosaic file.
 
     Returns:
-        tuple: A tuple containing (`coeff_lst`, `select_area`), where
+        tuple: A tuple containing:
 
             * **coeff_lst** (*list*): A list containing coefficients of
               polynomials for the boundaries.

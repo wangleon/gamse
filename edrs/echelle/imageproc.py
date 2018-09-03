@@ -23,6 +23,7 @@ def combine_images(data_lst,
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
         maxiter (maxiter): Maximum number of iterations.
+
     Returns:
         :class:`numpy.ndarray`: Combined image array.
 
@@ -137,6 +138,7 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
         xorder (float): Degree of polynomial along *x*-axis.
         yorder (float): Degree of polynomial along *y*-axis.
         derivative (string): *None*, *col*, *row*, or *both*.
+
     Returns:
         :class:`numpy.ndarray` or tuple: Output 2-d array, or a tuple containing
             derivative arries along *x*- and *y*-axes, respetively, if
@@ -212,10 +214,13 @@ def array_to_table(array):
 
     Args:
         array (:class:`numpy.ndarray`): Input Numpy array.
+
     Returns:
         :class:`numpy.dtype`: Numpy stuctured array.
+
     See also:
         :func:`table_to_array`
+
     Examples:
         Below shows an example of converting a numpy 2-d array `a` to a
         structured array `t`.
@@ -268,10 +273,13 @@ def table_to_array(table, shape):
     Args:
         table (:class:`numpy.dtype`): Numpy structured array.
         shape (tuple): Shape of output array.
+
     Returns:
         :class:`numpy.ndarray`: Mask image array.
+
     See also:
         :func:`array_to_table`
+
     Examples:
         Below shows an example of converting a numpy 2-d array `a` to a
         structured array `t` using :func:`array_to_table`, and then converting
@@ -319,6 +327,7 @@ def fix_pixels(data, mask, direction, method):
             *Y* = 0).
         method (string): Interpolationg method ('linear' means linear
             interpolation, and 'cubic' means cubic spline interpolation).
+
     Returns:
         :class:`numpy.ndarray`: The fixed image as a 2-D array.
     '''

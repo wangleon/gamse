@@ -135,7 +135,8 @@ class ApertureLocation(object):
         '''Get coordinate of the center pixel.
 
         Args:
-            No args
+            No args.
+
         Returns:
             float: coordinate of the center pixel.
         '''
@@ -166,7 +167,8 @@ class ApertureLocation(object):
                 coord[0], coord[1], axis)
 
     def to_string(self):
-        '''Convert Aperture information to string.
+        '''
+        Convert aperture information to string.
         '''
 
         string  = '%8s = %d'%('direct', self.direct)+os.linesep
@@ -218,6 +220,7 @@ class ApertureLocation(object):
         Args:
             aperloc (:class:`ApertureLocation`): Another
                 :class:`ApertureLocation` instance.
+
         Returns:
             float: The distance between the centeral positions.
 
@@ -274,6 +277,7 @@ class ApertureSet(object):
         Args:
             aperture_loc (:class:`ApertureLocation`): An
                 :class:`ApertureLocation` instance to be added.
+
         Returns:
             No returns.
         '''
@@ -285,7 +289,11 @@ class ApertureSet(object):
             self._dict[maxi+1] = aperture_loc
 
     def sort(self):
-        '''Sort the apertures according to their positions inside this instance.
+        '''
+        Sort the apertures according to their positions inside this instance.
+        
+        Returns:
+            No returns.
         '''
         aperloc_lst = sorted([aper_loc for aper, aper_loc in self._dict.items()],
                               key=lambda aper_loc: aper_loc.get_center())
@@ -298,6 +306,9 @@ class ApertureSet(object):
         
         Args:
             filename (string): Name of the output ascii file.
+        
+        Returns:
+            No returns.
         '''
         outfile = open(filename, 'w')
         outfile.write(str(self))
@@ -362,6 +373,22 @@ class ApertureSet(object):
         outfile.close()
 
     def to_fitsheader(self, header, channel=None):
+        '''
+        Save aperture informtion to FITS header.
+
+        Args:
+            header (:class:`astropy.io.fits.Header`): FITS header to save the
+                aperture information.
+            channel (string): Name of channel
+
+        Returns:
+            header (:class:`astropy.io.fits.Header`): Updated FITS header
+            containing the aperture information.
+
+        See also:
+            :func:`load_aperture_set_from_header`
+        
+        '''
         prefix = 'HIERARCH EDRS TRACE'
         if channel is not None:
             prefix += ' CHANNLE %s'%channel
@@ -391,6 +418,7 @@ class ApertureSet(object):
 
         Args:
             aper (integer): Aperture number.
+
         Returns:
             float: Local seperation in pixels per aperture number.
         '''
@@ -413,6 +441,13 @@ class ApertureSet(object):
         The offset means that the Aperture *n* aperture of this
         :class:`ApertureSet` almost has the same position as the Aperture
         *n* + *offset* in the input :class:`ApertureSet`.
+
+        Args:
+            aperset (:class:`ApertureSet`): Input :class:`ApertureSet` instance
+                to calculate the offset.
+
+        Returns:
+            integer: Offset between the two offsets.
         '''
         # fint the smalleset common aper number.
         for aper in self:
@@ -465,6 +500,7 @@ class ApertureSet(object):
 
         Args:
             offset (integer): Offset to shift.
+
         Returns:
             No returns
         '''
@@ -480,6 +516,7 @@ class ApertureSet(object):
         Args:
             x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 central positions to calculate.
+
         Returns:
             dict: A dict of `{aperture: y}` containing cetral positions of
                 all orders.
@@ -493,6 +530,7 @@ class ApertureSet(object):
         Args:
             x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 boundaries to calculate.
+
         Returns:
             dict: A dict of `{aperture: (lower, upper)}`, where `lower` and
                 `upper` are boundary arries.
@@ -1151,6 +1189,7 @@ def load_aperture_set(filename):
 
     Args:
         filename (string): Name of the ASCII file.
+
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
     '''
@@ -1191,10 +1230,15 @@ def load_aperture_set_from_header(header, channel=None):
     '''Load Aperture Set from FITS header.
 
     Args:
-        header (:class:`astropy.io.fits.Header`): Input FITS header
+        header (:class:`astropy.io.fits.Header`): Input FITS header.
         channel (string): Name of channel.
+
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
+
+    See also:
+        :func:`ApertureSet.to_fitsheader`
+        
         
     '''
     prefix = 'EDRS TRACE'
@@ -1275,6 +1319,7 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
         fwhm (float): Full-width-half-maximum value of gaussian function.
         bkg (float): Backgroudn value of gaussian function.
         x (float or :class:`numpy.ndarray`): Input values.
+
     Returns:
         :class:`numpy.ndarray`: Output function values.
         
@@ -1289,6 +1334,7 @@ def errfunc(p, x, y, fitfunc):
         p (list): List of parameters.
         x (:class:`numpy.ndarray`): x values.
         fitfunc (function): Fitting function.
+
     Returns:
         :class:`numpy.ndarray`: Values of residuals.
     '''
@@ -1300,6 +1346,7 @@ def fitfunc(p, x):
     Args:
         p (list): List of parameters.
         x (:class:`numpy.ndarray`): Input values.
+
     Returns:
         :class:`numpy.ndarray`: Values of function.
     '''

@@ -56,7 +56,9 @@ Background Correction
 ---------------------
 .. currentmodule:: edrs.echelle.background
 .. autosummary::
-    correct_background
+    find_background
+    fit_background
+    interpolate_background
 
 .. automodule:: edrs.echelle.background
    :members:
