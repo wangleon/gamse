@@ -576,11 +576,13 @@ def reduce():
                     )
             #fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
             data = data - stray
+            # extract 1d spectrum
             spectra1d = extract_aperset(data, mask,
                         apertureset = mosaic_aperset,
-                        lower_limit = 5,
-                        upper_limit = 5,
+                        lower_limit = config['extract'].getfloat('lower_limit'),
+                        upper_limit = config['extract'].getfloat('upper_limit'),
                         )
+            # pack spectrum
             spec = []
             for aper, _item in sorted(spectra1d.items()):
                 flux_sum = _item['flux_sum']

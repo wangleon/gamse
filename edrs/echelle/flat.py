@@ -473,8 +473,9 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
         :class:`~edrs.echelle.trace.ApertureSet`: The mosaiced aperture set.
 
     See Also:
-        :func:`mosaic_flat_interact`
-        :func:`mosaic_images`
+
+        * :func:`mosaic_flat_interact`
+        * :func:`mosaic_images`
 
     '''
 

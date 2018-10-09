@@ -1,4 +1,5 @@
 build/*
+reduction/*
 docs/build/*
 *.pyc
 *.swp
