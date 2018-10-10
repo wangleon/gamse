@@ -196,9 +196,16 @@ def reduce():
     report  = config['data']['report']
     result  = config['data']['result']
 
+    if not os.path.exists(report):
+        os.mkdir(report)
+    if not os.path.exists(result):
+        os.mkdir(result)
+
     ############################# parse bias ###################################
     if os.path.exists('bias.fits'):
         bias = fits.getdata('bias.fits')
+        has_bias = True
+        logger.info('Load bias from image: bias.fits')
     else:
         bias_lst = []
         for item in log:
@@ -253,9 +260,11 @@ def reduce():
                 bias = bias_smooth
 
             fits.writeto('bias.fits', bias, header=head, overwrite=True)
+            has_bias = True
+            logger.info('Bias image written to "bias.fits"')
         else:
             # no bias in this dataset
-            bias = 0
+            has_bias = False
 
     ######################### find flat groups##################################
     # initialize flat_groups for single fiber
@@ -312,8 +321,17 @@ def reduce():
                 if ifile==0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += sat_mask
+
+                # correct overscan for flat
                 data, head = correct_overscan(data, head, mask)
-                data = data - bias
+
+                # correct bias for flat, if has bias
+                if has_bias:
+                    data = data - bias
+                    logger.info('Bias corrected')
+                else:
+                    logger.info('No bias. skipped bias correction')
+
                 data_lst.append(data)
             nflat = len(data_lst)
             print('combine %d images for %s'%(nflat, flatname))
@@ -338,7 +356,7 @@ def reduce():
                         degree     = config['trace'].getint('degree'),
                         display    = config['trace'].getboolean('display'),
                         filename   = flat_filename,
-                        fig_file   = 'trace_%s.png'%flatname,
+                        fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
                         )
             aperset.save_txt('trace_%s.trc'%flatname)
             aperset.save_reg('trace_%s.reg'%flatname)
@@ -431,8 +449,17 @@ def reduce():
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
+
+                # correct overscan for ThAr
                 data, head = correct_overscan(data, head, mask)
-                data = data - bias
+
+                # correct bias for ThAr, if has bias
+                if has_bias:
+                    data = data - bias
+                    logger.info('Bias corrected')
+                else:
+                    logger.info('No bias. skipped bias correction')
+
                 spectra1d = extract_aperset(data, mask,
                             apertureset = mosaic_aperset,
                             lower_limit = 5,
@@ -549,15 +576,30 @@ def reduce():
     for item in log:
         if item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2' \
             or item.imagetype=='sci':
+
             filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+
+            logger.info('FileID: %s (%s) - start reduction: %s'%(
+                item.fileid, item.imagetype, filename))
+
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
             # correct overscan
             data, head = correct_overscan(data, head, mask)
+            logger.info('FileID: %s - overscan corrected'%(item.fileid))
+
             # correct bias
-            data = data - bias
+            if has_bias:
+                data = data - bias
+                logger.info('FileID: %s - bias corrected. mean value = %f'%(
+                    item.fileid, bias.mean()))
+            else:
+                logger.info('FileID: %s - no bias'%(item.fileid))
+
             # correct flat
             data = data/flat_map
+            logger.info('FileID: %s - flat corrected'%item.fileid)
+
             # correct background
             stray = find_background(data, mask,
                     channels        = ['A'],
@@ -576,12 +618,17 @@ def reduce():
                     )
             #fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
             data = data - stray
+            logger.info('FileID: %s - background corrected'%(item.fileid))
+
             # extract 1d spectrum
             spectra1d = extract_aperset(data, mask,
                         apertureset = mosaic_aperset,
                         lower_limit = config['extract'].getfloat('lower_limit'),
                         upper_limit = config['extract'].getfloat('upper_limit'),
                         )
+            logger.info('FileID: %s - 1D spectra of %d orders are extracted'%(
+                item.fileid, len(spectra1d)))
+
             # pack spectrum
             spec = []
             for aper, _item in sorted(spectra1d.items()):
@@ -595,7 +642,10 @@ def reduce():
 
             # wavelength calibration
             weight_lst = get_time_weight(ref_datetime_lst, head['DATE-STA'])
-            print(item.fileid, ['%8.4f'%w for w in weight_lst])
+
+            logger.info('FileID: %s - wavelength calibration weights: %s'%(
+                item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
+
             spec, head = wv_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
 
@@ -605,6 +655,8 @@ def reduce():
             hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
             filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
             hdu_lst.writeto(filename, overwrite=True)
+            logger.info('FileID: %s - Spectra written to %s'%(
+                item.fileid, filename))
 
     
 class Xinglong216HRS(Reduction):
@@ -993,6 +1045,8 @@ def make_log(path):
 
     '''
 
+    regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
+
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
     log = obslog.Log()
@@ -1013,7 +1067,7 @@ def make_log(path):
         data = data[y1:y2,x1:x2]
         obsdate = head['DATE-STA']
         exptime = head['EXPTIME']
-        objectname = head['OBJECT']
+        objectname = head['OBJECT'].strip()
         if objectname.lower().strip() in ['bias', 'flat', 'dark', 'i2', 'thar']:
             imagetype = 'cal'
         else:
@@ -1027,6 +1081,12 @@ def make_log(path):
         h, w = data.shape
         data1 = data[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
         bri_index = np.median(data1,axis=1).mean()
+
+        # change to regular name
+        for regname in regular_names:
+            if objectname.lower() == regname.lower():
+                objectname = regname
+                break
 
         item = obslog.LogItem(
                    fileid     = fileid,
@@ -1044,9 +1104,19 @@ def make_log(path):
 
     # make info list
     all_info_lst = []
-    columns = ['frameid (i)', 'fileid (s)', 'imagetype (s)', 'objectname (s)',
-                'i2 (i)', 'exptime (f)', 'obsdate (s)', 'saturation (f)',
-                'brightness (f)']
+    column_lst = [
+            ('frameid',    'i'),
+            ('fileid',     's'),
+            ('imagetype',  's'),
+            ('objectname', 's'),
+            ('i2',         'i'),
+            ('exptime',    'f'),
+            ('obsdate',    's'),
+            ('saturation', 'f'),
+            ('brightness', 'f'),
+            ]
+    columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
+    
     prev_frameid = -1
     for logitem in log:
         frameid = int(logitem.fileid[8:])
@@ -1076,7 +1146,7 @@ def make_log(path):
     # find the output format for each column
     for info_lst in all_info_lst:
         for i, info in enumerate(info_lst):
-            if columns[i] in ['filename','object']:
+            if columns[i] in ['fileid (s)','objectname (s)']:
                 fmt = '%%-%ds'%maxlen[i]
             else:
                 fmt = '%%%ds'%maxlen[i]

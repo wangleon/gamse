@@ -101,6 +101,8 @@ def find_background(data, mask, channels, apertureset_lst,
                     prev_newy = this_newy
 
         inter_aper = np.array(inter_aper)
+        logger.debug('Found %d inter aperture nodes in Column %d'%(
+            inter_aper.size, x))
 
         # if extend = True, expand the grid with polynomial fitting to
         # cover the whole CCD area
@@ -121,6 +123,9 @@ def find_background(data, mask, channels, apertureset_lst,
                 new_y = int(np.polyval(coeff,ii))
                 inter_aper = np.insert(inter_aper,0,new_y)
 
+        logger.debug('Found %d nodes after extending in Column %d'%(
+            inter_aper.size, x))
+
         # remove those points with y<0 or y>h-1
         m1 = inter_aper > 0
         m2 = inter_aper < h-1
@@ -134,6 +139,9 @@ def find_background(data, mask, channels, apertureset_lst,
         tmp = np.insert(inter_aper,0,0.)
         m = np.diff(tmp)>0
         inter_aper = inter_aper[np.nonzero(m)[0]]
+
+        logger.debug('Now %d nodes left after removing bad points in Column %d'%(
+            inter_aper.size, x))
 
         # pack all nodes
         for y in inter_aper:
