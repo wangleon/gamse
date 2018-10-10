@@ -762,7 +762,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     plot_slit    = (fig_slit is not None)
     plot_single  = False
     fig_fitting = 'flat_single_%04d_%02d.png'
-    plot_fitting = False
+    plot_fitting = True
 
     ##########first step, scan each column and get the slit function############
     # construct the x-coordinates for slit function
@@ -883,11 +883,20 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         _m = np.ones_like(all_x, dtype=np.bool)
         for k in range(20):
             #find y nodes
-            ynodes = []
+            _xnodes, _ynodes = [], [] # pre-initialize nodes list.
             for c in xnodes:
                 _m1 = np.abs(all_x[_m]-c) < step/2
-                ynodes.append(all_y[_m][_m1].mean(dtype=np.float64))
-            ynodes = np.array(ynodes)
+                if _m1.sum()>0:
+                    _xnodes.append(c)
+                    _ynodes.append(all_y[_m][_m1].mean(dtype=np.float64))
+
+            # construct the real slit function list with interpolating the empty
+            # values
+            _xnodes = np.array(_xnodes)
+            _ynodes = np.array(_ynodes)
+            f0 = intp.InterpolatedUnivariateSpline(_xnodes, _ynodes, k=3, ext=3)
+            ynodes = f0(xnodes)
+
             # smoothing
             ynodes = sg.savgol_filter(ynodes, window_length=9, polyorder=5)
             f = intp.InterpolatedUnivariateSpline(xnodes, ynodes, k=3, ext=3)
@@ -898,6 +907,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 break
             _m = _new_m
         slit_array[:,ix] = ynodes
+
 
         # plot the overlapped slit functions
         # _s = 2.35482 = FWHM/sigma for gaussian function
