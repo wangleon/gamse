@@ -74,6 +74,7 @@ def find_background(data, mask, channels, apertureset_lst,
         x_lst = np.append(x_lst, w-1)
 
     # find intra-order pixels
+    _message_lst = ['Column, N (between), N (extend), N (removed), N (total)']
     for x in x_lst:
         xsection = meddata[:,x]
         inter_aper = []
@@ -101,11 +102,13 @@ def find_background(data, mask, channels, apertureset_lst,
                     prev_newy = this_newy
 
         inter_aper = np.array(inter_aper)
-        logger.debug('Found %d inter aperture nodes in Column %d'%(
-            inter_aper.size, x))
+
+        # count how many nodes found between detected orders
+        n_nodes_inter = inter_aper.size
 
         # if extend = True, expand the grid with polynomial fitting to
         # cover the whole CCD area
+        n_nodes_extend = 0
         if extend:
             coeff = np.polyfit(np.arange(inter_aper.size), inter_aper, deg=3)
             # find the points after the end of inter_aper
@@ -115,6 +118,7 @@ def find_background(data, mask, channels, apertureset_lst,
                 ii += 1
                 new_y = int(np.polyval(coeff,ii))
                 inter_aper = np.append(inter_aper,new_y)
+                n_nodes_extend += 1
             # find the points before the beginning of order_mid
             ii = 0
             new_y = inter_aper[0]
@@ -122,9 +126,7 @@ def find_background(data, mask, channels, apertureset_lst,
                 ii -= 1
                 new_y = int(np.polyval(coeff,ii))
                 inter_aper = np.insert(inter_aper,0,new_y)
-
-        logger.debug('Found %d nodes after extending in Column %d'%(
-            inter_aper.size, x))
+                n_nodes_extend += 1
 
         # remove those points with y<0 or y>h-1
         m1 = inter_aper > 0
@@ -140,8 +142,12 @@ def find_background(data, mask, channels, apertureset_lst,
         m = np.diff(tmp)>0
         inter_aper = inter_aper[np.nonzero(m)[0]]
 
-        logger.debug('Now %d nodes left after removing bad points in Column %d'%(
-            inter_aper.size, x))
+        # count how many nodes removed
+        n_nodes_removed = (n_nodes_inter + n_nodes_extend) - inter_aper.size
+
+        # pack infos into message list
+        _message_lst.append('| %6d | %6d | %6d | %6d | %6d |'%(
+            x, n_nodes_inter, n_nodes_extend, n_nodes_removed, inter_aper.size))
 
         # pack all nodes
         for y in inter_aper:
@@ -172,7 +178,9 @@ def find_background(data, mask, channels, apertureset_lst,
     ynodes = np.array(ynodes)
     znodes = np.array(znodes)
 
-    logger.info('Found %d nodes for background fitting'%xnodes.size)
+    # write to running log
+    _message_lst.append('Total: %4d'%xnodes.size)
+    logger.info((os.linesep+'  ').join(_message_lst))
 
     # if scale='log', filter the negative values
     if scale=='log':
@@ -262,7 +270,7 @@ def find_background(data, mask, channels, apertureset_lst,
     # write nodes to running log
     message = ['Background Nodes:', ' x,    y,    value,  mask']
     for x,y,z,m in zip(xnodes, ynodes, znodes, fitmask):
-        message.append('%4d %4d %+10.8e %2d'%(x,y,z,m))
+        message.append('| %4d | %4d | %+10.8e | %1d |'%(x,y,z,m))
     logger.info((os.linesep+' '*4).join(message))
 
     residual = znodes - background_data[ynodes, xnodes]
@@ -321,23 +329,28 @@ def find_background(data, mask, channels, apertureset_lst,
             axp1.set_zlabel('Count')
 
     if plot:
-        # plot the accepted nodes
+        # plot the accepted nodes in subfig 1
         ax11.scatter(xnodes[fitmask], ynodes[fitmask],
-                    c='r', s=8, linewidth=0, alpha=0.8)
+                    c='r', s=6, linewidth=0, alpha=0.8)
+        # plot the rejected nodes
+        if (~fitmask).sum()>0:
+            ax11.scatter(xnodes[~fitmask], ynodes[~fitmask],
+                    c='none', s=6, edgecolor='r', linewidth=0.5)
+
+        # plot subfig 2
         cnorm = colors.Normalize(vmin = background_data.min(),
                                  vmax = background_data.max())
         scalarmap = cmap.ScalarMappable(norm=cnorm, cmap=cmap.jet)
         # plot the background light
         image = ax12.imshow(background_data, cmap=scalarmap.get_cmap())
         # plot the accepted nodes
-        ax12.scatter(xnodes[fitmask], ynodes[fitmask], c=znodes[fitmask],
-                    s=8, linewidth=0.5, cmap=scalarmap.get_cmap())
+        ax12.scatter(xnodes[fitmask], ynodes[fitmask],
+                    c='k', s=6, linewidth=0.5)
         # plot the rejected nodes
         if (~fitmask).sum()>0:
-            ax11.scatter(xnodes[~fitmask], ynodes[~fitmask],
-                        c='none', s=8, edgecolor='r', linewidth=0.5)
             ax12.scatter(xnodes[~fitmask], ynodes[~fitmask],
-                        c='none', s=8, edgecolor='k', linewidth=0.5)
+                        c='none', s=6, edgecolor='k', linewidth=0.5)
+
         # set colorbar
         plt.colorbar(image, cax=ax13)
         # set font size of colorbar
