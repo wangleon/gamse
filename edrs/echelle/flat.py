@@ -6,6 +6,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
+import numpy.polynomial as poly
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 import scipy.optimize as opt
@@ -753,9 +754,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     bad_mask = (mask&2 > 0)
 
     # find the central positions and boundaries for each aperture
-    newx = np.arange(w)
-    positions = apertureset.get_positions(newx)
-    bounds = apertureset.get_boundaries(newx)
+    allx = np.arange(w)
+    positions = apertureset.get_positions(allx)
+    bounds = apertureset.get_boundaries(allx)
 
     plot_overlap = (fig_overlap is not None)
     plot_aperpar = (fig_aperpar is not None)
@@ -857,8 +858,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
                     if plot_single:
                         axi.plot(xdata[_m], ydata[_m], 'ko')
-                        newx = np.arange(b1, b2+1e-3, 0.1)
-                        axi.plot(newx, fitfunc(p1, newx), 'r-')
+                        _newx = np.arange(b1, b2+1e-3, 0.1)
+                        axi.plot(_newx, fitfunc(p1, _newx), 'r-')
                         axi.axvline(c, color='r', ls='--')
                         axi.plot(xdata[_satmask], ydata[_satmask],'yo',ms=2)
                         axi.plot(xdata[_badmask], ydata[_badmask],'go',ms=2)
@@ -985,7 +986,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     maxilst = full_slit_array.argmax(axis=0)
     maxmask = full_slit_array>0.10*maxlst
     corr_mask_array = []
-    for x in newx:
+    for x in allx:
         ilst = np.nonzero(maxmask[:,x])[0]
         il = xnodes[ilst[0]]
         ir = xnodes[ilst[-1]]
@@ -1004,11 +1005,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
     fitpar_lst = {}
 
-    # prepare a x list
+    # prepare an x list
     newx_lst = np.arange(0, w-1, 10)
     if newx_lst[-1] != w-1:
         newx_lst = np.append(newx_lst, w-1)
 
+    # loop every aperture
     for iaper, aper in enumerate(sorted(apertureset.keys())):
         fitpar_lst[aper] = []
         aperpar_lst = []
@@ -1022,57 +1024,78 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         is_first_correct = False
         break_aperture = False
 
+        # loop for every newx. find the fitting parameters for each column
+        # prepar the blank parameter for insert
+        blank_p = np.array([np.NaN, np.NaN, np.NaN, np.NaN])
         for x in newx_lst:
+            # central position
             pos = position[x]
+            # skip this column if central position excess the CCD range
+            if pos<0 or pos>h:
+                fitpar_lst[aper].append(blank_p)
+                continue
+            # lower and upper bounds
             y1 = int(max(0, lbound[x]))
             y2 = int(min(h, ubound[x]))
-            xdata = np.arange(y1,y2)
+            # construct fitting data (xdata, ydata)
+            xdata = np.arange(y1, y2)
             ydata = data[y1:y2, x]
+            # calculate saturation mask and bad-pixel mask
             _satmask = sat_mask[y1:y2, x]
             _badmask = bad_mask[y1:y2, x]
+            # skip this column if too many saturated or bad pixels
+            if _satmask.sum()>=3 or _badmask.sum()>=3:
+                fitpar_lst[aper].append(blank_p)
+                continue
+            # estimate the SNR
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
             _i2 = min(h, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
+            # skip this column if sn is too low
+            if sn < q_threshold:
+                fitpar_lst[aper].append(blank_p)
+                continue
 
-            if 0 < pos < h and _satmask.sum()<3 and _badmask.sum()<3 and \
-                sn > q_threshold:
-                interf = interf_lst[x]
-                if prev_p is None:
-                    p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
-                else:
-                    p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos, max(0,ydata.min())]
-
-                #_m = np.ones_like(xdata, dtype=np.bool)
-                _m = (~_satmask)*(~_badmask)
-                for ite in range(10):
-                    p, ier = opt.leastsq(errfunc2, p0,
-                                args=(xdata[_m], ydata[_m], interf))
-                    ydata_fit = fitfunc2(p, xdata, interf)
-                    ydata_res = ydata - ydata_fit
-                    std = ydata_res[_m].std(ddof=1)
-                    _new_m = (np.abs(ydata_res) < 5*std)*_m
-                    if _new_m.sum() == _m.sum():
-                        break
-                    _m = _new_m
-                snr = p[0]/std
-
-                # p[0]: amplitude; p[1]: k; p[2]: pos, p[3]:background
-                succ = p[0]>0 and p[1]>0 and p[1]<1 and p[2]>y1 and p[2]<y2 and snr>5 and ier<=4
-                prev_p = (None, p)[succ]
-
-                if succ:
-                    if not is_first_correct:
-                        is_first_correct = True
-                        if x > 0.25*w:
-                            break_aperture = True
-                            break
-                    fitpar_lst[aper].append(p)
-                else:
-                    fitpar_lst[aper].append(np.array([np.NaN, np.NaN, np.NaN, np.NaN]))
-
+            # begin fitting
+            interf = interf_lst[x]
+            if prev_p is None:
+                p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
             else:
-                fitpar_lst[aper].append(np.array([np.NaN, np.NaN, np.NaN, np.NaN]))
+                p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos, max(0,ydata.min())]
+
+            # skip this column if lower or upper 1 sigma excess the CCD range
+            if pos-1./p0[1]<0 or pos+1./p0[1]>h:
+                fitpar_lst[aper].append(blank_p)
+                continue
+
+            #_m = np.ones_like(xdata, dtype=np.bool)
+            _m = (~_satmask)*(~_badmask)
+            for ite in range(10):
+                p, ier = opt.leastsq(errfunc2, p0,
+                            args=(xdata[_m], ydata[_m], interf))
+                ydata_fit = fitfunc2(p, xdata, interf)
+                ydata_res = ydata - ydata_fit
+                std = ydata_res[_m].std(ddof=1)
+                _new_m = (np.abs(ydata_res) < 5*std)*_m
+                if _new_m.sum() == _m.sum():
+                    break
+                _m = _new_m
+            snr = p[0]/std
+
+            # p[0]: amplitude; p[1]: k; p[2]: pos, p[3]:background
+            succ = p[0]>0 and 0<p[1]<1 and y1<p[2]<y2 and snr>5 and ier<=4
+            prev_p = (None, p)[succ]
+
+            if succ:
+                if not is_first_correct:
+                    is_first_correct = True
+                    if x > 0.25*w:
+                        break_aperture = True
+                        break
+                fitpar_lst[aper].append(p)
+            else:
+                fitpar_lst[aper].append(blank_p)
 
         if break_aperture:
             break
@@ -1086,6 +1109,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             break
 
 
+        # prepare the figure for plotting the parameters of each aperture
         if plot_aperpar:
             if iaper%5==0:
                 fig = plt.figure(figsize=(12,8),dpi=150, tight_layout=True)
@@ -1097,43 +1121,66 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #ax6 = fig.add_subplot(236)
 
         mask_lst = []
+        # loop for A, k, c, bkg
         for ipara in range(4):
-            # A, k, c, bkg
             yflux = fitpar_lst[aper][:,ipara]
 
+            # fit with only real numbers, not NaN values
             _m = ~np.isnan(yflux)
             if _m.sum() > 0:
-                # there's real number in yflux
                 nonzeroindex = np.nonzero(_m)[0]
                 i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
                 for ite in range(2):
                     coeff = np.polyfit(newx_lst[_m]/w, yflux[_m], deg=param_deg)
                     yfit = np.polyval(coeff, newx_lst/w)
+
+                    #plnm = poly.Polynomial.fit(newx_lst[_m], yflux[_m],
+                    #        deg=param_deg, domain=(0, w-1))
+                    #yfit = plnm(newx_lst)
+
                     yres = yflux - yfit
                     std = yres[_m].std(ddof=1)
+
                     # replace np.nan by np.inf to avoid runtime warning
                     yres[~_m] = np.inf
                     _new_m = _m*(np.abs(yres)<5*std)
                     if _new_m.sum()==_m.sum():
                         break
                     _m = _new_m
+
+                # try different orders of polynomial and print the reduced chi-
+                # squares
+                if False:
+                    for d in range(2, 11):
+                        coeff1 = np.polyfit(newx_lst[_m]/w, yflux[_m], deg=d)
+                        yfit = np.polyval(coeff1, newx_lst/w)
+                        yres = yflux - yfit
+                        std = yres[_m].std()
+                        reduced_x2 = (yres[_m]**2).sum()/(_m.sum()-(d+1)-1)
+                        print('%1d %2d %10.3e %10.2e'%(ipara, d, std, reduced_x2))
+
+
             else:
                 #???
                 pass
 
+            # pack the positions of not-Nan pixels
             mask_lst.append(_m)
 
             aperpar_lst.append(coeff)
+            #aperpar_lst.append(plnm.coef)
 
             if plot_aperpar:
+                # plot the parameters
                 ax = fig.get_axes()[iaper%5*4+ipara]
-                ax.plot(newx_lst, yflux, 'b-', lw=0.5)
-                ax.plot(newx_lst[i1:i2], yfit[i1:i2], 'r-', lw=0.5)
-                ax.plot(newx_lst[~_m],yflux[~_m],'ro',lw=0.5, ms=3, alpha=0.5)
+                ax.plot(newx_lst, yflux, '-', color='C0', lw=0.5)
+                ax.plot(newx_lst[i1:i2], yfit[i1:i2], '-', color='C1', lw=0.5)
+                ax.plot(newx_lst[~_m],yflux[~_m],'o',color='C3',
+                        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax.get_ylim()
                 #ax.set_ylim(_y1, _y2)
                 if ipara == 0:
-                    ax.text(0.05*w, 0.15*_y1+0.85*_y2,'Aperture %d'%aper)
+                    ax.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper)
                 ax.set_xlim(0, w-1)
 
         mask_lst = np.array(mask_lst)
@@ -1143,6 +1190,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         #ax6.set_ylim(-0.5, 1.5)
 
         if plot_aperpar:
+            # adjust the figure layout
             for ax in fig.get_axes():
                 for tick in ax.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
@@ -1166,7 +1214,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 fig.savefig(fig_aperpar%aper)
                 plt.close(fig)
 
-        for x in newx:
+        for x in allx:
             interf = interf_lst[x]
             pos = position[x]
             y1 = int(max(0, lbound[x]))
@@ -1189,7 +1237,17 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 k   = np.polyval(coeff_k, x/w)
                 c   = np.polyval(coeff_c, x/w)
                 bkg = np.polyval(coeff_bkg, x/w)
-                                                                  
+
+                #plnm_A   = poly.Polynomial(coef=coeff_A, domain=(0, w-1))
+                #plnm_k   = poly.Polynomial(coef=coeff_k, domain=(0, w-1))
+                #plnm_c   = poly.Polynomial(coef=coeff_c, domain=(0, w-1))
+                #plnm_bkg = poly.Polynomial(coef=coeff_bkg, domain=(0, w-1))
+
+                #A   = plnm_A(x)
+                #k   = plnm_k(x)
+                #c   = plnm_c(x)
+                #bkg = plnm_bkg(x)
+
                 lcorr, rcorr = corr_mask_array[x]
                 normx = (xdata-c)*k
                 corr_mask = (normx > lcorr)*(normx < rcorr)
