@@ -381,7 +381,8 @@ def reduce():
                         nflat       = len(flat_groups[flatname]),
                         q_threshold = config['flat'].getfloat('q_threshold'),
                         param_deg   = config['flat'].getint('param_deg'),
-                        fig_aperpar = None,
+                        fig_aperpar = os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
+                        #fig_aperpar = None,
                         fig_overlap = None,
                         fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
                         slit_file   = None,
@@ -424,6 +425,7 @@ def reduce():
         mosaic_aperset.save_txt('trace.trc')
         mosaic_aperset.save_reg('trace.reg')
 
+    exit()
     ############################## Extract ThAr ################################
 
     if True:
