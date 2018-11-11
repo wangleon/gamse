@@ -37,15 +37,15 @@ def get_local_minima(x, window=None):
     Get the local minima of a 1d array in a window.
 
     Args:
-        x (:class:`numpy.array`): A list or Numpy 1d array.
-        window (integer or :class:`numpy.array`): An odd integer or a list of
+        x (:class:`numpy.ndarray`): A list or Numpy 1d array.
+        window (integer or :class:`numpy.ndarray`): An odd integer or a list of
             odd integers as the lengthes of searching window.
     Returns:
         tuple: A tuple containing:
 
-            * **index** (:class:`numpy.array`): a numpy 1d array containing 
+            * **index** (:class:`numpy.ndarray`): a numpy 1d array containing 
               indices of all local minima.
-            * **x[index]** (:class:`numpy.array`): a numpy 1d array containing
+            * **x[index]** (:class:`numpy.ndarray`): a numpy 1d array containing
               values of all local minima.
 
     '''
@@ -143,12 +143,12 @@ def derivative(*args, **kwargs):
     differential of the input array will be returned.
 
     Args:
-        x (list or :class:`numpy.array`): X-values of the input array (optional).
-        y (list or :class:`numpy.array`): Y-values of the input array.
-        points (int): Number of points used to calculate derivative (optional,
-            default is 3).
+        x (list or :class:`numpy.ndarray`): X-values of the input array (optional).
+        y (list or :class:`numpy.ndarray`): Y-values of the input array.
+        points (integer): Number of points used to calculate derivative
+            (optional, default is 3).
     Returns:
-        :class:`numpy.array`: Derivative of the input array.
+        :class:`numpy.ndarray`: Derivative of the input array.
     '''
     if len(args) == 1:
         y = np.array(args[0], dtype=np.float64)
@@ -173,7 +173,7 @@ def pairwise(array):
     '''Return pairwises of an iterable arrary.
 
     Args:
-        array (list or :class:`numpy.array`): The input iterable array.
+        array (list or :class:`numpy.ndarray`): The input iterable array.
     Returns:
         :class:`zip`: zip objects.
     '''
