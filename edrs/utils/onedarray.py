@@ -43,9 +43,9 @@ def get_local_minima(x, window=None):
     Returns:
         tuple: A tuple containing:
 
-            * **index** (:class:`numpy.ndarray`): a numpy 1d array containing 
+            * **index** (:class:`numpy.ndarray`): A numpy 1d array containing 
               indices of all local minima.
-            * **x[index]** (:class:`numpy.ndarray`): a numpy 1d array containing
+            * **x[index]** (:class:`numpy.ndarray`): A numpy 1d array containing
               values of all local minima.
 
     '''
@@ -86,8 +86,11 @@ def get_local_minima(x, window=None):
             i2 = min(i+halfwin+1, len(x))
             if i == x[i1:i2].argmin() + i1:
                 index_lst.append(i)
-        index_lst = np.array(index_lst)
-        return index_lst, x[index_lst]
+        if len(index_lst)>0:
+            index_lst = np.array(index_lst)
+            return index_lst, x[index_lst]
+        else:
+            return np.array([]), np.array([])
 
 def implete_none(lst):
     '''
