@@ -17,8 +17,8 @@ Summaries
     onedarray.implete_none
     regression.get_clip_mean
     regression.linear_fit
-    regression.polyfit2d
-    regression.polyval2d
+    regression2d.polyfit2d
+    regression2d.polyval2d
 
 
 Configuration
@@ -45,6 +45,13 @@ One Dimensional Array
 Regression
 ----------
 .. automodule:: edrs.utils.regression
+   :members:
+   :private-members:
+   :undoc-members:
+
+2D Regression
+-------------
+.. automodule:: edrs.utils.regression2d
    :members:
    :private-members:
    :undoc-members:

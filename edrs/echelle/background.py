@@ -12,8 +12,8 @@ import matplotlib.colors as colors
 import matplotlib.cm     as cmap
 import matplotlib.ticker as tck
 
-from ..utils.regression import polyfit2d, polyval2d
-from .imageproc         import table_to_array, array_to_table
+from ..utils.regression2d import polyfit2d, polyval2d
+from .imageproc           import table_to_array, array_to_table
 
 def find_background(data, mask, channels, apertureset_lst,
         method='poly', scale='linear', scan_step=200,

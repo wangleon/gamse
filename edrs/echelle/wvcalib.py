@@ -28,8 +28,8 @@ else:
     import tkinter as tk
     import tkinter.ttk as ttk
 
-from ..utils.regression import polyfit2d, polyval2d
-from ..utils.onedarray import pairwise
+from ..utils.regression2d import polyfit2d, polyval2d
+from ..utils.onedarray    import pairwise
 from .trace import load_aperture_set_from_header
 
 # Identified line table with channel
