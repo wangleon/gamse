@@ -15,9 +15,10 @@ import scipy.signal as sg
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils.onedarray import pairwise, get_local_minima
-from .imageproc        import array_to_table, table_to_array
-from .trace            import ApertureSet
+from ..utils.onedarray  import pairwise, get_local_minima
+from ..utils.regression import iterative_polyfit
+from .imageproc         import array_to_table, table_to_array
+from .trace             import ApertureSet
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     disp_axis=0, mask_suffix = '_msk'):
@@ -1026,6 +1027,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         # loop for every newx. find the fitting parameters for each column
         # prepar the blank parameter for insert
         blank_p = np.array([np.NaN, np.NaN, np.NaN, np.NaN])
+
         for x in newx_lst:
             # central position
             pos = position[x]
@@ -1108,17 +1110,30 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
             break
 
-
         # prepare the figure for plotting the parameters of each aperture
         if plot_aperpar:
             if iaper%5==0:
-                fig = plt.figure(figsize=(12,8),dpi=150, tight_layout=True)
-            ax1 = fig.add_subplot(5,4,1+iaper%5*4)
-            ax2 = fig.add_subplot(5,4,2+iaper%5*4)
-            ax3 = fig.add_subplot(5,4,3+iaper%5*4)
-            ax4 = fig.add_subplot(5,4,4+iaper%5*4)
+                fig = plt.figure(figsize=(15,8), dpi=150)
+            ax1 = fig.add_axes([0.05+0*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
+            ax2 = fig.add_axes([0.05+1*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
+            ax3 = fig.add_axes([0.05+2*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
+            ax4 = fig.add_axes([0.05+3*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
 
         mask_lst = []
+
+        # pick up NaN positions in fitpar_lst and generate fitmask.
+        # NaN = False. Real number = True
+        fitmask = ~np.isnan(fitpar_lst[:,0])
+        # divide the whole order into several groups
+        xx = np.nonzero(fitmask)[0]
+        group_lst = np.split(xx, np.where(np.diff(xx) > 4)[0]+1)
+        # group_lst is composed of (x1, x2, ..., xN)
+        # 4 means the maximum tolerance skipping value in fitmask is 3
+        # filter out short segments
+        # every index in group is index in newx_lst, NOT real pixel numbers
+        group_lst = [group for group in group_lst
+                    if newx_lst[group[-1]] - newx_lst[group[0]] > w/10]
+
         # loop for A, k, c, bkg. Smooth these parameters
         for ipara in range(4):
             yflux = fitpar_lst[:,ipara]
@@ -1133,36 +1148,23 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
 
             # find parameter for every pixels
-            if False:
-                #stdev = yflux[_m].std()
-                #s = stdev**2*_m.sum()/2.
-                #f = intp.UnivariateSpline(newx_lst[_m], yflux[_m],
-                #        bbox=(0, w-1), k=5, s=s)
-                #yfit = f(newx_lst)
-                #aperpar = f(allx)
-                pass
+            if ipara==0:
+                f = intp.InterpolatedUnivariateSpline(newx_lst[fitmask], yflux[fitmask], k=1)
+                aperpar = sg.savgol_filter(f(allx), window_length=501, polyorder=3)
+                core = sg.gaussian(M=101, std=20)
+                aperpar = np.convolve(aperpar, core/core.sum(), mode='same')
+                yfit = aperpar[newx_lst]
+                #outfile = open('aper_%02d.txt'%aper, 'w')
+                #for x, y in zip(newx_lst, yflux):
+                #    outfile.write('%4d %12.8e'%(x,y)+os.linesep)
+                #outfile.close()
             else:
                 deg = (7,3,7,7)[ipara]
-                maxiter = 10
-                for ite in range(maxiter):
-                    coeff = np.polyfit(newx_lst[fitmask]/w, yflux[fitmask], deg=deg)
-                    yfit = np.polyval(coeff, newx_lst/w)
-                    yres = yflux - yfit
-                    std = yres[fitmask].std(ddof=1)
-                    # replace np.nan by np.inf to avoid runtime warning
-                    yres[~fitmask] = np.inf
-                    new_fitmask = fitmask * (np.abs(yres) < 3.*std)
-                    if new_fitmask.sum() == fitmask.sum():
-                        break
-                    fitmask = new_fitmask
-                if ipara == 0:
-                    assesmask1 = np.abs(newx_lst - w/2)<w/10
-                    assesmask2 = assesmask1*fitmask
-                    #print(assesmask2.sum())
-                    if assesmask2.sum()>assesmask1.sum()/2:
-                        std1 = yflux[assesmask2].std()
-                        std2 = yres[assesmask2].std()
-                        #print(' '*20, '%10g %10g %10g'%(std1, std2, std1/std2))
+
+                coeff, yfit, yres, fitmask, std = iterative_polyfit(
+                        newx_lst/w, yflux, deg=deg, mask=fitmask, maxiter=10,
+                        upper_clip=3, lower_clip=3)
+                # get fitted values for all pixels
                 aperpar = np.polyval(coeff, allx/w)
 
             # pack this parameter for every pixels
@@ -1174,13 +1176,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             if plot_aperpar:
                 # plot the parameters
                 ax = fig.get_axes()[iaper%5*4+ipara]
-                if ipara == 2:
-                    ax.plot(newx_lst, yflux - yfit, '-', color='C1', lw=0.5)
-                else:
-                    ax.plot(newx_lst, yflux, '-', color='C0', lw=0.5)
-                    ax.plot(newx_lst[i1:i2], yfit[i1:i2], '-', color='C1', lw=0.5)
-                    ax.plot(newx_lst[~fitmask],yflux[~fitmask],'o',color='C3',
-                            lw=0.5, ms=3, alpha=0.5)
+                # plot data points
+                ax.plot(newx_lst, yflux, '-', color='C0', lw=0.5)
+                # plot fitted value
+                ax.plot(newx_lst[i1:i2], yfit[i1:i2], '-', color='C1', lw=0.5)
+                ax.plot(newx_lst[~fitmask],yflux[~fitmask], 'o', color='C3',
+                        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax.get_ylim()
                 #ax.set_ylim(_y1, _y2)
                 if ipara == 0:
