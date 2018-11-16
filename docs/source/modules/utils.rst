@@ -17,6 +17,7 @@ Summaries
     onedarray.implete_none
     regression.get_clip_mean
     regression.linear_fit
+    regression.iterative_polyfit
     regression2d.polyfit2d
     regression2d.polyval2d
 
