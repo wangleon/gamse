@@ -1,5 +1,4 @@
 import math
-import itertools
 import numpy as np
 
 def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
@@ -56,7 +55,7 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
         x (:class:`numpy.ndarray`): The input X values.
         y (:class:`numpy.ndarray`): The input Y values.
         yerr (:class:`numpy.ndarray`): Errors of the Y array.
-        maxiter (integer): Maximum number of interations.
+        maxiter (integer): Maximum number of iterations.
         high (float): Upper rejection threshold.
         low (float): Lower rejection threshold.
         full (bool): `True` if return all information.
@@ -74,7 +73,7 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
     '''
     x = np.array(x)
     y = np.array(y)
-    if yerr != None:
+    if yerr is not None:
         yerr = np.array(yerr)
     mask = np.ones_like(x)>0
     niter = 0
@@ -130,3 +129,61 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
     else:
         return p, std, mask, func
 
+
+def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
+    upper_clip=None, lower_clip=None):
+    '''Fit data with polynomial iteratively. This is a wrap of numpy.polyfit
+    function.
+
+    Args:
+        x (:class:`numpy.ndarray`): The input X values.
+        y (:class:`numpy.ndarray`): The input Y values.
+        yerr (:class:`numpy.ndarray`): Errors of the Y array.
+        deg (integer): Degree of polynomial.
+        mask (:class:`numpy.ndarray`): The input mask.
+        maxiter (integer): Maximum number of iterations.
+        lower_clip (float): Lower sigma-clipping value.
+        upper_clip (float): Upper sigma-clipping value.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **coeff** (:class:`numpy.ndarray`) – Coefficients of polynomial.
+            * **yfit** (:class:`numpy.ndarray`) – 
+            * **yres** (:class:`numpy.ndarray`) – 
+            * **mask** (:class:`numpy.ndarray`) – 
+            * **std** (float) – 
+    '''
+
+    x = np.array(x)
+    y = np.array(y)
+    if yerr is None:
+        pass
+    else:
+        yerr = np.array(yerr)
+    if mask is None:
+        mask = np.ones_like(x)
+    
+    for ite in range(maxiter):
+        coeff = np.polyfit(x[mask], y[mask], deg=deg)
+        yfit = np.polyval(coeff, x)
+        yres = y - yfit
+        std = yres[mask].std(ddof=1)
+
+        # replace np.nan by np.inf to avoid runtime warning
+        yres[np.isnan(yres)] = np.inf
+
+        # generate new mask
+        # make a copy of existing mask
+        new_mask = mask * np.ones_like(mask, dtype=np.bool)
+        # give new mask with lower and upper clipping value
+        if lower_clip is not None:
+            new_mask *= (yres > -lower_clip * std)
+        if upper_clip is not None:
+            new_mask *= (yres < upper_clip * std)
+
+        if new_mask.sum() == mask.sum():
+            break
+        mask = new_mask
+
+    return coeff, yfit, yres, mask, std
