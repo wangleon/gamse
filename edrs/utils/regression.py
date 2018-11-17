@@ -162,7 +162,7 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
     else:
         yerr = np.array(yerr)
     if mask is None:
-        mask = np.ones_like(x)
+        mask = np.ones_like(x, dtype=np.bool)
     
     for ite in range(maxiter):
         coeff = np.polyfit(x[mask], y[mask], deg=deg)
