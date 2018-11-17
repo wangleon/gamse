@@ -1114,10 +1114,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         if plot_aperpar:
             if iaper%5==0:
                 fig = plt.figure(figsize=(15,8), dpi=150)
-            ax1 = fig.add_axes([0.05+0*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
-            ax2 = fig.add_axes([0.05+1*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
-            ax3 = fig.add_axes([0.05+2*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
-            ax4 = fig.add_axes([0.05+3*0.237, (4-iaper%5)*0.19+0.05, 0.205, 0.17])
+                ax_lst = {}
+                for irow in range(5):
+                    for ipara in range(4):
+                        ax = fig.add_axes([0.05+ipara*0.237, (4-irow)*0.19+0.05, 0.20, 0.17])
+                        ax_lst[(irow, ipara)] = ax
 
         mask_lst = []
 
@@ -1127,7 +1128,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         # divide the whole order into several groups
         xx = np.nonzero(fitmask)[0]
         group_lst = np.split(xx, np.where(np.diff(xx) > 4)[0]+1)
-        # group_lst is composed of (x1, x2, ..., xN)
+        # group_lst is composed of (x1, x2, ..., xN), where xi is index in newx_lst
         # 4 means the maximum tolerance skipping value in fitmask is 3
         # filter out short segments
         # every index in group is index in newx_lst, NOT real pixel numbers
@@ -1136,78 +1137,212 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
         # loop for A, k, c, bkg. Smooth these parameters
         for ipara in range(4):
-            yflux = fitpar_lst[:,ipara]
+            ypara = fitpar_lst[:,ipara]
 
-            # fit with only not-NaN numbers
-            # NaN pixels are marked as False. Other are True
-            fitmask = ~np.isnan(yflux)
-            #fitmask should be >0 now because otherwise it will quit before here
+            if ipara == 0:
+                # fit for A
+                method_lst = []
+                aperpar = np.array([np.nan]*w)
+                xpiece_lst     = np.array([np.nan]*newx_lst.size)
+                ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+                for group in group_lst:
+                    i1, i2 = group[0], group[-1]
+                    p1, p2 = newx_lst[i1], newx_lst[i2]
+                    m = fitmask[group]
+                    xpiece = newx_lst[group]
+                    ypiece = ypara[group]
+                    # now fill the NaN values in ypiece
+                    if (~m).sum() > 0:
+                        f = intp.InterpolatedUnivariateSpline(xpiece[m], ypiece[m], k=3)
+                        ypiece = f(xpiece)
+                    # now xpiece and ypiece are ready
 
-            # find the indices of the first and last not-NaN numbers
-            nonzeroindex = np.nonzero(fitmask)[0]
-            i1, i2 = nonzeroindex[0], nonzeroindex[-1]+1
+                    _m = np.ones_like(ypiece, dtype=np.bool)
+                    for ite in range(5):
+                        f = intp.InterpolatedUnivariateSpline(xpiece[_m], ypiece[_m], k=3)
+                        ypiece2 = f(xpiece)
+                        ysmooth = sg.savgol_filter(ypiece2, window_length=21, polyorder=3)
+                        res = ypiece - ysmooth
+                        std = res.std()
+                        _new_m = _m*(np.abs(res) < 3*std)
+                        if _new_m.sum() == _m.sum():
+                            break
+                        _m = _new_m
 
-            # find parameter for every pixels
-            if ipara==0:
-                f = intp.InterpolatedUnivariateSpline(newx_lst[fitmask], yflux[fitmask], k=1)
-                aperpar = sg.savgol_filter(f(allx), window_length=501, polyorder=3)
-                core = sg.gaussian(M=101, std=20)
-                aperpar = np.convolve(aperpar, core/core.sum(), mode='same')
-                yfit = aperpar[newx_lst]
-                #outfile = open('aper_%02d.txt'%aper, 'w')
-                #for x, y in zip(newx_lst, yflux):
-                #    outfile.write('%4d %12.8e'%(x,y)+os.linesep)
-                #outfile.close()
+                    f = intp.InterpolatedUnivariateSpline(xpiece, ysmooth, k=3)
+                    _x = np.arange(p1, p2+1)
+
+                    aperpar[_x] = f(_x)
+                    xpiece_lst[group] = xpiece
+                    ypiece_res_lst[group] = res
+
+                    # find out if this order is affected by fringes, by checking
+                    # the distribution of local maximum points
+                    imax, ymax = get_local_minima(-ysmooth, window=5)
+                    if len(imax) > 0:
+                        x = xpiece[imax]
+                    else:
+                        x = []
+                    bins = np.linspace(p1, p2, int(p2-p1)/500+2)
+                    hist, _ = np.histogram(x, bins)
+
+                    n_nonzerobins = np.nonzero(hist)[0].size
+                    n_zerobins = hist.size - n_nonzerobins
+
+                    if p2-p1<w/8 or n_zerobins <= 1 or n_zerobins < n_nonzerobins:
+                        # there's fringe
+                        method_lst.append('poly')
+                    else:
+                        # no fringe
+                        method_lst.append('smooth')
+
+                # use global polynomial fitting if this order is affected by
+                # fringe and the following conditions are satisified
+                if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
+                    newx_lst[group_lst[-1][-1]] > w/2 and \
+                    method_lst.count('poly') == len(method_lst):
+                    # prepare xpiece and y piece
+                    xpiece = np.concatenate([newx_lst[group] for group in group_lst])
+                    ypiece = np.concatenate([ypara[group] for group in group_lst])
+
+                    # fit with poly
+                    # determine the polynomial degree
+                    xspan = xpiece[-1] - xpiece[0]
+                    if xspan < w/8:
+                        deg = 1
+                    elif xspan < w/4:
+                        deg = 2
+                    elif xspan < w/2:
+                        deg = 3
+                    else:
+                        deg = 4
+                    coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
+                        xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                    aperpar = np.polyval(coeff, allx/w)
+                    xpiece_lst = xpiece
+                    ypiece_res_lst = ypiece_res
+                else:
+                    # scan again
+                    for group, method in zip(group_lst, method_lst):
+                        if method=='poly':
+                            xpiece = newx_lst[group]
+                            ypiece = ypara[group]
+                            xspan = xpiece[-1] - xpiece[0]
+                            if xspan < w/8:
+                                deg = 1
+                            elif xspan < w/4:
+                                deg = 2
+                            elif xspan < w/2:
+                                deg = 3
+                            else:
+                                deg = 4
+                            coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
+                                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                            ii = np.arange(xpiece[0], xpiece[-1]+1)
+                            aperpar[ii] = np.polyval(coeff, ii/w)
+                            xpiece_lst[group]     = xpiece
+                            ypiece_res_lst[group] = ypiece_res
+
             else:
-                deg = (7,3,7,7)[ipara]
+                # fit for k, c, bkg
 
-                coeff, yfit, yres, fitmask, std = iterative_polyfit(
-                        newx_lst/w, yflux, deg=deg, mask=fitmask, maxiter=10,
-                        upper_clip=3, lower_clip=3)
-                # get fitted values for all pixels
-                aperpar = np.polyval(coeff, allx/w)
+                if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
+                    newx_lst[group_lst[-1][-1]] > w/2:
+                    xpiece = np.concatenate([newx_lst[group] for group in group_lst])
+                    ypiece = np.concatenate([ypara[group] for group in group_lst])
+
+                    xspan = xpiece[-1] - xpiece[0]
+                    if xspan < w/8:
+                        deg = 1
+                    elif xspan < w/4:
+                        deg = 2
+                    elif xspan < w/2:
+                        deg = 3
+                    else:
+                        deg = 4
+                    coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
+                        xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+
+                    aperpar = np.polyval(coeff, allx/w)
+                    xpiece_lst = xpiece
+                    ypiece_res_lst = ypiece_res
+                else:
+                    aperpar = np.array([np.nan]*w)
+                    xpiece_lst     = np.array([np.nan]*newx_lst.size)
+                    ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+                    for group in group_lst:
+                        xpiece = newx_lst[group]
+                        ypiece = ypara[group]
+                        xspan = xpiece[-1] - xpiece[0]
+                        if xspan < w/8:
+                            deg = 1
+                        elif xspan < w/4:
+                            deg = 2
+                        elif xspan < w/2:
+                            deg = 3
+                        else:
+                            deg = 4
+                        coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
+                            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                        ii = np.arange(xpiece[0], xpiece[-1]+1)
+                        aperpar[ii] = np.polyval(coeff, ii/w)
+                        xpiece_lst[group]     = xpiece
+                        ypiece_res_lst[group] = ypiece_res
 
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
 
-            # pack the positions of mask
-            mask_lst.append(fitmask)
-
             if plot_aperpar:
+                i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                 # plot the parameters
-                ax = fig.get_axes()[iaper%5*4+ipara]
+                ax1 = ax_lst[(iaper%5, ipara)]
                 # plot data points
-                ax.plot(newx_lst, yflux, '-', color='C0', lw=0.5)
+                ax1.plot(newx_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
                 # plot fitted value
-                ax.plot(newx_lst[i1:i2], yfit[i1:i2], '-', color='C1', lw=0.5)
-                ax.plot(newx_lst[~fitmask],yflux[~fitmask], 'o', color='C3',
-                        lw=0.5, ms=3, alpha=0.5)
-                _y1, _y2 = ax.get_ylim()
-                #ax.set_ylim(_y1, _y2)
+                ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
+                    lw=1, zorder=2)
+                #ax1.plot(newx_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
+                #        lw=0.5, ms=3, alpha=0.5)
+                _y1, _y2 = ax1.get_ylim()
                 if ipara == 0:
-                    ax.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper)
-                ax.set_xlim(0, w-1)
+                    ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper)
+                ax1.set_xlim(0, w-1)
+                #ax1.set_ylim(_y1, _y2)
+                if iaper%5<3:
+                    ax1.set_xticklabels([])
+
+                ax2 = ax1.twinx()
+                ax2.plot(xpiece_lst, ypiece_res_lst, color='gray',
+                        lw=0.5, alpha=0.4, zorder=-1)
+                ax2.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.4, zorder=-1)
+
+                for tick in ax1.xaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax1.yaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax2.xaxis.get_major_ticks():
+                    tick.label2.set_fontsize(4)
+                for tick in ax2.yaxis.get_major_ticks():
+                    tick.label2.set_fontsize(4)
+                ax2.yaxis.label.set_color('red')
+                if w<3000:
+                    ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
+                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                    ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
+                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                else:
+                    ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                    ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                    
+
+            # pack the positions of mask
+            mask_lst.append(mask)
 
         mask_lst = np.array(mask_lst)
-        apermask = mask_lst.sum(axis=0)>0
-        #ax6.plot(newx_lst[i1:i2],apermask[i1:i2], 'b-',lw=0.5)
-        #ax6.set_xlim(0, w-1)
-        #ax6.set_ylim(-0.5, 1.5)
 
         if plot_aperpar:
-            # adjust the figure layout
-            for ax in fig.get_axes():
-                for tick in ax.xaxis.get_major_ticks():
-                    tick.label1.set_fontsize(7)
-                for tick in ax.yaxis.get_major_ticks():
-                    tick.label1.set_fontsize(7)
-                if w<3000:
-                    ax.xaxis.set_major_locator(tck.MultipleLocator(500))
-                    ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                else:
-                    ax.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                    ax.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                    
             if iaper%5==4 or iaper==len(apertureset)-1:
                 fig.savefig(fig_aperpar%aper)
                 plt.close(fig)
