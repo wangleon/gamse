@@ -662,7 +662,10 @@ def mosaic_images(image_lst, mosaic_aperset):
     # finally mosaic the images
     mosaic_image = np.zeros(shape, dtype=dtype)
     for _name, _maskdata in sorted(maskdata_lst.items()):
-        mosaic_image += image_lst[_name]*_maskdata
+        _image = image_lst[_name]
+        # filter oout NaN values
+        _image[np.isnan(_image)] = 0
+        mosaic_image += _image*_maskdata
 
     return mosaic_image
 
@@ -1117,7 +1120,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 ax_lst = {}
                 for irow in range(5):
                     for ipara in range(4):
-                        ax = fig.add_axes([0.05+ipara*0.237, (4-irow)*0.19+0.05, 0.20, 0.17])
+                        ax = fig.add_axes([0.04+ipara*0.24, (4-irow)*0.19+0.05, 0.20, 0.17])
                         ax_lst[(irow, ipara)] = ax
 
         mask_lst = []
@@ -1308,7 +1311,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper)
                 ax1.set_xlim(0, w-1)
                 #ax1.set_ylim(_y1, _y2)
-                if iaper%5<3:
+                if iaper%5<4:
                     ax1.set_xticklabels([])
 
                 ax2 = ax1.twinx()
