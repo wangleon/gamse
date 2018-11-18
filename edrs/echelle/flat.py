@@ -663,7 +663,7 @@ def mosaic_images(image_lst, mosaic_aperset):
     mosaic_image = np.zeros(shape, dtype=dtype)
     for _name, _maskdata in sorted(maskdata_lst.items()):
         _image = image_lst[_name]
-        # filter oout NaN values
+        # filter out NaN values. otherwise the NaN will be passed to final image
         _image[np.isnan(_image)] = 0
         mosaic_image += _image*_maskdata
 
