@@ -196,6 +196,10 @@ def reduce():
     report  = config['data']['report']
     result  = config['data']['result']
 
+    # reduction mode
+    mode = config['reduction']['mode']
+
+
     if not os.path.exists(report):
         os.mkdir(report)
     if not os.path.exists(result):
@@ -373,6 +377,10 @@ def reduce():
         if os.path.exists(flatmap_filename):
             flatmap = fits.getdata(flatmap_filename)
         else:
+            # do flat fielding
+            fig_aperpar = {'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
+                           'normal': None}[mode]
+
             flatmap = get_fiber_flat(
                         data        = flat_data_lst[flatname],
                         mask        = flat_mask_lst[flatname],
@@ -381,8 +389,7 @@ def reduce():
                         nflat       = len(flat_groups[flatname]),
                         q_threshold = config['flat'].getfloat('q_threshold'),
                         param_deg   = config['flat'].getint('param_deg'),
-                        fig_aperpar = os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
-                        #fig_aperpar = None,
+                        fig_aperpar = fig_aperpar,
                         fig_overlap = None,
                         fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
                         slit_file   = None,
@@ -425,7 +432,6 @@ def reduce():
         mosaic_aperset.save_txt('trace.trc')
         mosaic_aperset.save_reg('trace.reg')
 
-    exit()
     ############################## Extract ThAr ################################
 
     if True:

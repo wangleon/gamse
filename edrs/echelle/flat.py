@@ -1013,6 +1013,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         newx_lst = np.append(newx_lst, w-1)
 
     ###################### loop for every aperture ########################
+    # use to remember the status of unsaved aperpar_fig
+    # = True if there's unsaved figure in memory
+    has_aperpar_fig = False
+
     for iaper, aper in enumerate(sorted(apertureset.keys())):
         fitpar_lst  = [] # stores (A, k, c, bkg).has the same length as newx_lst
         aperpar_lst = []
@@ -1118,10 +1122,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             if iaper%5==0:
                 fig = plt.figure(figsize=(15,8), dpi=150)
                 ax_lst = {}
-                for irow in range(5):
-                    for ipara in range(4):
-                        ax = fig.add_axes([0.04+ipara*0.24, (4-irow)*0.19+0.05, 0.20, 0.17])
-                        ax_lst[(irow, ipara)] = ax
 
         mask_lst = []
 
@@ -1192,12 +1192,14 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     n_nonzerobins = np.nonzero(hist)[0].size
                     n_zerobins = hist.size - n_nonzerobins
 
-                    if p2-p1<w/8 or n_zerobins <= 1 or n_zerobins < n_nonzerobins:
+                    if p2-p1<w/8 or n_zerobins<=1 or \
+                        n_zerobins<n_nonzerobins or n_nonzerobins>=3:
                         # there's fringe
-                        method_lst.append('poly')
+                        method = 'poly'
                     else:
                         # no fringe
-                        method_lst.append('smooth')
+                        method = 'smooth'
+                    method_lst.append(method)
 
                 # use global polynomial fitting if this order is affected by
                 # fringe and the following conditions are satisified
@@ -1296,6 +1298,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             aperpar_lst.append(aperpar)
 
             if plot_aperpar:
+                has_aperpar_fig = True
+                irow = iaper%5
+                for icol in range(4):
+                    ax = fig.add_axes([0.04+icol*0.24, (4-irow)*0.19+0.05, 0.20, 0.17])
+                    ax_lst[(irow, icol)] = ax
                 i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                 # plot the parameters
                 ax1 = ax_lst[(iaper%5, ipara)]
@@ -1314,10 +1321,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 if iaper%5<4:
                     ax1.set_xticklabels([])
 
+                # make a copy of ax1 and plot the residuals in the background
                 ax2 = ax1.twinx()
                 ax2.plot(xpiece_lst, ypiece_res_lst, color='gray',
                         lw=0.5, alpha=0.4, zorder=-1)
-                ax2.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.4, zorder=-1)
+                ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
+                        alpha=0.4, zorder=-1)
 
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
@@ -1327,7 +1336,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     tick.label2.set_fontsize(4)
                 for tick in ax2.yaxis.get_major_ticks():
                     tick.label2.set_fontsize(4)
-                ax2.yaxis.label.set_color('red')
                 if w<3000:
                     ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
@@ -1346,9 +1354,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         mask_lst = np.array(mask_lst)
 
         if plot_aperpar:
-            if iaper%5==4 or iaper==len(apertureset)-1:
+            # save and close the figure
+            if iaper%5==4:
                 fig.savefig(fig_aperpar%aper)
                 plt.close(fig)
+                has_aperpar_fig = False
 
 
         # find columns to be corrected in this order
@@ -1396,10 +1406,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             corr_mask = (normx > lcorr)*(normx < rcorr)
             flat = ydata/fitfunc2([A,k,c,bkg], xdata, interf)
             flatmask = corr_mask*~_satmask*~_badmask
-            decay_length = 100
-            if x1 > 0 and x < x1+decay_length:
-                decay = 1/(math.exp(-(x-(x1+decay_length/2))/4)+1)
-                flat[flatmask] = (flat[flatmask]-1)*decay + 1
+            # adopt a decay length at the edges of flat fielding correction
+            # zones in each apertures if not all the pixels are flat corrected
+            #decay_length = 100
+            #if x1 > 0 and x < x1+decay_length:
+            #    decay = 1/(math.exp(-(x-(x1+decay_length/2))/4)+1)
+            #    flat[flatmask] = (flat[flatmask]-1)*decay + 1
             flatdata[y1:y2, x][flatmask] = flat[flatmask]
 
 
@@ -1427,8 +1439,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             
         t2 = time.time()
         print('Aper %2d t = %6.1f ms'%(aper, (t2-t1)*1e3))
-        print(' '*20, x1, x2)
     ###################### aperture loop ends here ########################
+    if plot_aperpar and has_aperpar_fig:
+        # there's unsaved figure in memory. save and close the figure
+        fig.savefig(fig_aperpar%aper)
+        plt.close(fig)
+        has_aperpar_fig = False
 
     return flatdata
 
