@@ -192,12 +192,17 @@ def reduce():
     config = read_config('Xinglong216HRS')
 
     # path alias
-    rawdata = config['data']['rawdata']
-    report  = config['data']['report']
-    result  = config['data']['result']
+    for keyword in ['rawdata', 'report', 'result']:
+        if config.has_option('data', keyword):
+            globals()[keyword] = config['data'][keyword]
+        else:
+            globals()[keyword] = keyword
 
-    # reduction mode
-    mode = config['reduction']['mode']
+    # find reduction mode ('normal'/'debug')
+    if config.has_section('reduction') and config.has_option('reduction', 'mode'):
+        mode = config['reduction']['mode']
+    else:
+        mode = 'normal'
 
 
     if not os.path.exists(report):
