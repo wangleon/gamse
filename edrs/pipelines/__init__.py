@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 import astropy.io.fits as fits
 
 from .reduction import Reduction
-from .plot import plot_spectra1d
+from .plot import plot_spectra1d, show_spectra1d
 from ..utils.config import read_config, find_config
 from . import foces, xinglong216hrs, levy, sarg
 
@@ -53,6 +53,16 @@ def plot():
         No returns.
     '''
     plot_spectra1d()
+
+def show(filename_lst):
+    '''Show 1-D spectra in a pop-up window.
+
+    Args:
+        filename_lst (list): List of filenames of 1-d spectra.
+    Returns:
+        No returns.
+    '''
+    show_spectra1d(filename_lst)
 
 def make_log():
     '''Scan the path to the raw FITS files and generate an observing log.
