@@ -198,17 +198,18 @@ def reduce():
         else:
             globals()[keyword] = keyword
 
+    # create folders if not exist
+    if not os.path.exists(report):
+        os.mkdir(report)
+    if not os.path.exists(result):
+        os.mkdir(result)
+
     # find reduction mode ('normal'/'debug')
     if config.has_section('reduction') and config.has_option('reduction', 'mode'):
         mode = config['reduction']['mode']
     else:
         mode = 'normal'
 
-
-    if not os.path.exists(report):
-        os.mkdir(report)
-    if not os.path.exists(result):
-        os.mkdir(result)
 
     ############################# parse bias ###################################
     if os.path.exists('bias.fits'):
@@ -383,8 +384,10 @@ def reduce():
             flatmap = fits.getdata(flatmap_filename)
         else:
             # do flat fielding
-            fig_aperpar = {'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
-                           'normal': None}[mode]
+            fig_aperpar = {
+                'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
+                'normal': None,
+                }[mode]
 
             flatmap = get_fiber_flat(
                         data        = flat_data_lst[flatname],
