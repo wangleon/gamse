@@ -103,7 +103,6 @@ def get_instrument():
     section = config['data']
     telescope  = section['telescope']
     instrument = section['instrument']
-    rawdata    = section['rawdata']
     return telescope, instrument
 
 

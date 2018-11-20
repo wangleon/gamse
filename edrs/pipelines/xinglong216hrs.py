@@ -177,13 +177,42 @@ def correct_overscan(data, head, mask=None):
     return new_data, head
 
 def reduce():
-    '''Reduce the Xinglong 216/HRS spectra.
+    '''2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
+    telescope.
 
     Args:
         No args.
 
     Returns:
         No returns.
+
+    This pipeline accepts the following options in the config file:
+
+    .. csv-table:: Accepted options in config file
+       :header: Section, Option, Type, Default Value, Description
+       :escape: '
+       :widths: 10, 18, 10, 18, 60
+
+       **data**,       **telescope**,     *string*,  '"Xinglong216'", Name of the telescope (Fixed).
+       **data**,       **instrument**,    *string*,  '"HRS'",         Name of the instrument (Fixed).
+       **data**,       **rawdata**,       *string*,  '"rawdata'",     Path to the rawdata.
+       **reduction**,  **midproc**,       *string*,  '"midproc'",     Path to the mid-process folder. Will be created if not exist.
+       **reduction**,  **result**,        *string*,  '"result'",      Path to the result 1-D spectra folder. Will be created if not exist.
+       **reductoin**,  **report**,        *string*,  '"report'",      Path to the report folder. Will be created if not exist.
+       **reduction**,  **mode**,          *string*,  '"normal'",      "Reduction mode. Available modes include '"normal'", '"debug'" and '"fast'"."
+       **bias**,       **cosmic_clip**,   *float*,   10,              Upper clipping value for removing the cosmic-rays.
+       **bias**,       **maxiter**,       *int*,     5,               Maximum iteration numbers.
+       **bias**,       **smooth_method**, *string*,  ,                Method of smoothing the bias data.
+       **bias**,       **smooth_sigma**,  *int*,     ,                Sigma of Gaussian smoothing core.
+       **bias**,       **smooth_mode**,   *string*,  ,                Mode of Gaussian smoothing core.
+       **trace**,      **scan_step**,     *int*,     ,                Steps of pixels used to scan along the main dispersion direction.
+       **trace**,      **minimum**,       *float*,   ,                Minimum value to filter the input image.
+       **trace**,      **seperation**,    *float*,   ,                Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
+       **trace**,      **sep_der**,       *float*,   ,                Estimated first derivative of seperations per 1000 pixels along the *y* axis.
+       **trace**,      **filling**,       *float*,   ,                Fraction of detected pixels to total step of scanning.
+       **trace**,      **display**,       *bool*,    ,                Display a figure on screen if *yes*.
+       **trace**,      **degree**,        *int*,     ,                Degree of polynomial used to describe the positions of orders.
+    
     '''
 
     obslogfile = obslog.find_log(os.curdir)
@@ -191,31 +220,30 @@ def reduce():
 
     config = read_config('Xinglong216HRS')
 
-    # path alias
-    for keyword in ['rawdata', 'report', 'result']:
-        if config.has_option('data', keyword):
-            globals()[keyword] = config['data'][keyword]
-        else:
-            globals()[keyword] = keyword
+    # extract keywords from config file
+    section = config['data']
+    rawdata = section.pop('rawdata', 'rawdata')
+    section = config['reduction']
+    midproc = section.pop('midproc', 'midproc')
+    result  = section.pop('result',  'spectra1d')
+    report  = section.pop('report',  'report')
+    mode    = section.pop('mode',    'normal')
 
     # create folders if not exist
     if not os.path.exists(report):
         os.mkdir(report)
     if not os.path.exists(result):
         os.mkdir(result)
-
-    # find reduction mode ('normal'/'debug')
-    if config.has_section('reduction') and config.has_option('reduction', 'mode'):
-        mode = config['reduction']['mode']
-    else:
-        mode = 'normal'
-
+    if not os.path.exists(midproc):
+        os.mkdir(midproc)
 
     ############################# parse bias ###################################
-    if os.path.exists('bias.fits'):
-        bias = fits.getdata('bias.fits')
+    bias_file = os.path.join(midproc, 'bias.fits')
+
+    if os.path.exists(bias_file):
+        bias = fits.getdata(bias_file)
         has_bias = True
-        logger.info('Load bias from image: bias.fits')
+        logger.info('Load bias from image: %s'%bias_file)
     else:
         bias_lst = []
         for item in log:
@@ -228,29 +256,36 @@ def reduce():
 
         if len(bias_lst)>0:
             # there is bias frames
-            if not config.has_section('bias'):
-                print('Warning: Configuration file has no bias section')
-                exit()
+            if config.has_section('bias'):
+                # get sections from config file
+                section = config['bias']
+                cosmic_clip = float(section.pop('cosmic_clip', 10.))
+                maxiter     = int(section.pop('maxiter',     5))
+            else:
+                cosmic_clip = 10.
+                maxiter = 5
 
             bias = combine_images(bias_lst,
                                     mode       = 'mean',
-                                    upper_clip = config['bias']['cosmic_clip'],
-                                    maxiter    = 5,
+                                    upper_clip = cosmic_clip,
+                                    maxiter    = maxiter,
                                     )
 
             # create new FITS Header for bias
             head = fits.Header()
             head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
 
-            if config.has_option('bias', 'smooth_method'):
-                # perform smoothing for bias
+            ############## bias smooth ##################
+            if config.has_section('bias') and config.has_option('bias', 'smooth_method'):
+                # bias needs to be smoothed
+                section = config['bias']
+                smooth_method = section.pop('smooth_method', 'gaussian')
 
                 h, w = bias.shape
-                smooth_method = config['bias']['smooth_method']
                 if smooth_method in ['gauss','gaussian']:
                     # perform 2D gaussian smoothing
-                    smooth_sigma = int(config['bias']['smooth_sigma'])
-                    smooth_mode  = config['bias']['smooth_mode']
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section['smooth_mode']
                     bias_smooth = np.zeros((h, w), dtype=np.float64)
                     bias_smooth[0:h/2, :] = gaussian_filter(bias[0:h/2, :],
                                                             smooth_sigma,
@@ -269,14 +304,14 @@ def reduce():
 
                 bias = bias_smooth
 
-            fits.writeto('bias.fits', bias, header=head, overwrite=True)
+            fits.writeto(bias_file, bias, header=head, overwrite=True)
             has_bias = True
             logger.info('Bias image written to "bias.fits"')
         else:
             # no bias in this dataset
             has_bias = False
 
-    ######################### find flat groups##################################
+    ######################### find flat groups #################################
     # initialize flat_groups for single fiber
     flat_groups = {}
     for item in log:
@@ -308,10 +343,10 @@ def reduce():
 
     # first combine the flats
     for flatname, fileids in flat_groups.items():
-        flat_filename = '%s.fits'%flatname
-        mask_filename = '%s_msk.fits'%flatname
-        aperset_filename = 'trace_%s.trc'%flatname
-        aperset_regname  = 'trace_%s.reg'%flatname
+        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
+        mask_filename    = os.path.join(midproc, '%s_msk.fits'%flatname)
+        aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
+        aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
 
         # get flat_data and mask_array
         if os.path.exists(flat_filename) and os.path.exists(mask_filename) and \
@@ -368,8 +403,8 @@ def reduce():
                         filename   = flat_filename,
                         fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
                         )
-            aperset.save_txt('trace_%s.trc'%flatname)
-            aperset.save_reg('trace_%s.reg'%flatname)
+            aperset.save_txt(aperset_filename)
+            aperset.save_reg(aperset_regname)
 
         # append the flat data and mask
         flat_data_lst[flatname] = flat_data
@@ -379,7 +414,7 @@ def reduce():
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flatmap_filename = '%s_rsp.fits'%flatname
+        flatmap_filename = os.path.join(midproc, '%s_rsp.fits'%flatname)
         if os.path.exists(flatmap_filename):
             flatmap = fits.getdata(flatmap_filename)
         else:
@@ -412,12 +447,17 @@ def reduce():
     ############################# Mosaic Flats #################################
     if len(flat_groups) == 1:
         flatname = flat_groups.keys()[0]
-        shutil.copyfile('%s.fits'%flatname, 'flat.fits')
-        shutil.copyfile('%s_msk.fits'%flatname, 'flat_msk.fits')
-        shutil.copyfile('trace_%s.trc', 'trace.trc')
-        shutil.copyfile('trace_%s.reg', 'trace.reg')
-        shutil.copyfile('%s_rsp.fits'%flatname, 'flat_rsp.fits')
-        flat_map = fits.getdata('flat_rsp.fits')
+        shutil.copyfile(os.path.join(midproc, '%s.fits'%flatname),
+                        os.path.join(midproc, 'flat.fits'))
+        shutil.copyfile(os.path.join(midproc, '%s_msk.fits'%flatname),
+                        os.path.join(midproc, 'flat_msk.fits'))
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'),
+                        os.path.join(midproc, 'trace.trc'))
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'),
+                        os.path.join(midproc, 'trace.reg'))
+        shutil.copyfile(os.path.join(midproc, '%s_rsp.fits'%flatname),
+                        os.path.join(midproc, 'flat_rsp.fits'))
+        flat_map = fits.getdata(os.path.join(midproc, 'flat_rsp.fits'))
     else:
         # mosaic apertures
         mosaic_aperset = mosaic_flat_auto(
@@ -426,19 +466,19 @@ def reduce():
                 )
         # mosaic original flat images
         flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
-        fits.writeto('flat.fits', flat_data, overwrite=True)
+        fits.writeto(os.path.join(midproc, 'flat.fits'), flat_data, overwrite=True)
 
         # mosaic flat mask images
         mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
         mask_table = array_to_table(mask_data)
-        fits.writeto('flat_msk.fits', mask_table, overwrite=True)
+        fits.writeto(os.path.join(midproc, 'flat_msk.fits'), mask_table, overwrite=True)
 
         # mosaic sensitivity map
         flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
-        fits.writeto('flat_rsp.fits', flat_map, overwrite=True)
+        fits.writeto(os.path.join(midproc, 'flat_rsp.fits'), flat_map, overwrite=True)
 
-        mosaic_aperset.save_txt('trace.trc')
-        mosaic_aperset.save_reg('trace.reg')
+        mosaic_aperset.save_txt(os.path.join(midproc, 'trace.trc'))
+        mosaic_aperset.save_reg(os.path.join(midproc, 'trace.reg'))
 
     ############################## Extract ThAr ################################
 
