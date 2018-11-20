@@ -91,7 +91,7 @@ def show_spectra1d(filename_lst):
         spec_lst.append(spec)
 
     fig = plt.figure(figsize=(15, 8), dpi=150)
-    ax = fig.add_axes([0.07, 0.1, 0.86, 0.8])
+    ax = fig.add_axes([0.07, 0.1, 0.88, 0.8])
 
     def plot_order(order):
         ax.cla()
@@ -109,10 +109,11 @@ def show_spectra1d(filename_lst):
                 flux_min = min(flux_min, flux.min())
         leg = ax.legend(loc='upper right')
         leg.get_frame().set_alpha(0.1)
-        ax.set_xlabel(u'Wavelength (\xc5)')
-        ax.set_ylabel('Flux (ADU)')
-        ax.set_title('Order %d'%(order))
+        ax.set_xlabel(u'Wavelength (\xc5)', fontsize=12)
+        ax.set_ylabel('Flux', fontsize=12)
+        ax.set_title('Order %d'%(order), fontsize=14)
         ax.set_xlim(wave_min, wave_max)
+        ax.axhline(y=0, color='k', ls='--', lw=0.5)
         if flux_min > 0:
             ax.set_ylim(0,)
         ax.xaxis.set_major_formatter(tck.FormatStrFormatter('%g'))
