@@ -1,15 +1,16 @@
 import math
 import numpy as np
 
-def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
+def get_clip_mean(x, err=None, mask=None, high=3, low=3, maxiter=5):
     '''Get the mean value of an input array using the sigma-clipping method
 
     Args:
         x (:class:`numpy.ndarray`): The input array.
         err (:class:`numpy.ndarray`): Errors of the input array.
+        mask (:class:`numpy.ndarray`): Initial mask of the input array.
         high (float): Upper rejection threshold.
         low (float): Loweer rejection threshold.
-        maxiter (integer): Maximum number of iterations.
+        maxiter (int): Maximum number of iterations.
     Returns:
         tuple: A tuple containing:
 
@@ -19,7 +20,8 @@ def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
               input array.
     '''
     x = np.array(x)
-    mask = np.zeros_like(x)<1
+    if mask is None:
+        mask = np.zeros_like(x)<1
 
     niter = 0
     while(True):
@@ -37,11 +39,9 @@ def get_clip_mean(x, err=None, high=3, low=3, maxiter=5):
             break
 
         # calculate new mask
-        m1 = x < mean + high*std
-        m2 = x > mean - low*std
-        new_mask = np.logical_and(m1,m2)
+        new_mask = mask * (x < mean + high*std) * (x > mean - low*std)
 
-        if mask.sum()==new_mask.sum():
+        if mask.sum() == new_mask.sum():
             break
         else:
             mask = new_mask
