@@ -212,7 +212,14 @@ def reduce():
        **trace**,      **filling**,       *float*,   ,                Fraction of detected pixels to total step of scanning.
        **trace**,      **display**,       *bool*,    ,                Display a figure on screen if *yes*.
        **trace**,      **degree**,        *int*,     ,                Degree of polynomial used to describe the positions of orders.
-    
+       **background**, **scan_step**,     *int*,     ,                Steps of pixels used to scan along the main dispersion direction.
+       **background**, **xorder**,        *int*,     ,                Degree of 2D polynomial along *x*-axis (dispersion direction).
+       **background**, **yorder**,        *int*,     ,                Degree of 2D polynomial along *y*-axis (cross-dispersion direction).
+       **background**, **maxiter**,       *int*,     ,                Maximum number of iteration of 2D polynomial fitting.
+       **background**, **upper_clip**,    *float*,   ,                Upper sigma clipping threshold.
+       **background**, **lower_clip**,    *float*,   ,                Lower sigma clipping threshold.
+       **background**, **extend**,        *bool*,    ,                Extend the grid to the whole image if *True*.
+       **background**, **display**,       *bool*,    ,                Display a graphics if *yes*.
     '''
 
     obslogfile = obslog.find_log(os.curdir)
@@ -656,24 +663,40 @@ def reduce():
             data = data/flat_map
             logger.info('FileID: %s - flat corrected'%item.fileid)
 
+            reg_file = {'debug': os.path.join(midproc, '%s_sty.reg'%item.fileid),
+                        'normal': None,
+                        }[mode]
+
             # correct background
             stray = find_background(data, mask,
-                    channels        = ['A'],
+                    #channels        = ['A'],
                     apertureset_lst = {'A': mosaic_aperset},
-                    scale           = 'linear',
-                    method          = 'interp',
-                    scan_step       = config['background'].getint('scan_step'),
-                    xorder          = config['background'].getint('xorder'),
-                    yorder          = config['background'].getint('yorder'),
-                    maxiter         = config['background'].getint('maxiter'),
-                    upper_clip      = config['background'].getfloat('upper_clip'),
-                    lower_clip      = config['background'].getfloat('lower_clip'),
-                    extend          = config['background'].getboolean('extend'),
-                    display         = config['background'].getboolean('display'),
-                    fig_file        = os.path.join(report, 'background_%s.png'%item.fileid),
+                    ncols = 9,
+                    distance = 7,
+                    #scale           = 'linear',
+                    #method          = 'interp',
+                    #scan_step       = config['background'].getint('scan_step'),
+                    #xorder          = config['background'].getint('xorder'),
+                    #yorder          = config['background'].getint('yorder'),
+                    yorder = 7,
+                    #maxiter         = config['background'].getint('maxiter'),
+                    #upper_clip      = config['background'].getfloat('upper_clip'),
+                    #lower_clip      = config['background'].getfloat('lower_clip'),
+                    #extend          = config['background'].getboolean('extend'),
+                    #display         = config['background'].getboolean('display'),
+                    #fig_file        = os.path.join(report, 'background_%s.png'%item.fileid),
+                    #reg_file        = reg_file,
+                    fig_section     = os.path.join(report, 'background_%s_section.png'%item.fileid),
                     )
-            #fits.writeto('stray_%s.fits'%item.fileid, stray, overwrite=True)
             data = data - stray
+
+            if mode == 'debug':
+                # save the stray and background corrected images
+                fits.writeto(os.path.join(midproc, '%s_sty.fits'%item.fileid),
+                            stray, overwrite=True)
+                fits.writeto(os.path.join(midproc, '%s_bkg.fits'%item.fileid),
+                            data, overwrite=True)
+
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
             # extract 1d spectrum
