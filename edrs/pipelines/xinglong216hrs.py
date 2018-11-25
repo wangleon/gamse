@@ -176,6 +176,50 @@ def correct_overscan(data, head, mask=None):
 
     return new_data, head
 
+def plot_background(data, stray, figname):
+    '''Plot a figure showing the image before background correction and the
+    stray light.
+
+    Args:
+        data (:class:`numpy.ndarray`): Image before background correction.
+        stray (:class:`numpy.ndarray`): Stray light.
+        figname (str): Name of the output figure.
+
+    Returns:
+        No returns
+    '''
+    h, w = data.shape
+
+    fig = plt.figure(figsize=(16,7), dpi=150)
+    _width = 0.37
+    _height = _width/w*h*16/7
+
+    ax21 = fig.add_axes([0.06, 0.1, _width, _height])
+    ax22 = fig.add_axes([0.55, 0.1, _width, _height])
+    ax21c = fig.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])
+    ax22c = fig.add_axes([0.55+_width+0.01, 0.1, 0.015, _height])
+
+    # find the minimum and maximum value of plotting
+    s = np.sort(data.flatten())
+    vmin = s[int(0.05*data.size)]
+    vmax = s[int(0.95*data.size)]
+
+    cax_data  = ax21.imshow(data, cmap='gray', vmin=vmin, vmax=vmax)
+    cax_stray = ax22.imshow(stray, cmap='viridis')
+    cs = ax22.contour(stray, colors='r', linewidths=0.5)
+    ax22.clabel(cs, inline=1, fontsize=9, use_clabeltext=True)
+    fig.colorbar(cax_data, cax=ax21c)
+    fig.colorbar(cax_stray, cax=ax22c)
+    for ax in [ax21, ax22]:
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
+    fig.savefig(figname)
+    plt.close(fig)
+
 def reduce():
     '''2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
     telescope.
@@ -696,6 +740,10 @@ def reduce():
                             stray, overwrite=True)
                 fits.writeto(os.path.join(midproc, '%s_bkg.fits'%item.fileid),
                             data, overwrite=True)
+
+            # plot stray light
+            plot_background(data + stray, stray,
+                    os.path.join(report, 'background_%s_stray.png'%item.fileid))
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
