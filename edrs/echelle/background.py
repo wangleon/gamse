@@ -650,7 +650,7 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
                 i1, i2 = idx[0], idx[-1]+1
                 mean, std, m = get_clip_mean(ydata[i1:i2], high=2, low=3, maxiter=10)
                 meanx = np.arange(i1, i2)[m].mean() + group[0]
-                if std/math.sqrt(mean)>2 and (i2-i1)>=5:
+                if mean > 0 and std/math.sqrt(mean) > 2 and (i2-i1) >= 5:
                     # remove the two largest points
                     m = ydata[i1:i2].argsort().argsort() < i2-i1-2
                     mean, std, m = get_clip_mean(ydata[i1:i2], mask=m, high=2, low=3, maxiter=10)
@@ -720,5 +720,8 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
     for y in np.arange(h):
         f = intp.InterpolatedUnivariateSpline(cols, grid[:,y], k=3)
         stray[y,:] = f(np.arange(w))
+
+        
+
 
     return stray
