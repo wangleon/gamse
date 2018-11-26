@@ -6,6 +6,10 @@ import platform
 import subprocess
 
 def write_system_info():
+    '''
+    Get system information, and write them into running log.
+    '''
+
     # get system information, and write them into the log file
     system, node, release, version, machine, processor = platform.uname()
 

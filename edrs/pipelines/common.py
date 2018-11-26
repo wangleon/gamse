@@ -7,10 +7,10 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from .plot import plot_spectra1d, show_spectra1d
 from ..utils.config import read_config, find_config
 from ..utils.obslog import read_log, find_log
 from ..utils.misc   import write_system_info
+
 from . import xinglong216hrs
 from . import foces
 from . import levy
@@ -58,20 +58,6 @@ def reduce_echelle():
         print('Unknown Instrument: %s - %s'%(key[0], key[1]))
         exit()
 
-
-def plot():
-    '''Plot the 1-D spectra.
-    '''
-    plot_spectra1d()
-
-def show(filename_lst):
-    '''Show 1-D spectra in a pop-up window.
-
-    Args:
-        filename_lst (list): List of filenames of 1-d spectra.
-    '''
-    show_spectra1d(filename_lst)
-
 def make_log():
     '''Scan the path to the raw FITS files and generate an observing log.
     '''
@@ -111,7 +97,7 @@ def find_rawdata():
     '''Find the path to the raw images.
 
     Returns:
-        str or None: Path to the raw images. Return *None* if path not found.
+        *str* or *None*: Path to the raw images. Return *None* if path not found.
     '''
 
     if os.path.exists('rawdata'):
@@ -126,6 +112,8 @@ def find_rawdata():
             return None
 
 def plot_spectra1d():
+    '''Plot 1d spectra.
+    '''
     config = read_config('')
 
     obslog_file = find_log(os.curdir)
@@ -194,8 +182,6 @@ def show_spectra1d(filename_lst):
 
     Args:
         filename_lst (list): List of filenames of 1-D spectra.
-    Returns:
-        No returns.
     '''
     spec_lst = []
     for filename in filename_lst:

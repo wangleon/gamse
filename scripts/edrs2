@@ -2,7 +2,8 @@
 import os
 import sys
 
-from edrs.pipelines.common import make_log, plot, show, reduce_echelle
+from edrs.pipelines.common import make_log, reduce_echelle, plot_spectra1d, \
+                                  show_spectra1d
 
 def print_help():
     pass
@@ -12,18 +13,18 @@ def main():
     if len(sys.argv)==1:
         print_help()
         exit()
+    elif sys.argv[1] == 'list':
+        # list the observing log of raw data
+        make_log()
     elif sys.argv[1] == 'reduce':
         # reduce the spectra
         reduce_echelle()
     elif sys.argv[1] == 'plot':
-        plot()
+        plot_spectra1d()
     elif sys.argv[1] == 'show':
         filename_lst = [filename for filename in sys.argv[2:]
                         if os.path.exists(filename)]
-        show(filename_lst)
-    elif sys.argv[1] == 'list':
-        # list the observing log of raw data
-        make_log()
+        show_spectra1d(filename_lst)
     else:
         print('Unknow argument: %s'%sys.argv[1])
         exit()

@@ -1,6 +1,23 @@
 Pipelines for Individual Spectrographs
 ======================================
 
+Common Resources
+----------------
+.. currentmodule:: edrs.pipelines.common
+.. autosummary::
+   get_instrument
+   find_rawdata
+   reduce_echelle
+   make_log
+   plot_spectra1d
+   show_spectra1d
+
+.. automodule:: edrs.pipelines.common
+   :members:
+   :private-members:
+   :inherited-members:
+   :undoc-members:
+
 FOCES
 -----
 .. currentmodule:: edrs.pipelines.foces.FOCES

@@ -66,3 +66,14 @@ Regression
    :members:
    :private-members:
    :undoc-members:
+
+Miscellaneous
+-------------
+.. currentmodule:: edrs.utils.misc
+.. autosummary::
+   write_system_info
+
+.. automodule:: edrs.utils.misc
+   :members:
+   :private-members:
+   :undoc-members:
