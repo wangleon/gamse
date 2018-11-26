@@ -1,11 +1,129 @@
 import os
+import logging
+logger = logging.getLogger(__name__)
+
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils.config  import read_config
-from ..utils.obslog  import read_log, find_log
+from .plot import plot_spectra1d, show_spectra1d
+from ..utils.config import read_config, find_config
+from ..utils.obslog import read_log, find_log
+from ..utils.misc   import write_system_info
+from . import xinglong216hrs
+from . import foces
+from . import levy
+from . import sarg
+
+def reduce_echelle():
+    '''Automatically select the instrument and reduce echelle spectra
+    accordingly.
+
+    Available instruments include:
+        
+        * *FOCES*: FOCES on 2m Fraunhofer Telescope in Wendelstein Observatory,
+            Germany.
+        * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station, China.
+
+    '''
+
+    # initialize running log
+    log_fmt = ' '.join(['*',
+                        '%(asctime)s.%(msecs)03d',
+                        '[%(levelname)s]',
+                        '%(name)s - %(lineno)d - %(funcName)s():'+os.linesep,
+                        ' %(message)s'+os.linesep+'-'*80,
+                        ])
+    logging.basicConfig(filename='edrs.log',level=logging.DEBUG,
+            format=log_fmt, datefmt='%Y-%m-%dT%H:%M:%S')
+    logger = logging.getLogger(__name__)
+
+    # write system info
+    write_system_info()
+
+    # find telescope and instrument
+    key = get_instrument()
+
+    logger.info('Start reducing %s, %s data'%(key[0], key[1]))
+
+    if key == ('Fraunhofer', 'FOCES'):
+        reduction = foces.FOCES()
+        reduction.reduce()
+    elif key == ('Xinglong216', 'HRS'):
+        xinglong216hrs.reduce()
+    elif key == ('APF', 'Levy'):
+        levy.reduce()
+    else:
+        print('Unknown Instrument: %s - %s'%(key[0], key[1]))
+        exit()
+
+
+def plot():
+    '''Plot the 1-D spectra.
+    '''
+    plot_spectra1d()
+
+def show(filename_lst):
+    '''Show 1-D spectra in a pop-up window.
+
+    Args:
+        filename_lst (list): List of filenames of 1-d spectra.
+    '''
+    show_spectra1d(filename_lst)
+
+def make_log():
+    '''Scan the path to the raw FITS files and generate an observing log.
+    '''
+    config_file = find_config('./')
+    config = read_config(config_file)
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+    rawdata    = section['rawdata']
+    key = get_instrument()
+
+    if key == ('Fraunhofer', 'FOCES'):
+        foces.make_log(rawdata)
+    elif key == ('Xinglong216', 'HRS'):
+        xinglong216hrs.make_log(rawdata)
+    elif key == ('APF', 'Levy'):
+        levy.make_log(rawdata)
+    else:
+        print('Unknown Instrument: %s - %s'%(telescope, instrument))
+        exit()
+
+def get_instrument():
+    '''Find the telescope and instrument by checking the raw FITS files.
+
+    Returns:
+        str: Name of the instrument.
+    '''
+    config_file = find_config('./')
+    config = read_config(config_file)
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+    return telescope, instrument
+
+
+def find_rawdata():
+    '''Find the path to the raw images.
+
+    Returns:
+        str or None: Path to the raw images. Return *None* if path not found.
+    '''
+
+    if os.path.exists('rawdata'):
+        return 'rawdata'
+    else:
+        config_file = find_config('./')
+        config = read_config(config_file)
+        if config.has_section('path') and \
+           config.has_option('path', 'rawdata'):
+            return config.get_option('path', 'rawdata')
+        else:
+            return None
 
 def plot_spectra1d():
     config = read_config('')
