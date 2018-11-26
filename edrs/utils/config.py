@@ -58,3 +58,13 @@ def find_config(path):
     else:
         print('Error: Multi config file found')
         return None
+
+def read_global_config(names):
+    '''Read built-in global config files.
+
+    Args:
+        names (*str* or *list* of *str*): Names of config files.
+
+    Returns:
+        config (
+    '''
