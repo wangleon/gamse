@@ -17,6 +17,5 @@ Modules
 
    modules/utils
    modules/echelle
+   modules/pipelines
    modules/pipelines/reduction
-   modules/pipelines/foces
-   modules/pipelines/xinglong216hrs
