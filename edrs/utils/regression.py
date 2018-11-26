@@ -55,7 +55,7 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
         x (:class:`numpy.ndarray`): The input X values.
         y (:class:`numpy.ndarray`): The input Y values.
         yerr (:class:`numpy.ndarray`): Errors of the Y array.
-        maxiter (integer): Maximum number of iterations.
+        maxiter (int): Maximum number of iterations.
         high (float): Upper rejection threshold.
         low (float): Lower rejection threshold.
         full (bool): `True` if return all information.
@@ -139,9 +139,9 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
         x (:class:`numpy.ndarray`): The input X values.
         y (:class:`numpy.ndarray`): The input Y values.
         yerr (:class:`numpy.ndarray`): Errors of the Y array.
-        deg (integer): Degree of polynomial.
+        deg (int): Degree of polynomial.
         mask (:class:`numpy.ndarray`): The input mask.
-        maxiter (integer): Maximum number of iterations.
+        maxiter (int): Maximum number of iterations.
         lower_clip (float): Lower sigma-clipping value.
         upper_clip (float): Upper sigma-clipping value.
 

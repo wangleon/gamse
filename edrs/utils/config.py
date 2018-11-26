@@ -11,7 +11,7 @@ def read_config(instrument):
     file ended with `.cfg`. If such file does not exist, return *None*.
 
     Args:
-        instrument (string): Name of the instrument.
+        instrument (str): Name of the instrument.
     Returns:
         :class:`configparser.ConfigParser`: A
             :class:`configparser.ConfigParser` instance.
@@ -46,9 +46,9 @@ def find_config(path):
     '''Find the config file in the given directory.
 
     Args:
-        path (string): Path to the searching directory.
+        path (str): Path to the searching directory.
     Returns:
-        string or None: Path to the config file with filename ended with `.cfg`.
+        *str* or *None*: Path to the config file with filename ended with `.cfg`.
             If not found, return *None*.
     '''
     cfg_lst = [fname for fname in sorted(os.listdir(path))

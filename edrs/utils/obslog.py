@@ -16,7 +16,7 @@ class Log(object):
     Class for observing log.
 
     Attributes:
-        nchannels (integer): Number of fiber channels.
+        nchannels (int): Number of fiber channels.
         item_list (list): List containing :class:`LogItem` instances.
     Examples:
         Initialization
@@ -52,14 +52,21 @@ class Log(object):
         self.nchannels = max([len(item.objectname) for item in self.item_list])
 
     def add_item(self, item):
-        '''Add a :class:`LogItem` instance into the observing log.'''
+        '''
+        Add a :class:`LogItem` instance into the observing log.
+
+        Args:
+            item (:class:`LogItem`): A :class:`LogItem` instance to be added
+                into this observing log.
+        
+        '''
         self.item_list.append(item)
 
     def sort(self, key):
         '''Sort the items by the given keyword.
 
         Args:
-            key (string): Keyword to sort.
+            key (str): Keyword to sort.
         '''
 
         new_item_list = sorted(self.item_list,
@@ -67,7 +74,15 @@ class Log(object):
         self.item_list = new_item_list
 
     def get_frameid_lst(self, objectname=None, exptime=None, channel=None):
-        '''Get a list of frameids from given conditions.'''
+        '''
+        Get a list of frameids from given conditions.
+
+        Args:
+            objectname (str): Name of objects.
+            exptime (float): Exposure time.
+            channel (str): Name of channel.
+        
+        '''
         if self.nchannels > 1:
             # for multi channels
             if channel is not None:
@@ -113,11 +128,11 @@ def read_logitem(string, names, types, column_separator='|',
     The objectname in each item is splitted into a list of names.
 
     Args:
-        string (string): Input string.
+        string (str): Input string.
         names (list): A list of names.
         types (list): A list of type strings.
-        column_separator (string): Separator of columns.
-        channel_separator (string): Separator of channels in "objectname"
+        column_separator (str): Separator of columns.
+        channel_separator (str): Separator of channels in "objectname"
             column.
     
     Returns:
@@ -150,7 +165,7 @@ def read_log(filename):
     '''Read observing log from an ascii file.
 
     Args:
-        filename (string): Name of the observing log file.
+        filename (str): Name of the observing log file.
 
     Returns:
         tuple: A tuple containing:
@@ -204,7 +219,7 @@ def get_input_fileids(log, string):
 
     Args:
         log (:class:`Log`): A :class:`Log` instance
-        string (string): The input string
+        string (str): The input string
     Returns:
         list: The list of file IDs
     '''
@@ -224,7 +239,7 @@ def parse_num_seq(string):
     Convert the number sequence to list of numbers
 
     Args:
-        string (string): The input string to be parsed.
+        string (str): The input string to be parsed.
 
     Returns:
         list: A list of integer numbers.
@@ -253,9 +268,9 @@ def find_log(path):
     not be `edrs.log`, which is used for the name of the running log of EDRS.
 
     Args:
-        path (string): Searching directory.
+        path (str): Searching directory.
     Returns:
-        string or None: Name of the log file. Return *None* if not found or more
+        *str* or *None*: Name of the log file. Return *None* if not found or more
             than one file found.
     
     '''

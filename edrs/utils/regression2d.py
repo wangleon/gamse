@@ -11,8 +11,8 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
         x (:class:`numpy.ndarray`): Input X array.
         y (:class:`numpy.ndarray`): Input Y array.
         z (:class:`numpy.ndarray`): Input Z array.
-        xorder (integer): X order.
-        yorder (integer): Y order.
+        xorder (int): X order.
+        yorder (int): Y order.
         linear (bool): Return linear solution if `True`.
     Returns:
         :class:`numpy.ndarray`: Coefficient array.

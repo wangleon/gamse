@@ -38,7 +38,7 @@ def get_local_minima(x, window=None):
 
     Args:
         x (:class:`numpy.ndarray`): A list or Numpy 1d array.
-        window (integer or :class:`numpy.ndarray`): An odd integer or a list of
+        window (*int* or :class:`numpy.ndarray`): An odd integer or a list of
             odd integers as the lengthes of searching window.
     Returns:
         tuple: A tuple containing:
@@ -140,7 +140,7 @@ def implete_none(lst):
 
 def derivative(*args, **kwargs):
     '''
-    Get the first derivative of (x, y).
+    Get the first derivative of data arrays (*x*, *y*).
 
     If **y** is not given, the first argument will be taken as **y**, and the
     differential of the input array will be returned.
@@ -148,7 +148,7 @@ def derivative(*args, **kwargs):
     Args:
         x (list or :class:`numpy.ndarray`): X-values of the input array (optional).
         y (list or :class:`numpy.ndarray`): Y-values of the input array.
-        points (integer): Number of points used to calculate derivative
+        points (int): Number of points used to calculate derivative
             (optional, default is 3).
     Returns:
         :class:`numpy.ndarray`: Derivative of the input array.
