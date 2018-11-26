@@ -22,7 +22,7 @@ class ApertureLocation(object):
     Location of an echelle order.
 
     Attributes:
-        direction (integer): 0 if along Y axis; 1 if along X axis.
+        direction (int): 0 if along Y axis; 1 if along X axis.
         position (:class:`numpy.polynomial`): Polynomial of aperture location.
         
     '''
@@ -70,11 +70,11 @@ class ApertureLocation(object):
         coefficients.
 
         Args:
-            key (string): Either 'center', 'upper', or 'lowr'.
-            degree (integer): Degree of polynomial used to fit the position.
+            key (str): Either 'center', 'upper', or 'lowr'.
+            degree (int): Degree of polynomial used to fit the position.
             clipping (float): Upper and lower threshold in the sigma-clipping
                 method.
-            maxiter (integer): Maximum number of iteration of the polynomial
+            maxiter (int): Maximum number of iteration of the polynomial
                 fitting.
         '''
 
@@ -134,11 +134,8 @@ class ApertureLocation(object):
     def get_center(self):
         '''Get coordinate of the center pixel.
 
-        Args:
-            No args.
-
         Returns:
-            float: coordinate of the center pixel.
+            *float*: coordinate of the center pixel.
         '''
         h, w = self.shape
         if self.direct == 0:
@@ -222,7 +219,7 @@ class ApertureLocation(object):
                 :class:`ApertureLocation` instance.
 
         Returns:
-            float: The distance between the centeral positions.
+            *float*: The distance between the centeral positions.
 
         '''
         if self.direct != aperloc.direct:
@@ -278,8 +275,6 @@ class ApertureSet(object):
             aperture_loc (:class:`ApertureLocation`): An
                 :class:`ApertureLocation` instance to be added.
 
-        Returns:
-            No returns.
         '''
         n = len(self._dict)
         if n == 0:
@@ -291,9 +286,6 @@ class ApertureSet(object):
     def sort(self):
         '''
         Sort the apertures according to their positions inside this instance.
-        
-        Returns:
-            No returns.
         '''
         aperloc_lst = sorted([aper_loc for aper, aper_loc in self._dict.items()],
                               key=lambda aper_loc: aper_loc.get_center())
@@ -305,10 +297,7 @@ class ApertureSet(object):
         Save the aperture set into an ascii file.
         
         Args:
-            filename (string): Name of the output ascii file.
-        
-        Returns:
-            No returns.
+            filename (str): Name of the output ascii file.
         '''
         outfile = open(filename, 'w')
         outfile.write(str(self))
@@ -319,12 +308,10 @@ class ApertureSet(object):
         Save the aperture set into a reg file that can be loaded in SAO-DS9.
 
         Args:
-            filename (string): Name of the output reg file.
-            color (string): Color of the lines.
-            channel (string): Write the channel name if not *None*.
+            filename (str): Name of the output reg file.
+            color (str): Color of the lines.
+            channel (str): Write the channel name if not *None*.
 
-        Returns:
-            No returns.
         '''
         outfile = open(filename, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
@@ -379,7 +366,7 @@ class ApertureSet(object):
         Args:
             header (:class:`astropy.io.fits.Header`): FITS header to save the
                 aperture information.
-            channel (string): Name of channel
+            channel (str): Name of channel
 
         Returns:
             header (:class:`astropy.io.fits.Header`): Updated FITS header
@@ -417,10 +404,10 @@ class ApertureSet(object):
         of the aperture set.
 
         Args:
-            aper (integer): Aperture number.
+            aper (int): Aperture number.
 
         Returns:
-            float: Local seperation in pixels per aperture number.
+            *float*: Local seperation in pixels per aperture number.
         '''
 
         aper_lst, center_lst = [], []
@@ -447,7 +434,7 @@ class ApertureSet(object):
                 to calculate the offset.
 
         Returns:
-            integer: Offset between the two offsets.
+            *int*: Offset between the two offsets.
         '''
         # fint the smalleset common aper number.
         for aper in self:
@@ -499,10 +486,8 @@ class ApertureSet(object):
         '''Shift the aperture number by offset.
 
         Args:
-            offset (integer): Offset to shift.
+            offset (int): Offset to shift.
 
-        Returns:
-            No returns
         '''
 
         new_dict = {}
@@ -514,11 +499,11 @@ class ApertureSet(object):
         '''Get central positions of all chelle orders.
 
         Args:
-            x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
+            x (*int* or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 central positions to calculate.
 
         Returns:
-            dict: A dict of `{aperture: y}` containing cetral positions of
+            *dict*: A dict of `{aperture: y}` containing cetral positions of
                 all orders.
             
         '''
@@ -528,11 +513,11 @@ class ApertureSet(object):
         '''Get upper and lower boundaries of all echelle orders.
         
         Args:
-            x (integer or :class:`numpy.ndarray`): Input *X* coordiantes of the
+            x (*int* or :class:`numpy.ndarray`): Input *X* coordiantes of the
                 boundaries to calculate.
 
         Returns:
-            dict: A dict of `{aperture: (lower, upper)}`, where `lower` and
+            *dict*: A dict of `{aperture: (lower, upper)}`, where `lower` and
                 `upper` are boundary arries.
         '''
         lower_bounds = {}
@@ -591,7 +576,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         data (:class:`numpy.ndarray`): Image data.
         mask (:class:`numpy.ndarray`): Image mask with the same shape as **data**,
             where saturated pixels are marked with 4, and bad pixels with 2.
-        scan_step (integer): Steps of pixels used to scan along the main
+        scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
         seperation (float): Estimated order seperations (in pixel)
@@ -600,11 +585,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             pixels. The real order seperations are estimated by **seperation**
             + **sep_der** × *pixel* / 1000
         filling (float): Fraction of detected pixels to total step of scanning.
-        degree (integer): Degree of polynomials to fit aperture locations.
+        degree (int): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
-        filename (string): Name of the input file. Only used to display the
+        filename (str): Name of the input file. Only used to display the
             title in the figure.
-        fig_file (string): Path to the output figure.
+        fig_file (str): Path to the output figure.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -1188,7 +1173,7 @@ def load_aperture_set(filename):
     Reads an ApertureSet instance from an Ascii file.
 
     Args:
-        filename (string): Name of the ASCII file.
+        filename (str): Name of the ASCII file.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
@@ -1231,7 +1216,7 @@ def load_aperture_set_from_header(header, channel=None):
 
     Args:
         header (:class:`astropy.io.fits.Header`): Input FITS header.
-        channel (string): Name of channel.
+        channel (str): Name of channel.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
@@ -1318,7 +1303,7 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
         center (float): Central value of gaussian function.
         fwhm (float): Full-width-half-maximum value of gaussian function.
         bkg (float): Backgroudn value of gaussian function.
-        x (float or :class:`numpy.ndarray`): Input values.
+        x (*float* or :class:`numpy.ndarray`): Input values.
 
     Returns:
         :class:`numpy.ndarray`: Output function values.

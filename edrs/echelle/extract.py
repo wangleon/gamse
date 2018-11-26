@@ -15,8 +15,8 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     Extract spectra from an individual image.
     
     Args:
-        infilename (string): Name of the input image.
-        outfilename (string): Name of the output image.
+        infilename (str): Name of the input image.
+        outfilename (str): Name of the output image.
         channels (list): List of channels as strings.
         apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
             instances for different channels.

@@ -27,13 +27,13 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
-        outfile (string): Filename of the output image.
-        mosaic_file (string): Name of the ascii file recording the coefficients
+        outfile (str): Filename of the output image.
+        mosaic_file (str): Name of the ascii file recording the coefficients
             of the mosaic boundaries.
-        reg_file (string): Name of the `.reg` file to be displayed in SAO-DS9.
-        disp_axis (integer): Main dispersion axis of the input image. 0 means
+        reg_file (str): Name of the `.reg` file to be displayed in SAO-DS9.
+        disp_axis (int): Main dispersion axis of the input image. 0 means
             the echelle orders are along the *y* axis. 1 means along *x* axis.
-        mask_suffix (string): Surfix of the filenames of masks.
+        mask_suffix (str): Surfix of the filenames of masks.
 
     Returns:
         No returns.
@@ -327,13 +327,13 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
 
     Args:
         data (2-d :class:`numpy.ndarray`): Data image as a numpy 2d-array.
-        x0 (integer): Starting coordinate.
-        ccf_ulimit (integer): Upper limit to **x0** of the data segment used to
+        x0 (int): Starting coordinate.
+        ccf_ulimit (int): Upper limit to **x0** of the data segment used to
             calculate CCF.
-        ccf_llimit (integer): Lower limit to **x0** of the data segment used to
+        ccf_llimit (int): Lower limit to **x0** of the data segment used to
             calculate CCF.
-        step (integer): Step of searching the gap.
-        order (integer): Degree of polynomial used to fit the boundary.
+        step (int): Step of searching the gap.
+        order (int): Degree of polynomial used to fit the boundary.
 
     Returns:
         :class:`numpy.ndarray`: Cofficients of the polynomial.
@@ -403,7 +403,7 @@ def load_mosaic(filename):
     Read mosaic boundary information from an existing ASCII file.
 
     Args:
-        filename (string): Name of the mosaic file.
+        filename (str): Name of the mosaic file.
 
     Returns:
         tuple: A tuple containing:
@@ -673,13 +673,11 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     '''Save boundaries data in a SAO-DS9 region file.
 
     Args:
-        filename (string): Filename of the output region file.
+        filename (str): Filename of the output region file.
         coeff_lst (list): List of coefficients.
-        disp_axis (integer): 0 or 1, depending on the dispersion axis.
+        disp_axis (int): 0 or 1, depending on the dispersion axis.
         shape (tuple): A tuple containing the shape of the image.
-        npoints (integer): Number of sampling points.
-    Returns:
-        No returns.
+        npoints (int): Number of sampling points.
     '''
     outfile = open(filename, 'w')
     outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
@@ -721,14 +719,14 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         mask (:class:`numpy.ndarray`): Mask data of flat fielding.
         apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Echelle
             apertures detected in the input file.
-        nflat (integer): Number of flat fielding frames combined.
-        slit_step (integer): Step of slit scanning.
+        nflat (int): Number of flat fielding frames combined.
+        slit_step (int): Step of slit scanning.
         q_threshold (float): Threshold of *Q*-factor.
-        param_deg (integer): Degee of parameters fitting.
-        fig_aperpar (string): Path to the image of aperture profile parameters.
-        fig_overlap (string): Path to the image of overlapped slit profiles.
-        fig_slit (string): Path to the image of slit functions.
-        slit_file (string): Path to the ASCII file of slit functions.
+        param_deg (int): Degee of parameters fitting.
+        fig_aperpar (str): Path to the image of aperture profile parameters.
+        fig_overlap (str): Path to the image of overlapped slit profiles.
+        fig_slit (str): Path to the image of slit functions.
+        slit_file (str): Path to the ASCII file of slit functions.
 
     Returns:
         :class:`numpy.ndarray`: 2D response map.
