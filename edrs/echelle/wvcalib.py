@@ -80,9 +80,9 @@ class PlotFrame(tk.Frame):
 
     Args:
         master (Tkinter widget): Parent widget.
-        width (integer): Width of frame.
-        height (integer): Height of frame.
-        dpi (integer): DPI of figure.
+        width (int): Width of frame.
+        height (int): Height of frame.
+        dpi (int): DPI of figure.
         identlist (dict): Dict of identified lines.
         linelist (list): List of wavelength standards.
     '''
@@ -124,8 +124,8 @@ class InfoFrame(tk.Frame):
 
     Args:
         master (Tkinter widget): Parent widget.
-        width (integer): Width of the frame.
-        height (integer): Height of the frame.
+        width (int): Width of the frame.
+        height (int): Height of the frame.
         linelist (list): List of wavelength standards.
         identlist (dict): Dict of identified lines.
     '''
@@ -276,8 +276,8 @@ class LineTable(tk.Frame):
     
     Args:
         master (Tkinter widget): Parent widget.
-        width (integer): Width of line table.
-        height (integer): Height of line table.
+        width (int): Width of line table.
+        height (int): Height of line table.
         identlist (dict): Dict of identified lines.
         linelist (list): List of wavelength standards.
     '''
@@ -448,8 +448,8 @@ class FitparaFrame(tk.Frame):
     
     Args:
         master (Tkinter widget): Parent widget.
-        width (integer): Width of frame.
-        height (integer): Height of frame.
+        width (int): Width of frame.
+        height (int): Height of frame.
     '''
     def __init__(self, master, width, height):
         '''Constructor of :class:`FitparaFrame`.
@@ -562,22 +562,22 @@ class CalibWindow(tk.Frame):
 
     Args:
         master (:class:`tk.TK`): Tkinter root window.
-        width (integer): Width of window.
-        height (integer): Height of window.
-        dpi (integer): DPI of figure.
+        width (int): Width of window.
+        height (int): Height of window.
+        dpi (int): DPI of figure.
         spec (:class:`numpy.dtype`): Spectra data.
-        filename (string): Filename of the spectra data. Only to display in the
+        filename (str): Filename of the spectra data. Only to display in the
             window.
-        figfilename (string): Filename of the output wavelength calibration
+        figfilename (str): Filename of the output wavelength calibration
             figure.
         identlist (dict): Identification line list.
         linelist (list): List of wavelength standards (wavelength, species).
-        channel (string): Name of channel in the input spectra.
-        window_size (integer): Size of the window in pixel to search for line
+        channel (str): Name of channel in the input spectra.
+        window_size (int): Size of the window in pixel to search for line
             peaks.
-        xorder (integer): Degree of polynomial along X direction.
-        yorder (integer): Degree of polynomial along Y direction.
-        maxiter (integer): Maximim number of interation in polynomial fitting.
+        xorder (int): Degree of polynomial along X direction.
+        yorder (int): Degree of polynomial along Y direction.
+        maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
@@ -1262,15 +1262,15 @@ def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
 
     Args:
         spec (:class:`numpy.dtype`): 1-D spectra.
-        identfilename (string): Filename of wavelength identification.
-        figfilename (string): Filename of the output wavelength figure.
-        linelist (string): Name of wavelength standard file.
-        channel (string): Name of the input channel.
-        window_size (integer): Size of the window in pixel to search for the
+        identfilename (str): Filename of wavelength identification.
+        figfilename (str): Filename of the output wavelength figure.
+        linelist (str): Name of wavelength standard file.
+        channel (str): Name of the input channel.
+        window_size (int): Size of the window in pixel to search for the
             lines.
-        xorder (integer): Degree of polynomial along X direction.
-        yorder (integer): Degree of polynomial along Y direction.
-        maxiter (integer): Maximim number of interation in polynomial fitting.
+        xorder (int): Degree of polynomial along X direction.
+        yorder (int): Degree of polynomial along Y direction.
+        maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
@@ -1278,25 +1278,25 @@ def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
         dict: A dict containing:
 
             * **coeff** (:class:`numpy.ndarray`) – Coefficient array.
-            * **npixel** (*integer*) – Number of pixels along the main dispersion
+            * **npixel** (*int*) – Number of pixels along the main dispersion
               direction.
-            * **k** (*integer*) – Coefficient in the relationship `order =
+            * **k** (*int*) – Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **offset** (*integer*) – Coefficient in the relationship `order =
+            * **offset** (*int*) – Coefficient in the relationship `order =
               k*aperture + offset`.
             * **std** (*float*) – Standard deviation of wavelength fitting in Å.
-            * **nuse** (*integer*) – Number of lines used in the wavelength
+            * **nuse** (*int*) – Number of lines used in the wavelength
               fitting.
-            * **ntot** (*integer*) – Number of lines found in the wavelength
+            * **ntot** (*int*) – Number of lines found in the wavelength
               fitting.
             * **identlist** (*dict*) – Dict of identified lines.
-            * **window_size** (*integer*) – Length of window in searching the
+            * **window_size** (*int*) – Length of window in searching the
               line centers.
-            * **xorder** (*integer*) – Order of polynomial along X axis in the
+            * **xorder** (*int*) – Order of polynomial along X axis in the
               wavelength fitting.
-            * **yorder** (*integer*) – Order of polynomial along Y axis in the
+            * **yorder** (*int*) – Order of polynomial along Y axis in the
               wavelength fitting.
-            * **maxiter** (*integer*) – Maximum number of iteration in the
+            * **maxiter** (*int*) – Maximum number of iteration in the
               wavelength fitting.
             * **clipping** (*float*) – Clipping value of the wavelength fitting.
             * **snr_threshold** (*float*) – Minimum S/N of the spectral lines to
@@ -1397,10 +1397,10 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
     
     Args:
         identlist (dict): Dict of identification lines for different apertures.
-        npixel (integer): Number of pixels for each order.
-        xorder (integer): Order of polynomial along X direction.
-        yorder (integer): Order of polynomial along Y direction.
-        maxiter (integer): Maximim number of iterations in the polynomial
+        npixel (int): Number of pixels for each order.
+        xorder (int): Order of polynomial along X direction.
+        yorder (int): Order of polynomial along Y direction.
+        maxiter (int): Maximim number of iterations in the polynomial
             fitting.
         clipping (float): Threshold of sigma-clipping.
 
@@ -1409,13 +1409,13 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
         
             * **coeff** (:class:`numpy.ndarray`) – Coefficients array.
             * **std** (*float*) – Standard deviation.
-            * **k** (*integer*) – *k* in the relationship between aperture
+            * **k** (*int*) – *k* in the relationship between aperture
               numbers and diffraction orders: `order = k*aperture + offset`.
-            * **offset** (*integer*) – *offset* in the relationship between
+            * **offset** (*int*) – *offset* in the relationship between
               aperture numbers and diffraction orders: `order = k*aperture +
               offset`.
-            * **nuse** (*integer*) – Number of lines used in the fitting.
-            * **ntot** (*integer*) – Number of lines found.
+            * **nuse** (*int*) – Number of lines used in the fitting.
+            * **ntot** (*int*) – Number of lines found.
 
     See also:
         :func:`get_wv_val`
@@ -1479,9 +1479,9 @@ def get_wv_val(coeff, npixel, pixel, order):
     
     Args:
         coeff (:class:`numpy.ndarray`): 2-D Coefficient array.
-        npixel (integer): Number of pixels along the main dispersion direction.
-        pixel (integer or :class:`numpy.ndarray`): Pixel coordinates.
-        order (integer or :class:`numpy.ndarray`): Diffraction order number.
+        npixel (int): Number of pixels along the main dispersion direction.
+        pixel (*int* or :class:`numpy.ndarray`): Pixel coordinates.
+        order (*int* or :class:`numpy.ndarray`): Diffraction order number.
             Must have the same length as **pixel**.
     Returns:
         float or :class:`numpy.ndarray`: Wavelength solution of the given pixels.
@@ -1504,7 +1504,7 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
 
     Args:
         x (float): Pixel coordinate.
-        aperture (integer): Aperture number.
+        aperture (int): Aperture number.
         identlist (dict): Dict of identified lines for different apertures.
         linelist (list): List of wavelength standards.
         param (dict): Parameters of the :class:`CalibWindow`.
@@ -1543,7 +1543,7 @@ def is_identified(wavelength, identlist, aperture):
     Args:
         wavelength (float): Wavelength of the input line.
         identlist (dict): Dict of identified lines.
-        aperture (integer): Aperture number.
+        aperture (int): Aperture number.
     Returns:
         bool: *True* if **wavelength** and **aperture** in **identlist**.
     
@@ -1566,13 +1566,13 @@ def find_order(identlist, npixel):
 
     Args:
         identlist (dict): Dict of identified lines.
-        npixel (integer): Number of pixels along the main dispersion direction.
+        npixel (int): Number of pixels along the main dispersion direction.
     Returns:
         tuple: A tuple containing:
 
-            * **k** (*integer*) – Coefficient in the relationship
+            * **k** (*int*) – Coefficient in the relationship
               `order = k*aperture + offset`.
-            * **offset** (*integer*) – Coefficient in the relationship
+            * **offset** (*int*) – Coefficient in the relationship
               `order = k*aperture + offset`.
 
     '''
@@ -1623,8 +1623,8 @@ def save_ident(identlist, coeff, filename, channel):
         identlist (dict): Dict of identified lines.
         coeff (:class:`numpy.ndarray`): Coefficient array.
         result (dict): A dict containing identification results.
-        filename (string): Name of the ASCII file.
-        channel (string): Name of channel.
+        filename (str): Name of the ASCII file.
+        channel (str): Name of channel.
     Returns:
         No returns.
 
@@ -1686,8 +1686,8 @@ def load_ident(filename, channel):
     '''Load identified line list from an ASCII file.
 
     Args:
-        filename (string): Name of the identification file.
-        channel (string): Name of channel.
+        filename (str): Name of the identification file.
+        channel (str): Name of channel.
     Returns:
         tuple: A tuple containing:
 
@@ -1785,13 +1785,13 @@ def find_local_peak(flux, x, width):
 
     Args:
         flux (:class:`numpy.ndarray`): Flux array.
-        x (integer): The approximate coordinate of the peak pixel.
-        width (integer): Window of profile fitting.
+        x (int): The approximate coordinate of the peak pixel.
+        width (int): Window of profile fitting.
     Returns:
         tuple: A tuple containing:
 
-            * **i1** (*integer*) – Index of the left side.
-            * **i2** (*integer*) – Index of the right side.
+            * **i1** (*int*) – Index of the left side.
+            * **i2** (*int*) – Index of the right side.
             * **p1** (*list*) – List of fitting parameters.
             * **std** (*float*) – Standard devation of the fitting.
         
@@ -1840,9 +1840,9 @@ def search_linelist(linelistname):
     '''Search the line list file and load the list.
 
     Args:
-        linelistname (string): Name of the line list file
+        linelistname (str): Name of the line list file
     Returns:
-        string: Path to the line list file
+        *string*: Path to the line list file
     '''
 
     # first, seach $LINELIST in current working directory
@@ -1880,9 +1880,9 @@ def load_linelist(filename):
     '''Load standard wavelength line list from a given file.
 
     Args:
-        filename (string): Name of the wavelength standard list file.
+        filename (str): Name of the wavelength standard list file.
     Returns:
-        list: A list containing (wavelength, species).
+        *list*: A list containing (wavelength, species).
     '''
     linelist = []
     infile = open(filename)
@@ -1974,11 +1974,11 @@ class CalibFigure(Figure):
     '''Figure class for wavelength calibration.
 
     Args:
-        width (integer): Width of figure.
-        height (integer): Height of figure.
-        dpi (integer): DPI of figure.
-        filename (string): Filename of input spectra.
-        channel (string): Channel name of input spectra.
+        width (int): Width of figure.
+        height (int): Height of figure.
+        dpi (int): DPI of figure.
+        filename (str): Filename of input spectra.
+        channel (str): Channel name of input spectra.
     '''
 
     def __init__(self, width, height, dpi, filename, channel):
@@ -2017,16 +2017,16 @@ class CalibFigure(Figure):
             aperture_lst (list): List of apertures to be plotted.
             plot_ax1 (bool): Whether to plot the first axes.
             coeff (:class:`numpy.ndarray`): Coefficient array.
-            k (integer): `k` value in the relationship `order = k*aperture +
+            k (int): `k` value in the relationship `order = k*aperture +
                 offset`.
-            offset (integer): `offset` value in the relationship `order =
+            offset (int): `offset` value in the relationship `order =
                 k*aperture + offset`.
-            npixel (integer): Number of pixels along the main dispersion
+            npixel (int): Number of pixels along the main dispersion
                 direction.
             std (float): Standard deviation of wavelength fitting.
-            nuse (integer): Number of lines actually used in the wavelength
+            nuse (int): Number of lines actually used in the wavelength
                 fitting.
-            ntot (integer): Number of lines identified.
+            ntot (int): Number of lines identified.
         '''
         coeff  = kwargs.pop('coeff')
         k      = kwargs.pop('k')
@@ -2152,23 +2152,23 @@ def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist,
     as reference.
 
     Args:
-        filename (string): Filename of the 1-D spectra.
-        identfilename (string): Filename of wavelength identification.
-        figfilename (string): Filename of the output wavelength figure.
+        filename (str): Filename of the 1-D spectra.
+        identfilename (str): Filename of wavelength identification.
+        figfilename (str): Filename of the output wavelength figure.
         ref_spec (:class:`numpy.dtype`): Reference spectra.
-        linelist (string): Name of wavelength standard file.
-        channel (string): Name of the input channel.
+        linelist (str): Name of wavelength standard file.
+        channel (str): Name of the input channel.
         coeff (:class:`numpy.ndarray`): Coefficients of the reference wavelength.
-        npixel (integer): Number of pixels along the main-dispersion direction.
-        k (integer): -1 or 1, depending on the relationship `order = k*aperture
+        npixel (int): Number of pixels along the main-dispersion direction.
+        k (int): -1 or 1, depending on the relationship `order = k*aperture
             + offset`.
-        offset (integer): coefficient in the relationship `order = k*aperture +
+        offset (int): coefficient in the relationship `order = k*aperture +
             offset`.
-        window_size (integer): Size of the window in pixel to search for the
+        window_size (int): Size of the window in pixel to search for the
             lines.
-        xorder (integer): Order of polynomial along X axis.
-        yorder (integer): Order of polynomial along Y axis.
-        maxiter (integer): Maximim number of interation in polynomial fitting.
+        xorder (int): Order of polynomial along X axis.
+        yorder (int): Order of polynomial along Y axis.
+        maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
@@ -2177,25 +2177,25 @@ def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist,
         dict: A dict containing:
 
             * **coeff** (:class:`numpy.ndarray`) – Coefficient array.
-            * **npixel** (*integer*) – Number of pixels along the main
+            * **npixel** (*int*) – Number of pixels along the main
               dispersion direction.
-            * **k** (*integer*) – Coefficient in the relationship `order =
+            * **k** (*int*) – Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **offset** (*integer*) – Coefficient in the relationship `order =
+            * **offset** (*int*) – Coefficient in the relationship `order =
               k*aperture + offset`.
             * **std** (*float*) – Standard deviation of wavelength fitting in Å.
-            * **nuse** (*integer*) – Number of lines used in the wavelength
+            * **nuse** (*int*) – Number of lines used in the wavelength
               fitting.
-            * **ntot** (*integer*) – Number of lines found in the wavelength
+            * **ntot** (*int*) – Number of lines found in the wavelength
               fitting.
             * **identlist** (*dict*) – Dict of identified lines.
-            * **window_size** (*integer*) – Length of window in searching the
+            * **window_size** (*int*) – Length of window in searching the
               line centers.
-            * **xorder** (*integer*) – Order of polynomial along X axis in the
+            * **xorder** (*int*) – Order of polynomial along X axis in the
               wavelength fitting.
-            * **yorder** (*integer*) – Order of polynomial along Y axis in the
+            * **yorder** (*int*) – Order of polynomial along Y axis in the
               wavelength fitting.
-            * **maxiter** (*integer*) – Maximum number of iteration in the
+            * **maxiter** (*int*) – Maximum number of iteration in the
               wavelength fitting.
             * **clipping** (*float*) – Clipping value of the wavelength fitting.
             * **snr_threshold** (*float*) – Minimum S/N of the spectral lines to
@@ -2470,7 +2470,7 @@ def get_calib_from_header(header, channel):
 
     Args:
         header (:class:`astropy.io.fits.Header`): FITS header.
-        channel (string): Channel name.
+        channel (str): Channel name.
 
     Returns:
         tuple: A tuple containing calib results.
@@ -2621,16 +2621,13 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
     Reference the wavelength and write the wavelength solution to the FITS file.
 
     Args:
-        infilename (string): Filename of input spectra.
-        outfilename (string): Filename of output spectra.
-        regfilename (string): Filename of output region file for SAO-DS9.
-        frameid (integer): FrameID of the input spectra. The frameid is used to
-            find the proper calibration solution in calib_lst.
+        infilename (str): Filename of input spectra.
+        outfilename (str): Filename of output spectra.
+        regfilename (str): Filename of output region file for SAO-DS9.
+        frameid (int): FrameID of the input spectra. The frameid is used to
+            find the proper calibration solution in **calib_lst**.
         calib_lst (dict): A dict with key of frameids, and values of calibration
             solutions for different channels.
-
-    Returns:
-        No returns.
 
     See also:
         :func:`wvcalib`
@@ -2848,7 +2845,7 @@ def get_aperture_coeffs_in_header(head):
         head (:class:`astropy.io.fits.Header`): Header of FITS file.
 
     Returns:
-        dict: A dict containing coefficients for each aperture and each channel.
+        *dict*: A dict containing coefficients for each aperture and each channel.
     '''
     
     coeffs = {}

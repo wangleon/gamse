@@ -17,12 +17,12 @@ def combine_images(data_lst,
 
     Args:
         data_lst (list): A list of 2D `numpy.ndarray`.
-        mode (string): Combine mode. Either "mean" or "sum".
+        mode (str): Combine mode. Either "mean" or "sum".
         upper_clip (float): Upper threshold of the sigma-clipping. Default is
             *None*.
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
-        maxiter (maxiter): Maximum number of iterations.
+        maxiter (int): Maximum number of iterations.
 
     Returns:
         :class:`numpy.ndarray`: Combined image array.
@@ -133,11 +133,11 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
 
     Args:
         z (:class:`numpy.ndarray`): Input 2-d array.
-        xwindow (integer): Window size along *x*-axis.
-        ywindow (integer): Window size along *y*-axis.
+        xwindow (int): Window size along *x*-axis.
+        ywindow (int): Window size along *y*-axis.
         xorder (float): Degree of polynomial along *x*-axis.
         yorder (float): Degree of polynomial along *y*-axis.
-        derivative (string): *None*, *col*, *row*, or *both*.
+        derivative (str): *None*, *col*, *row*, or *both*.
 
     Returns:
         :class:`numpy.ndarray` or tuple: Output 2-d array, or a tuple containing
@@ -323,7 +323,7 @@ def fix_pixels(data, mask, direction, method):
         data (:class:`numpy.ndarray`): Input image as a 2-D array.
         mask (:class:`numpy.ndarray`): Mask of pixels to be fixed. This array
             shall has the same shape as **data**.
-        direction (string or integer): Interpolate along which axis (*X* = 1,
+        direction (str or int): Interpolate along which axis (*X* = 1,
             *Y* = 0).
         method (string): Interpolationg method ('linear' means linear
             interpolation, and 'cubic' means cubic spline interpolation).
