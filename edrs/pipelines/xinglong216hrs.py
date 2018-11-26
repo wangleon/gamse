@@ -185,8 +185,6 @@ def plot_background(data, stray, figname):
         stray (:class:`numpy.ndarray`): Stray light.
         figname (str): Name of the output figure.
 
-    Returns:
-        No returns
     '''
     h, w = data.shape
 
@@ -224,12 +222,6 @@ def reduce():
     '''2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
     telescope.
 
-    Args:
-        No args.
-
-    Returns:
-        No returns.
-
     This pipeline accepts the following options in the config file:
 
     .. csv-table:: Accepted options in config file
@@ -237,33 +229,33 @@ def reduce():
        :escape: '
        :widths: 10, 18, 10, 18, 60
 
-       **data**,       **telescope**,     *string*,  '"Xinglong216'", Name of the telescope (Fixed).
-       **data**,       **instrument**,    *string*,  '"HRS'",         Name of the instrument (Fixed).
-       **data**,       **rawdata**,       *string*,  '"rawdata'",     Path to the rawdata.
-       **reduction**,  **midproc**,       *string*,  '"midproc'",     Path to the mid-process folder. Will be created if not exist.
-       **reduction**,  **result**,        *string*,  '"result'",      Path to the result 1-D spectra folder. Will be created if not exist.
-       **reductoin**,  **report**,        *string*,  '"report'",      Path to the report folder. Will be created if not exist.
-       **reduction**,  **mode**,          *string*,  '"normal'",      "Reduction mode. Available modes include '"normal'", '"debug'" and '"fast'"."
-       **bias**,       **cosmic_clip**,   *float*,   10,              Upper clipping value for removing the cosmic-rays.
-       **bias**,       **maxiter**,       *int*,     5,               Maximum iteration numbers.
-       **bias**,       **smooth_method**, *string*,  ,                Method of smoothing the bias data.
-       **bias**,       **smooth_sigma**,  *int*,     ,                Sigma of Gaussian smoothing core.
-       **bias**,       **smooth_mode**,   *string*,  ,                Mode of Gaussian smoothing core.
-       **trace**,      **scan_step**,     *int*,     ,                Steps of pixels used to scan along the main dispersion direction.
-       **trace**,      **minimum**,       *float*,   ,                Minimum value to filter the input image.
-       **trace**,      **seperation**,    *float*,   ,                Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
-       **trace**,      **sep_der**,       *float*,   ,                Estimated first derivative of seperations per 1000 pixels along the *y* axis.
-       **trace**,      **filling**,       *float*,   ,                Fraction of detected pixels to total step of scanning.
-       **trace**,      **display**,       *bool*,    ,                Display a figure on screen if *yes*.
-       **trace**,      **degree**,        *int*,     ,                Degree of polynomial used to describe the positions of orders.
-       **background**, **scan_step**,     *int*,     ,                Steps of pixels used to scan along the main dispersion direction.
-       **background**, **xorder**,        *int*,     ,                Degree of 2D polynomial along *x*-axis (dispersion direction).
-       **background**, **yorder**,        *int*,     ,                Degree of 2D polynomial along *y*-axis (cross-dispersion direction).
-       **background**, **maxiter**,       *int*,     ,                Maximum number of iteration of 2D polynomial fitting.
-       **background**, **upper_clip**,    *float*,   ,                Upper sigma clipping threshold.
-       **background**, **lower_clip**,    *float*,   ,                Lower sigma clipping threshold.
-       **background**, **extend**,        *bool*,    ,                Extend the grid to the whole image if *True*.
-       **background**, **display**,       *bool*,    ,                Display a graphics if *yes*.
+       **data**,       **telescope**,     *str*,    '"Xinglong216'", Name of the telescope (Fixed).
+       **data**,       **instrument**,    *str*,    '"HRS'",         Name of the instrument (Fixed).
+       **data**,       **rawdata**,       *str*,    '"rawdata'",     Path to the rawdata.
+       **reduction**,  **midproc**,       *str*,    '"midproc'",     Path to the mid-process folder. Will be created if not exist.
+       **reduction**,  **result**,        *str*,    '"result'",      Path to the result 1-D spectra folder. Will be created if not exist.
+       **reductoin**,  **report**,        *str*,    '"report'",      Path to the report folder. Will be created if not exist.
+       **reduction**,  **mode**,          *str*,    '"normal'",      "Reduction mode. Available modes include '"normal'", '"debug'" and '"fast'"."
+       **bias**,       **cosmic_clip**,   *float*,  10,              Upper clipping value for removing the cosmic-rays.
+       **bias**,       **maxiter**,       *int*,    5,               Maximum iteration numbers.
+       **bias**,       **smooth_method**, *str*,    ,                Method of smoothing the bias data.
+       **bias**,       **smooth_sigma**,  *int*,    ,                Sigma of Gaussian smoothing core.
+       **bias**,       **smooth_mode**,   *str*,    ,                Mode of Gaussian smoothing core.
+       **trace**,      **scan_step**,     *int*,    ,                Steps of pixels used to scan along the main dispersion direction.
+       **trace**,      **minimum**,       *float*,  ,                Minimum value to filter the input image.
+       **trace**,      **seperation**,    *float*,  ,                Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
+       **trace**,      **sep_der**,       *float*,  ,                Estimated first derivative of seperations per 1000 pixels along the *y* axis.
+       **trace**,      **filling**,       *float*,  ,                Fraction of detected pixels to total step of scanning.
+       **trace**,      **display**,       *bool*,   ,                Display a figure on screen if *yes*.
+       **trace**,      **degree**,        *int*,    ,                Degree of polynomial used to describe the positions of orders.
+       **background**, **scan_step**,     *int*,    ,                Steps of pixels used to scan along the main dispersion direction.
+       **background**, **xorder**,        *int*,    ,                Degree of 2D polynomial along *x*-axis (dispersion direction).
+       **background**, **yorder**,        *int*,    ,                Degree of 2D polynomial along *y*-axis (cross-dispersion direction).
+       **background**, **maxiter**,       *int*,    ,                Maximum number of iteration of 2D polynomial fitting.
+       **background**, **upper_clip**,    *float*,  ,                Upper sigma clipping threshold.
+       **background**, **lower_clip**,    *float*,  ,                Lower sigma clipping threshold.
+       **background**, **extend**,        *bool*,   ,                Extend the grid to the whole image if *True*.
+       **background**, **display**,       *bool*,   ,                Display a graphics if *yes*.
     '''
 
     obslogfile = obslog.find_log(os.curdir)
@@ -804,10 +796,10 @@ class Xinglong216HRS(Reduction):
            :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           **skip**,    *bool*,   Skip this step if *yes* and **mode** = *'debug'*.
-           **suffix**,  *string*, Suffix of the corrected files.
-           **plot**,    *bool*,   Plot the overscan levels if *yes*.
-           **var_fig**, *string*, Filename of the overscan variation figure.
+           **skip**,    *bool*, Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,  *str*,  Suffix of the corrected files.
+           **plot**,    *bool*, Plot the overscan levels if *yes*.
+           **var_fig**, *str*,  Filename of the overscan variation figure.
 
         '''
 
@@ -1011,10 +1003,10 @@ class Xinglong216HRS(Reduction):
            :header: Option, Type, Description
            :widths: 20, 10, 50
 
-           **skip**,        *bool*,   Skip this step if *yes* and **mode** = *'debug'*.
-           **suffix**,      *string*, Suffix of the corrected files.
-           **cosmic_clip**, *float*,  Upper clipping threshold to remove cosmic-rays.
-           **file**,        *string*, Name of bias file.
+           **skip**,        *bool*,  Skip this step if *yes* and **mode** = *'debug'*.
+           **suffix**,      *str*,   Suffix of the corrected files.
+           **cosmic_clip**, *float*, Upper clipping threshold to remove cosmic-rays.
+           **file**,        *str*,   Name of bias file.
 
         '''
         self.output_suffix = self.config.get('bias', 'suffix')
@@ -1165,10 +1157,7 @@ def make_log(path):
     `YYYY-MM-DD.log`.
 
     Args:
-        path (string): Path to the raw FITS files.
-
-    Returns:
-        No returns
+        path (str): Path to the raw FITS files.
 
     '''
 
