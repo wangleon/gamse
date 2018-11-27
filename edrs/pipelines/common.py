@@ -1,13 +1,13 @@
 import os
 import logging
 logger = logging.getLogger(__name__)
+import configparser
 
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils.config import read_config, find_config
 from ..utils.obslog import read_log, find_log
 from ..utils.misc   import write_system_info
 
@@ -42,20 +42,31 @@ def reduce_echelle():
     # write system info
     write_system_info()
 
-    # find telescope and instrument
-    key = get_instrument()
+    # load config file in current directory
+    config_file_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-4:]=='.cfg']
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
 
-    logger.info('Start reducing %s, %s data'%(key[0], key[1]))
+    # find telescope and instrument from config file
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
 
-    if key == ('Fraunhofer', 'FOCES'):
+    logger.info('Start reducing %s, %s data'%(telescope, instrument))
+
+    if telescope == 'Fraunhofer' and instrument == 'FOCES':
         reduction = foces.FOCES()
         reduction.reduce()
-    elif key == ('Xinglong216', 'HRS'):
+    elif telescope == 'Xinglong216' and instrument == 'HRS':
         xinglong216hrs.reduce()
-    elif key == ('APF', 'Levy'):
+    elif telescope == 'APF' and instrument == 'Levy':
         levy.reduce()
     else:
-        print('Unknown Instrument: %s - %s'%(key[0], key[1]))
+        print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
 def make_log():

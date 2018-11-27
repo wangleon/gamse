@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger(__name__)
 import configparser
 
-def read_config(instrument):
+def read_config(i):
     '''
     Read the config file ended with `.cfg` in the current directory.
 
@@ -16,6 +16,13 @@ def read_config(instrument):
         :class:`configparser.ConfigParser`: A
             :class:`configparser.ConfigParser` instance.
     '''
+    # scan the built-in config file
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+    config_file = os.path.join(config_path, '%s.cfg'%instrument)
+    print(instrument, config_file)
+    if os.path.exists(config_file):
+        print(config_file)
+    exit()
 
     # scan the .cfg files
     filename_lst = []

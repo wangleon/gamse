@@ -1,8 +1,8 @@
 import os
 import datetime
 import logging
-
 logger = logging.getLogger(__name__)
+import configparser
 
 import numpy as np
 from scipy.signal import savgol_filter
@@ -13,7 +13,6 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ..utils import obslog
-from ..utils.config import read_config
 from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array, fix_pixels)
 from ..echelle.trace import find_apertures, load_aperture_set
@@ -221,56 +220,39 @@ def plot_background(data, stray, figname):
 def reduce():
     '''2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
     telescope.
-
-    This pipeline accepts the following options in the config file:
-
-    .. csv-table:: Accepted options in config file
-       :header: Section, Option, Type, Default Value, Description
-       :escape: '
-       :widths: 10, 18, 10, 18, 60
-
-       **data**,       **telescope**,     *str*,    '"Xinglong216'", Name of the telescope (Fixed).
-       **data**,       **instrument**,    *str*,    '"HRS'",         Name of the instrument (Fixed).
-       **data**,       **rawdata**,       *str*,    '"rawdata'",     Path to the rawdata.
-       **reduction**,  **midproc**,       *str*,    '"midproc'",     Path to the mid-process folder. Will be created if not exist.
-       **reduction**,  **result**,        *str*,    '"result'",      Path to the result 1-D spectra folder. Will be created if not exist.
-       **reductoin**,  **report**,        *str*,    '"report'",      Path to the report folder. Will be created if not exist.
-       **reduction**,  **mode**,          *str*,    '"normal'",      "Reduction mode. Available modes include '"normal'", '"debug'" and '"fast'"."
-       **bias**,       **cosmic_clip**,   *float*,  10,              Upper clipping value for removing the cosmic-rays.
-       **bias**,       **maxiter**,       *int*,    5,               Maximum iteration numbers.
-       **bias**,       **smooth_method**, *str*,    ,                Method of smoothing the bias data.
-       **bias**,       **smooth_sigma**,  *int*,    ,                Sigma of Gaussian smoothing core.
-       **bias**,       **smooth_mode**,   *str*,    ,                Mode of Gaussian smoothing core.
-       **trace**,      **scan_step**,     *int*,    ,                Steps of pixels used to scan along the main dispersion direction.
-       **trace**,      **minimum**,       *float*,  ,                Minimum value to filter the input image.
-       **trace**,      **seperation**,    *float*,  ,                Estimated order seperations (in pixel) at *y* = 0 along the cross-dispersion.
-       **trace**,      **sep_der**,       *float*,  ,                Estimated first derivative of seperations per 1000 pixels along the *y* axis.
-       **trace**,      **filling**,       *float*,  ,                Fraction of detected pixels to total step of scanning.
-       **trace**,      **display**,       *bool*,   ,                Display a figure on screen if *yes*.
-       **trace**,      **degree**,        *int*,    ,                Degree of polynomial used to describe the positions of orders.
-       **background**, **scan_step**,     *int*,    ,                Steps of pixels used to scan along the main dispersion direction.
-       **background**, **xorder**,        *int*,    ,                Degree of 2D polynomial along *x*-axis (dispersion direction).
-       **background**, **yorder**,        *int*,    ,                Degree of 2D polynomial along *y*-axis (cross-dispersion direction).
-       **background**, **maxiter**,       *int*,    ,                Maximum number of iteration of 2D polynomial fitting.
-       **background**, **upper_clip**,    *float*,  ,                Upper sigma clipping threshold.
-       **background**, **lower_clip**,    *float*,  ,                Lower sigma clipping threshold.
-       **background**, **extend**,        *bool*,   ,                Extend the grid to the whole image if *True*.
-       **background**, **display**,       *bool*,   ,                Display a graphics if *yes*.
     '''
 
+    # read obs log
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
 
-    config = read_config('Xinglong216HRS')
+    # load config files
+    config_file_lst = []
+    # find built-in config file
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+    config_file = os.path.join(config_path, 'Xinglong216HRS.cfg')
+    if os.path.exists(config_file):
+        config_file_lst.append(config_file)
+
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
+    # load both built-in and local config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
 
     # extract keywords from config file
-    section = config['data']
-    rawdata = section.pop('rawdata', 'rawdata')
-    section = config['reduction']
-    midproc = section.pop('midproc', 'midproc')
-    result  = section.pop('result',  'spectra1d')
-    report  = section.pop('report',  'report')
-    mode    = section.pop('mode',    'normal')
+    rawdata = config['data']['rawdata']
+    section = config['reduce']
+    midproc = section['midproc']
+    result  = section['result']
+    report  = section['report']
+    mode    = section.get('mode', 'normal')
 
     # create folders if not exist
     if not os.path.exists(report):
@@ -281,7 +263,8 @@ def reduce():
         os.mkdir(midproc)
 
     ############################# parse bias ###################################
-    bias_file = os.path.join(midproc, 'bias.fits')
+    section = config['reduce:bias']
+    bias_file = section['bias_file']
 
     if os.path.exists(bias_file):
         bias = fits.getdata(bias_file)
@@ -299,36 +282,27 @@ def reduce():
 
         if len(bias_lst)>0:
             # there is bias frames
-            if config.has_section('bias'):
-                # get sections from config file
-                section = config['bias']
-                cosmic_clip = float(section.pop('cosmic_clip', 10.))
-                maxiter     = int(section.pop('maxiter',     5))
-            else:
-                cosmic_clip = 10.
-                maxiter = 5
 
             bias = combine_images(bias_lst,
-                                    mode       = 'mean',
-                                    upper_clip = cosmic_clip,
-                                    maxiter    = maxiter,
-                                    )
+                                mode       = 'mean',
+                                upper_clip = section.getfloat('cosmic_clip'),
+                                maxiter    = section.getint('maxiter'),
+                                )
 
             # create new FITS Header for bias
             head = fits.Header()
             head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
 
             ############## bias smooth ##################
-            if config.has_section('bias') and config.has_option('bias', 'smooth_method'):
+            if section.getboolean('smooth'):
                 # bias needs to be smoothed
-                section = config['bias']
-                smooth_method = section.pop('smooth_method', 'gaussian')
+                smooth_method = section.get('smooth_method')
 
                 h, w = bias.shape
                 if smooth_method in ['gauss','gaussian']:
                     # perform 2D gaussian smoothing
                     smooth_sigma = section.getint('smooth_sigma')
-                    smooth_mode  = section['smooth_mode']
+                    smooth_mode  = section.get('smooth_mode')
                     bias_smooth = np.zeros((h, w), dtype=np.float64)
                     bias_smooth[0:h/2, :] = gaussian_filter(bias[0:h/2, :],
                                                             smooth_sigma,
@@ -346,6 +320,9 @@ def reduce():
                     pass
 
                 bias = bias_smooth
+            else:
+                # bias not smoothed
+                head['HIERARCH EDRS BIAS SMOOTH'] = False
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             has_bias = True
@@ -435,14 +412,15 @@ def reduce():
             fits.writeto(mask_filename, mask_table, overwrite=True)
             # now flt_data and mask_array are prepared
 
+            section = config['reduce:trace']
             aperset = find_apertures(flat_data, mask_array,
-                        scan_step  = config['trace'].getint('scan_step'),
-                        minimum    = config['trace'].getfloat('minimum'),
-                        seperation = config['trace'].getfloat('seperation'),
-                        sep_der    = config['trace'].getfloat('sep_der'),
-                        filling    = config['trace'].getfloat('filling'),
-                        degree     = config['trace'].getint('degree'),
-                        display    = config['trace'].getboolean('display'),
+                        scan_step  = section.getint('scan_step'),
+                        minimum    = section.getfloat('minimum'),
+                        seperation = section.getfloat('seperation'),
+                        sep_der    = section.getfloat('sep_der'),
+                        filling    = section.getfloat('filling'),
+                        degree     = section.getint('degree'),
+                        display    = section.getboolean('display'),
                         filename   = flat_filename,
                         fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
                         )
@@ -467,14 +445,15 @@ def reduce():
                 'normal': None,
                 }[mode]
 
+            section = config['reduce:flat']
             flatmap = get_fiber_flat(
                         data        = flat_data_lst[flatname],
                         mask        = flat_mask_lst[flatname],
                         apertureset = aperset_lst[flatname],
-                        slit_step   = config['flat'].getint('slit_step'),
+                        slit_step   = section.getint('slit_step'),
                         nflat       = len(flat_groups[flatname]),
-                        q_threshold = config['flat'].getfloat('q_threshold'),
-                        param_deg   = config['flat'].getint('param_deg'),
+                        q_threshold = section.getfloat('q_threshold'),
+                        param_deg   = section.getint('param_deg'),
                         fig_aperpar = fig_aperpar,
                         fig_overlap = None,
                         fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
@@ -503,9 +482,10 @@ def reduce():
         flat_map = fits.getdata(os.path.join(midproc, 'flat_rsp.fits'))
     else:
         # mosaic apertures
+        mosaic_maxcount = config['reduce:flat'].getfloat('mosaic_maxcount')
         mosaic_aperset = mosaic_flat_auto(
                 aperture_set_lst = aperset_lst,
-                max_count        = config['flat'].getfloat('mosaic_maxcount'),
+                max_count        = mosaic_maxcount,
                 )
         # mosaic original flat images
         flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
