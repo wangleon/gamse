@@ -17,6 +17,7 @@ setup(
                     'edrs/pipelines',
                    ],
     package_data = {
-                    'edrs': ['data/linelist/*',]
+                    'edrs': ['data/config/*',
+                             'data/linelist/*',]
                     },
     )
