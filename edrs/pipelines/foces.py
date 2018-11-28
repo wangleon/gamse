@@ -545,8 +545,6 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-
-    
 def make_log(path):
     '''
     Scan the raw data, and generated a log file containing the detail
@@ -556,7 +554,7 @@ def make_log(path):
     `YYYY-MM-DD.log`.
 
     Args:
-        path (string): Path to the raw FITS files.
+        path (str): Path to the raw FITS files.
 
     '''
 
@@ -673,7 +671,7 @@ def get_primary_header(input_lst):
         input_lst (tuple): A tuple containing the keywords and their values
 
     Returns:
-        list: A list containing the records
+        *list*: A list containing the records
 
     '''
     lst = [
@@ -866,10 +864,10 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     The name of the figure is given in the config file.
 
     Args:
-        bias (:class:`numpy.array`): Bias array.
-        bias_smooth (:class:`numpy.array`): Smoothed bias array.
-        comp_figfile (string): Filename of the comparison figure.
-        hist_figfile (string): Filename of the histogram figure.
+        bias (:class:`numpy.ndarray`): Bias array.
+        bias_smooth (:class:`numpy.ndarray`): Smoothed bias array.
+        comp_figfile (str): Filename of the comparison figure.
+        hist_figfile (str): Filename of the histogram figure.
     '''
     h, w = bias.shape
     # calculate the residual between bias and smoothed bias data
@@ -996,3 +994,110 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     plt.close(fig1)
     plt.close(fig2)
 
+def reduce():
+    '''
+    2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope.
+    '''
+
+    # read obs log
+    obslogfile = obslog.find_log(os.curdir)
+    log = obslog.read_log(obslogfile)
+
+    # load config files
+    config_file_lst = []
+    # find built-in config file
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+    config_file = os.path.join(config_path, 'FOCES.cfg')
+    if os.path.exists(config_file):
+        config_file_lst.append(config_file)
+
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
+    # load both built-in and local config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
+    # extract keywords from config file
+    rawdata = config['data']['rawdata']
+    section = config['reduce']
+    midproc = section['midproc']
+    result  = section['result']
+    report  = section['report']
+    mode    = section.get('mode', 'normal')
+
+    # create folders if not exist
+    if not os.path.exists(report):
+        os.mkdir(report)
+    if not os.path.exists(result):
+        os.mkdir(result)
+    if not os.path.exists(midproc):
+        os.mkdir(midproc)
+
+    ########################### parse bias #############################
+    section = config['reduce.bias']
+    bias_file = section['bias_file']
+
+    if os.path.exists(bias_file):
+        bias = fits.getdata(bias_file)
+        has_bias = True
+        logger.info('Load bias from image: %s'%bias_file)
+    else:
+        bias_lst = []
+        for item in log:
+            if item.objectname[0].strip().lower()=='bias':
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data, head = fits.getdata(filename, header=True)
+                mask = get_mask(data, head)
+                data, head = correct_overscan(data, head, mask)
+                bias_lst.append(data)
+
+        if len(bias_lst)>0:
+            # there is bias frames
+
+            bias = combine_images(bias_lst,
+                                mode       = 'mean',
+                                upper_clip = section.getfloat('cosmic_clip'),
+                                maxiter    = section.getint('maxiter'),
+                                )
+
+            # create new FITS Header for bias
+            head = fits.Header()
+            head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
+
+            ############## bias smooth ##################
+            if section.getboolean('smooth'):
+                # bias needs to be smoothed
+                smooth_method = section.get('smooth_method')
+
+                h, w = bias.shape
+                if smooth_method in ['gauss','gaussian']:
+                    # perform 2D gaussian smoothing
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section.get('smooth_mode')
+
+                    bias_smooth = gaussian_filter(bias,
+                                    sigma=smooth_sigma, mode=smooth_mode)
+
+                    # write information to FITS header
+                    head['HIERARCH EDRS BIAS SMOOTH']        = True
+                    head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                    head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
+                    head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+
+                bias = bias_smooth
+            else:
+                # bias not smoothed
+                head['HIERARCH EDRS BIAS SMOOTH'] = False
+
+            fits.writeto(bias_file, bias, header=head, overwrite=True)
+            has_bias = True
+            logger.info('Bias image written to "bias.fits"')
+        else:
+            # no bias in this dataset
+            has_bias = False

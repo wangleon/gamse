@@ -20,9 +20,14 @@ Common Resources
 
 FOCES
 -----
-.. currentmodule:: edrs.pipelines.foces.FOCES
+.. currentmodule:: edrs.pipelines.foces
 .. autosummary::
-
+   get_primary_header
+   make_log
+   correct_overscan
+   plot_overscan_variation
+   plot_bias_smooth
+   reduce
 
 .. automodule:: edrs.pipelines.foces
    :members:
