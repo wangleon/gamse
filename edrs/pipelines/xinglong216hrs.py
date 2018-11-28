@@ -263,7 +263,7 @@ def reduce():
         os.mkdir(midproc)
 
     ############################# parse bias ###################################
-    section = config['reduce:bias']
+    section = config['reduce.bias']
     bias_file = section['bias_file']
 
     if os.path.exists(bias_file):
@@ -412,7 +412,7 @@ def reduce():
             fits.writeto(mask_filename, mask_table, overwrite=True)
             # now flt_data and mask_array are prepared
 
-            section = config['reduce:trace']
+            section = config['reduce.trace']
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
@@ -445,7 +445,7 @@ def reduce():
                 'normal': None,
                 }[mode]
 
-            section = config['reduce:flat']
+            section = config['reduce.flat']
             flatmap = get_fiber_flat(
                         data        = flat_data_lst[flatname],
                         mask        = flat_mask_lst[flatname],
@@ -482,7 +482,7 @@ def reduce():
         flat_map = fits.getdata(os.path.join(midproc, 'flat_rsp.fits'))
     else:
         # mosaic apertures
-        mosaic_maxcount = config['reduce:flat'].getfloat('mosaic_maxcount')
+        mosaic_maxcount = config['reduce.flat'].getfloat('mosaic_maxcount')
         mosaic_aperset = mosaic_flat_auto(
                 aperture_set_lst = aperset_lst,
                 max_count        = mosaic_maxcount,
@@ -508,6 +508,7 @@ def reduce():
     if True:
         # get the data shape
         h, w = flat_map.shape
+
     
         # define dtype of 1-d spectra
         types = [
@@ -539,10 +540,11 @@ def reduce():
                 else:
                     logger.info('No bias. skipped bias correction')
 
+                section = config['reduce.extract']
                 spectra1d = extract_aperset(data, mask,
                             apertureset = mosaic_aperset,
-                            lower_limit = 5,
-                            upper_limit = 5,
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
                             )
                 head = mosaic_aperset.to_fitsheader(head, channel=None)
     
@@ -556,6 +558,8 @@ def reduce():
                              )
                 spec = np.array(spec, dtype=spectype)
     
+                section = config['reduce.wvcalib']
+
                 if count_thar == 1:
                     # in the first thar, try to find previouse calibration results
                     ref_spec, ref_calib, ref_aperset = select_calib_from_database(
@@ -569,13 +573,13 @@ def reduce():
                             identfilename = 'a.idt',
                             figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
                             channel       = None,
-                            linelist      = config['wvcalib']['linelist'],
-                            window_size   = int(config['wvcalib']['window_size']),
-                            xorder        = int(config['wvcalib']['xorder']),
-                            yorder        = int(config['wvcalib']['yorder']),
-                            maxiter       = int(config['wvcalib']['maxiter']),
-                            clipping      = float(config['wvcalib']['clipping']),
-                            snr_threshold = float(config['wvcalib']['snr_threshold']),
+                            linelist      = section.get('linelist'),
+                            window_size   = section.getint('window_size'),
+                            xorder        = section.getint('xorder'),
+                            yorder        = section.getint('yorder'),
+                            maxiter       = section.getint('maxiter'),
+                            clipping      = section.getfloat('clipping'),
+                            snr_threshold = section.getfloat('snr_threshold'),
                             )
                     else:
                         # if success, run recalib
@@ -585,7 +589,7 @@ def reduce():
                             figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
                             ref_spec      = ref_spec,
                             channel       = None,
-                            linelist      = config['wvcalib']['linelist'],
+                            linelist      = section.get('linelist'),
                             identfilename = '',
                             aperture_offset = aper_offset,
                             coeff         = ref_calib['coeff'],
@@ -609,7 +613,7 @@ def reduce():
                         figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
                         ref_spec      = ref_spec,
                         channel       = None,
-                        linelist      = config['wvcalib']['linelist'],
+                        linelist      = section.get('linelist'),
                         identfilename = '',
                         aperture_offset = 0,
                         coeff         = ref_calib['coeff'],
@@ -684,24 +688,13 @@ def reduce():
                         }[mode]
 
             # correct background
+            section = config['reduce.background']
             stray = find_background(data, mask,
-                    #channels        = ['A'],
+                    #channels       = ['A'],
                     apertureset_lst = {'A': mosaic_aperset},
-                    ncols = 9,
-                    distance = 7,
-                    #scale           = 'linear',
-                    #method          = 'interp',
-                    #scan_step       = config['background'].getint('scan_step'),
-                    #xorder          = config['background'].getint('xorder'),
-                    #yorder          = config['background'].getint('yorder'),
-                    yorder = 7,
-                    #maxiter         = config['background'].getint('maxiter'),
-                    #upper_clip      = config['background'].getfloat('upper_clip'),
-                    #lower_clip      = config['background'].getfloat('lower_clip'),
-                    #extend          = config['background'].getboolean('extend'),
-                    #display         = config['background'].getboolean('display'),
-                    #fig_file        = os.path.join(report, 'background_%s.png'%item.fileid),
-                    #reg_file        = reg_file,
+                    ncols           = section.getint('ncols'),
+                    distance        = section.getfloat('distance'),
+                    yorder          = section.getint('yorder'),
                     fig_section     = os.path.join(report, 'background_%s_section.png'%item.fileid),
                     )
             data = data - stray
@@ -720,10 +713,11 @@ def reduce():
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
             # extract 1d spectrum
+            section = config['reduce.extract']
             spectra1d = extract_aperset(data, mask,
                         apertureset = mosaic_aperset,
-                        lower_limit = config['extract'].getfloat('lower_limit'),
-                        upper_limit = config['extract'].getfloat('upper_limit'),
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
                         )
             logger.info('FileID: %s - 1D spectra of %d orders are extracted'%(
                 item.fileid, len(spectra1d)))
