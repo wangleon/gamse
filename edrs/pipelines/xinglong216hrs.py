@@ -305,11 +305,9 @@ def reduce():
                     smooth_mode  = section.get('smooth_mode')
                     bias_smooth = np.zeros((h, w), dtype=np.float64)
                     bias_smooth[0:h/2, :] = gaussian_filter(bias[0:h/2, :],
-                                                            smooth_sigma,
-                                                            mode=smooth_mode)
+                                            sigma=smooth_sigma, mode=smooth_mode)
                     bias_smooth[h/2:h, :] = gaussian_filter(bias[h/2:h, :],
-                                                            smooth_sigma,
-                                                            mode=smooth_mode)
+                                            sigma=smooth_sigma, mode=smooth_mode)
                     # write information to FITS header
                     head['HIERARCH EDRS BIAS SMOOTH']        = True
                     head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
@@ -1165,11 +1163,11 @@ def make_log(path):
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (data>=65535)
-        prop = float(mask_sat.sum())/data.size*1e3
+        prop = mask_sat.sum()/data.size*1e3
 
         # find the brightness index in the central region
         h, w = data.shape
-        data1 = data[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
+        data1 = data[int(h*0.3):int(h*0.7), w//2-2:w//2+3]
         bri_index = np.median(data1,axis=1).mean()
 
         # change to regular name
