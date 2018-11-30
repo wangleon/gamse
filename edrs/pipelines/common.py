@@ -59,8 +59,7 @@ def reduce_echelle():
     logger.info('Start reducing %s, %s data'%(telescope, instrument))
 
     if telescope == 'Fraunhofer' and instrument == 'FOCES':
-        reduction = foces.FOCES()
-        reduction.reduce()
+        foces.reduce()
     elif telescope == 'Xinglong216' and instrument == 'HRS':
         xinglong216hrs.reduce()
     elif telescope == 'APF' and instrument == 'Levy':
@@ -72,19 +71,30 @@ def reduce_echelle():
 def make_log():
     '''Scan the path to the raw FITS files and generate an observing log.
     '''
-    config_file = find_config('./')
-    config = read_config(config_file)
+    config_file_lst = []
+
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
+    # load both built-in and local config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
     section = config['data']
     telescope  = section['telescope']
     instrument = section['instrument']
     rawdata    = section['rawdata']
-    key = get_instrument()
 
-    if key == ('Fraunhofer', 'FOCES'):
+    if telescope == 'Fraunhofer' and instrument == 'FOCES':
         foces.make_log(rawdata)
-    elif key == ('Xinglong216', 'HRS'):
+    elif telescope == 'Xinglong216' and instrument == 'HRS':
         xinglong216hrs.make_log(rawdata)
-    elif key == ('APF', 'Levy'):
+    elif telescope == 'APF' and instrument == 'Levy':
         levy.make_log(rawdata)
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))

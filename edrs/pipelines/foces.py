@@ -1,4 +1,5 @@
 import os
+import re
 import datetime
 import logging
 import dateutil.parser
@@ -557,6 +558,9 @@ def make_log(path):
         path (str): Path to the raw FITS files.
 
     '''
+    
+    # standard naming convenction for fileid
+    name_pattern = '^\d{8}_\d{4}_FOC\d{4}_\w{3}\d$'
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
@@ -568,31 +572,44 @@ def make_log(path):
         obsdate = None
         exptime = None
         data, head = fits.getdata(os.path.join(path, fname), header=True)
-        scidata = data[:,20:-20]
+
+        if data.ndim == 3:
+            # old FOCES data are 3-dimensional arrays
+            scidata = data[0, 20:-20]
+        elif data.ndim == 2:
+            scidata = data[:,20:-20]
+        else:
+            print('Unknow dimension of data array')
+            raise ValueError
+
         obsdate = head['FRAME']
         exptime = head['EXPOSURE']
 
-        if fileid[22:25]=='BIA':
-            objectname = 'Bias'
-            imagetype  = 'cal'
-        elif fileid[22:25]=='FLA':
-            objectname = 'Flat'
-            imagetype  = 'cal'
-        elif fileid[22:25]=='THA':
-            objectname = 'ThAr'
-            imagetype  = 'cal'
+        if re.match(name_pattern, fileid) is not None:
+            # fileid matches the standard FOCES naming convention
+            if fileid[22:25]=='BIA':
+                imagetype, objectname = 'cal', 'Bias'
+            elif fileid[22:25]=='FLA':
+                imagetype, objectname = 'cal', 'Flat'
+            elif fileid[22:25]=='THA':
+                imagetype, objectname = 'cal', 'ThAr'
+            else:
+                objectname = 'Unknown'
+                if fileid[22:25]=='SCI':
+                    imagetype = 'sci'
+                else:
+                    imagetype = 'cal'
         else:
-            objectname = 'Unknown'
-            if fileid[22:25]=='SCI':
-                imagetype  = 'sci'
+            # fileid does not follow the naming convetion
+            imagetype, objectname = 'cal', ''
 
         # determine the fraction of saturated pixels permillage
         mask_sat = (scidata>=63000)
-        prop = float(mask_sat.sum())/scidata.size*1e3
+        prop = mask_sat.sum()/scidata.size*1e3
 
         # find the brightness index in the central region
         h, w = scidata.shape
-        data1 = scidata[int(h*0.3):int(h*0.7),int(w/2)-2:int(w/2)+3]
+        data1 = scidata[int(h*0.3):int(h*0.7), w//2-2:w//2+3]
         brightness = np.median(data1,axis=1).mean()
 
         item = obslog.LogItem(
@@ -610,11 +627,26 @@ def make_log(path):
 
     # make info list
     all_info_lst = []
-    columns = ['frameid (i)', 'fileid (s)', 'imagetype (s)', 'objectname (s)',
-                'exptime (f)', 'obsdate (s)', 'saturation (f)', 'brightness (f)']
+    column_lst = [
+            ('frameid',    'i'),
+            ('fileid',     's'),
+            ('imagetype',  's'),
+            ('objectname', 's'),
+            ('exptime',    'f'),
+            ('obsdate',    's'),
+            ('saturation', 'f'),
+            ('brightness', 'f'),
+            ]
+    columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
+
     prev_frameid = -1
     for item in log:
-        frameid = int(item.fileid.split('_')[1])
+
+        if re.match(name_pattern, item.fileid) is None:
+            frameid = prev_frameid + 1
+        else:
+            frameid = int(item.fileid.split('_')[1])
+
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(frameid, prev_frameid))
 
