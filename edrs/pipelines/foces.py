@@ -20,6 +20,7 @@ from ..utils             import obslog
 from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array)
 from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
@@ -1266,3 +1267,39 @@ def reduce():
         flat_data_lst[flatname] = flat_data
         flat_mask_lst[flatname] = mask_array
         aperset_lst[flatname]   = aperset
+
+    ########################### Get flat fielding ##############################
+    flatmap_lst = {}
+    for flatname in sorted(flat_groups.keys()):
+        flatmap_filename = os.path.join(midproc, '%s_rsp.fits'%flatname)
+        if os.path.exists(flatmap_filename):
+            flatmap = fits.getdata(flatmap_filename)
+        else:
+            # do flat fielding
+            fig_aperpar = {
+                'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
+                'normal': None,
+                }[mode]
+
+            section = config['reduce.flat']
+            flatmap = get_fiber_flat(
+                        data        = flat_data_lst[flatname],
+                        mask        = flat_mask_lst[flatname],
+                        apertureset = aperset_lst[flatname],
+                        slit_step   = section.getint('slit_step'),
+                        nflat       = len(flat_groups[flatname]),
+                        q_threshold = section.getfloat('q_threshold'),
+                        param_deg   = section.getint('param_deg'),
+                        fig_aperpar = fig_aperpar,
+                        fig_overlap = None,
+                        fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
+                        slit_file   = None,
+                        )
+            
+            # save flat result to fits file
+            fits.writeto(flatmap_filename, flatmap, overwrite=True)
+
+        # append the flatmap
+        flatmap_lst[flatname] = flatmap
+
+    ############################# Mosaic Flats #################################
