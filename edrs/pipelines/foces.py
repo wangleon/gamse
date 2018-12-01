@@ -2,9 +2,11 @@ import os
 import re
 import datetime
 import logging
+logger = logging.getLogger(__name__)
+import configparser
+
 import dateutil.parser
 
-logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
@@ -14,9 +16,11 @@ import matplotlib.dates  as mdates
 import scipy.optimize as opt
 from scipy.ndimage.filters import gaussian_filter
 
-from ..utils              import obslog
-from ..echelle.imageproc  import array_to_table
-from .reduction           import Reduction
+from ..utils             import obslog
+from ..echelle.imageproc import (combine_images, array_to_table,
+                                 table_to_array)
+from ..echelle.trace import find_apertures, load_aperture_set
+from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
     '''Correct overscan for an input image and update related information in the
@@ -34,6 +38,10 @@ def correct_overscan(data, head, mask=None):
               corrected.
             * head (:class:`astropy.io.fits.Header`): The updated FITS header.
     '''
+
+    if data.ndim == 3:
+        data = data[0,:,:]
+
     h, w = data.shape
     overdata1 = data[:, 0:20]
     overdata2 = data[:, w-18:w]
@@ -71,6 +79,27 @@ def correct_overscan(data, head, mask=None):
 
     return new_data, head
 
+def get_mask(data, head):
+    '''Get the mask of input image.
+
+    Args:
+        data (:class:`numpy.ndarray`): Input image data.
+        head (:class:`astropy.io.fits.Header`): Input FITS header.
+
+    Returns:
+        :class:`numpy.ndarray`: Image mask.
+    '''
+    # saturated CCD count
+    saturation_adu = 63000
+
+    mask_sat = (data[:, 20:-20] >= saturation_adu)
+
+    mask_bad = np.zeros_like(data[:, 20:-20], dtype=np.int16)
+    # currently no bad pixels in FOCES CCD
+
+    mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
+
+    return mask
 
 class FOCES(Reduction):
     '''Reduction pipleline for FOCES.

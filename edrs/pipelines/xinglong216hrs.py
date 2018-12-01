@@ -97,7 +97,7 @@ def get_mask(data, head):
     newshape = (y2-y1, x2-x1)
 
     # find the saturation mask
-    mask_sat = (data[y1:y2, x1:x2]>=saturation_adu)
+    mask_sat = (data[y1:y2, x1:x2] >= saturation_adu)
     # get bad pixel mask
     bins = (head['RBIN'], head['CBIN'])
     mask_bad = get_badpixel_mask(newshape, bins=bins)
