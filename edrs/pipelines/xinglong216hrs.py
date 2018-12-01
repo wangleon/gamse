@@ -291,7 +291,7 @@ def reduce():
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
+            head['HIERARCH EDRS BIAS NFILE'] = len(bias_lst)
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -304,10 +304,12 @@ def reduce():
                     smooth_sigma = section.getint('smooth_sigma')
                     smooth_mode  = section.get('smooth_mode')
                     bias_smooth = np.zeros((h, w), dtype=np.float64)
-                    bias_smooth[0:h/2, :] = gaussian_filter(bias[0:h/2, :],
-                                            sigma=smooth_sigma, mode=smooth_mode)
-                    bias_smooth[h/2:h, :] = gaussian_filter(bias[h/2:h, :],
-                                            sigma=smooth_sigma, mode=smooth_mode)
+                    bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
+                                                sigma = smooth_sigma,
+                                                mode  = smooth_mode)
+                    bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
+                                                sigma = smooth_sigma,
+                                                mode  = smooth_mode)
                     # write information to FITS header
                     head['HIERARCH EDRS BIAS SMOOTH']        = True
                     head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'

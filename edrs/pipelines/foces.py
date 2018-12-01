@@ -38,10 +38,6 @@ def correct_overscan(data, head, mask=None):
               corrected.
             * head (:class:`astropy.io.fits.Header`): The updated FITS header.
     '''
-
-    if data.ndim == 3:
-        data = data[0,:,:]
-
     h, w = data.shape
     overdata1 = data[:, 0:20]
     overdata2 = data[:, w-18:w]
@@ -1114,6 +1110,8 @@ def reduce():
             if item.objectname[0].strip().lower()=='bias':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
+                if data.ndim == 3:
+                    data = data[0,:,:]
                 mask = get_mask(data, head)
                 data, head = correct_overscan(data, head, mask)
                 bias_lst.append(data)
@@ -1129,7 +1127,7 @@ def reduce():
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
+            head['HIERARCH EDRS BIAS NFILE'] = len(bias_lst)
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -1150,6 +1148,9 @@ def reduce():
                     head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
                     head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
                     head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                else:
+                    print('Unknown smooth method: ', smooth_method)
+                    pass
 
                 bias = bias_smooth
             else:
@@ -1162,3 +1163,106 @@ def reduce():
         else:
             # no bias in this dataset
             has_bias = False
+
+    ######################### find flat groups #################################
+    # initialize flat_groups for single fiber
+    flat_groups = {}
+    for item in log:
+        name = item.objectname[0]
+        g = name.split()
+        if len(g)>0 and g[0].lower().strip() == 'flat':
+            # the object name of the channel matches "flat ???"
+
+            # find a proper name for this flat
+            if name.lower().strip()=='flat':
+                # no special names given, use "flat_A_15"
+                flatname = 'flat_%g'%(item.exptime)
+            else:
+                # flatname is given. replace space with "_"
+                # remove "flat" before the objectname. e.g.,
+                # "Flat Red" becomes "Red" 
+                char = name[4:].strip()
+                flatname = 'flat_%s'%(char.replace(' ','_'))
+
+            # add flatname to flat_groups
+            if flatname not in flat_groups:
+                flat_groups[flatname] = []
+            flat_groups[flatname].append(item.fileid)
+
+    ################# Combine the flats and trace the orders ###################
+    flat_data_lst = {}
+    flat_mask_lst = {}
+    aperset_lst   = {}
+
+    # first combine the flats
+    for flatname, fileids in flat_groups.items():
+        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
+        mask_filename    = os.path.join(midproc, '%s_msk.fits'%flatname)
+        aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
+        aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
+
+        # get flat_data and mask_array
+        if os.path.exists(flat_filename) and os.path.exists(mask_filename) and \
+           os.path.exists(aperset_filename):
+            flat_data  = fits.getdata(flat_filename)
+            mask_table = fits.getdata(mask_filename)
+            mask_array = table_to_array(mask_table, flat_data.shape)
+            aperset = load_aperture_set(aperset_filename)
+        else:
+            data_lst = []
+            for ifile, fileid in enumerate(fileids):
+                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                data, head = fits.getdata(filename, header=True)
+                if data.ndim == 3:
+                    data = data[0,:,:]
+                mask = get_mask(data, head)
+                sat_mask = (mask&4>0)
+                bad_mask = (mask&2>0)
+                if ifile==0:
+                    allmask = np.zeros_like(mask, dtype=np.int16)
+                allmask += sat_mask
+
+                # correct overscan for flat
+                data, head = correct_overscan(data, head, mask)
+
+                # correct bias for flat, if has bias
+                if has_bias:
+                    data = data - bias
+                    logger.info('Bias corrected')
+                else:
+                    logger.info('No bias. skipped bias correction')
+
+                data_lst.append(data)
+            nflat = len(data_lst)
+            print('combine %d images for %s'%(nflat, flatname))
+            flat_data = combine_images(data_lst, mode='mean',
+                                        upper_clip=10, maxiter=5)
+            # write combine result to fits
+            fits.writeto(flat_filename, flat_data, overwrite=True)
+            # find saturation mask
+            sat_mask = allmask > nflat/2.
+            mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+            mask_table = array_to_table(mask_array)
+            # write mask to fits
+            fits.writeto(mask_filename, mask_table, overwrite=True)
+            # now flt_data and mask_array are prepared
+
+            section = config['reduce.trace']
+            aperset = find_apertures(flat_data, mask_array,
+                        scan_step  = section.getint('scan_step'),
+                        minimum    = section.getfloat('minimum'),
+                        seperation = section.getfloat('seperation'),
+                        sep_der    = section.getfloat('sep_der'),
+                        filling    = section.getfloat('filling'),
+                        degree     = section.getint('degree'),
+                        display    = section.getboolean('display'),
+                        filename   = flat_filename,
+                        fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
+                        )
+            aperset.save_txt(aperset_filename)
+            aperset.save_reg(aperset_regname)
+
+        # append the flat data and mask
+        flat_data_lst[flatname] = flat_data
+        flat_mask_lst[flatname] = mask_array
+        aperset_lst[flatname]   = aperset
