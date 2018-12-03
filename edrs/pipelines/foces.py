@@ -1303,3 +1303,189 @@ def reduce():
         # append the flatmap
         flatmap_lst[flatname] = flatmap
 
+    ############################# Mosaic Flats #################################
+    if len(flat_groups) == 1:
+        flatname = flat_groups.keys()[0]
+        shutil.copyfile(os.path.join(midproc, '%s.fits'%flatname),
+                        os.path.join(midproc, 'flat.fits'))
+        shutil.copyfile(os.path.join(midproc, '%s_msk.fits'%flatname),
+                        os.path.join(midproc, 'flat_msk.fits'))
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'),
+                        os.path.join(midproc, 'trace.trc'))
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'),
+                        os.path.join(midproc, 'trace.reg'))
+        shutil.copyfile(os.path.join(midproc, '%s_rsp.fits'%flatname),
+                        os.path.join(midproc, 'flat_rsp.fits'))
+        flat_map = fits.getdata(os.path.join(midproc, 'flat_rsp.fits'))
+    else:
+        # mosaic apertures
+        mosaic_maxcount = config['reduce.flat'].getfloat('mosaic_maxcount')
+        mosaic_aperset = mosaic_flat_auto(
+                aperture_set_lst = aperset_lst,
+                max_count        = mosaic_maxcount,
+                )
+        # mosaic original flat images
+        flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
+        fits.writeto(os.path.join(midproc, 'flat.fits'), flat_data, overwrite=True)
+
+        # mosaic flat mask images
+        mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
+        mask_table = array_to_table(mask_data)
+        fits.writeto(os.path.join(midproc, 'flat_msk.fits'), mask_table, overwrite=True)
+
+        # mosaic sensitivity map
+        flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
+        fits.writeto(os.path.join(midproc, 'flat_rsp.fits'), flat_map, overwrite=True)
+
+        mosaic_aperset.save_txt(os.path.join(midproc, 'trace.trc'))
+        mosaic_aperset.save_reg(os.path.join(midproc, 'trace.reg'))
+
+    ############################## Extract ThAr ################################
+
+    if True:
+        # get the data shape
+        h, w = flat_map.shape
+
+        # define dtype of 1-d spectra
+        types = [
+                ('aperture',   np.int16),
+                ('order',      np.int16),
+                ('points',     np.int16),
+                ('wavelength', (np.float64, w)),
+                ('flux',       (np.float32, w)),
+                ]
+        _names, _formats = list(zip(*types))
+        spectype = np.dtype({'names': _names, 'formats': _formats})
+    
+        calib_lst = {}
+        count_thar = 0
+        for item in log:
+            if item.objectname[0].strip().lower()=='thar':
+                count_thar += 1
+                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                data, head = fits.getdata(filename, header=True)
+                mask = get_mask(data, head)
+
+                # correct overscan for ThAr
+                data, head = correct_overscan(data, head, mask)
+
+                # correct bias for ThAr, if has bias
+                if has_bias:
+                    data = data - bias
+                    logger.info('Bias corrected')
+                else:
+                    logger.info('No bias. skipped bias correction')
+
+                section = config['reduce.extract']
+                spectra1d = extract_aperset(data, mask,
+                            apertureset = mosaic_aperset,
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
+                            )
+                head = mosaic_aperset.to_fitsheader(head, channel=None)
+    
+                spec = []
+                for aper, _item in sorted(spectra1d.items()):
+                    flux_sum = _item['flux_sum']
+                    spec.append(
+                             (aper, 0, flux_sum.size,
+                              np.zeros_like(flux_sum, dtype=np.float64),
+                              flux_sum)
+                             )
+                spec = np.array(spec, dtype=spectype)
+    
+                section = config['reduce.wvcalib']
+
+                if count_thar == 1:
+                    # in the first thar, try to find previouse calibration results
+                    ref_spec, ref_calib, ref_aperset = select_calib_from_database(
+                            'Xinglong216HRS', 'DATE-STA', head['DATE-STA'],
+                            channel = None)
+    
+                    if ref_spec is None or ref_calib is None:
+                        # if failed, pop up a calibration window
+                        calib = wvcalib(spec,
+                            filename      = '%s.fits'%item.fileid,
+                            identfilename = 'a.idt',
+                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                            channel       = None,
+                            linelist      = section.get('linelist'),
+                            window_size   = section.getint('window_size'),
+                            xorder        = section.getint('xorder'),
+                            yorder        = section.getint('yorder'),
+                            maxiter       = section.getint('maxiter'),
+                            clipping      = section.getfloat('clipping'),
+                            snr_threshold = section.getfloat('snr_threshold'),
+                            )
+                    else:
+                        # if success, run recalib
+                        aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                        calib = recalib(spec,
+                            filename      = '%s.fits'%item.fileid,
+                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                            ref_spec      = ref_spec,
+                            channel       = None,
+                            linelist      = section.get('linelist'),
+                            identfilename = '',
+                            aperture_offset = aper_offset,
+                            coeff         = ref_calib['coeff'],
+                            npixel        = ref_calib['npixel'],
+                            window_size   = ref_calib['window_size'],
+                            xorder        = ref_calib['xorder'],
+                            yorder        = ref_calib['yorder'],
+                            maxiter       = ref_calib['maxiter'],
+                            clipping      = ref_calib['clipping'],
+                            snr_threshold = ref_calib['snr_threshold'],
+                            k             = ref_calib['k'],
+                            offset        = ref_calib['offset'],
+                            )
+                    # then use this thar as reference
+                    ref_calib = calib
+                    ref_spec  = spec
+                else:
+                    # for other ThArs, no aperture offset
+                    calib = recalib(spec,
+                        filename      = '%s.fits'%item.fileid,
+                        figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                        ref_spec      = ref_spec,
+                        channel       = None,
+                        linelist      = section.get('linelist'),
+                        identfilename = '',
+                        aperture_offset = 0,
+                        coeff         = ref_calib['coeff'],
+                        npixel        = ref_calib['npixel'],
+                        window_size   = ref_calib['window_size'],
+                        xorder        = ref_calib['xorder'],
+                        yorder        = ref_calib['yorder'],
+                        maxiter       = ref_calib['maxiter'],
+                        clipping      = ref_calib['clipping'],
+                        snr_threshold = ref_calib['snr_threshold'],
+                        k             = ref_calib['k'],
+                        offset        = ref_calib['offset'],
+                        )
+                
+                hdu_lst = self_reference_singlefiber(spec, head, calib)
+                filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+                hdu_lst.writeto(filename, overwrite=True)
+
+                # add more infos in calib
+                calib['fileid']   = item.fileid
+                calib['date-obs'] = head['DATE-STA']
+                calib['exptime']  = head['EXPTIME']
+                # pack to calib_lst
+                calib_lst[item.frameid] = calib
+
+        for frameid, calib in sorted(calib_lst.items()):
+            print(' [%3d] %s - %4d/%4d r.m.s = %7.5f'%(frameid,
+                    calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
+    
+        # print promotion and read input frameid list
+        string = input('select references: ')
+        ref_frameid_lst = [int(s) for s in string.split(',')
+                                    if len(s.strip())>0 and
+                                    s.strip().isdigit() and
+                                    int(s) in calib_lst]
+        ref_calib_lst    = [calib_lst[frameid]
+                                for frameid in ref_frameid_lst]
+        ref_datetime_lst = [calib_lst[frameid]['date-obs']
+                                for frameid in ref_frameid_lst]
