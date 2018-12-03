@@ -2,7 +2,6 @@ import os
 import time
 import math
 import logging
-
 logger = logging.getLogger(__name__)
 
 import numpy as np
@@ -1105,15 +1104,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 fitpar_lst.append(blank_p)
 
         if break_aperture:
-            break
+            logger.debug('Break aperture %d because of break_aperture=True'%aper)
+            continue
 
         fitpar_lst = np.array(fitpar_lst)
 
         if np.isnan(fitpar_lst[:,0]).sum()>0.5*w:
-            break
+            logger.debug('Break aperture %d because of too many NaN values in aperpar'%aper)
+            continue
 
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
-            break
+            logger.debug('Break aperture %d because of too few real values in aperpar'%aper)
+            continue
 
         # prepare the figure for plotting the parameters of each aperture
         if plot_aperpar:
@@ -1129,12 +1131,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         # divide the whole order into several groups
         xx = np.nonzero(fitmask)[0]
         group_lst = np.split(xx, np.where(np.diff(xx) > 4)[0]+1)
-        # group_lst is composed of (x1, x2, ..., xN), where xi is index in newx_lst
+        # group_lst is composed of (x1, x2, ..., xN), where xi is index in
+        # **newx_lst**
         # 4 means the maximum tolerance skipping value in fitmask is 3
         # filter out short segments
         # every index in group is index in newx_lst, NOT real pixel numbers
         group_lst = [group for group in group_lst
                     if newx_lst[group[-1]] - newx_lst[group[0]] > w/10]
+
+        if len(group_lst) == 0:
+            print('Skip Aperture %2d'%aper)
+            logger.debug('Skip aperture %d because of no group'%aper)
+            continue
 
         # loop for A, k, c, bkg. Smooth these parameters
         for ipara in range(4):
@@ -1146,6 +1154,13 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 aperpar = np.array([np.nan]*w)
                 xpiece_lst     = np.array([np.nan]*newx_lst.size)
                 ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+                mask_rej_lst   = np.array([np.nan]*newx_lst.size)
+                # the dtype of xpiece_lst and ypiece_lst is np.float64
+
+                # first try, scan every segment. find method by checking the
+                # local maximum points after smoothing. Meanwhile, save the
+                # smoothing results in case the smoothing will be used
+                # afterwards.
                 for group in group_lst:
                     i1, i2 = group[0], group[-1]
                     p1, p2 = newx_lst[i1], newx_lst[i2]
@@ -1159,16 +1174,26 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     # now xpiece and ypiece are ready
 
                     _m = np.ones_like(ypiece, dtype=np.bool)
-                    for ite in range(5):
+                    for ite in range(3):
                         f = intp.InterpolatedUnivariateSpline(xpiece[_m], ypiece[_m], k=3)
                         ypiece2 = f(xpiece)
-                        ysmooth = sg.savgol_filter(ypiece2, window_length=21, polyorder=3)
+                        win_len = (11, 21)[ypiece2.size>23]
+                        ysmooth = sg.savgol_filter(ypiece2, window_length=win_len, polyorder=3)
                         res = ypiece - ysmooth
                         std = res.std()
-                        _new_m = _m*(np.abs(res) < 3*std)
+                        _new_m = np.abs(res) < 3*std
+
+                        # prevent extrapolation at the boundaries
+                        if _new_m.size > 3:
+                            _new_m[0:3] = True
+                            _new_m[-3:] = True
+                        _new_m = _m*_new_m
+
                         if _new_m.sum() == _m.sum():
                             break
                         _m = _new_m
+                    # now xpiece, ypiece, ypiece2, ysmooth, res, and _m have the
+                    # same lengths and meanings on their positions of elements
 
                     f = intp.InterpolatedUnivariateSpline(xpiece, ysmooth, k=3)
                     _x = np.arange(p1, p2+1)
@@ -1176,6 +1201,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     aperpar[_x] = f(_x)
                     xpiece_lst[group] = xpiece
                     ypiece_res_lst[group] = res
+                    mask_rej_lst[group] = ~_m
 
                     # find out if this order is affected by fringes, by checking
                     # the distribution of local maximum points
@@ -1184,7 +1210,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         x = xpiece[imax]
                     else:
                         x = []
-                    bins = np.linspace(p1, p2, int(p2-p1)/500+2)
+                    # determine how many pixels in each bin.
+                    # if w=4000, then 500 pix. if w=2000, then 250 pix.
+                    npixbin = w//8
+                    bins = np.linspace(p1, p2, int(p2-p1)/npixbin+2)
                     hist, _ = np.histogram(x, bins)
 
                     n_nonzerobins = np.nonzero(hist)[0].size
@@ -1198,12 +1227,17 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         # no fringe
                         method = 'smooth'
                     method_lst.append(method)
+                    # write to running log
+                    logger.debug('Aperture {}, A, {}-{}, {}, {}, {}'.format(
+                        aper, p1, p2, n_nonzerobins, n_zerobins, method))
 
                 # use global polynomial fitting if this order is affected by
                 # fringe and the following conditions are satisified
                 if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
                     newx_lst[group_lst[-1][-1]] > w/2 and \
                     method_lst.count('poly') == len(method_lst):
+                    # fit polynomial over the whole order
+
                     # prepare xpiece and y piece
                     xpiece = np.concatenate([newx_lst[group] for group in group_lst])
                     ypiece = np.concatenate([ypara[group] for group in group_lst])
@@ -1219,13 +1253,16 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         deg = 3
                     else:
                         deg = 4
-                    coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
-                        xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                    coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                        xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                        upper_clip=3)
                     aperpar = np.polyval(coeff, allx/w)
                     xpiece_lst = xpiece
                     ypiece_res_lst = ypiece_res
+                    mask_rej_lst = ~_m
                 else:
                     # scan again
+                    # fit polynomial for every segment
                     for group, method in zip(group_lst, method_lst):
                         if method=='poly':
                             xpiece = newx_lst[group]
@@ -1239,18 +1276,22 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                                 deg = 3
                             else:
                                 deg = 4
-                            coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
-                                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                            coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                                xpiece/w, ypiece, deg=deg, maxiter=10,
+                                lower_clip=3, upper_clip=3)
+
                             ii = np.arange(xpiece[0], xpiece[-1]+1)
                             aperpar[ii] = np.polyval(coeff, ii/w)
                             xpiece_lst[group]     = xpiece
                             ypiece_res_lst[group] = ypiece_res
+                            mask_rej_lst[group]   = ~_m
 
             else:
                 # fit for k, c, bkg
 
                 if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
                     newx_lst[group_lst[-1][-1]] > w/2:
+                    # fit polynomial over the whole order
                     xpiece = np.concatenate([newx_lst[group] for group in group_lst])
                     ypiece = np.concatenate([ypara[group] for group in group_lst])
 
@@ -1263,16 +1304,20 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         deg = 3
                     else:
                         deg = 4
-                    coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
-                        xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                    coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                        xpiece/w, ypiece, deg=deg, maxiter=10,
+                        lower_clip=3, upper_clip=3)
 
                     aperpar = np.polyval(coeff, allx/w)
-                    xpiece_lst = xpiece
+                    xpiece_lst     = xpiece
                     ypiece_res_lst = ypiece_res
+                    mask_rej_lst   = ~_m
                 else:
+                    # fit polynomial for every segment
                     aperpar = np.array([np.nan]*w)
                     xpiece_lst     = np.array([np.nan]*newx_lst.size)
                     ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+                    mask_rej_lst   = np.array([np.nan]*newx_lst.size)
                     for group in group_lst:
                         xpiece = newx_lst[group]
                         ypiece = ypara[group]
@@ -1285,12 +1330,15 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                             deg = 3
                         else:
                             deg = 4
-                        coeff, ypiece_fit, ypiece_res, mask, std = iterative_polyfit(
-                            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3, upper_clip=3)
+                        coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                            upper_clip=3)
+
                         ii = np.arange(xpiece[0], xpiece[-1]+1)
                         aperpar[ii] = np.polyval(coeff, ii/w)
                         xpiece_lst[group]     = xpiece
                         ypiece_res_lst[group] = ypiece_res
+                        mask_rej_lst[group]   = ~_m
 
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
@@ -1309,6 +1357,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 # plot fitted value
                 ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
                     lw=1, zorder=2)
+
                 #ax1.plot(newx_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
                 #        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax1.get_ylim()
@@ -1325,6 +1374,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         lw=0.5, alpha=0.4, zorder=-1)
                 ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
                         alpha=0.4, zorder=-1)
+                # plot rejected points with gray dots
+                _m = mask_rej_lst>0
+                if _m.sum()>0:
+                    ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                            color='gray', lw=0.5, ms=2, alpha=0.4)
 
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)

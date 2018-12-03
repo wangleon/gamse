@@ -1276,6 +1276,7 @@ def reduce():
             flatmap = fits.getdata(flatmap_filename)
         else:
             # do flat fielding
+            print('*** Start parsing flat fielding: %s ***'%flatname)
             fig_aperpar = {
                 'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
                 'normal': None,
@@ -1302,4 +1303,3 @@ def reduce():
         # append the flatmap
         flatmap_lst[flatname] = flatmap
 
-    ############################# Mosaic Flats #################################
