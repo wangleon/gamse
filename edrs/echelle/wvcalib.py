@@ -1255,17 +1255,21 @@ class CalibWindow(tk.Frame):
 
 
 
-def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
+def wvcalib(spec, filename, figfilename, linelist, channel, identfilename=None, 
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
     snr_threshold=10):
-    '''Wavelength calibration.
+    '''Identify the wavelengths of emission lines in the spectrum of a
+    hollow-cathode lamp.
 
     Args:
         spec (:class:`numpy.dtype`): 1-D spectra.
-        identfilename (str): Filename of wavelength identification.
-        figfilename (str): Filename of the output wavelength figure.
+        filename (str): A filename to be displayed on the top of the calibration
+            window and output figure.
+        figfilename (str): Name of the output wavelength figure to be saved.
         linelist (str): Name of wavelength standard file.
         channel (str): Name of the input channel.
+        identfilename (str): Name of an ASCII formatted wavelength identification
+            file.
         window_size (int): Size of the window in pixel to search for the
             lines.
         xorder (int): Degree of polynomial along X direction.
@@ -1274,6 +1278,7 @@ def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
         clipping (float): Threshold of sigma-clipping.
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
+
     Returns:
         dict: A dict containing:
 
@@ -1301,13 +1306,19 @@ def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
             * **clipping** (*float*) – Clipping value of the wavelength fitting.
             * **snr_threshold** (*float*) – Minimum S/N of the spectral lines to
               be accepted in the wavelength fitting.
+
+    Notes:
+        If **identfilename** is given and exist, load the identified wavelengths
+        from this ASCII file, and display them in the calibration window. If not
+        exist, save the identified list into **identfilename** with ASCII
+        format.
         
     See also:
         :func:`recalib`
     '''
 
     # initialize fitting list
-    if os.path.exists(identfilename):
+    if identfilename is not None and os.path.exists(identfilename):
         identlist, _ = load_ident(identfilename, channel=channel)
     else:
         identlist = {}
@@ -1387,8 +1398,10 @@ def wvcalib(spec, filename, identfilename, figfilename, linelist, channel,
             }
 
     # save ident list
-    if len(calibwindow.identlist)>0:
-        save_ident(calibwindow.identlist, calibwindow.param['coeff'], identfilename, channel)
+    if len(calibwindow.identlist)>0 and \
+        identfilename is not None and not os.path.exists(identfilename):
+        save_ident(calibwindow.identlist, calibwindow.param['coeff'],
+                    identfilename, channel)
 
     return result
 
@@ -2111,8 +2124,18 @@ class CalibFigure(Figure):
         self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
 
 
-def select_calib_from_database(instrument, time_key, date, channel):
-    path = os.path.join(os.getenv('HOME'), '.edrs/wvcalib/%s'%instrument)
+def select_calib_from_database(path, time_key, date, channel):
+    '''Select a previous calibration result in database.
+
+    Args:
+        path (str):
+        time_key (str):
+        date ():
+        channel ():
+
+    Returns:
+        
+    '''
     if not os.path.exists(path):
         return None, None, None
     filename_lst = []

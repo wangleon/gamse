@@ -79,15 +79,10 @@ Background Correction
 
 Wavelength Calibration
 ----------------------
+calibration functions:
+
 .. currentmodule:: edrs.echelle.wvcalib
 .. autosummary::
-    CalibWindow
-    CalibFigure
-    PlotFrame
-    CustomToolbar
-    InfoFrame
-    LineTable
-    FitparaFrame
     wvcalib
     recalib
     fit_wv
@@ -105,6 +100,18 @@ Wavelength Calibration
     search_linelist
     reference_wv
     get_aperture_coeffs_in_header
+
+GUI-related:
+
+.. currentmodule:: edrs.echelle.wvcalib
+.. autosummary::
+    CalibWindow
+    CalibFigure
+    PlotFrame
+    CustomToolbar
+    InfoFrame
+    LineTable
+    FitparaFrame
 
 .. automodule:: edrs.echelle.wvcalib
    :members:
