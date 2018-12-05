@@ -509,7 +509,6 @@ def reduce():
         # get the data shape
         h, w = flat_map.shape
 
-    
         # define dtype of 1-d spectra
         types = [
                 ('aperture',   np.int16),
