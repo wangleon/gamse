@@ -21,6 +21,10 @@ from ..echelle.imageproc import (combine_images, array_to_table,
                                  table_to_array)
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
+from ..echelle.extract import extract_aperset
+from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
+                               self_reference_singlefiber,
+                               wv_reference_singlefiber, get_time_weight)
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
@@ -1364,6 +1368,8 @@ def reduce():
                 count_thar += 1
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
+                if data.ndim == 3:
+                    data = data[0,:,:]
                 mask = get_mask(data, head)
 
                 # correct overscan for ThAr
@@ -1397,18 +1403,57 @@ def reduce():
                 section = config['reduce.wvcalib']
 
                 if count_thar == 1:
-                    # in the first thar, try to find previouse calibration results
-                    ref_spec, ref_calib, ref_aperset = select_calib_from_database(
-                            'Xinglong216HRS', 'DATE-STA', head['DATE-STA'],
-                            channel = None)
+                    # this is the first ThAr frame in this observing run
+                    if section.getboolean('search_database'):
+                        # find previouse calibration results
+                        database_path = section.get('database_path')
+                        search_path = os.path.join(database_path, 'FOCES/wlcalib')
+                        ref_spec, ref_calib, ref_aperset = select_calib_from_database(
+                            'FOCES', 'FRAME', head['FRAME'], channel=None)
     
-                    if ref_spec is None or ref_calib is None:
-                        # if failed, pop up a calibration window
+                        # if failed, pop up a calibration window and identify
+                        # the wavelengths manually
+                        if ref_spec is None or ref_calib is None:
+                            calib = wvcalib(spec,
+                                filename      = '%s.fits'%item.fileid,
+                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                channel       = None,
+                                linelist      = section.get('linelist'),
+                                window_size   = section.getint('window_size'),
+                                xorder        = section.getint('xorder'),
+                                yorder        = section.getint('yorder'),
+                                maxiter       = section.getint('maxiter'),
+                                clipping      = section.getfloat('clipping'),
+                                snr_threshold = section.getfloat('snr_threshold'),
+                                )
+                        else:
+                            # if success, run recalib
+                            aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                            calib = recalib(spec,
+                                filename      = '%s.fits'%item.fileid,
+                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                ref_spec      = ref_spec,
+                                channel       = None,
+                                linelist      = section.get('linelist'),
+                                aperture_offset = aper_offset,
+                                coeff         = ref_calib['coeff'],
+                                npixel        = ref_calib['npixel'],
+                                window_size   = ref_calib['window_size'],
+                                xorder        = ref_calib['xorder'],
+                                yorder        = ref_calib['yorder'],
+                                maxiter       = ref_calib['maxiter'],
+                                clipping      = ref_calib['clipping'],
+                                snr_threshold = ref_calib['snr_threshold'],
+                                k             = ref_calib['k'],
+                                offset        = ref_calib['offset'],
+                                )
+                    else:
+                        # do not search the database
                         calib = wvcalib(spec,
                             filename      = '%s.fits'%item.fileid,
-                            identfilename = 'a.idt',
                             figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
                             channel       = None,
+                            identfilename = section.get('ident_file', None),
                             linelist      = section.get('linelist'),
                             window_size   = section.getint('window_size'),
                             xorder        = section.getint('xorder'),
@@ -1417,29 +1462,8 @@ def reduce():
                             clipping      = section.getfloat('clipping'),
                             snr_threshold = section.getfloat('snr_threshold'),
                             )
-                    else:
-                        # if success, run recalib
-                        aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
-                        calib = recalib(spec,
-                            filename      = '%s.fits'%item.fileid,
-                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
-                            ref_spec      = ref_spec,
-                            channel       = None,
-                            linelist      = section.get('linelist'),
-                            identfilename = '',
-                            aperture_offset = aper_offset,
-                            coeff         = ref_calib['coeff'],
-                            npixel        = ref_calib['npixel'],
-                            window_size   = ref_calib['window_size'],
-                            xorder        = ref_calib['xorder'],
-                            yorder        = ref_calib['yorder'],
-                            maxiter       = ref_calib['maxiter'],
-                            clipping      = ref_calib['clipping'],
-                            snr_threshold = ref_calib['snr_threshold'],
-                            k             = ref_calib['k'],
-                            offset        = ref_calib['offset'],
-                            )
-                    # then use this thar as reference
+
+                    # then use this ThAr as the reference
                     ref_calib = calib
                     ref_spec  = spec
                 else:
@@ -1450,7 +1474,6 @@ def reduce():
                         ref_spec      = ref_spec,
                         channel       = None,
                         linelist      = section.get('linelist'),
-                        identfilename = '',
                         aperture_offset = 0,
                         coeff         = ref_calib['coeff'],
                         npixel        = ref_calib['npixel'],
@@ -1470,8 +1493,8 @@ def reduce():
 
                 # add more infos in calib
                 calib['fileid']   = item.fileid
-                calib['date-obs'] = head['DATE-STA']
-                calib['exptime']  = head['EXPTIME']
+                calib['date-obs'] = head['FRAME']
+                calib['exptime']  = head['EXPOSURE']
                 # pack to calib_lst
                 calib_lst[item.frameid] = calib
 

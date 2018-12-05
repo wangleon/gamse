@@ -1496,8 +1496,10 @@ def get_wv_val(coeff, npixel, pixel, order):
         pixel (*int* or :class:`numpy.ndarray`): Pixel coordinates.
         order (*int* or :class:`numpy.ndarray`): Diffraction order number.
             Must have the same length as **pixel**.
+
     Returns:
         float or :class:`numpy.ndarray`: Wavelength solution of the given pixels.
+
     See also:
         :func:`fit_wv`
 
@@ -1521,6 +1523,7 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         identlist (dict): Dict of identified lines for different apertures.
         linelist (list): List of wavelength standards.
         param (dict): Parameters of the :class:`CalibWindow`.
+
     Returns:
         float: Guessed wavelength. If failed, return *None*.
         
@@ -1557,6 +1560,7 @@ def is_identified(wavelength, identlist, aperture):
         wavelength (float): Wavelength of the input line.
         identlist (dict): Dict of identified lines.
         aperture (int): Aperture number.
+
     Returns:
         bool: *True* if **wavelength** and **aperture** in **identlist**.
     
@@ -1580,6 +1584,7 @@ def find_order(identlist, npixel):
     Args:
         identlist (dict): Dict of identified lines.
         npixel (int): Number of pixels along the main dispersion direction.
+
     Returns:
         tuple: A tuple containing:
 
@@ -1638,8 +1643,6 @@ def save_ident(identlist, coeff, filename, channel):
         result (dict): A dict containing identification results.
         filename (str): Name of the ASCII file.
         channel (str): Name of channel.
-    Returns:
-        No returns.
 
     See also:
         :func:`load_ident`
@@ -1853,7 +1856,8 @@ def search_linelist(linelistname):
     '''Search the line list file and load the list.
 
     Args:
-        linelistname (str): Name of the line list file
+        linelistname (str): Name of the line list file.
+
     Returns:
         *string*: Path to the line list file
     '''
@@ -1894,6 +1898,7 @@ def load_linelist(filename):
 
     Args:
         filename (str): Name of the wavelength standard list file.
+
     Returns:
         *list*: A list containing (wavelength, species).
     '''
@@ -1920,6 +1925,7 @@ def find_shift_ccf(f1, f2, shift0=0.0):
         f1 (:class:`numpy.ndarray`): Flux array.
         f2 (:class:`numpy.ndarray`): Flux array.
         shift (float): Approximate relative shift between the two flux arrays.
+
     Returns:
         float: Relative shift between the two flux arrays.
     '''
@@ -1936,6 +1942,7 @@ def find_shift_ccf2(f1, f2, shift0=0.0):
         f1 (:class:`numpy.ndarray`): Flux array.
         f2 (:class:`numpy.ndarray`): Flux array.
         shift (float): Approximate relative shift between the two flux arrays.
+
     Returns:
         float: Relative shift between the two flux arrays.
     '''
@@ -1960,6 +1967,7 @@ def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
         spec2 (:class:`numpy.dtype`): Spectra array.
         offset (float): Approximate relative shift between the two spectra
             arrays.
+
     Returns:
         float: Calculated relative shift between the two spectra arrays.
     '''
@@ -2124,16 +2132,22 @@ class CalibFigure(Figure):
         self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
 
 
-def select_calib_from_database(path, time_key, date, channel):
+def select_calib_from_database(path, time_key, current_time, channel):
     '''Select a previous calibration result in database.
 
     Args:
-        path (str):
-        time_key (str):
-        date ():
-        channel ():
+        path (str): Path to search for the calibration files.
+        time_key (str): Name of the key in the FITS header.
+        current_time (str): Time string of the file to be calibrated.
+        channel (str): Name of channel.
 
     Returns:
+        tuple: A tuple containing:
+
+            * **spec** (:class:`numpy.dtype`): An array of previous calibrated
+                spectra.
+            * **calib** (dict): Previous calibration results.
+            * **aperset** ():
         
     '''
     if not os.path.exists(path):
@@ -2144,19 +2158,20 @@ def select_calib_from_database(path, time_key, date, channel):
         if fname[-9:]=='_wlc.fits':
             filename = os.path.join(path, fname)
             head = fits.getheader(filename)
-            datetime = dateutil.parser.parse(head[time_key])
+            _datetime = dateutil.parser.parse(head[time_key])
             filename_lst.append(filename)
-            datetime_lst.append(datetime)
+            datetime_lst.append(_datetime)
     if len(filename_lst)==0:
         return None, None, None
 
-    input_datetime = dateutil.parser.parse(date)
-    deltat_lst = np.array([abs((input_datetime - datetime).total_seconds())
-                            for datetime in datetime_lst])
+    # select the FITS file with the shortest interval in time.
+    input_datetime = dateutil.parser.parse(current_time)
+    deltat_lst = np.array([abs((input_datetime - _datetime).total_seconds())
+                            for _datetime in datetime_lst])
     imin = deltat_lst.argmin()
     sel_filename = filename_lst[imin]
 
-    #
+    # load spec, calib, and aperset from selected FITS file
     f = fits.open(sel_filename)
     head = f[0].header
     spec = f[1].data
@@ -2167,16 +2182,17 @@ def select_calib_from_database(path, time_key, date, channel):
     return spec, calib, aperset
 
 
-def recalib(spec, filename, identfilename, figfilename, ref_spec, linelist,
-    channel, coeff, npixel, k, offset, aperture_offset=0, window_size=13,
-    xorder=3, yorder=3, maxiter=10, clipping=3, snr_threshold=10):
+def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
+    npixel, k, offset, aperture_offset=0, window_size=13, xorder=3, yorder=3,
+    maxiter=10, clipping=3, snr_threshold=10):
     '''
     Re-calibrate the wavelength of an input spectra file using another spectra
     as reference.
 
     Args:
+        spec (:class:`numpy.dtype`): The spectral data array to be wavelength
+            calibrated.
         filename (str): Filename of the 1-D spectra.
-        identfilename (str): Filename of wavelength identification.
         figfilename (str): Filename of the output wavelength figure.
         ref_spec (:class:`numpy.dtype`): Reference spectra.
         linelist (str): Name of wavelength standard file.
