@@ -2056,6 +2056,9 @@ class CalibFigure(Figure):
         std    = kwargs.pop('std')
         nuse   = kwargs.pop('nuse')
         ntot   = kwargs.pop('ntot')
+
+        #wave_scale = 'linear'
+        wave_scale = 'reciprocal'
         
         #colors = 'rgbcmyk'
 
@@ -2065,18 +2068,36 @@ class CalibFigure(Figure):
         if plot_ax1:
             self._ax1.cla()
             x = np.linspace(0, npixel-1, 100, dtype=np.float64)
-            wv_min, wv_max = 1e9,0
+
+            # find the maximum and minimum wavelength
+            wl_min, wl_max = 1e9,0
+            allwave_lst = {}
+            for aperture in aperture_lst:
+                order = k*aperture + offset
+                wave = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
+                allwave_lst[aperture] = wave
+                wl_max = max(wl_max, wave.max())
+                wl_min = min(wl_min, wave.min())
+            # plot maximum and minimum wavelength, to determine the display
+            # range of this axes, and the tick positions
+            self._ax1.plot([0, 0],[wl_min, wl_max], color='none')
+            yticks = self._ax1.get_yticks()
+            self._ax1.cla()
+
 
         for aperture in aperture_lst:
             order = k*aperture + offset
             color = 'C%d'%(order%10)
 
+            # plot pixel vs. wavelength
             if plot_ax1:
-                w = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
-                wv_max = max(wv_max, w.max())
-                wv_min = min(wv_min, w.min())
-                self._ax1.plot(x, w, color=color, ls='-', alpha=0.7)
+                wave = allwave_lst[aperture]
+                if wave_scale=='reciprocal':
+                    self._ax1.plot(x, 1/wave, color=color, ls='-', alpha=0.8, lw=0.8)
+                else:
+                    self._ax1.plot(x, wave, color=color, ls='-', alpha=0.8, lw=0.8)
 
+            # plot identified lines
             if aperture in identlist:
                 list1 = identlist[aperture]
                 pix_lst = list1['pixel']
@@ -2085,29 +2106,48 @@ class CalibFigure(Figure):
                 res_lst = list1['residual']
 
                 if plot_ax1:
-                    self._ax1.scatter(pix_lst[mask],  wav_lst[mask],
-                                      c=color, s=20, lw=0, alpha=0.7)
-                    self._ax1.scatter(pix_lst[~mask], wav_lst[~mask],
-                                      c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
+                    if wave_scale=='reciprocal':
+                        self._ax1.scatter(pix_lst[mask],  1/wav_lst[mask],
+                                          c=color, s=20, lw=0, alpha=0.8)
+                        self._ax1.scatter(pix_lst[~mask], 1/wav_lst[~mask],
+                                          c='w', s=16, lw=0.7, alpha=0.8,
+                                          edgecolor=color)
+                    else:
+                        self._ax1.scatter(pix_lst[mask],  wav_lst[mask],
+                                          c=color, s=20, lw=0, alpha=0.8)
+                        self._ax1.scatter(pix_lst[~mask], wav_lst[~mask],
+                                          c='w', s=16, lw=0.7, alpha=0.8,
+                                          edgecolor=color)
 
                 repeat_aper_lst = np.repeat(aperture, pix_lst.size)
                 self._ax2.scatter(repeat_aper_lst[mask], res_lst[mask],
-                                  c=color, s=20, lw=0, alpha=0.7)
+                                  c=color, s=20, lw=0, alpha=0.8)
                 self._ax2.scatter(repeat_aper_lst[~mask], res_lst[~mask],
-                                  c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.8, edgecolor=color)
                 self._ax3.scatter(pix_lst[mask], res_lst[mask],
-                                  c=color, s=20, lw=0, alpha=0.7)
+                                  c=color, s=20, lw=0, alpha=0.8)
                 self._ax3.scatter(pix_lst[~mask], res_lst[~mask],
-                                  c='w', s=16, lw=0.7, alpha=0.7, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.8, edgecolor=color)
 
         self._ax3._residual_text.set_text('R.M.S. = %.5f, N = %d/%d'%(std, nuse, ntot))
 
         # adjust layout for ax1
         if plot_ax1:
             self._ax1.set_xlim(0, npixel-1)
-            self._ax1.set_ylim(wv_min, wv_max)
+            if wave_scale == 'reciprocal':
+                _y11, _y22 = self._ax1.get_ylim()
+                newtick_lst, newticklabel_lst = [], []
+                for tick in yticks:
+                    if _y11 < 1/tick < _y22:
+                        newtick_lst.append(1/tick)
+                        newticklabel_lst.append(tick)
+                self._ax1.set_yticks(newtick_lst)
+                self._ax1.set_yticklabels(newticklabel_lst)
+                self._ax1.set_ylim(_y22, _y11)
             self._ax1.set_xlabel('Pixel')
             self._ax1.set_ylabel(u'$\lambda$ (\xc5)')
+            self._ax1.grid(True, ls=':', color='gray', alpha=1, lw=0.5)
+            self._ax1.set_axisbelow(True)
             self._ax1._aperture_text.set_text('')
 
         # adjust axis layout for ax2 (residual on aperture space)
