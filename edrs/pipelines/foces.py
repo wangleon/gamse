@@ -4,9 +4,7 @@ import datetime
 import logging
 logger = logging.getLogger(__name__)
 import configparser
-
 import dateutil.parser
-
 
 import numpy as np
 import astropy.io.fits as fits
@@ -25,6 +23,8 @@ from ..echelle.extract import extract_aperset
 from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wv_reference_singlefiber, get_time_weight)
+from ..echelle.background import find_background
+from .common import plot_background_aspect1
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
@@ -1512,3 +1512,99 @@ def reduce():
                                 for frameid in ref_frameid_lst]
         ref_datetime_lst = [calib_lst[frameid]['date-obs']
                                 for frameid in ref_frameid_lst]
+
+    #################### Extract Science Spectrum ##############################
+    for item in log:
+        if item.imagetype=='sci':
+
+            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+
+            logger.info('FileID: %s (%s) - start reduction: %s'%(
+                item.fileid, item.imagetype, filename))
+
+            data, head = fits.getdata(filename, header=True)
+            if data.ndim == 3:
+                data = data[0,:,:]
+            mask = get_mask(data, head)
+            # correct overscan
+            data, head = correct_overscan(data, head, mask)
+            logger.info('FileID: %s - overscan corrected'%(item.fileid))
+
+            # correct bias
+            if has_bias:
+                data = data - bias
+                logger.info('FileID: %s - bias corrected. mean value = %f'%(
+                    item.fileid, bias.mean()))
+            else:
+                logger.info('FileID: %s - no bias'%(item.fileid))
+
+            # correct flat
+            data = data/flat_map
+            logger.info('FileID: %s - flat corrected'%item.fileid)
+
+            reg_file = {'debug': os.path.join(midproc, '%s_sty.reg'%item.fileid),
+                        'normal': None,
+                        }[mode]
+
+            # correct background
+            section = config['reduce.background']
+            stray = find_background(data, mask,
+                    apertureset_lst = {'A': mosaic_aperset},
+                    ncols           = section.getint('ncols'),
+                    distance        = section.getfloat('distance'),
+                    yorder          = section.getint('yorder'),
+                    fig_section     = os.path.join(report, 'background_%s_section.png'%item.fileid),
+                    )
+            data = data - stray
+
+            if mode == 'debug':
+                # save the stray and background corrected images
+                fits.writeto(os.path.join(midproc, '%s_sty.fits'%item.fileid),
+                            stray, overwrite=True)
+                fits.writeto(os.path.join(midproc, '%s_bkg.fits'%item.fileid),
+                            data, overwrite=True)
+
+            # plot stray light
+            plot_background_aspect1(data + stray, stray,
+                    os.path.join(report, 'background_%s_stray.png'%item.fileid))
+
+            logger.info('FileID: %s - background corrected'%(item.fileid))
+
+            # extract 1d spectrum
+            section = config['reduce.extract']
+            spectra1d = extract_aperset(data, mask,
+                        apertureset = mosaic_aperset,
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+            logger.info('FileID: %s - 1D spectra of %d orders are extracted'%(
+                item.fileid, len(spectra1d)))
+
+            # pack spectrum
+            spec = []
+            for aper, _item in sorted(spectra1d.items()):
+                flux_sum = _item['flux_sum']
+                spec.append(
+                        (aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64),
+                        flux_sum)
+                        )
+            spec = np.array(spec, dtype=spectype)
+
+            # wavelength calibration
+            weight_lst = get_time_weight(ref_datetime_lst, head['FRAME'])
+
+            logger.info('FileID: %s - wavelength calibration weights: %s'%(
+                item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
+
+            spec, head = wv_reference_singlefiber(spec, head,
+                            ref_calib_lst, weight_lst)
+
+            # pack and save wavelength referenced spectra
+            pri_hdu = fits.PrimaryHDU(header=head)
+            tbl_hdu = fits.BinTableHDU(spec)
+            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
+            filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+            hdu_lst.writeto(filename, overwrite=True)
+            logger.info('FileID: %s - Spectra written to %s'%(
+                item.fileid, filename))
