@@ -18,7 +18,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2TkAgg
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
+                                               NavigationToolbar2Tk)
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 if sys.version_info[0] < 3:
@@ -48,7 +49,7 @@ identlines_woch = np.dtype({
                np.int16, np.float64, 'S1'],
     })
 
-class CustomToolbar(NavigationToolbar2TkAgg):
+class CustomToolbar(NavigationToolbar2Tk):
     '''Class for customized matplotlib toolbar.
 
     Args:
@@ -68,7 +69,7 @@ class CustomToolbar(NavigationToolbar2TkAgg):
             ('Subplots', 'Configure subplots', 'subplots','configure_subplots'),
             ('Save', 'Save the figure', 'filesave', 'save_figure'),
         )
-        NavigationToolbar2TkAgg.__init__(self, canvas, master)
+        NavigationToolbar2Tk.__init__(self, canvas, master)
 
     def set_message(self, msg):
         '''Remove the coordinate displayed in the toolbar.
@@ -103,7 +104,7 @@ class PlotFrame(tk.Frame):
         self.ax3 = self.fig._ax3
 
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.show()
+        self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP)
         self.canvas.mpl_connect('button_press_event', master.on_click)
         self.canvas.mpl_connect('draw_event', master.on_draw)
@@ -594,7 +595,6 @@ class CalibWindow(tk.Frame):
         self.linelist  = linelist
 
         tk.Frame.__init__(self, master, width=width, height=height)
-
 
         self.param = {
             'mode':          'ident',
