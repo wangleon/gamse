@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.ticker as tck
 
-from ..utils.onedarray import pairwise, derivative
+from ..utils.onedarray import get_local_minima, pairwise, derivative
 
 class ApertureLocation(object):
     '''
@@ -596,7 +596,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             aperture locations.
 
     '''
-    from ..utils.onedarray import get_local_minima, derivative
 
     sat_mask = (mask & 4 > 0)
 
