@@ -1204,7 +1204,7 @@ def reduce():
 
     # first combine the flats
     for flatname, fileids in flat_groups.items():
-        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
+        flat_filename    = os.path.join(midproc, '%s.fits.gz'%flatname)
         aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
         aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
 
@@ -1213,8 +1213,8 @@ def reduce():
             hdu_lst = fits.open(flat_filename)
             flat_data  = hdu_lst[0].data
             exptime    = hdu_lst[0].header['EXPOSURE']
-            mask_table = hdu_lst[1].data
-            mask_array = table_to_array(mask_table, flat_data.shape)
+            mask_array = hdu_lst[1].data
+            hdu_lst.close()
             aperset = load_aperture_set(aperset_filename)
         else:
             data_lst = []
@@ -1257,17 +1257,18 @@ def reduce():
             # find saturation mask
             sat_mask = allmask > nflat/2.
             mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
-            mask_table = array_to_table(mask_array)
 
             # pack results and save to fits
-            pri_hdu = fits.PrimaryHDU(flat_data, head)
-            tbl_hdu = fits.BinTableHDU(mask_table)
-            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data, head),
+                        fits.ImageHDU(mask_array),
+                        ])
             hdu_lst.writeto(flat_filename, overwrite=True)
 
             # now flt_data and mask_array are prepared
 
             section = config['reduce.trace']
+            fig_file = os.path.join(report, 'trace_%s.png'%flatname)
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
@@ -1277,7 +1278,7 @@ def reduce():
                         degree     = section.getint('degree'),
                         display    = section.getboolean('display'),
                         filename   = flat_filename,
-                        fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
+                        fig_file   = fig_file,
                         )
             aperset.save_txt(aperset_filename)
             aperset.save_reg(aperset_regname)
@@ -1291,7 +1292,7 @@ def reduce():
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flat_filename = os.path.join(midproc, '%s.fits'%flatname)
+        flat_filename = os.path.join(midproc, '%s.fits.gz'%flatname)
         hdu_lst = fits.open(flat_filename)
         if len(hdu_lst)>=3:
             flatmap = hdu_lst[2].data
@@ -1319,23 +1320,25 @@ def reduce():
                         )
             
             # append the sensitity map to fits file
-            imagehdu = fits.ImageHDU(flatmap)
-            hdu_lst.append(imagehdu)
-            hdu_lst.writeto(flat_filename, overwrite=True)
+            fits.append(flat_filename, flatmap)
 
         # append the flatmap
         flatmap_lst[flatname] = flatmap
 
     ############################# Mosaic Flats #################################
+    flat_file = os.path.join(midproc, 'flat.fits.gz')
+    trac_file = os.path.join(midproc, 'trace.trc')
+    treg_file = os.path.join(midproc, 'trace.reg')
     if len(flat_groups) == 1:
+        # there's only 1 kind of flat
         flatname = flat_groups.keys()[0]
-        shutil.copyfile(os.path.join(midproc, '%s.fits'%flatname),
-                        os.path.join(midproc, 'flat.fits'))
-        shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'),
-                        os.path.join(midproc, 'trace.trc'))
-        shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'),
-                        os.path.join(midproc, 'trace.reg'))
-        flat_map = fits.getdata(os.path.join(midproc, 'flat.fits'), ext=2)
+        shutil.copyfile(os.path.join(midproc, '%s.fits.gz'%flatname),
+                        flat_file)
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'%flatname),
+                        trac_file)
+        shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'%flatname),
+                        treg_file)
+        flat_map = flatmap_lst[flatname]
     else:
         # mosaic apertures
         mosaic_maxcount = config['reduce.flat'].getfloat('mosaic_maxcount')
@@ -1347,20 +1350,18 @@ def reduce():
         flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
         # mosaic flat mask images
         mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
-        mask_table = array_to_table(mask_data)
         # mosaic sensitivity map
         flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
         # mosaic exptime-normalized flat images
         flat_norm = mosaic_images(flat_norm_lst, mosaic_aperset)
 
         # pack and save to fits file
-        pri_hdu = fits.PrimaryHDU(flat_data)
-        tbl_hdu = fits.BinTableHDU(mask_table)
-        map_hdu = fits.ImageHDU(flat_map)
-        nrm_hdu = fits.ImageHDU(flat_norm)
-
-        hdu_lst = fits.HDUList([pri_hdu, tbl_hdu, map_hdu, nrm_hdu])
-        flat_file = os.path.join(midproc, 'flat.fits')
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(mask_data),
+                    fits.ImageHDU(flat_map),
+                    fits.ImageHDU(flat_norm),
+                    ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
         mosaic_aperset.save_txt(os.path.join(midproc, 'trace.trc'))
@@ -1564,31 +1565,24 @@ def reduce():
             data = data/flat_map
             logger.info('FileID: %s - flat corrected'%item.fileid)
 
-            reg_file = {'debug': os.path.join(midproc, '%s_sty.reg'%item.fileid),
-                        'normal': None,
-                        }[mode]
-
             # correct background
             section = config['reduce.background']
+            figname_sec = os.path.join(report,
+                    'background_%s_section.png'%item.fileid)
+
             stray = find_background(data, mask,
                     apertureset_lst = {'A': mosaic_aperset},
                     ncols           = section.getint('ncols'),
                     distance        = section.getfloat('distance'),
                     yorder          = section.getint('yorder'),
-                    fig_section     = os.path.join(report, 'background_%s_section.png'%item.fileid),
+                    fig_section     = figname_sec,
                     )
             data = data - stray
 
-            if mode == 'debug':
-                # save the stray and background corrected images
-                fits.writeto(os.path.join(midproc, '%s_sty.fits'%item.fileid),
-                            stray, overwrite=True)
-                fits.writeto(os.path.join(midproc, '%s_bkg.fits'%item.fileid),
-                            data, overwrite=True)
-
             # plot stray light
-            plot_background_aspect1(data + stray, stray,
-                    os.path.join(report, 'background_%s_stray.png'%item.fileid))
+            bkg_figname = os.path.join(report,
+                    'background_%s_stray.png'%item.fileid)
+            plot_background_aspect1(data + stray, stray, bkg_figname)
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
