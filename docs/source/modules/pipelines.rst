@@ -1,16 +1,25 @@
 Pipelines for Individual Spectrographs
 ======================================
 
+.. currentmodule:: edrs.pipelines
+.. autosummary::
+   reduce_echelle
+   make_log
+   show_spectra1d
+
+.. automodule:: edrs.pipelines
+   :members:
+   :private-members:
+   :inherited-members:
+   :undoc-members:
+
+
 Common Resources
 ----------------
 .. currentmodule:: edrs.pipelines.common
 .. autosummary::
-   get_instrument
-   find_rawdata
-   reduce_echelle
-   make_log
    plot_spectra1d
-   show_spectra1d
+   plot_background_aspect1
 
 .. automodule:: edrs.pipelines.common
    :members:
@@ -43,7 +52,6 @@ Xinglong 2.16m HRS
    get_mask
    get_badpixel_mask
    correct_overscan
-   plot_background
    reduce
 
 .. automodule:: edrs.pipelines.xinglong216hrs
