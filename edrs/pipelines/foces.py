@@ -1086,12 +1086,12 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata = config['data']['rawdata']
+    rawdata = config['data'].get('rawdata')
     section = config['reduce']
-    midproc = section['midproc']
-    result  = section['result']
-    report  = section['report']
-    mode    = section.get('mode', 'normal')
+    midproc = section.get('midproc')
+    result  = section.get('result')
+    report  = section.get('report')
+    mode    = section.get('mode')
 
     # create folders if not exist
     if not os.path.exists(report):
@@ -1101,7 +1101,7 @@ def reduce():
     if not os.path.exists(midproc):
         os.mkdir(midproc)
 
-    ########################### parse bias #############################
+    ################################ parse bias ################################
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -1164,7 +1164,7 @@ def reduce():
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             has_bias = True
-            logger.info('Bias image written to "bias.fits"')
+            logger.info('Bias image written to "%s"'%bias_file)
         else:
             # no bias in this dataset
             has_bias = False
@@ -1364,8 +1364,8 @@ def reduce():
                     ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
-        mosaic_aperset.save_txt(os.path.join(midproc, 'trace.trc'))
-        mosaic_aperset.save_reg(os.path.join(midproc, 'trace.reg'))
+        mosaic_aperset.save_txt(trac_file)
+        mosaic_aperset.save_reg(treg_file)
 
     ############################## Extract ThAr ################################
 
@@ -1430,9 +1430,10 @@ def reduce():
                     if section.getboolean('search_database'):
                         # find previouse calibration results
                         database_path = section.get('database_path')
-                        search_path = os.path.join(database_path, 'FOCES/wlcalib')
+                        search_path = os.path.join(database_path,
+                                                    'FOCES/wlcalib')
                         ref_spec, ref_calib, ref_aperset = select_calib_from_database(
-                            'FOCES', 'FRAME', head['FRAME'], channel=None)
+                            search_path, 'FRAME', head['FRAME'], channel=None)
     
                         # if failed, pop up a calibration window and identify
                         # the wavelengths manually
@@ -1568,7 +1569,7 @@ def reduce():
             # correct background
             section = config['reduce.background']
             figname_sec = os.path.join(report,
-                    'background_%s_section.png'%item.fileid)
+                            'background_%s_section.png'%item.fileid)
 
             stray = find_background(data, mask,
                     apertureset_lst = {'A': mosaic_aperset},

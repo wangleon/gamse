@@ -22,7 +22,7 @@ from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wv_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
-
+from .common import plot_background_aspect1
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
@@ -247,12 +247,12 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata = config['data']['rawdata']
+    rawdata = config['data'].get('rawdata')
     section = config['reduce']
-    midproc = section['midproc']
-    result  = section['result']
-    report  = section['report']
-    mode    = section.get('mode', 'normal')
+    midproc = section.get('midproc')
+    result  = section.get('result')
+    report  = section.get('report')
+    mode    = section.get('mode')
 
     # create folders if not exist
     if not os.path.exists(report):
@@ -326,7 +326,7 @@ def reduce():
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             has_bias = True
-            logger.info('Bias image written to "bias.fits"')
+            logger.info('Bias image written to "%s"'%bias_file)
         else:
             # no bias in this dataset
             has_bias = False
@@ -334,6 +334,8 @@ def reduce():
     ######################### find flat groups #################################
     # initialize flat_groups for single fiber
     flat_groups = {}
+    # flat_groups = {'flat_M': [fileid1, fileid2, ...],
+    #                'flat_N': [fileid1, fileid2, ...]}
     for item in log:
         name = item.objectname[0]
         g = name.split()
@@ -358,28 +360,32 @@ def reduce():
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
+    flat_norm_lst = {}
     flat_mask_lst = {}
     aperset_lst   = {}
 
     # first combine the flats
     for flatname, fileids in flat_groups.items():
-        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
-        mask_filename    = os.path.join(midproc, '%s_msk.fits'%flatname)
+        flat_filename    = os.path.join(midproc, '%s.fits.gz'%flatname)
         aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
         aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
 
         # get flat_data and mask_array
-        if os.path.exists(flat_filename) and os.path.exists(mask_filename) and \
-           os.path.exists(aperset_filename):
-            flat_data  = fits.getdata(flat_filename)
-            mask_table = fits.getdata(mask_filename)
-            mask_array = table_to_array(mask_table, flat_data.shape)
+        if os.path.exists(flat_filename) and os.path.exists(aperset_filename):
+            hdu_lst = fits.open(flat_filename)
+            flat_data  = hdu_lst[0].data
+            exptime    = hdu_lst[0].header['EXPTIME']
+            mask_array = hdu_lst[1].data
+            hdu_lst.close()
             aperset = load_aperture_set(aperset_filename)
         else:
             data_lst = []
+            _exptime_lst = []
             for ifile, fileid in enumerate(fileids):
+                # read each individual flat frame
                 filename = os.path.join(rawdata, '%s.fits'%fileid)
                 data, head = fits.getdata(filename, header=True)
+                _exptime_lst.append(head['EXPTIME'])
                 mask = get_mask(data, head)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
@@ -402,17 +408,27 @@ def reduce():
             print('combine %d images for %s'%(nflat, flatname))
             flat_data = combine_images(data_lst, mode='mean',
                                         upper_clip=10, maxiter=5)
-            # write combine result to fits
-            fits.writeto(flat_filename, flat_data, overwrite=True)
+
+            # get mean exposure time and write it to header
+            head = fits.Header()
+            exptime = np.array(_exptime_lst).mean()
+            head['EXPTIME'] = exptime
+
             # find saturation mask
             sat_mask = allmask > nflat/2.
             mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
-            mask_table = array_to_table(mask_array)
-            # write mask to fits
-            fits.writeto(mask_filename, mask_table, overwrite=True)
+
+            # pack results and save to fits
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data, head),
+                        fits.ImageHDU(mask_array),
+                        ])
+            hdu_lst.writeto(flat_filename, overwrite=True)
+
             # now flt_data and mask_array are prepared
 
             section = config['reduce.trace']
+            fig_file = os.path.join(report, 'trace_%s.png'%flatname)
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
@@ -422,24 +438,27 @@ def reduce():
                         degree     = section.getint('degree'),
                         display    = section.getboolean('display'),
                         filename   = flat_filename,
-                        fig_file   = os.path.join(report, 'trace_%s.png'%flatname),
+                        fig_file   = fig_file,
                         )
             aperset.save_txt(aperset_filename)
             aperset.save_reg(aperset_regname)
 
         # append the flat data and mask
         flat_data_lst[flatname] = flat_data
+        flat_norm_lst[flatname] = flat_data/exptime
         flat_mask_lst[flatname] = mask_array
         aperset_lst[flatname]   = aperset
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flatmap_filename = os.path.join(midproc, '%s_rsp.fits'%flatname)
-        if os.path.exists(flatmap_filename):
-            flatmap = fits.getdata(flatmap_filename)
+        flat_filename = os.path.join(midproc, '%s.fits.gz'%flatname)
+        hdu_lst = fits.open(flat_filename)
+        if len(hdu_lst)>=3:
+            flatmap = hdu_lst[2].data
         else:
             # do flat fielding
+            print('*** Start parsing flat fielding: %s ***'%flatname)
             fig_aperpar = {
                 'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
                 'normal': None,
@@ -460,26 +479,26 @@ def reduce():
                         slit_file   = None,
                         )
         
-            # save flat result to fits file
-            fits.writeto(flatmap_filename, flatmap, overwrite=True)
+            # append the sensitity map to fits file
+            fits.append(flat_filename, flatmap)
 
         # append the flatmap
         flatmap_lst[flatname] = flatmap
 
     ############################# Mosaic Flats #################################
+    flat_file = os.path.join(midproc, 'flat.fits.gz')
+    trac_file = os.path.join(midproc, 'trace.trc')
+    treg_file = os.path.join(midproc, 'trace.reg')
     if len(flat_groups) == 1:
+        # there's only 1 kind of flat
         flatname = flat_groups.keys()[0]
-        shutil.copyfile(os.path.join(midproc, '%s.fits'%flatname),
-                        os.path.join(midproc, 'flat.fits'))
-        shutil.copyfile(os.path.join(midproc, '%s_msk.fits'%flatname),
-                        os.path.join(midproc, 'flat_msk.fits'))
+        shutil.copyfile(os.path.join(midproc, '%s.fits.gz'%flatname),
+                        flat_file)
         shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'),
-                        os.path.join(midproc, 'trace.trc'))
+                        trac_file)
         shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'),
-                        os.path.join(midproc, 'trace.reg'))
-        shutil.copyfile(os.path.join(midproc, '%s_rsp.fits'%flatname),
-                        os.path.join(midproc, 'flat_rsp.fits'))
-        flat_map = fits.getdata(os.path.join(midproc, 'flat_rsp.fits'))
+                        treg_file)
+        flat_map = flatmap_lst[flatname]
     else:
         # mosaic apertures
         mosaic_maxcount = config['reduce.flat'].getfloat('mosaic_maxcount')
@@ -489,19 +508,24 @@ def reduce():
                 )
         # mosaic original flat images
         flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
-        fits.writeto(os.path.join(midproc, 'flat.fits'), flat_data, overwrite=True)
-
         # mosaic flat mask images
         mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
-        mask_table = array_to_table(mask_data)
-        fits.writeto(os.path.join(midproc, 'flat_msk.fits'), mask_table, overwrite=True)
-
         # mosaic sensitivity map
         flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
-        fits.writeto(os.path.join(midproc, 'flat_rsp.fits'), flat_map, overwrite=True)
+        # mosaic exptime-normalized flat images
+        flat_norm = mosaic_images(flat_norm_lst, mosaic_aperset)
 
-        mosaic_aperset.save_txt(os.path.join(midproc, 'trace.trc'))
-        mosaic_aperset.save_reg(os.path.join(midproc, 'trace.reg'))
+        # pack and save to fits file
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(mask_data),
+                    fits.ImageHDU(flat_map),
+                    fits.ImageHDU(flat_norm),
+                    ])
+        hdu_lst.writeto(flat_file, overwrite=True)
+
+        mosaic_aperset.save_txt(trac_file)
+        mosaic_aperset.save_reg(treg_file)
 
     ############################## Extract ThAr ################################
 
@@ -560,18 +584,59 @@ def reduce():
                 section = config['reduce.wvcalib']
 
                 if count_thar == 1:
-                    # in the first thar, try to find previouse calibration results
-                    ref_spec, ref_calib, ref_aperset = select_calib_from_database(
-                            'Xinglong216HRS', 'DATE-STA', head['DATE-STA'],
+                    # this is the first ThAr frame in this observing run
+                    if section.getboolean('search_database'):
+                        # find previouse calibration results
+                        database_path = section.get('database_path')
+                        search_path = os.path.join(database_path,
+                                                    'Xinglong216.HRS/wlcalib')
+                        ref_spec, ref_calib, ref_aperset = select_calib_from_database(
+                            search_path, 'DATE-STA', head['DATE-STA'],
                             channel = None)
     
-                    if ref_spec is None or ref_calib is None:
-                        # if failed, pop up a calibration window
+                        # if failed, pop up a calibration window and identify
+                        # the wavelengths manually
+                        if ref_spec is None or ref_calib is None:
+                            calib = wvcalib(spec,
+                                filename      = '%s.fits'%item.fileid,
+                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                channel       = None,
+                                linelist      = section.get('linelist'),
+                                window_size   = section.getint('window_size'),
+                                xorder        = section.getint('xorder'),
+                                yorder        = section.getint('yorder'),
+                                maxiter       = section.getint('maxiter'),
+                                clipping      = section.getfloat('clipping'),
+                                snr_threshold = section.getfloat('snr_threshold'),
+                                )
+                        else:
+                            # if success, run recalib
+                            aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                            calib = recalib(spec,
+                                filename      = '%s.fits'%item.fileid,
+                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                ref_spec      = ref_spec,
+                                channel       = None,
+                                linelist      = section.get('linelist'),
+                                aperture_offset = aper_offset,
+                                coeff         = ref_calib['coeff'],
+                                npixel        = ref_calib['npixel'],
+                                window_size   = ref_calib['window_size'],
+                                xorder        = ref_calib['xorder'],
+                                yorder        = ref_calib['yorder'],
+                                maxiter       = ref_calib['maxiter'],
+                                clipping      = ref_calib['clipping'],
+                                snr_threshold = ref_calib['snr_threshold'],
+                                k             = ref_calib['k'],
+                                offset        = ref_calib['offset'],
+                                )
+                    else:
+                        # do not search the database
                         calib = wvcalib(spec,
                             filename      = '%s.fits'%item.fileid,
-                            identfilename = 'a.idt',
                             figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
                             channel       = None,
+                            identfilename = section.get('ident_file', None),
                             linelist      = section.get('linelist'),
                             window_size   = section.getint('window_size'),
                             xorder        = section.getint('xorder'),
@@ -580,28 +645,7 @@ def reduce():
                             clipping      = section.getfloat('clipping'),
                             snr_threshold = section.getfloat('snr_threshold'),
                             )
-                    else:
-                        # if success, run recalib
-                        aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
-                        calib = recalib(spec,
-                            filename      = '%s.fits'%item.fileid,
-                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
-                            ref_spec      = ref_spec,
-                            channel       = None,
-                            linelist      = section.get('linelist'),
-                            identfilename = '',
-                            aperture_offset = aper_offset,
-                            coeff         = ref_calib['coeff'],
-                            npixel        = ref_calib['npixel'],
-                            window_size   = ref_calib['window_size'],
-                            xorder        = ref_calib['xorder'],
-                            yorder        = ref_calib['yorder'],
-                            maxiter       = ref_calib['maxiter'],
-                            clipping      = ref_calib['clipping'],
-                            snr_threshold = ref_calib['snr_threshold'],
-                            k             = ref_calib['k'],
-                            offset        = ref_calib['offset'],
-                            )
+
                     # then use this thar as reference
                     ref_calib = calib
                     ref_spec  = spec
@@ -613,7 +657,6 @@ def reduce():
                         ref_spec      = ref_spec,
                         channel       = None,
                         linelist      = section.get('linelist'),
-                        identfilename = '',
                         aperture_offset = 0,
                         coeff         = ref_calib['coeff'],
                         npixel        = ref_calib['npixel'],
@@ -653,10 +696,9 @@ def reduce():
         ref_datetime_lst = [calib_lst[frameid]['date-obs']
                                 for frameid in ref_frameid_lst]
 
-
     #################### Extract Science Spectrum ##############################
     for item in log:
-        if item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2' \
+        if (item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2')\
             or item.imagetype=='sci':
 
             filename = os.path.join(rawdata, '%s.fits'%item.fileid)
@@ -682,32 +724,24 @@ def reduce():
             data = data/flat_map
             logger.info('FileID: %s - flat corrected'%item.fileid)
 
-            reg_file = {'debug': os.path.join(midproc, '%s_sty.reg'%item.fileid),
-                        'normal': None,
-                        }[mode]
-
             # correct background
             section = config['reduce.background']
+            figname_sec = os.path.join(report,
+                            'background_%s_section.png'%item.fileid)
+
             stray = find_background(data, mask,
-                    #channels       = ['A'],
                     apertureset_lst = {'A': mosaic_aperset},
                     ncols           = section.getint('ncols'),
                     distance        = section.getfloat('distance'),
                     yorder          = section.getint('yorder'),
-                    fig_section     = os.path.join(report, 'background_%s_section.png'%item.fileid),
+                    fig_section     = figname_sec,
                     )
             data = data - stray
 
-            if mode == 'debug':
-                # save the stray and background corrected images
-                fits.writeto(os.path.join(midproc, '%s_sty.fits'%item.fileid),
-                            stray, overwrite=True)
-                fits.writeto(os.path.join(midproc, '%s_bkg.fits'%item.fileid),
-                            data, overwrite=True)
-
             # plot stray light
-            plot_background(data + stray, stray,
-                    os.path.join(report, 'background_%s_stray.png'%item.fileid))
+            bkg_figname = os.path.join(report,
+                    'background_%s_stray.png'%item.fileid)
+            plot_background_aspect1(data + stray, stray, bkg_figname)
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
