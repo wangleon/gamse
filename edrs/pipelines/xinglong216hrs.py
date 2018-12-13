@@ -655,6 +655,36 @@ def reduce():
         ref_datetime_lst = [calib_lst[frameid]['date-obs']
                                 for frameid in ref_frameid_lst]
 
+    ############################## Extract Flat ################################
+    flat_norm = flat_norm/flat_map
+    section = config['reduce.extract']
+    spectra1d = extract_aperset(flat_norm, mask_data,
+                apertureset = mosaic_aperset,
+                lower_limit = section.getfloat('lower_limit'),
+                upper_limit = section.getfloat('upper_limit'),
+                )
+    # pack spectrum
+    spec = []
+    for aper, _item in sorted(spectra1d.items()):
+        flux_sum = _item['flux_sum']
+        spec.append((aper, 0, flux_sum.size,
+            np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+    spec = np.array(spec, dtype=spectype)
+    
+    # wavelength calibration
+    weight_lst = get_time_weight(ref_datetime_lst, head['DATE-STA'])
+    head = fits.Header()
+    spec, head = wv_reference_singlefiber(spec, head, ref_calib_lst, weight_lst)
+
+    # pack and save wavelength referenced spectra
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(header=head),
+                fits.BinTableHDU(spec),
+                ])
+    filename = os.path.join(result, 'flat_wlc.fits')
+    hdu_lst.writeto(filename, overwrite=True)
+
+    exit()
     #################### Extract Science Spectrum ##############################
     for item in log:
         if (item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2')\
@@ -735,9 +765,10 @@ def reduce():
                             ref_calib_lst, weight_lst)
 
             # pack and save wavelength referenced spectra
-            pri_hdu = fits.PrimaryHDU(header=head)
-            tbl_hdu = fits.BinTableHDU(spec)
-            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(header=head),
+                        fits.BinTableHDU(spec),
+                        ])
             filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: %s - Spectra written to %s'%(
