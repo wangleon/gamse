@@ -1245,14 +1245,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     # fit with poly
                     # determine the polynomial degree
                     xspan = xpiece[-1] - xpiece[0]
-                    if xspan < w/8:
-                        deg = 1
-                    elif xspan < w/4:
-                        deg = 2
-                    elif xspan < w/2:
-                        deg = 3
-                    else:
-                        deg = 4
+                    deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
                     coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
                         xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
                         upper_clip=3)
@@ -1264,18 +1257,14 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     # scan again
                     # fit polynomial for every segment
                     for group, method in zip(group_lst, method_lst):
-                        if method=='poly':
+                        if method=='poly' or method=='smooth':
                             xpiece = newx_lst[group]
                             ypiece = ypara[group]
                             xspan = xpiece[-1] - xpiece[0]
-                            if xspan < w/8:
-                                deg = 1
-                            elif xspan < w/4:
-                                deg = 2
-                            elif xspan < w/2:
-                                deg = 3
+                            if method=='poly':
+                                deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
                             else:
-                                deg = 4
+                                deg = 7
                             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
                                 xpiece/w, ypiece, deg=deg, maxiter=10,
                                 lower_clip=3, upper_clip=3)
@@ -1296,14 +1285,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ypiece = np.concatenate([ypara[group] for group in group_lst])
 
                     xspan = xpiece[-1] - xpiece[0]
-                    if xspan < w/8:
-                        deg = 1
-                    elif xspan < w/4:
-                        deg = 2
-                    elif xspan < w/2:
-                        deg = 3
-                    else:
-                        deg = 4
+                    deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+
                     coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
                         xpiece/w, ypiece, deg=deg, maxiter=10,
                         lower_clip=3, upper_clip=3)
@@ -1322,14 +1305,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         xpiece = newx_lst[group]
                         ypiece = ypara[group]
                         xspan = xpiece[-1] - xpiece[0]
-                        if xspan < w/8:
-                            deg = 1
-                        elif xspan < w/4:
-                            deg = 2
-                        elif xspan < w/2:
-                            deg = 3
-                        else:
-                            deg = 4
+                        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+
                         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
                             xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
                             upper_clip=3)
