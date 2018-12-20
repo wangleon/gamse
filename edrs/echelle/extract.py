@@ -7,12 +7,12 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
-from .imageproc      import table_to_array
+from .imageproc import table_to_array
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     upper_limit=5, lower_limit=5, figure=None):
     '''
-    Extract spectra from an individual image.
+    Extract 1-D spectra from an individual image.
     
     Args:
         infilename (str): Name of the input image.
@@ -24,8 +24,6 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         lower_limit (float): Lower limit of the extracted aperture.
         figure (:class:`matplotlib.figure.Figure`): Figure to display the
             extracted 1d spectra.
-    Returns:
-        No returns
     '''
     data, head = fits.getdata(infilename, header=True)
     h, w = data.shape

@@ -325,7 +325,7 @@ def fix_pixels(data, mask, direction, method):
             shall has the same shape as **data**.
         direction (str or int): Interpolate along which axis (*X* = 1,
             *Y* = 0).
-        method (string): Interpolationg method ('linear' means linear
+        method (str): Interpolationg method ('linear' means linear
             interpolation, and 'cubic' means cubic spline interpolation).
 
     Returns:
