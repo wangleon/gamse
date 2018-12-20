@@ -1149,101 +1149,17 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             ypara = fitpar_lst[:,ipara]
 
             if ipara == 0:
+                # fit for A
                 res = smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w)
-                aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
-
             elif ipara == 3:
                 # fit for bkg
-                if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-                    newx_lst[group_lst[-1][-1]] > w/2:
-                    # fit polynomial over the whole order
-                    xpiece = np.concatenate([newx_lst[group] for group in group_lst])
-                    ypiece = np.concatenate([ypara[group] for group in group_lst])
-
-                    xspan = xpiece[-1] - xpiece[0]
-                    deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
-
-                    coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                        xpiece/w, ypiece, deg=deg, maxiter=10,
-                        lower_clip=3, upper_clip=3)
-
-                    aperpar = np.polyval(coeff, allx/w)
-                    xpiece_lst     = xpiece
-                    ypiece_res_lst = ypiece_res
-                    mask_rej_lst   = ~_m
-                else:
-                    # fit polynomial for every segment
-                    aperpar = np.array([np.nan]*w)
-                    xpiece_lst     = np.array([np.nan]*newx_lst.size)
-                    ypiece_res_lst = np.array([np.nan]*newx_lst.size)
-                    mask_rej_lst   = np.array([np.nan]*newx_lst.size)
-                    for group in group_lst:
-                        xpiece = newx_lst[group]
-                        ypiece = ypara[group]
-                        xspan = xpiece[-1] - xpiece[0]
-                        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 7)[xspan>w/2]
-
-                        scale = ('linear','log')[(ypiece<=0).sum()==0]
-                        if scale=='log':
-                            ypiece = np.log(ypiece)
-
-                        coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-                            upper_clip=3)
-
-                        if scale=='log':
-                            ypiece = np.exp(ypiece)
-                            ypiece_fit = np.exp(ypiece_fit)
-                            ypiece_res = ypiece - ypiece_fit
-
-                        ii = np.arange(xpiece[0], xpiece[-1]+1)
-                        aperpar[ii] = np.polyval(coeff, ii/w)
-                        if scale=='log':
-                            aperpar[ii] = np.exp(aperpar[ii])
-                        xpiece_lst[group]     = xpiece
-                        ypiece_res_lst[group] = ypiece_res
-                        mask_rej_lst[group]   = ~_m
+                res = smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w)
             else:
                 # fit for k, c
+                res = smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
-                if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-                    newx_lst[group_lst[-1][-1]] > w/2:
-                    # fit polynomial over the whole order
-                    xpiece = np.concatenate([newx_lst[group] for group in group_lst])
-                    ypiece = np.concatenate([ypara[group] for group in group_lst])
-
-                    xspan = xpiece[-1] - xpiece[0]
-                    deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
-
-                    coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                        xpiece/w, ypiece, deg=deg, maxiter=10,
-                        lower_clip=3, upper_clip=3)
-
-                    aperpar = np.polyval(coeff, allx/w)
-                    xpiece_lst     = xpiece
-                    ypiece_res_lst = ypiece_res
-                    mask_rej_lst   = ~_m
-                else:
-                    # fit polynomial for every segment
-                    aperpar = np.array([np.nan]*w)
-                    xpiece_lst     = np.array([np.nan]*newx_lst.size)
-                    ypiece_res_lst = np.array([np.nan]*newx_lst.size)
-                    mask_rej_lst   = np.array([np.nan]*newx_lst.size)
-                    for group in group_lst:
-                        xpiece = newx_lst[group]
-                        ypiece = ypara[group]
-                        xspan = xpiece[-1] - xpiece[0]
-                        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
-
-                        coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-                            upper_clip=3)
-
-                        ii = np.arange(xpiece[0], xpiece[-1]+1)
-                        aperpar[ii] = np.polyval(coeff, ii/w)
-                        xpiece_lst[group]     = xpiece
-                        ypiece_res_lst[group] = ypiece_res
-                        mask_rej_lst[group]   = ~_m
+            # extract smoothing results
+            aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
 
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
@@ -1538,6 +1454,108 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
+
+def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
+
+    allx = np.arange(w)
+
+    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
+        newx_lst[group_lst[-1][-1]] > w/2:
+        # fit polynomial over the whole order
+        xpiece = np.concatenate([newx_lst[group] for group in group_lst])
+        ypiece = np.concatenate([ypara[group] for group in group_lst])
+
+        xspan = xpiece[-1] - xpiece[0]
+        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+
+        coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+            xpiece/w, ypiece, deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+
+        aperpar = np.polyval(coeff, allx/w)
+        xpiece_lst     = xpiece
+        ypiece_res_lst = ypiece_res
+        mask_rej_lst   = ~_m
+    else:
+        # fit polynomial for every segment
+        aperpar = np.array([np.nan]*w)
+        xpiece_lst     = np.array([np.nan]*newx_lst.size)
+        ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+        mask_rej_lst   = np.array([np.nan]*newx_lst.size)
+        for group in group_lst:
+            xpiece = newx_lst[group]
+            ypiece = ypara[group]
+            xspan = xpiece[-1] - xpiece[0]
+            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+
+            coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                upper_clip=3)
+
+            ii = np.arange(xpiece[0], xpiece[-1]+1)
+            aperpar[ii] = np.polyval(coeff, ii/w)
+            xpiece_lst[group]     = xpiece
+            ypiece_res_lst[group] = ypiece_res
+            mask_rej_lst[group]   = ~_m
+
+    return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
+
+def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
+
+    allx = np.arange(w)
+
+    # fit for bkg
+    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
+        newx_lst[group_lst[-1][-1]] > w/2:
+        # fit polynomial over the whole order
+        xpiece = np.concatenate([newx_lst[group] for group in group_lst])
+        ypiece = np.concatenate([ypara[group] for group in group_lst])
+
+        xspan = xpiece[-1] - xpiece[0]
+        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+
+        coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+            xpiece/w, ypiece, deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+
+        aperpar = np.polyval(coeff, allx/w)
+        xpiece_lst     = xpiece
+        ypiece_res_lst = ypiece_res
+        mask_rej_lst   = ~_m
+    else:
+        # fit polynomial for every segment
+        aperpar = np.array([np.nan]*w)
+        xpiece_lst     = np.array([np.nan]*newx_lst.size)
+        ypiece_res_lst = np.array([np.nan]*newx_lst.size)
+        mask_rej_lst   = np.array([np.nan]*newx_lst.size)
+        for group in group_lst:
+            xpiece = newx_lst[group]
+            ypiece = ypara[group]
+            xspan = xpiece[-1] - xpiece[0]
+            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 7)[xspan>w/2]
+
+            scale = ('linear','log')[(ypiece<=0).sum()==0]
+            if scale=='log':
+                ypiece = np.log(ypiece)
+
+            coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                upper_clip=3)
+
+            if scale=='log':
+                ypiece = np.exp(ypiece)
+                ypiece_fit = np.exp(ypiece_fit)
+                ypiece_res = ypiece - ypiece_fit
+
+            ii = np.arange(xpiece[0], xpiece[-1]+1)
+            aperpar[ii] = np.polyval(coeff, ii/w)
+            if scale=='log':
+                aperpar[ii] = np.exp(aperpar[ii])
+            xpiece_lst[group]     = xpiece
+            ypiece_res_lst[group] = ypiece_res
+            mask_rej_lst[group]   = ~_m
+
+    return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def get_slit_flat(data, mask, apertureset, spectra1d,
         lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
