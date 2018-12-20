@@ -121,9 +121,10 @@ def correct_overscan(data, head, mask=None):
     Returns:
         tuple: A tuple containing:
 
-            * data (:class:`numpy.ndarray`): The output image with overscan
+            * **data** (:class:`numpy.ndarray`): The output image with overscan
               corrected.
-            * head (:class:`astropy.io.fits.Header`): The updated FITS header.
+            * **head** (:class:`astropy.io.fits.Header`): The updated FITS
+              header.
     '''
     # define the cosmic ray fixing function
     def fix_cr(data):
@@ -179,6 +180,37 @@ def correct_overscan(data, head, mask=None):
 
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`smooth_aperpar_k`
+        * :func:`smooth_aperpar_c`
+        * :func:`smooth_aperpar_bkg`
+    
+    '''
 
     method_lst = []
     aperpar = np.array([np.nan]*w)
@@ -312,6 +344,36 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
 
 def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`smooth_aperpar_A`
+        * :func:`smooth_aperpar_c`
+        * :func:`smooth_aperpar_bkg`
+    '''
 
     allx = np.arange(w)
 
@@ -358,9 +420,69 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
 
 
 def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`smooth_aperpar_A`
+        * :func:`smooth_aperpar_k`
+        * :func:`smooth_aperpar_bkg`
+    '''
     return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
 def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`smooth_aperpar_A`
+        * :func:`smooth_aperpar_k`
+        * :func:`smooth_aperpar_c`
+    '''
 
     allx = np.arange(w)
 

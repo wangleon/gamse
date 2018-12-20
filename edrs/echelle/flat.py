@@ -708,7 +708,37 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     outfile.close()
 
 def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
 
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`get_fiber_flat`
+        * :func:`default_smooth_aperpar_k`
+        * :func:`default_smooth_aperpar_c`
+        * :func:`default_smooth_aperpar_bkg`
+    
+    '''
     method_lst = []
     aperpar = np.array([np.nan]*w)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
@@ -841,6 +871,37 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
 
 def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`get_fiber_flat`
+        * :func:`default_smooth_aperpar_A`
+        * :func:`default_smooth_aperpar_c`
+        * :func:`default_smooth_aperpar_bkg`
+    
+    '''
 
     allx = np.arange(w)
 
@@ -886,9 +947,72 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`get_fiber_flat`
+        * :func:`default_smooth_aperpar_A`
+        * :func:`default_smooth_aperpar_k`
+        * :func:`default_smooth_aperpar_bkg`
+    
+    '''
+
     return default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
 def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
+    '''Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    the fiber flat-fielding.
+
+    Args:
+        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
+        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
+        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
+        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
+            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
+        w (int): Length of flat.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+              paramters at all pixels.
+            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+              parameters at sampling pixels in **newx_lst** for plotting.
+            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
+              in **newx_lst** participating in fitting or smoothing.
+
+    See Also:
+
+        * :func:`get_fiber_flat`
+        * :func:`default_smooth_aperpar_A`
+        * :func:`default_smooth_aperpar_k`
+        * :func:`default_smooth_aperpar_c`
+    
+    '''
 
     allx = np.arange(w)
 

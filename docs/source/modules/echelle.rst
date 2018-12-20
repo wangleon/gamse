@@ -45,7 +45,12 @@ Flat Fielding Correction
     mosaic_images
     save_mosaic_reg
     detect_gap
-    get_flatfielding
+    get_fiber_flat
+    get_slit_flat
+    default_smooth_aperpar_A
+    default_smooth_aperpar_k
+    default_smooth_aperpar_c
+    default_smooth_aperpar_bkg
 
 .. automodule:: edrs.echelle.flat
    :members:

@@ -53,6 +53,10 @@ Xinglong 2.16m HRS
    get_badpixel_mask
    correct_overscan
    reduce
+   smooth_aperpar_A
+   smooth_aperpar_k
+   smooth_aperpar_c
+   smooth_aperpar_bkg
 
 .. automodule:: edrs.pipelines.xinglong216hrs
    :members:
