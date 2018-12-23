@@ -212,7 +212,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     
     '''
 
-    method_lst = []
+    has_fringe_lst = []
     aperpar = np.array([np.nan]*w)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
     ypiece_res_lst = np.array([np.nan]*newx_lst.size)
@@ -220,7 +220,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     allx = np.arange(w)
     # the dtype of xpiece_lst and ypiece_lst is np.float64
 
-    # first try, scan every segment. find method by checking the local maximum
+    # first try, scan every segment. find fringe by checking the local maximum
     # points after smoothing. Meanwhile, save the smoothing results in case the
     # smoothing will be used afterwards.
     for group in group_lst:
@@ -284,21 +284,17 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         if p2-p1<w/8 or n_zerobins<=1 or \
             n_zerobins<n_nonzerobins or n_nonzerobins>=3:
             # there's fringe
-            method = 'poly'
+            has_fringe = True
         else:
             # no fringe
-            method = 'smooth'
-        method_lst.append(method)
-        # write to running log
-        #logger.debug('Aperture {}, A, {}-{}, {}, {}, {}'.format(
-        #    aper, p1, p2, n_nonzerobins, n_zerobins, method))
-
+            has_fringe = False
+        has_fringe_lst.append(has_fringe)
 
     # use global polynomial fitting if this order is affected by fringe and the
     # following conditions are satisified
     if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
         newx_lst[group_lst[-1][-1]] > w/2 and \
-        method_lst.count('poly') == len(method_lst):
+        has_fringe_lst.count(True) == len(has_fringe_lst):
         # fit polynomial over the whole order
 
         # prepare xpiece and y piece
@@ -319,26 +315,25 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     else:
         # scan again
         # fit polynomial for every segment
-        for group, method in zip(group_lst, method_lst):
-            if method=='poly' or method=='smooth':
-                xpiece = newx_lst[group]
-                ypiece = ypara[group]
-                xspan = xpiece[-1] - xpiece[0]
-                if method=='poly':
-                    deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
-                else:
-                    deg = 7
-                coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                    xpiece/w, np.log(ypiece), deg=deg, maxiter=10,
-                    lower_clip=3, upper_clip=3)
-                ypiece_fit = np.exp(ypiece_fit)
-                ypiece_res = ypiece - ypiece_fit
+        for group, has_fringe in zip(group_lst, has_fringe_lst):
+            xpiece = newx_lst[group]
+            ypiece = ypara[group]
+            xspan = xpiece[-1] - xpiece[0]
+            if has_fringe:
+                deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+            else:
+                deg = 7
+            coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
+                xpiece/w, np.log(ypiece), deg=deg, maxiter=10,
+                lower_clip=3, upper_clip=3)
+            ypiece_fit = np.exp(ypiece_fit)
+            ypiece_res = ypiece - ypiece_fit
 
-                ii = np.arange(xpiece[0], xpiece[-1]+1)
-                aperpar[ii] = np.exp(np.polyval(coeff, ii/w))
-                xpiece_lst[group]     = xpiece
-                ypiece_res_lst[group] = ypiece_res
-                mask_rej_lst[group]   = ~_m
+            ii = np.arange(xpiece[0], xpiece[-1]+1)
+            aperpar[ii] = np.exp(np.polyval(coeff, ii/w))
+            xpiece_lst[group]     = xpiece
+            ypiece_res_lst[group] = ypiece_res
+            mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
