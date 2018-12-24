@@ -37,6 +37,10 @@ FOCES
    plot_overscan_variation
    plot_bias_smooth
    reduce
+   smooth_aperpar_A
+   smooth_aperpar_k
+   smooth_aperpar_c
+   smooth_aperpar_bkg
 
 .. automodule:: edrs.pipelines.foces
    :members:
