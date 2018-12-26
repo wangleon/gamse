@@ -610,7 +610,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     # create a background image
     fig = plt.figure(figsize=(20,10),dpi=150)
     ax1 = fig.add_axes([0.05,0.06,0.43,0.86])
-    ax2 = fig.add_axes([0.54,0.06,0.43,0.86])
+    ax2 = fig.add_axes([0.52,0.06,0.43,0.86])
+    ax3 = ax2.twinx()
     ax1.imshow(logdata,cmap='gray',interpolation='none')
     # create a colormap for saturation mask
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
@@ -1105,6 +1106,17 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
         aperture_set[aperture] = aperture_loc
 
+    # plot the order seperation information in ax3
+    center_lst = [aper_loc.get_center()
+                  for aper, aper_loc in sorted(aperture_set.items())]
+    ax3.plot(center_lst, derivative(center_lst), 'ko',
+                alpha=0.2, zorder=-1)
+    ax3.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation,
+                'k--', alpha=0.2, zorder=-1)
+    ax3.set_xlim(0, h-1)
+    ax3.set_ylabel('Aperture Number')
+
+
     fig.canvas.draw()
     if fig_file is not None:
         fig.savefig(fig_file)
@@ -1151,19 +1163,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     #fig.savefig(fig_file[0:-4]+'-debug.png')
 
     plt.close(fig)
-
-    # plot the order seperation information
-    # for debug purpose
-    fig2 = plt.figure(dpi=150)
-    ax2 = fig2.gca()
-    center_lst = [aper_loc.get_center()
-                  for aper, aper_loc in sorted(aperture_set.items())]
-    ax2.plot(center_lst, derivative(center_lst), 'bo', alpha=0.6)
-    ax2.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation, 'r-')
-    ax2.set_xlim(0, h-1)
-    if fig_file is not None:
-        fig2.savefig(fig_file[0:-4]+'-order_sep.png')
-    plt.close(fig2)
 
     return aperture_set
 
