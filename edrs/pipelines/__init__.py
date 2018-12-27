@@ -12,10 +12,11 @@ from ..utils.obslog import read_log, find_log
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import xinglong216hrs
 from . import foces
+from . import hires
 from . import levy
 from . import sarg
+from . import xinglong216hrs
 
 #from .reduction import Reduction
 
@@ -67,6 +68,9 @@ def reduce_echelle():
         xinglong216hrs.reduce()
     elif telescope == 'APF' and instrument == 'Levy':
         levy.reduce()
+    elif (telescope == 'Keck' or telescope == 'Keck-I') and \
+        (instrument == 'HIRES'):
+        hires.reduce()
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
@@ -99,6 +103,9 @@ def make_log():
         xinglong216hrs.make_log(rawdata)
     elif telescope == 'APF' and instrument == 'Levy':
         levy.make_log(rawdata)
+    elif (telescope == 'Keck' or telescope == 'Keck-I') and \
+        (instrument == 'HIRES'):
+        hires.make_log(rawdata)
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
