@@ -22,11 +22,8 @@ def main():
         hdu_lst = fits.open(filepath)
         head0 = hdu_lst[0].header
         hdu_lst.close()
-        target = head0.get('TARGNAME', '')
-        if len(hdu_lst)>1:
-            n_ccds   = len(hdu_lst)-1
-        else:
-            n_ccds   = 1
+        n_ccds     = (1, len(hdu_lst)-1)[len(hdu_lst)>1]
+        target     = head0.get('TARGNAME', '')
         frame      = head0.get('FRAME', '')
         frameno    = head0.get('FRAMENO')
         equinox    = head0.get('EQUINOX', '')
