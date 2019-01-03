@@ -1538,7 +1538,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 has_aperpar_fig = True
                 irow = iaper%5
                 for icol in range(4):
-                    ax = fig.add_axes([0.04+icol*0.24, (4-irow)*0.19+0.05, 0.20, 0.17])
+                    _x, _y = 0.04+icol*0.24, (4-irow)*0.19+0.05
+                    ax = fig.add_axes([_x, _y, 0.20, 0.17])
                     ax_lst[(irow, icol)] = ax
                 i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                 # plot the parameters
@@ -1588,6 +1589,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     tick.label2.set_fontsize(4)
                     tick.label2.set_color('gray')
                     tick.label2.set_alpha(0.6)
+                for tickline in ax2.yaxis.get_ticklines():
+                    tickline.set_color('gray')
+                    tickline.set_alpha(0.6)
                 if w<3000:
                     ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
@@ -1602,12 +1606,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 ########### plot flat parametres for every order ##############
                 if True:
                     if ipara == 0:
-                        fig5 = plt.figure(figsize=(8,6), dpi=150)
+                        fig5 = plt.figure(figsize=(8,5), dpi=150)
                         axes5_lst = [
-                            fig5.add_axes([0.08, 0.55, 0.37, 0.4]),
-                            fig5.add_axes([0.55, 0.55, 0.37, 0.4]),
-                            fig5.add_axes([0.08, 0.10, 0.37, 0.4]),
-                            fig5.add_axes([0.55, 0.10, 0.37, 0.4]),
+                            fig5.add_axes([0.08, 0.57, 0.37, 0.41]),
+                            fig5.add_axes([0.56, 0.57, 0.37, 0.41]),
+                            fig5.add_axes([0.08, 0.10, 0.37, 0.41]),
+                            fig5.add_axes([0.56, 0.10, 0.37, 0.41]),
                         ]
                     i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                     ax51 = axes5_lst[ipara]
@@ -1646,6 +1650,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         tick.label2.set_fontsize(9)
                         tick.label2.set_color('gray')
                         tick.label2.set_alpha(0.6)
+                    for tickline in ax52.yaxis.get_ticklines():
+                        tickline.set_color('gray')
+                        tickline.set_alpha(0.6)
                     if w<3000:
                         ax51.xaxis.set_major_locator(tck.MultipleLocator(500))
                         ax51.xaxis.set_minor_locator(tck.MultipleLocator(100))
