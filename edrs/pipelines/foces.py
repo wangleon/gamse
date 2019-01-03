@@ -602,10 +602,9 @@ def make_log(path):
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
-        fileid  = fname[0:-5]
-        obsdate = None
-        exptime = None
-        data, head = fits.getdata(os.path.join(path, fname), header=True)
+        fileid = fname[0:-5]
+        filepath = os.path.join(path, fname)
+        data, head = fits.getdata(filepath, header=True)
 
         if data.ndim == 3:
             # old FOCES data are 3-dimensional arrays
@@ -647,30 +646,24 @@ def make_log(path):
         brightness = np.median(data1,axis=1).mean()
 
         item = obslog.LogItem(
-                   fileid     = fileid,
-                   obsdate    = obsdate,
-                   exptime    = exptime,
-                   objectname = objectname,
-                   imagetype  = imagetype,
-                   saturation = prop,
-                   brightness = brightness,
-                   )
+                fileid     = fileid,
+                obsdate    = obsdate,
+                exptime    = exptime,
+                objectname = objectname,
+                imagetype  = imagetype,
+                saturation = prop,
+                brightness = brightness,
+                )
         log.add_item(item)
 
     log.sort('obsdate')
 
     # make info list
     all_info_lst = []
-    column_lst = [
-            ('frameid',    'i'),
-            ('fileid',     's'),
-            ('imagetype',  's'),
-            ('objectname', 's'),
-            ('exptime',    'f'),
-            ('obsdate',    's'),
-            ('saturation', 'f'),
-            ('brightness', 'f'),
-            ]
+    column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
+                  ('objectname', 's'), ('exptime',    'f'), ('obsdate',    's'),
+                  ('saturation', 'f'), ('brightness', 'f'),
+                 ]
     columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
 
     prev_frameid = -1
@@ -1129,10 +1122,10 @@ def reduce():
             # there is bias frames
 
             bias = combine_images(bias_lst,
-                                mode       = 'mean',
-                                upper_clip = section.getfloat('cosmic_clip'),
-                                maxiter    = section.getint('maxiter'),
-                                )
+                    mode       = 'mean',
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
+                    )
 
             # create new FITS Header for bias
             head = fits.Header()
@@ -1250,7 +1243,10 @@ def reduce():
                 data_lst.append(data)
             nflat = len(data_lst)
             print('combine %d images for %s'%(nflat, flatname))
-            flat_data = combine_images(data_lst, mode='mean',
+            if nflat==1:
+                flat_data = data_lst[0]
+            else:
+                flat_data = combine_images(data_lst, mode='mean',
                                         upper_clip=10, maxiter=5)
 
             # get mean exposure time and write it to header
