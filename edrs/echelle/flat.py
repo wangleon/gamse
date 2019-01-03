@@ -1532,7 +1532,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
 
+
             if plot_aperpar:
+                ########### plot flat parametres every 5 orders ##############
                 has_aperpar_fig = True
                 irow = iaper%5
                 for icol in range(4):
@@ -1541,42 +1543,46 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                 # plot the parameters
                 ax1 = ax_lst[(iaper%5, ipara)]
+
+                # make a copy of ax1 and plot the residuals in the background
+                ax2 = ax1.twinx()
+                ax2.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
+                        alpha=0.4, zorder=-2)
+                ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
+                        alpha=0.4, zorder=-3)
+                # plot rejected points with gray dots
+                _m = mask_rej_lst>0
+                if _m.sum()>0:
+                    ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                            color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+
                 # plot data points
                 ax1.plot(newx_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
                 # plot fitted value
                 ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                    lw=1, zorder=2)
+                    lw=1, alpha=0.8, zorder=2)
 
                 #ax1.plot(newx_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
                 #        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax1.get_ylim()
                 if ipara == 0:
-                    ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper)
+                    ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
+                            fontsize=10)
+                ax1.text(0.9*w, 0.15*_y1+0.85*_y2, 'AKCB'[ipara], fontsize=10)
                 ax1.set_xlim(0, w-1)
                 #ax1.set_ylim(_y1, _y2)
                 if iaper%5<4:
                     ax1.set_xticklabels([])
 
-                # make a copy of ax1 and plot the residuals in the background
-                ax2 = ax1.twinx()
-                ax2.plot(xpiece_lst, ypiece_res_lst, color='gray',
-                        lw=0.5, alpha=0.4, zorder=-1)
-                ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
-                        alpha=0.4, zorder=-1)
-                # plot rejected points with gray dots
-                _m = mask_rej_lst>0
-                if _m.sum()>0:
-                    ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                            color='gray', lw=0.5, ms=2, alpha=0.4)
 
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
                 for tick in ax1.yaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
-                for tick in ax2.xaxis.get_major_ticks():
-                    tick.label2.set_fontsize(4)
                 for tick in ax2.yaxis.get_major_ticks():
                     tick.label2.set_fontsize(4)
+                    tick.label2.set_color('gray')
+                    tick.label2.set_alpha(0.6)
                 if w<3000:
                     ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
@@ -1587,7 +1593,70 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
                     ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
                     ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                
+                ########### plot flat parametres for every order ##############
+                if True:
+                    if ipara == 0:
+                        fig5 = plt.figure(figsize=(8,6), dpi=150)
+                        axes5_lst = [
+                            fig5.add_axes([0.08, 0.55, 0.37, 0.4]),
+                            fig5.add_axes([0.55, 0.55, 0.37, 0.4]),
+                            fig5.add_axes([0.08, 0.10, 0.37, 0.4]),
+                            fig5.add_axes([0.55, 0.10, 0.37, 0.4]),
+                        ]
+                    i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
+                    ax51 = axes5_lst[ipara]
                     
+                    # make a copy of ax1 and plot the residuals in the background
+                    ax52 = ax51.twinx()
+                    ax52.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
+                                alpha=0.4, zorder=-2)
+                    ax52.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.4,
+                                zorder=-3)
+                    # plot rejected points with gray dots
+                    _m = mask_rej_lst>0
+                    if _m.sum()>0:
+                        ax52.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                                color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+
+                    # plot data points in ax51
+                    ax51.plot(newx_lst, ypara, '-', color='C0', lw=0.5,
+                                alpha=1.0, zorder=1)
+                    # plot fitted value
+                    ax51.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
+                                lw=1, alpha=0.8, zorder=2)
+                    _y1, _y2 = ax51.get_ylim()
+                    ax51.set_xlim(0, w-1)
+                    ax51.text(0.05*w, 0.15*_y1+0.85*_y2,
+                            'AKCB'[ipara]+' (Aper %d)'%aper,
+                            fontsize=12)
+                    if ipara in [2, 3]:
+                        ax51.set_xlabel('X')
+
+                    for tick in ax51.xaxis.get_major_ticks():
+                        tick.label1.set_fontsize(11)
+                    for tick in ax51.yaxis.get_major_ticks():
+                        tick.label1.set_fontsize(11)
+                    for tick in ax52.yaxis.get_major_ticks():
+                        tick.label2.set_fontsize(9)
+                        tick.label2.set_color('gray')
+                        tick.label2.set_alpha(0.6)
+                    if w<3000:
+                        ax51.xaxis.set_major_locator(tck.MultipleLocator(500))
+                        ax51.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                        ax52.xaxis.set_major_locator(tck.MultipleLocator(500))
+                        ax52.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                    else:
+                        ax51.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                        ax51.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                        ax52.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                        ax52.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                    if ipara == 3:
+                        figname1 = fig_aperpar%aper
+                        figname2 = '.'.join(figname1.split('.')[0:-1])+'i.pdf'
+                        fig5.savefig(figname2)
+                        plt.close(fig5)
+
 
             # pack the positions of mask
             mask_lst.append(mask)
