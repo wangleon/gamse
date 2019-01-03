@@ -1569,11 +1569,16 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
                             fontsize=10)
                 ax1.text(0.9*w, 0.15*_y1+0.85*_y2, 'AKCB'[ipara], fontsize=10)
+
+                # fill the fitting regions
+                for group in group_lst:
+                    i1, i2 = newx_lst[group[0]], newx_lst[group[-1]]
+                    ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
+
                 ax1.set_xlim(0, w-1)
-                #ax1.set_ylim(_y1, _y2)
+                ax1.set_ylim(_y1, _y2)
                 if iaper%5<4:
                     ax1.set_xticklabels([])
-
 
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
