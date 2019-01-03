@@ -604,13 +604,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     # filter the pixels smaller than the input "minimum" value
     logdata = np.log10(np.maximum(data, minimum))
 
-    # initialize the color list
-    colors = 'rgbcmyk'
-
     # create a background image
-    fig = plt.figure(figsize=(20,10),dpi=150)
-    ax1 = fig.add_axes([0.05,0.06,0.43,0.86])
-    ax2 = fig.add_axes([0.52,0.06,0.43,0.86])
+    fig = plt.figure(figsize=(20,10), dpi=150)
+    ax1 = fig.add_axes([0.05,0.07,0.43,0.86])
+    ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
     ax3 = ax2.twinx()
     ax1.imshow(logdata,cmap='gray',interpolation='none')
     # create a colormap for saturation mask
@@ -619,8 +616,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax1.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
     ax1.set_xlim(0,w-1)
     ax1.set_ylim(h-1,0)
-    ax1.set_xlabel('X')
-    ax1.set_ylabel('Y')
+    ax1.set_xlabel('X', fontsize=12)
+    ax1.set_ylabel('Y', fontsize=12)
 
     plot_paper_fig = False
 
@@ -651,7 +648,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
             ax1.set_ylim(y1, y2)
             fig.canvas.draw()
     if filename is not None:
-        fig.suptitle('Trace for %s'%os.path.basename(filename))
+        fig.suptitle('Trace for %s'%os.path.basename(filename), fontsize=15)
     fig.canvas.mpl_connect('scroll_event',on_scroll)
     fig.canvas.draw()
     if display:
@@ -870,15 +867,17 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
     logger.debug((os.linesep+' '*3).join(message))
 
-    ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0')
+    ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
+            lw=0.8)
     ax2.set_yscale('log')
-    ax2.set_xlabel('Y')
-    ax2.set_ylabel('Count')
+    ax2.set_xlabel('Y', fontsize=12)
+    ax2.set_ylabel('Count', fontsize=12)
     ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
-        ax2p.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0', lw=1)
+        ax2p.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-',
+                color='C0', lw=1)
 
     #for x1,y_lst in nodes_lst.items():
     #    ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
@@ -906,7 +905,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
-        ax2p.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
+        ax2p.fill_between(cuty[istart:iend], cutn[istart:iend], step='mid',
+                color='C1')
 
     # find central positions along Y axis for all apertures
     message = ['Aperture Detection Information for "%s"'%filename,
@@ -983,19 +983,18 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         else:
             break
 
-
     # plot the aperture positions
     f1, f2 = ax2.get_ylim()
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
-        ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1)
+        ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', lw=0.6,
+                alpha=1)
         if plot_paper_fig:
             ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
 
     # set tickers for ax2
     ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
     ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
-
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -1109,13 +1108,17 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     # plot the order seperation information in ax3
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    ax3.plot(center_lst, derivative(center_lst), 'ko',
-                alpha=0.2, zorder=-1)
+    ax3.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
     ax3.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation,
                 'k--', alpha=0.2, zorder=-1)
     ax3.set_xlim(0, h-1)
-    ax3.set_ylabel('Aperture Number')
-
+    for tickline in ax3.yaxis.get_ticklines():
+        tickline.set_color('gray')
+        tickline.set_alpha(0.6)
+    for tick in ax3.yaxis.get_major_ticks():
+        tick.label2.set_color('gray')
+        tick.label2.set_alpha(0.6)
+    ax3.set_ylabel('Aperture Number', color='gray', alpha=0.6, fontsize=12)
 
     fig.canvas.draw()
     if fig_file is not None:
