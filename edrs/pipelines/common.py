@@ -85,6 +85,14 @@ def plot_background_aspect1(data, stray, figname):
     _width = 0.37
     _height = _width/w*h*16/7
 
+    #fig1 = plt.figure(figsize=(8,7), dpi=150)
+    #fig2 = plt.figure(figsize=(8,7), dpi=150)
+
+    #ax21 = fig1.add_axes([0.08, 0.06, 0.8, 0.9])
+    #ax22 = fig2.add_axes([0.08, 0.06, 0.8, 0.9])
+    #ax21c = fig1.add_axes([0.90, 0.06, 0.03, 0.9])
+    #ax22c = fig2.add_axes([0.90, 0.06, 0.03, 0.9])
+
     ax21 = fig.add_axes([0.06, 0.1, _width, _height])
     ax22 = fig.add_axes([0.55, 0.1, _width, _height])
     ax21c = fig.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])

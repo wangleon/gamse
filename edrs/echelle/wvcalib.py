@@ -2028,7 +2028,7 @@ class CalibFigure(Figure):
         # draw residual and number of identified lines in ax2
         bbox = self._ax3.get_position()
         self._ax3._residual_text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
-                                  '', fontsize=12)
+                                  '', fontsize=13)
 
     def plot_solution(self, identlist, aperture_lst, plot_ax1=False,  **kwargs):
         '''Plot the wavelength solution.
@@ -2056,6 +2056,9 @@ class CalibFigure(Figure):
         std    = kwargs.pop('std')
         nuse   = kwargs.pop('nuse')
         ntot   = kwargs.pop('ntot')
+
+        label_size = 14  # fontsize for x, y labels
+        tick_size  = 12  # fontsize for x, y ticks
 
         #wave_scale = 'linear'
         wave_scale = 'reciprocal'
@@ -2144,11 +2147,15 @@ class CalibFigure(Figure):
                 self._ax1.set_yticks(newtick_lst)
                 self._ax1.set_yticklabels(newticklabel_lst)
                 self._ax1.set_ylim(_y22, _y11)
-            self._ax1.set_xlabel('Pixel')
-            self._ax1.set_ylabel(u'$\lambda$ (\xc5)')
+            self._ax1.set_xlabel('Pixel', fontsize=label_size)
+            self._ax1.set_ylabel(u'$\lambda$ (\xc5)', fontsize=label_size)
             self._ax1.grid(True, ls=':', color='gray', alpha=1, lw=0.5)
             self._ax1.set_axisbelow(True)
             self._ax1._aperture_text.set_text('')
+            for tick in self._ax1.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(tick_size)
+            for tick in self._ax1.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(tick_size)
 
         # adjust axis layout for ax2 (residual on aperture space)
         self._ax2.axhline(y=0, color='k', ls='--', lw=0.5)
@@ -2159,8 +2166,12 @@ class CalibFigure(Figure):
         x2 = min(x2,aperture_lst.max())
         self._ax2.set_xlim(x1, x2)
         self._ax2.set_ylim(-6*std, 6*std)
-        self._ax2.set_xlabel('Aperture')
-        self._ax2.set_ylabel(u'Residual on $\lambda$ (\xc5)')
+        self._ax2.set_xlabel('Aperture', fontsize=label_size)
+        self._ax2.set_ylabel(u'Residual on $\lambda$ (\xc5)', fontsize=label_size)
+        for tick in self._ax2.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(tick_size)
+        for tick in self._ax2.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(tick_size)
 
         ## adjust axis layout for ax3 (residual on pixel space)
         self._ax3.axhline(y=0, color='k', ls='--', lw=0.5)
@@ -2168,8 +2179,12 @@ class CalibFigure(Figure):
             self._ax3.axhline(y=i*std, color='k', ls=':', lw=0.5)
         self._ax3.set_xlim(0, npixel-1)
         self._ax3.set_ylim(-6*std, 6*std)
-        self._ax3.set_xlabel('Pixel')
-        self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)')
+        self._ax3.set_xlabel('Pixel', fontsize=label_size)
+        self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)', fontsize=label_size)
+        for tick in self._ax3.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(tick_size)
+        for tick in self._ax3.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(tick_size)
 
 
 def select_calib_from_database(path, time_key, current_time, channel):

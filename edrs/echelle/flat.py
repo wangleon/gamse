@@ -1313,14 +1313,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
     # plot the slit function
     if plot_slit:
-        fig = plt.figure(figsize=(5,9), dpi=150)
-        ax  = fig.add_axes([0.13, 0.07, 0.81, 0.90])
+        fig = plt.figure(figsize=(5,10), dpi=150)
+        ax  = fig.add_axes([0.14, 0.06, 0.82, 0.92])
         for ix in np.arange(slit_array.shape[1]):
             ax.plot(xnodes, slit_array[:,ix] + ix*0.15, '-', color='C0')
-            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=10)
+            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=11)
         ax.set_xlim(xnodes[0], xnodes[-1])
         ax.set_xlabel('$\sigma$', fontsize=16)
         ax.set_ylabel('Intensity', fontsize=16)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(11)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(11)
         fig.savefig(fig_slit)
         plt.close(fig)
 

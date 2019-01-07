@@ -550,6 +550,8 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
         plot_cols = [cols[np.abs(cols - h*t).argmin()]
                         for t in np.linspace(0, 1, 5)]
         fig1 = plt.figure(figsize=(18,12), dpi=150)
+        tick_size  = 12
+        label_size = 15
 
     ally = np.arange(h)
 
@@ -704,11 +706,23 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
             _y1, _y2 = 1.2*_ymin-0.2*_ymax, 1.2*_ymax-0.2*_ymin
             ax1.set_ylim(_y1, _y2)
             ax1.set_xlim(0, h-1)
-            ax1.text(0.03*h, 0.2*_y1+0.8*_y2, 'x=%d'%x, fontsize=10, alpha=0.6)
+            ax1.text(0.03*h, 0.2*_y1+0.8*_y2, 'x=%d'%x,
+                    fontsize=label_size, alpha=0.6)
+            for tick in ax1.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(tick_size)
+            for tick in ax1.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(tick_size)
+            for tick in ax2.yaxis.get_major_ticks():
+                tick.label2.set_fontsize(tick_size)
+                tick.label2.set_color('C0')
+            for tickline in ax2.yaxis.get_ticklines():
+                tickline.set_color('C0')
             if i < 4:
                 ax1.set_xticklabels([])
-            ax1.set_ylabel('Flux')
-            ax2.set_ylabel('Aperture Number')
+            else:
+                ax1.set_xlabel('Y', fontsize=label_size)
+            ax1.set_ylabel('Flux', fontsize=label_size)
+            ax2.set_ylabel('Aperture Number', fontsize=label_size, color='C0')
 
     if plot_section:
         fig1.savefig(fig_section)
@@ -720,8 +734,5 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
     for y in np.arange(h):
         f = intp.InterpolatedUnivariateSpline(cols, grid[:,y], k=3)
         stray[y,:] = f(np.arange(w))
-
-        
-
 
     return stray
