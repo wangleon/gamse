@@ -2879,7 +2879,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
                     text = string%(x1+1, y1+1, x2+1, y2+1, color)
                     regfile.write(text+os.linesep)
 
-                # draw ticks at integer wavelegths
+                # draw ticks at integer wavelengths
                 pix = np.arange(npixel)
                 if wl[0] > wl[-1]:
                     wl  = wl[::-1]
