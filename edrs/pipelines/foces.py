@@ -21,9 +21,9 @@ from ..echelle.imageproc import (combine_images, array_to_table,
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
-from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
+from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
-                               wv_reference_singlefiber, get_time_weight)
+                               wl_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
 from ..utils             import obslog
 from ..utils.onedarray import get_local_minima
@@ -1083,7 +1083,10 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata = config['data'].get('rawdata')
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
     section = config['reduce']
     midproc = section.get('midproc')
     result  = section.get('result')
@@ -1303,6 +1306,7 @@ def reduce():
                 'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
                 'normal': None,
                 }[mode]
+            fig_slit = os.path.join(report, '%s_slit.pdf'%flatname)
 
             section = config['reduce.flat']
             flatmap = get_fiber_flat(
@@ -1318,7 +1322,7 @@ def reduce():
                         smooth_bkg_func = smooth_aperpar_bkg,
                         fig_aperpar = fig_aperpar,
                         fig_overlap = None,
-                        fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
+                        fig_slit    = fig_slit,
                         slit_file   = None,
                         )
             
@@ -1426,7 +1430,9 @@ def reduce():
                              )
                 spec = np.array(spec, dtype=spectype)
     
-                section = config['reduce.wvcalib']
+                section = config['reduce.wlcalib']
+
+                wlcalib_fig = os.path.join(report, 'wlcalib_%s.pdf'%item.fileid)
 
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
@@ -1441,9 +1447,9 @@ def reduce():
                         # if failed, pop up a calibration window and identify
                         # the wavelengths manually
                         if ref_spec is None or ref_calib is None:
-                            calib = wvcalib(spec,
+                            calib = wlcalib(spec,
                                 filename      = '%s.fits'%item.fileid,
-                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                figfilename   = wlcalib_fig,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
                                 window_size   = section.getint('window_size'),
@@ -1458,7 +1464,7 @@ def reduce():
                             aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
                             calib = recalib(spec,
                                 filename      = '%s.fits'%item.fileid,
-                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                figfilename   = wlcalib_fig,
                                 ref_spec      = ref_spec,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
@@ -1476,9 +1482,10 @@ def reduce():
                                 )
                     else:
                         # do not search the database
-                        calib = wvcalib(spec,
-                            filename      = '%s.fits'%item.fileid,
-                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                        calib = wlcalib(spec,
+                            #filename      = '%s.fits'%item.fileid,
+                            filename      = '',
+                            figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
                             linelist      = section.get('linelist'),
@@ -1497,7 +1504,7 @@ def reduce():
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
                         filename      = '%s.fits'%item.fileid,
-                        figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                        figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
                         linelist      = section.get('linelist'),
@@ -1571,22 +1578,22 @@ def reduce():
 
             # correct background
             section = config['reduce.background']
-            figname_sec = os.path.join(report,
-                            'background_%s_section.png'%item.fileid)
+            fig_sec = os.path.join(report,
+                        'background_%s_section.pdf'%item.fileid)
 
             stray = find_background(data, mask,
                     apertureset_lst = {'A': mosaic_aperset},
                     ncols           = section.getint('ncols'),
                     distance        = section.getfloat('distance'),
                     yorder          = section.getint('yorder'),
-                    fig_section     = figname_sec,
+                    fig_section     = fig_sec,
                     )
             data = data - stray
 
             # plot stray light
-            bkg_figname = os.path.join(report,
-                    'background_%s_stray.png'%item.fileid)
-            plot_background_aspect1(data + stray, stray, bkg_figname)
+            fig_stray = os.path.join(report,
+                        'background_%s_stray.pdf'%item.fileid)
+            plot_background_aspect1(data + stray, stray, fig_stray)
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
@@ -1604,11 +1611,8 @@ def reduce():
             spec = []
             for aper, _item in sorted(spectra1d.items()):
                 flux_sum = _item['flux_sum']
-                spec.append(
-                        (aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64),
-                        flux_sum)
-                        )
+                spec.append((aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
             spec = np.array(spec, dtype=spectype)
 
             # wavelength calibration
@@ -1617,13 +1621,14 @@ def reduce():
             logger.info('FileID: %s - wavelength calibration weights: %s'%(
                 item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
 
-            spec, head = wv_reference_singlefiber(spec, head,
+            spec, head = wl_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
 
             # pack and save wavelength referenced spectra
-            pri_hdu = fits.PrimaryHDU(header=head)
-            tbl_hdu = fits.BinTableHDU(spec)
-            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(header=head),
+                        fits.BinTableHDU(spec),
+                        ])
             filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: %s - Spectra written to %s'%(

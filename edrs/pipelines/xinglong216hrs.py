@@ -17,9 +17,9 @@ from ..echelle.imageproc import (combine_images, array_to_table,
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
-from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
+from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
-                               wv_reference_singlefiber, get_time_weight)
+                               wl_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
 from ..utils import obslog
 from ..utils.onedarray import get_local_minima
@@ -177,7 +177,6 @@ def correct_overscan(data, head, mask=None):
     head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
 
     return new_data, head
-
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
@@ -337,7 +336,6 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-
 def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
@@ -412,7 +410,6 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
-
 
 def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
     '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
@@ -564,7 +561,10 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata = config['data'].get('rawdata')
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
     section = config['reduce']
     midproc = section.get('midproc')
     result  = section.get('result')
@@ -781,6 +781,7 @@ def reduce():
                 'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
                 'normal': None,
                 }[mode]
+            fig_slit = os.path.join(report, '%s_slit.pdf'%flatname)
 
             section = config['reduce.flat']
             flatmap = get_fiber_flat(
@@ -796,7 +797,7 @@ def reduce():
                         smooth_bkg_func = smooth_aperpar_bkg,
                         fig_aperpar = fig_aperpar,
                         fig_overlap = None,
-                        fig_slit    = os.path.join(report, '%s_slit.png'%flatname),
+                        fig_slit    = fig_slit,
                         slit_file   = None,
                         )
         
@@ -902,7 +903,9 @@ def reduce():
                              )
                 spec = np.array(spec, dtype=spectype)
     
-                section = config['reduce.wvcalib']
+                section = config['reduce.wlcalib']
+
+                wlcalib_fig = os.path.join(report, 'wlcalib_%s.pdf'%item.fileid)
 
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
@@ -918,9 +921,9 @@ def reduce():
                         # if failed, pop up a calibration window and identify
                         # the wavelengths manually
                         if ref_spec is None or ref_calib is None:
-                            calib = wvcalib(spec,
+                            calib = wlcalib(spec,
                                 filename      = '%s.fits'%item.fileid,
-                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                figfilename   = wlcalib_fig,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
                                 window_size   = section.getint('window_size'),
@@ -935,7 +938,7 @@ def reduce():
                             aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
                             calib = recalib(spec,
                                 filename      = '%s.fits'%item.fileid,
-                                figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                                figfilename   = wlcalib_fig,
                                 ref_spec      = ref_spec,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
@@ -953,9 +956,9 @@ def reduce():
                                 )
                     else:
                         # do not search the database
-                        calib = wvcalib(spec,
+                        calib = wlcalib(spec,
                             filename      = '%s.fits'%item.fileid,
-                            figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                            figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
                             linelist      = section.get('linelist'),
@@ -974,7 +977,7 @@ def reduce():
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
                         filename      = '%s.fits'%item.fileid,
-                        figfilename   = os.path.join(report, 'wvcalib_%s.png'%item.fileid),
+                        figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
                         linelist      = section.get('linelist'),
@@ -1036,7 +1039,7 @@ def reduce():
     # wavelength calibration
     weight_lst = get_time_weight(ref_datetime_lst, head['DATE-STA'])
     head = fits.Header()
-    spec, head = wv_reference_singlefiber(spec, head, ref_calib_lst, weight_lst)
+    spec, head = wl_reference_singlefiber(spec, head, ref_calib_lst, weight_lst)
 
     # pack and save wavelength referenced spectra
     hdu_lst = fits.HDUList([
@@ -1110,11 +1113,8 @@ def reduce():
             spec = []
             for aper, _item in sorted(spectra1d.items()):
                 flux_sum = _item['flux_sum']
-                spec.append(
-                        (aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64),
-                        flux_sum)
-                        )
+                spec.append((aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
             spec = np.array(spec, dtype=spectype)
 
             # wavelength calibration
@@ -1123,7 +1123,7 @@ def reduce():
             logger.info('FileID: %s - wavelength calibration weights: %s'%(
                 item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
 
-            spec, head = wv_reference_singlefiber(spec, head,
+            spec, head = wl_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
 
             # pack and save wavelength referenced spectra
@@ -1136,7 +1136,6 @@ def reduce():
             logger.info('FileID: %s - Spectra written to %s'%(
                 item.fileid, filename))
 
-    
 class Xinglong216HRS(Reduction):
 
     def __init__(self):
@@ -1529,10 +1528,8 @@ def make_log(path):
         if fname[-5:] != '.fits':
             continue
         fileid  = fname[0:-5]
-        obsdate = None
-        exptime = None
-        filepath = os.path.join(path,fname)
-        data,head = fits.getdata(filepath,header=True)
+        filepath = os.path.join(path, fname)
+        data,head = fits.getdata(filepath, header=True)
         naxis1 = head['NAXIS1']
         cover  = head['COVER']
         y1 = head['CRVAL2']
@@ -1555,7 +1552,7 @@ def make_log(path):
         # find the brightness index in the central region
         h, w = data.shape
         data1 = data[int(h*0.3):int(h*0.7), w//2-2:w//2+3]
-        bri_index = np.median(data1,axis=1).mean()
+        bri_index = np.median(data1, axis=1).mean()
 
         # change to regular name
         for regname in regular_names:
@@ -1564,32 +1561,25 @@ def make_log(path):
                 break
 
         item = obslog.LogItem(
-                   fileid     = fileid,
-                   obsdate    = obsdate,
-                   exptime    = exptime,
-                   imagetype  = imagetype,
-                   i2         = 0,
-                   objectname = objectname,
-                   saturation = prop,
-                   brightness = bri_index,
-                   )
+                fileid     = fileid,
+                obsdate    = obsdate,
+                exptime    = exptime,
+                imagetype  = imagetype,
+                i2         = 0,
+                objectname = objectname,
+                saturation = prop,
+                brightness = bri_index,
+                )
         log.add_item(item)
 
     log.sort('obsdate')
 
     # make info list
     all_info_lst = []
-    column_lst = [
-            ('frameid',    'i'),
-            ('fileid',     's'),
-            ('imagetype',  's'),
-            ('objectname', 's'),
-            ('i2',         'i'),
-            ('exptime',    'f'),
-            ('obsdate',    's'),
-            ('saturation', 'f'),
-            ('brightness', 'f'),
-            ]
+    column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
+                  ('objectname', 's'), ('i2',         'i'), ('exptime',    'f'),
+                  ('obsdate',    's'), ('saturation', 'f'), ('brightness', 'f'),
+                 ]
     columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
     
     prev_frameid = -1
