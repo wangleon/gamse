@@ -1608,7 +1608,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
                 
                 ########### plot flat parametres for every order ##############
-                if True:
+                if False:
                     if ipara == 0:
                         fig5 = plt.figure(figsize=(8,5), dpi=150)
                         axes5_lst = [

@@ -2008,9 +2008,9 @@ class CalibFigure(Figure):
         self.patch.set_facecolor('#d9d9d9')
 
         # add axes
-        self._ax1 = self.add_axes([0.06,0.07,0.52,0.87])
-        self._ax2 = self.add_axes([0.65,0.07,0.32,0.4])
-        self._ax3 = self.add_axes([0.65,0.54,0.32,0.4])
+        self._ax1 = self.add_axes([0.07, 0.07,0.52,0.87])
+        self._ax2 = self.add_axes([0.655,0.07,0.32,0.40])
+        self._ax3 = self.add_axes([0.655,0.54,0.32,0.40])
 
         # add title
         if channel is None:
@@ -2056,7 +2056,7 @@ class CalibFigure(Figure):
         nuse   = kwargs.pop('nuse')
         ntot   = kwargs.pop('ntot')
 
-        label_size = 14  # fontsize for x, y labels
+        label_size = 12  # fontsize for x, y labels
         tick_size  = 12  # fontsize for x, y ticks
 
         #wave_scale = 'linear'

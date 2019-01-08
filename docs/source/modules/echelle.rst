@@ -106,6 +106,7 @@ calibration functions:
     reference_wl
     reference_wl_new
     get_aperture_coeffs_in_header
+    select_calib_from_database
 
 GUI-related:
 

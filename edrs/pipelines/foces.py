@@ -1083,15 +1083,16 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    section     = config['data']
-    rawdata     = section.get('rawdata')
-    statime_key = section.get('statime_key')
-    exptime_key = section.get('exptime_key')
-    section = config['reduce']
-    midproc = section.get('midproc')
-    result  = section.get('result')
-    report  = section.get('report')
-    mode    = section.get('mode')
+    _section    = config['data']
+    rawdata     = _section.get('rawdata')
+    statime_key = _section.get('statime_key')
+    exptime_key = _section.get('exptime_key')
+    _section    = config['reduce']
+    midproc     = _section.get('midproc')
+    result      = _section.get('result')
+    report      = _section.get('report')
+    mode        = _section.get('mode')
+    fig_format  = _section.get('fig_format')
 
     # create folders if not exist
     if not os.path.exists(report):
@@ -1170,6 +1171,7 @@ def reduce():
             has_bias = False
 
     ######################### find flat groups #################################
+    print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
     # initialize flat_groups for single fiber
     flat_groups = {}
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
@@ -1212,7 +1214,7 @@ def reduce():
         if os.path.exists(flat_filename) and os.path.exists(aperset_filename):
             hdu_lst = fits.open(flat_filename)
             flat_data  = hdu_lst[0].data
-            exptime    = hdu_lst[0].header['EXPOSURE']
+            exptime    = hdu_lst[0].header[exptime_key]
             mask_array = hdu_lst[1].data
             hdu_lst.close()
             aperset = load_aperture_set(aperset_filename)
@@ -1223,7 +1225,7 @@ def reduce():
                 # read each individual flat frame
                 filename = os.path.join(rawdata, '%s.fits'%fileid)
                 data, head = fits.getdata(filename, header=True)
-                _exptime_lst.append(head['EXPOSURE'])
+                _exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
                     data = data[0,:,:]
                 mask = get_mask(data, head)
@@ -1255,7 +1257,7 @@ def reduce():
             # get mean exposure time and write it to header
             head = fits.Header()
             exptime = np.array(_exptime_lst).mean()
-            head['EXPOSURE'] = exptime
+            head[exptime_key] = exptime
 
             # find saturation mask
             sat_mask = allmask > nflat/2.
@@ -1270,16 +1272,16 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            section = config['reduce.trace']
-            fig_file = os.path.join(report, 'trace_%s.png'%flatname)
+            _section = config['reduce.trace']
+            fig_file = os.path.join(report, 'trace_%s.%s'%(flatname, fig_format))
             aperset = find_apertures(flat_data, mask_array,
-                        scan_step  = section.getint('scan_step'),
-                        minimum    = section.getfloat('minimum'),
-                        seperation = section.getfloat('seperation'),
-                        sep_der    = section.getfloat('sep_der'),
-                        filling    = section.getfloat('filling'),
-                        degree     = section.getint('degree'),
-                        display    = section.getboolean('display'),
+                        scan_step  = _section.getint('scan_step'),
+                        minimum    = _section.getfloat('minimum'),
+                        seperation = _section.getfloat('seperation'),
+                        sep_der    = _section.getfloat('sep_der'),
+                        filling    = _section.getfloat('filling'),
+                        degree     = _section.getint('degree'),
+                        display    = _section.getboolean('display'),
                         filename   = flat_filename,
                         fig_file   = fig_file,
                         )
@@ -1294,6 +1296,7 @@ def reduce():
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
+    _section = config['reduce.flat']
     for flatname in sorted(flat_groups.keys()):
         flat_filename = os.path.join(midproc, '%s.fits.gz'%flatname)
         hdu_lst = fits.open(flat_filename)
@@ -1303,22 +1306,21 @@ def reduce():
             # do flat fielding
             print('*** Start parsing flat fielding: %s ***'%flatname)
             fig_aperpar = {
-                'debug': os.path.join(report, 'flat_aperpar_'+flatname+'_%03d.png'),
+                'debug': os.path.join(report, 'flat_aperpar_%s_%%03d.%s'%(flatname, fig_format)),
                 'normal': None,
                 }[mode]
-            fig_slit = os.path.join(report, '%s_slit.pdf'%flatname)
+            fig_slit = os.path.join(report, 'slit_%s.%s'%(flatname, fig_format))
 
-            section = config['reduce.flat']
             flatmap = get_fiber_flat(
                         data        = flat_data_lst[flatname],
                         mask        = flat_mask_lst[flatname],
                         apertureset = aperset_lst[flatname],
-                        slit_step   = section.getint('slit_step'),
+                        slit_step   = _section.getint('slit_step'),
                         nflat       = len(flat_groups[flatname]),
-                        q_threshold = section.getfloat('q_threshold'),
-                        smooth_A_func = smooth_aperpar_A,
-                        smooth_k_func = smooth_aperpar_k,
-                        smooth_c_func = smooth_aperpar_c,
+                        q_threshold = _section.getfloat('q_threshold'),
+                        smooth_A_func   = smooth_aperpar_A,
+                        smooth_k_func   = smooth_aperpar_k,
+                        smooth_c_func   = smooth_aperpar_c,
                         smooth_bkg_func = smooth_aperpar_bkg,
                         fig_aperpar = fig_aperpar,
                         fig_overlap = None,
@@ -1412,27 +1414,24 @@ def reduce():
                 else:
                     logger.info('No bias. skipped bias correction')
 
-                section = config['reduce.extract']
+                _section = config['reduce.extract']
                 spectra1d = extract_aperset(data, mask,
                             apertureset = mosaic_aperset,
-                            lower_limit = section.getfloat('lower_limit'),
-                            upper_limit = section.getfloat('upper_limit'),
+                            lower_limit = _section.getfloat('lower_limit'),
+                            upper_limit = _section.getfloat('upper_limit'),
                             )
                 head = mosaic_aperset.to_fitsheader(head, channel=None)
     
                 spec = []
                 for aper, _item in sorted(spectra1d.items()):
                     flux_sum = _item['flux_sum']
-                    spec.append(
-                             (aper, 0, flux_sum.size,
-                              np.zeros_like(flux_sum, dtype=np.float64),
-                              flux_sum)
-                             )
+                    spec.append((aper, 0, flux_sum.size,
+                            np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
                 spec = np.array(spec, dtype=spectype)
     
                 section = config['reduce.wlcalib']
 
-                wlcalib_fig = os.path.join(report, 'wlcalib_%s.pdf'%item.fileid)
+                wlcalib_fig = os.path.join(report, 'wlcalib_%s.%s'%(item.fileid, fig_format))
 
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
@@ -1442,7 +1441,8 @@ def reduce():
                         search_path = os.path.join(database_path,
                                                     'FOCES/wlcalib')
                         ref_spec, ref_calib, ref_aperset = select_calib_from_database(
-                            search_path, 'FRAME', head['FRAME'], channel=None)
+                            search_path, statime_key, head[statime_key],
+                            channel=None)
     
                         # if failed, pop up a calibration window and identify
                         # the wavelengths manually
@@ -1483,8 +1483,7 @@ def reduce():
                     else:
                         # do not search the database
                         calib = wlcalib(spec,
-                            #filename      = '%s.fits'%item.fileid,
-                            filename      = '',
+                            filename      = '%s.fits'%item.fileid,
                             figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
@@ -1527,8 +1526,8 @@ def reduce():
 
                 # add more infos in calib
                 calib['fileid']   = item.fileid
-                calib['date-obs'] = head['FRAME']
-                calib['exptime']  = head['EXPOSURE']
+                calib['date-obs'] = head[statime_key]
+                calib['exptime']  = head[exptime_key]
                 # pack to calib_lst
                 calib_lst[item.frameid] = calib
 
@@ -1579,7 +1578,7 @@ def reduce():
             # correct background
             section = config['reduce.background']
             fig_sec = os.path.join(report,
-                        'background_%s_section.pdf'%item.fileid)
+                        'bkg_%s_sec.%s'%(item.fileid, fig_format))
 
             stray = find_background(data, mask,
                     apertureset_lst = {'A': mosaic_aperset},
@@ -1592,7 +1591,7 @@ def reduce():
 
             # plot stray light
             fig_stray = os.path.join(report,
-                        'background_%s_stray.pdf'%item.fileid)
+                        'bkg_%s_stray.%s'%(item.fileid, fig_format))
             plot_background_aspect1(data + stray, stray, fig_stray)
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
@@ -1616,7 +1615,7 @@ def reduce():
             spec = np.array(spec, dtype=spectype)
 
             # wavelength calibration
-            weight_lst = get_time_weight(ref_datetime_lst, head['FRAME'])
+            weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
             logger.info('FileID: %s - wavelength calibration weights: %s'%(
                 item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
