@@ -326,7 +326,7 @@ class LineTable(tk.Frame):
 
         # create line tree
         self.line_tree = ttk.Treeview(master  = self.data_frame,
-                                      columns    = ('wv', 'species', 'status'),
+                                      columns    = ('wl', 'species', 'status'),
                                       show       = 'headings',
                                       style      = 'Treeview',
                                       height     = 22,
@@ -337,10 +337,10 @@ class LineTable(tk.Frame):
                                       orient = tk.VERTICAL,
                                       width  = 20)
 
-        self.line_tree.column('wv',      width=160)
+        self.line_tree.column('wl',      width=160)
         self.line_tree.column('species', width=140)
         self.line_tree.column('status',  width=width-160-140-20)
-        self.line_tree.heading('wv',      text=u'\u03bb in air (\xc5)')
+        self.line_tree.heading('wl',      text=u'\u03bb in air (\xc5)')
         self.line_tree.heading('species', text='Species')
         self.line_tree.heading('status',  text='Status')
         self.line_tree.config(yscrollcommand=self.scrollbar.set)
@@ -353,10 +353,10 @@ class LineTable(tk.Frame):
 
         self.item_lst = []
         for line in linelist:
-            wv, species = line
+            wl, species = line
             iid = self.line_tree.insert('',tk.END,
-                    values=(wv, species, ''), tags='normal')
-            self.item_lst.append((iid,  wv))
+                    values=(wl, species, ''), tags='normal')
+            self.item_lst.append((iid,  wl))
         self.line_tree.tag_configure('normal', font=('Arial', 10))
 
         self.line_tree.pack(side=tk.LEFT, fill=tk.Y, expand=True)
@@ -415,9 +415,9 @@ class LineTable(tk.Frame):
 
             list1 = identlist[aperture]
         
-            wv_diff = np.abs(list1['wavelength'] - float(values[0]))
-            mindiff = wv_diff.min()
-            argmin  = wv_diff.argmin()
+            wl_diff = np.abs(list1['wavelength'] - float(values[0]))
+            mindiff = wl_diff.min()
+            argmin  = wl_diff.argmin()
             if mindiff < 1e-3:
                 # the selected line is in identlist of this aperture
                 xpos = list1[argmin]['pixel']
@@ -663,7 +663,7 @@ class CalibWindow(tk.Frame):
     def fit(self):
         '''Fit the wavelength and plot the solution in the figure.'''
 
-        coeff, std, k, offset, nuse, ntot = fit_wv(
+        coeff, std, k, offset, nuse, ntot = fit_wavelength(
                 identlist = self.identlist, 
                 npixel    = self.param['npixel'],
                 xorder    = self.param['xorder'],
@@ -679,7 +679,7 @@ class CalibWindow(tk.Frame):
         self.param['nuse']   = nuse
         self.param['ntot']   = ntot
 
-        self.plot_wv()
+        self.plot_wavelength()
 
         # udpdate the order/aperture string
         aperture = self.param['aperture']
@@ -750,16 +750,16 @@ class CalibWindow(tk.Frame):
 
             # generated the wavelengths for every pixel in this oirder
             x = np.arange(npixel)
-            wvs = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
-            wv1 = min(wvs[0], wvs[-1])
-            wv2 = max(wvs[0], wvs[-1])
+            wl = get_wavelength(coeff, npixel, x, np.repeat(order, x.size))
+            w1 = min(wl[0], wl[-1])
+            w2 = max(wl[0], wl[-1])
 
             has_insert = False
             # now scan the linelist
             for line in self.linelist:
-                if line[0]<wv1:
+                if line[0] < w1:
                     continue
-                elif line[0]>wv2:
+                elif line[0] > w2:
                     break
                 else:
                     # wavelength in the range of this order
@@ -768,7 +768,7 @@ class CalibWindow(tk.Frame):
                         continue
 
                     # now has not been identified. find peaks for this line
-                    diff = np.abs(wvs - line[0])
+                    diff = np.abs(wl - line[0])
                     i = diff.argmin()
                     i1, i2, param, std = find_local_peak(flux, i, self.param['window_size'])
                     peak_x = param[1]
@@ -835,7 +835,7 @@ class CalibWindow(tk.Frame):
             # switch to fit mode
             self.param['mode']='fit'
 
-            self.plot_wv()
+            self.plot_wavelength()
 
             self.info_frame.switch_button.config(text='Identify')
 
@@ -935,7 +935,7 @@ class CalibWindow(tk.Frame):
         self.info_frame.update_nav_buttons()
         self.info_frame.update_aperture_label()
 
-    def plot_wv(self):
+    def plot_wavelength(self):
         '''A wrap for plotting the wavelength solution.'''
 
         aperture_lst = np.arange(self.param['aperture_min'], 
@@ -1003,13 +1003,13 @@ class CalibWindow(tk.Frame):
                     # redraw the canvas
                     self.plot_frame.canvas.draw()
 
-                    wv = list1[imin]['wavelength']
+                    wl = list1[imin]['wavelength']
 
                     # select this line in the linetable
                     for i, record in enumerate(line_frame.item_lst):
                         item = record[0]
                         wave = record[1]
-                        if abs(wv - wave)<1e-3:
+                        if abs(wl - wave)<1e-3:
                             break
 
                     line_frame.line_tree.selection_set(item)
@@ -1017,7 +1017,7 @@ class CalibWindow(tk.Frame):
                     line_frame.line_tree.yview_moveto(pos)
 
                     # put the wavelength in the search bar
-                    line_frame.search_text.set(str(wv))
+                    line_frame.search_text.set(str(wl))
 
                     # update the status of 3 buttons
                     line_frame.clr_button.config(state=tk.NORMAL)
@@ -1070,10 +1070,10 @@ class CalibWindow(tk.Frame):
             line_frame.clr_button.config(state=tk.NORMAL)
 
             # guess the input wavelength
-            guess_wv = guess_wavelength(peak_x, aperture, self.identlist,
+            guess_wl = guess_wavelength(peak_x, aperture, self.identlist,
                                         self.linelist, self.param)
 
-            if guess_wv is None:
+            if guess_wl is None:
                 # wavelength guess failed
                 #line_frame.search_entry.focus()
                 # update buttons
@@ -1083,7 +1083,7 @@ class CalibWindow(tk.Frame):
                 # wavelength guess succeed
 
                 # check whether wavelength has already been identified
-                if is_identified(guess_wv, self.identlist, aperture):
+                if is_identified(guess_wl, self.identlist, aperture):
                     # has been identified, do nothing
                     # update buttons
                     line_frame.add_button.config(state=tk.DISABLED)
@@ -1091,12 +1091,12 @@ class CalibWindow(tk.Frame):
                 else:
                     # has not been identified yet
                     # put the wavelength in the search bar
-                    line_frame.search_text.set(str(guess_wv))
+                    line_frame.search_text.set(str(guess_wl))
                     # select this line in the linetable
                     for i, record in enumerate(line_frame.item_lst):
                         iid  = record[0]
                         wave = record[1]
-                        if abs(guess_wv - wave)<1e-3:
+                        if abs(guess_wl - wave)<1e-3:
                             break
                     line_frame.line_tree.selection_set(iid)
                     pos = i/float(len(line_frame.item_lst))
@@ -1170,13 +1170,13 @@ class CalibWindow(tk.Frame):
         '''Response function of deleting an identified line.
         '''
         line_frame = self.info_frame.line_frame
-        target_wv = float(line_frame.search_text.get())
+        target_wl = float(line_frame.search_text.get())
         aperture = self.param['aperture']
         list1 = self.identlist[aperture]
 
-        wv_diff = np.abs(list1['wavelength'] - target_wv)
-        mindiff = wv_diff.min()
-        argmin  = wv_diff.argmin()
+        wl_diff = np.abs(list1['wavelength'] - target_wl)
+        mindiff = wl_diff.min()
+        argmin  = wl_diff.argmin()
         if mindiff < 1e-3:
             # delete this line from ident list
             list1 = np.delete(list1, argmin)
@@ -1254,8 +1254,7 @@ class CalibWindow(tk.Frame):
             info_frame.clearall_button.config(state=tk.DISABLED)
 
 
-
-def wvcalib(spec, filename, figfilename, linelist, channel, identfilename=None, 
+def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None, 
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
     snr_threshold=10):
     '''Identify the wavelengths of emission lines in the spectrum of a
@@ -1405,7 +1404,7 @@ def wvcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
 
     return result
 
-def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
+def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
     '''Fit the wavelength using 2-D polynomial.
     
     Args:
@@ -1431,7 +1430,7 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
             * **ntot** (*int*) – Number of lines found.
 
     See also:
-        :func:`get_wv_val`
+        :func:`get_wavelength`
 
     '''
     # find physical order
@@ -1487,7 +1486,7 @@ def fit_wv(identlist, npixel, xorder, yorder, maxiter, clipping):
     ntot = fit_w_lst.size
     return coeff, std, k, offset, nuse, ntot
 
-def get_wv_val(coeff, npixel, pixel, order):
+def get_wavelength(coeff, npixel, pixel, order):
     '''Get the wavelength solution.
     
     Args:
@@ -1501,7 +1500,7 @@ def get_wv_val(coeff, npixel, pixel, order):
         float or :class:`numpy.ndarray`: Wavelength solution of the given pixels.
 
     See also:
-        :func:`fit_wv`
+        :func:`fit_wavelength`
 
     '''
     # convert aperture to order
@@ -1528,30 +1527,30 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         float: Guessed wavelength. If failed, return *None*.
         
     '''
-    rough_wv = None
+    rough_wl = None
 
-    # guess wv from the identified lines in this order
+    # guess wavelength from the identified lines in this order
     if aperture in identlist:
         list1 = identlist[aperture]
         if list1.size >= 2:
             fit_order = min(list1.size-1, 2)
             local_coeff = np.polyfit(list1['pixel'], list1['wavelength'], deg=fit_order)
-            rough_wv = np.polyval(local_coeff, x)
+            rough_wl = np.polyval(local_coeff, x)
 
     # guess wavelength from global wavelength solution
-    if rough_wv is None and param['coeff'].size > 0:
+    if rough_wl is None and param['coeff'].size > 0:
         npixel = param['npixel']
         order = aperture*param['k'] + param['offset']
-        rough_wv = get_wv_val(param['coeff'], param['npixel'], x, order)
+        rough_wl = get_wavelength(param['coeff'], param['npixel'], x, order)
 
-    if rough_wv is None:
+    if rough_wl is None:
         return None
     else:
         # now find the nearest wavelength in linelist
         wave_list = np.array([line[0] for line in linelist])
-        iguess = np.abs(wave_list-rough_wv).argmin()
-        guess_wv = wave_list[iguess]
-        return guess_wv
+        iguess = np.abs(wave_list-rough_wl).argmin()
+        guess_wl = wave_list[iguess]
+        return guess_wl
 
 def is_identified(wavelength, identlist, aperture):
     '''Check if the input wavelength has already been identified.
@@ -1594,7 +1593,7 @@ def find_order(identlist, npixel):
               `order = k*aperture + offset`.
 
     '''
-    aper_lst, wvc_lst = [], []
+    aper_lst, wlc_lst = [], []
     for aperture, list1 in sorted(identlist.items()):
         if list1.size<3:
             continue
@@ -1610,12 +1609,12 @@ def find_order(identlist, npixel):
             else:
                 deg = 1
             c = np.polyfit(list1['pixel'], list1['wavelength'], deg=deg)
-            wvc = np.polyval(c, npixel/2.)
+            wlc = np.polyval(c, npixel/2.)
             aper_lst.append(aperture)
-            wvc_lst.append(wvc)
+            wlc_lst.append(wlc)
     aper_lst = np.array(aper_lst)
-    wvc_lst  = np.array(wvc_lst)
-    if wvc_lst[0] > wvc_lst[-1]:
+    wlc_lst  = np.array(wlc_lst)
+    if wlc_lst[0] > wlc_lst[-1]:
         k = 1
     else:
         k = -1
@@ -1623,7 +1622,7 @@ def find_order(identlist, npixel):
     offset_lst = np.arange(-500, 500)
     eva_lst = []
     for offset in offset_lst:
-        const = (k*aper_lst + offset)*wvc_lst
+        const = (k*aper_lst + offset)*wlc_lst
         diffconst = np.diff(const)
         eva = (diffconst**2).sum()
         eva_lst.append(eva)
@@ -1909,12 +1908,12 @@ def load_linelist(filename):
         if len(row)==0 or row[0] in '#%!@':
             continue
         g = row.split()
-        wv = float(g[0])
+        wl = float(g[0])
         if len(g)>1:
             species = g[1]
         else:
             species = ''
-        linelist.append((wv, species))
+        linelist.append((wl, species))
     infile.close()
     return linelist
 
@@ -2077,7 +2076,7 @@ class CalibFigure(Figure):
             allwave_lst = {}
             for aperture in aperture_lst:
                 order = k*aperture + offset
-                wave = get_wv_val(coeff, npixel, x, np.repeat(order, x.size))
+                wave = get_wavelength(coeff, npixel, x, np.repeat(order, x.size))
                 allwave_lst[aperture] = wave
                 wl_max = max(wl_max, wave.max())
                 wl_min = min(wl_min, wave.min())
@@ -2296,7 +2295,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
               be accepted in the wavelength fitting.
 
     See also:
-        :func:`wvcalib`
+        :func:`wlcalib`
         
     '''
 
@@ -2322,18 +2321,18 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
         aperture = row['aperture']
         flux     = row['flux']
         order = k*(aperture - aperture_offset) + offset
-        wvs = get_wv_val(coeff, npixel, x-shift, np.repeat(order, npixel))
-        wv1 = min(wvs[0], wvs[-1])
-        wv2 = max(wvs[0], wvs[-1])
+        wl = get_wavelength(coeff, npixel, x-shift, np.repeat(order, npixel))
+        w1 = min(wl[0], wl[-1])
+        w2 = max(wl[0], wl[-1])
         has_insert = False
         for line in line_list:
-            if line[0]<wv1:
+            if line[0] < w1:
                 continue
-            elif line[0]>wv2:
+            elif line[0] > w2:
                 break
             else:
                 # wavelength in the range of this order
-                diff = np.abs(wvs - line[0])
+                diff = np.abs(wl - line[0])
                 i = diff.argmin()
                 i1, i2, param, std = find_local_peak(flux, i, window_size)
                 peak_x = param[1]
@@ -2375,7 +2374,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
     #    for row in list1:
     #        print(aperture, row['pixel'], row['wavelength'], row['snr'])
 
-    coeff, std, k, offset, nuse, ntot = fit_wv(
+    coeff, std, k, offset, nuse, ntot = fit_wavelength(
         identlist = identlist, 
         npixel    = npixel,
         xorder    = xorder,
@@ -2475,7 +2474,7 @@ def save_calibrated_thar(head, spec, calib, channel):
 
     return hdu_lst
 
-def reference_wv_new(spec, calib, head, channel, include_identlist):
+def reference_wl_new(spec, calib, head, channel, include_identlist):
     k      = calib['k']
     offset = calib['offset']
     xorder = calib['xorder']
@@ -2486,7 +2485,7 @@ def reference_wv_new(spec, calib, head, channel, include_identlist):
        aperture = row['aperture']
        npixel   = row['points']
        order = aperture*k + offset
-       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
        row['order']      = order
        row['wavelength'] = wavelength
 
@@ -2625,7 +2624,7 @@ def self_reference_singlefiber(spec, header, calib):
        aperture = row['aperture']
        npixel   = row['points']
        order = aperture*k + offset
-       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
        row['order']      = order
        row['wavelength'] = wavelength
 
@@ -2663,7 +2662,7 @@ def self_reference_singlefiber(spec, header, calib):
 
     return fits.HDUList(hdu_lst)
 
-def wv_reference_singlefiber(spec, header, calib_lst, weight_lst):
+def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
     k      = calib_lst[0]['k']
     offset = calib_lst[0]['offset']
     xorder = calib_lst[0]['xorder']
@@ -2681,7 +2680,7 @@ def wv_reference_singlefiber(spec, header, calib_lst, weight_lst):
        aperture = row['aperture']
        npixel   = row['points']
        order = aperture*k + offset
-       wavelength = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
        row['order']      = order
        row['wavelength'] = wavelength
 
@@ -2710,7 +2709,7 @@ def wv_reference_singlefiber(spec, header, calib_lst, weight_lst):
 
     return spec, header
 
-def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
+def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
     '''
     Reference the wavelength and write the wavelength solution to the FITS file.
 
@@ -2724,7 +2723,7 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             solutions for different channels.
 
     See also:
-        :func:`wvcalib`
+        :func:`wlcalib`
 
     '''
     data, head = fits.getdata(infilename, header=True)
@@ -2836,12 +2835,12 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
             aperture = row['aperture']
             npixel   = row['points']
             order = aperture*k + offset
-            wv = get_wv_val(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+            wl = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
             
             # add wavelength into FITS table
             item = list(row)
             item.append(order)
-            item.append(wv)
+            item.append(wl)
             newspec.append(tuple(item))
 
             # write wavlength information into regfile
@@ -2882,12 +2881,12 @@ def reference_wv(infilename, outfilename, regfilename, frameid, calib_lst):
 
                 # draw ticks at integer wavelegths
                 pix = np.arange(npixel)
-                if wv[0] > wv[-1]:
-                    wv = wv[::-1]
-                    pix= pix[::-1]
-                f = intp.InterpolatedUnivariateSpline(wv, pix, k=3)
-                w1 = wv.min()
-                w2 = wv.max()
+                if wl[0] > wl[-1]:
+                    wl  = wl[::-1]
+                    pix = pix[::-1]
+                f = intp.InterpolatedUnivariateSpline(wl, pix, k=3)
+                w1 = wl.min()
+                w2 = wl.max()
                 for w in np.arange(int(math.ceil(w1)), int(math.floor(w2))+1):
                     x = f(w)
                     y = position(x)

@@ -86,12 +86,12 @@ Wavelength Calibration
 ----------------------
 calibration functions:
 
-.. currentmodule:: edrs.echelle.wvcalib
+.. currentmodule:: edrs.echelle.wlcalib
 .. autosummary::
-    wvcalib
+    wlcalib
     recalib
-    fit_wv
-    get_wv_val
+    fit_wavelength
+    get_wavelength
     guess_wavelength
     find_order
     find_drift
@@ -103,12 +103,13 @@ calibration functions:
     is_identified
     load_linelist
     search_linelist
-    reference_wv
+    reference_wl
+    reference_wl_new
     get_aperture_coeffs_in_header
 
 GUI-related:
 
-.. currentmodule:: edrs.echelle.wvcalib
+.. currentmodule:: edrs.echelle.wlcalib
 .. autosummary::
     CalibWindow
     CalibFigure
@@ -118,7 +119,7 @@ GUI-related:
     LineTable
     FitparaFrame
 
-.. automodule:: edrs.echelle.wvcalib
+.. automodule:: edrs.echelle.wlcalib
    :members:
    :private-members:
    :undoc-members:
