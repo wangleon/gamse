@@ -1314,17 +1314,20 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     # plot the slit function
     if plot_slit:
         fig = plt.figure(figsize=(5,10), dpi=150)
-        ax  = fig.add_axes([0.14, 0.06, 0.82, 0.92])
+        ax  = fig.add_axes([0.16, 0.06, 0.81, 0.92])
         for ix in np.arange(slit_array.shape[1]):
             ax.plot(xnodes, slit_array[:,ix] + ix*0.15, '-', color='C0')
-            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=11)
+            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=13)
         ax.set_xlim(xnodes[0], xnodes[-1])
-        ax.set_xlabel('$\sigma$', fontsize=16)
-        ax.set_ylabel('Intensity', fontsize=16)
+        _y1, _y2 = ax.get_ylim()
+        # has to be removed after plotting
+        ax.text(xnodes[0]+0.5, 0.05*_y1+0.95*_y2, 'HRS (Xinglong)', fontsize=21)
+        ax.set_xlabel('$\sigma$', fontsize=19)
+        ax.set_ylabel('Intensity', fontsize=19)
         for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(11)
+            tick.label1.set_fontsize(17)
         for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(11)
+            tick.label1.set_fontsize(17)
         fig.savefig(fig_slit)
         plt.close(fig)
 
@@ -1612,10 +1615,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     if ipara == 0:
                         fig5 = plt.figure(figsize=(8,5), dpi=150)
                         axes5_lst = [
-                            fig5.add_axes([0.08, 0.57, 0.37, 0.41]),
-                            fig5.add_axes([0.56, 0.57, 0.37, 0.41]),
-                            fig5.add_axes([0.08, 0.10, 0.37, 0.41]),
-                            fig5.add_axes([0.56, 0.10, 0.37, 0.41]),
+                            fig5.add_axes([0.08, 0.57, 0.36, 0.41]),
+                            fig5.add_axes([0.56, 0.57, 0.36, 0.41]),
+                            fig5.add_axes([0.08, 0.10, 0.36, 0.41]),
+                            fig5.add_axes([0.56, 0.10, 0.36, 0.41]),
                         ]
                     i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
                     ax51 = axes5_lst[ipara]
@@ -1623,17 +1626,25 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     # make a copy of ax1 and plot the residuals in the background
                     ax52 = ax51.twinx()
                     ax52.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
-                                alpha=0.4, zorder=-2)
-                    ax52.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.4,
+                                alpha=0.6, zorder=-2)
+                    ax52.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.6,
                                 zorder=-3)
                     # plot rejected points with gray dots
                     _m = mask_rej_lst>0
                     if _m.sum()>0:
                         ax52.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                                color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+                                color='gray', lw=0.5, ms=2, alpha=0.6, zorder=-1)
+                    # adjust ticks and labels for ax52
+                    for tick in ax52.yaxis.get_major_ticks():
+                        tick.label2.set_fontsize(10)
+                        tick.label2.set_color('gray')
+                        tick.label2.set_alpha(0.8)
+                    for tickline in ax52.yaxis.get_ticklines():
+                        tickline.set_color('gray')
+                        tickline.set_alpha(0.8)
 
                     # plot data points in ax51
-                    ax51.plot(newx_lst, ypara, '-', color='C0', lw=0.5,
+                    ax51.plot(newx_lst, ypara, '-', color='C0', lw=0.8,
                                 alpha=1.0, zorder=1)
                     # plot fitted value
                     ax51.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
@@ -1642,31 +1653,20 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax51.set_xlim(0, w-1)
                     ax51.text(0.05*w, 0.15*_y1+0.85*_y2,
                             'AKCB'[ipara]+' (Aper %d)'%aper,
-                            fontsize=12)
+                            fontsize=13)
                     if ipara in [2, 3]:
-                        ax51.set_xlabel('X')
+                        ax51.set_xlabel('X', fontsize=13)
 
                     for tick in ax51.xaxis.get_major_ticks():
                         tick.label1.set_fontsize(11)
                     for tick in ax51.yaxis.get_major_ticks():
                         tick.label1.set_fontsize(11)
-                    for tick in ax52.yaxis.get_major_ticks():
-                        tick.label2.set_fontsize(9)
-                        tick.label2.set_color('gray')
-                        tick.label2.set_alpha(0.6)
-                    for tickline in ax52.yaxis.get_ticklines():
-                        tickline.set_color('gray')
-                        tickline.set_alpha(0.6)
                     if w<3000:
                         ax51.xaxis.set_major_locator(tck.MultipleLocator(500))
                         ax51.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                        ax52.xaxis.set_major_locator(tck.MultipleLocator(500))
-                        ax52.xaxis.set_minor_locator(tck.MultipleLocator(100))
                     else:
                         ax51.xaxis.set_major_locator(tck.MultipleLocator(1000))
                         ax51.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                        ax52.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                        ax52.xaxis.set_minor_locator(tck.MultipleLocator(500))
                     if ipara == 3:
                         figname1 = fig_aperpar%aper
                         figname2 = '.'.join(figname1.split('.')[0:-1])+'i.pdf'
