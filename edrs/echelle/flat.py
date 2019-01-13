@@ -1321,13 +1321,13 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         ax.set_xlim(xnodes[0], xnodes[-1])
         _y1, _y2 = ax.get_ylim()
         # has to be removed after plotting
-        ax.text(xnodes[0]+0.5, 0.05*_y1+0.95*_y2, 'HRS (Xinglong)', fontsize=21)
-        ax.set_xlabel('$\sigma$', fontsize=19)
-        ax.set_ylabel('Intensity', fontsize=19)
+        #ax.text(xnodes[0]+0.5, 0.05*_y1+0.95*_y2, 'HRS (Xinglong)', fontsize=21)
+        ax.set_xlabel('$\sigma$', fontsize=15)
+        ax.set_ylabel('Intensity', fontsize=15)
         for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(17)
+            tick.label1.set_fontsize(13)
         for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(17)
+            tick.label1.set_fontsize(13)
         fig.savefig(fig_slit)
         plt.close(fig)
 

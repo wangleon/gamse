@@ -85,14 +85,6 @@ def plot_background_aspect1(data, stray, figname):
     _width = 0.37
     _height = _width/w*h*16/7
 
-    #fig1 = plt.figure(figsize=(8,7), dpi=150)
-    #fig2 = plt.figure(figsize=(8,7), dpi=150)
-
-    #ax21 = fig1.add_axes([0.08, 0.06, 0.8, 0.9])
-    #ax22 = fig2.add_axes([0.08, 0.06, 0.8, 0.9])
-    #ax21c = fig1.add_axes([0.90, 0.06, 0.03, 0.9])
-    #ax22c = fig2.add_axes([0.90, 0.06, 0.03, 0.9])
-
     ax21 = fig.add_axes([0.06, 0.1, _width, _height])
     ax22 = fig.add_axes([0.55, 0.1, _width, _height])
     ax21c = fig.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])
@@ -118,3 +110,43 @@ def plot_background_aspect1(data, stray, figname):
         ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
     fig.savefig(figname)
     plt.close(fig)
+
+def plot_background_aspect1_alt(data, stray, figname1, figname2):
+    h, w = data.shape
+
+    fig1 = plt.figure(figsize=(8.5,7), dpi=150)
+    fig2 = plt.figure(figsize=(8.5,7), dpi=150)
+
+    ax21  = fig1.add_axes([0.08, 0.08, 0.80, 0.9])
+    ax22  = fig2.add_axes([0.08, 0.08, 0.80, 0.9])
+    ax21c = fig1.add_axes([0.88, 0.08, 0.03, 0.9])
+    ax22c = fig2.add_axes([0.88, 0.08, 0.03, 0.9])
+
+    # find the minimum and maximum value of plotting
+    s = np.sort(data.flatten())
+    vmin = s[int(0.05*data.size)]
+    vmax = s[int(0.95*data.size)]
+
+    cax_data  = ax21.imshow(data, cmap='gray', vmin=vmin, vmax=vmax)
+    cax_stray = ax22.imshow(stray, cmap='viridis')
+    cs = ax22.contour(stray, colors='r', linewidths=0.5)
+    ax22.clabel(cs, inline=1, fontsize=12, fmt='%g', use_clabeltext=True)
+    fig1.colorbar(cax_data, cax=ax21c)
+    fig2.colorbar(cax_stray, cax=ax22c)
+    for ax in [ax21, ax22]:
+        ax.set_xlabel('X', fontsize=15)
+        ax.set_ylabel('Y', fontsize=15)
+        ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(14)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(14)
+    for axc in [ax21c, ax22c]:
+        for tick in axc.yaxis.get_major_ticks():
+            tick.label2.set_fontsize(14)
+
+    fig1.savefig(figname1)
+    fig2.savefig(figname2)

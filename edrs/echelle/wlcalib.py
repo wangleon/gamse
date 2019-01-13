@@ -2056,7 +2056,7 @@ class CalibFigure(Figure):
         nuse   = kwargs.pop('nuse')
         ntot   = kwargs.pop('ntot')
 
-        label_size = 12  # fontsize for x, y labels
+        label_size = 13  # fontsize for x, y labels
         tick_size  = 12  # fontsize for x, y ticks
 
         #wave_scale = 'linear'

@@ -550,8 +550,8 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
         plot_cols = [cols[np.abs(cols - h*t).argmin()]
                         for t in np.linspace(0, 1, 5)]
         fig1 = plt.figure(figsize=(18,12), dpi=150)
-        tick_size  = 12
-        label_size = 15
+        tick_size  = 13
+        label_size = 14
 
     ally = np.arange(h)
 
@@ -706,8 +706,8 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
             _y1, _y2 = 1.2*_ymin-0.2*_ymax, 1.2*_ymax-0.2*_ymin
             ax1.set_ylim(_y1, _y2)
             ax1.set_xlim(0, h-1)
-            ax1.text(0.03*h, 0.2*_y1+0.8*_y2, 'x=%d'%x,
-                    fontsize=label_size, alpha=0.6)
+            ax1.text(0.03*h, 0.8*_y1+0.2*_y2, 'x=%d'%x,
+                    fontsize=label_size, alpha=0.8)
             for tick in ax1.xaxis.get_major_ticks():
                 tick.label1.set_fontsize(tick_size)
             for tick in ax1.yaxis.get_major_ticks():
