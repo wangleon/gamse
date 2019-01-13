@@ -45,9 +45,15 @@ def reduce():
 
     rawdata = config['data']['rawdata']
 
-    # parse bias
-    if os.path.exists('bias.fits'):
-        bias = fits.getdata('bias.fits')
+    ################################ parse bias ################################
+    section = config['reduce.bias']
+    bias_file = section['bias_file']
+
+    if os.path.exists(bias_file):
+        has_bias = True
+        # load bias data from existing file
+        bias = fits.getdata(bias_file)
+        logger.info('Load bias from image: %s'%bias_file)
     else:
         bias_lst = []
         for item in log:
@@ -57,7 +63,17 @@ def reduce():
                 data = correct_overscan(data)
                 bias_lst.append(data)
 
-        bias = combine_images(bias_lst, mode='mean', upper_clip=10, maxiter=5)
+        has_bias = len(bias_lst)>0
+
+        if has_bias:
+            # there is bias frames
+
+            # combine bias images
+            bias = combine_images(bias_lst,
+                    mode       = 'mean',
+                    upper_clip = 10,
+                    maxiter    = 5,
+                    )
         bias = gaussian_filter(bias, 3, mode='nearest')
         fits.writeto('bias.fits', bias, overwrite=True)
 

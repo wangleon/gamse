@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ..echelle.imageproc import (combine_images, array_to_table,
-                                 table_to_array, fix_pixels)
+                                 fix_pixels)
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
@@ -561,32 +561,30 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    _section    = config['data']
-    rawdata     = _section.get('rawdata')
-    statime_key = _section.get('statime_key')
-    exptime_key = _section.get('exptime_key')
-    _section    = config['reduce']
-    midproc     = _section.get('midproc')
-    result      = _section.get('result')
-    report      = _section.get('report')
-    mode        = _section.get('mode')
-    fig_format  = _section.get('fig_format')
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
+    section     = config['reduce']
+    midproc     = section.get('midproc')
+    result      = section.get('result')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format  = section.get('fig_format')
 
     # create folders if not exist
-    if not os.path.exists(report):
-        os.mkdir(report)
-    if not os.path.exists(result):
-        os.mkdir(result)
-    if not os.path.exists(midproc):
-        os.mkdir(midproc)
+    if not os.path.exists(report):  os.mkdir(report)
+    if not os.path.exists(result):  os.mkdir(result)
+    if not os.path.exists(midproc): os.mkdir(midproc)
 
     ############################# parse bias ###################################
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
     if os.path.exists(bias_file):
-        bias = fits.getdata(bias_file)
         has_bias = True
+        # load bias data from existing file
+        bias = fits.getdata(bias_file)
         logger.info('Load bias from image: %s'%bias_file)
     else:
         bias_lst = []
@@ -598,9 +596,12 @@ def reduce():
                 data, head = correct_overscan(data, head, mask)
                 bias_lst.append(data)
 
-        if len(bias_lst)>0:
+        has_bias = len(bias_lst)>0
+
+        if has_bias:
             # there is bias frames
 
+            # combine bias images
             bias = combine_images(bias_lst,
                     mode       = 'mean',
                     upper_clip = section.getfloat('cosmic_clip'),
@@ -643,11 +644,7 @@ def reduce():
                 head['HIERARCH EDRS BIAS SMOOTH'] = False
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
-            has_bias = True
             logger.info('Bias image written to "%s"'%bias_file)
-        else:
-            # no bias in this dataset
-            has_bias = False
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -1088,6 +1085,10 @@ def reduce():
                     fig_section     = fig_sec,
                     )
             data = data - stray
+
+            ####
+            outfilename = os.path.join(midproc, '%s_bkg.fits'%item.fileid)
+            fits.writeto(outfilename, data)
 
             # plot stray light
             fig_stray = os.path.join(report,
