@@ -1592,7 +1592,12 @@ def reduce():
             # plot stray light
             fig_stray = os.path.join(report,
                         'bkg_%s_stray.%s'%(item.fileid, fig_format))
-            plot_background_aspect1(data + stray, stray, fig_stray)
+            plot_background_aspect1(data+stray, stray, fig_stray)
+
+            # generate two figures for each background
+            #plot_background_aspect1_alt(data+stray, stray,
+            #    os.path.join(report, 'bkg_%s_stray1.%s'%(item.fileid, fig_format)),
+            #    os.path.join(report, 'bkg_%s_stray2.%s'%(item.fileid, fig_format)))
 
             logger.info('FileID: %s - background corrected'%(item.fileid))
 
