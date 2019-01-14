@@ -147,9 +147,13 @@ def reduce():
 
     ############################# trace the orders ############################
     section = config['reduce.trace']
-    if os.path.exists('trace.fits'):
-        trace = fits.getdata('trace.fits')
+    trace_file = section['trace_file']
+
+    if os.path.exists(trace_file):
+        # load trace image from existing file
+        trace = fits.getdata(trace_file)
     else:
+        # combine trace file from narrow flats
         trace_lst = []
         for item in log:
             if item.objectname[0]=='NarrowFlat':
@@ -157,29 +161,41 @@ def reduce():
                 data = fits.getdata(filename)
                 data = correct_overscan(data)
                 trace_lst.append(data - bias)
-        trace = combine_images(trace_lst, mode='mean', upper_clip=10, maxiter=5)
+
+        # combine images
+        upper_clip = section.getfloat('upper_clip')
+        maxiter    = section.getint('maxiter')
+        trace = combine_images(trace_lst, mode='mean',
+                upper_clip=upper_clip, maxiter=maxiter)
         trace = trace.T
-        fits.writeto('trace.fits', trace, overwrite=True)
+        fits.writeto(trace_file, trace, overwrite=True)
 
+    # find the name of .trc file
+    trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
+    trc_reg  = '.'.join(trace_file.split('.')[:-1])+'.reg'
+    trace_filename = os.path.basename(trace_file)
+    trace_fileid = '.'.join(trace_filename.split('.')[:-1])
+    fig_file = os.path.join(report, '%s.%s'%(trace_fileid, fig_format))
 
-    if os.path.exists('trace.trc'):
-        aperset = load_aperture_set('trace.trc')
+    if os.path.exists(trc_file):
+        # load apertures from existing file
+        aperset = load_aperture_set(trc_file)
     else:
         mask = np.zeros_like(trace, dtype=np.int8)
 
         aperset = find_apertures(trace, mask,
-                    scan_step  = 50,
-                    minimum    = 8,
-                    seperation = 14,
-                    sep_der    = 3,
-                    filling    = 0.2,
-                    degree     = 3,
-                    display    = True,
-                    filename   = 'trace.fits',
-                    fig_file   = 'trace.png',
+                    scan_step  = section.getint('scan_step'),
+                    minimum    = section.getfloat('minimum'),
+                    separation = section.getfloat('separation'),
+                    sep_der    = section.getfloat('sep_der'),
+                    filling    = section.getfloat('filling'),
+                    degree     = section.getint('degree'),
+                    display    = section.getboolean('display'),
+                    filename   = trace_file,
+                    fig_file   = fig_file,
                     )
-        aperset.save_txt('trace.trc')
-        aperset.save_reg('trace.reg')
+        aperset.save_txt(trc_file)
+        aperset.save_reg(trc_reg)
 
     ######################### find flat groups #################################
     ########################### Combine flat images ############################
