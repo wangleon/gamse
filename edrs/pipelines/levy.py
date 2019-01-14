@@ -38,12 +38,47 @@ def reduce():
     '''
     Reduce the APF/Levy spectra.
     '''
+
+    # read obs log
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
 
-    config = read_config('Levy')
+    # load config files
+    config_file_lst = []
+    # find built-in config file
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+    config_file = os.path.join(config_path, 'Levy.cfg')
+    if os.path.exists(config_file):
+        config_file_lst.append(config_file)
 
-    rawdata = config['data']['rawdata']
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
+    # load both built-in and local config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
+    # extract keywords from config file
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
+    section     = config['reduce']
+    midproc     = section.get('midproc')
+    result      = section.get('result')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format  = section.get('fig_format')
+
+    # create folders if not exist
+    if not os.path.exists(report):  os.mkdir(report)
+    if not os.path.exists(result):  os.mkdir(result)
+    if not os.path.exists(midproc): os.mkdir(midproc)
 
     ################################ parse bias ################################
     section = config['reduce.bias']
@@ -60,6 +95,7 @@ def reduce():
             if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data = fits.getdata(filename)
+                # correct overscan here
                 data = correct_overscan(data)
                 bias_lst.append(data)
 
@@ -71,13 +107,46 @@ def reduce():
             # combine bias images
             bias = combine_images(bias_lst,
                     mode       = 'mean',
-                    upper_clip = 10,
-                    maxiter    = 5,
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
                     )
-        bias = gaussian_filter(bias, 3, mode='nearest')
-        fits.writeto('bias.fits', bias, overwrite=True)
 
-    # trace the orders
+            # create new FITS Header for bias
+            head = fits.Header()
+            head['HIERARCH EDRS BIAS NFILE'] = len(bias_lst)
+
+            ############## bias smooth ##################
+            if section.getboolean('smooth'):
+                # bias needs to be smoothed
+                smooth_method = section.get('smooth_method')
+
+                if smooth_method in ['gauss','gaussian']:
+                    # perform 2D gaussian smoothing
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section.get('smooth_mode')
+
+                    bias_smooth = gaussian_filter(bias,
+                                    sigma=smooth_sigma, mode=smooth_mode)
+
+                    # write information to FITS header
+                    head['HIERARCH EDRS BIAS SMOOTH']        = True
+                    head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                    head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
+                    head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                else:
+                    print('Unknown smooth method: ', smooth_method)
+                    pass
+
+                bias = bias_smooth
+            else:
+                # bias not smoothed
+                head['HIERARCH EDRS BIAS SMOOTH'] = False
+
+            fits.writeto(bias_file, bias, header=head, overwrite=True)
+            logger.info('Bias image written to "%s"'%bias_file)
+
+    ############################# trace the orders ############################
+    section = config['reduce.trace']
     if os.path.exists('trace.fits'):
         trace = fits.getdata('trace.fits')
     else:
@@ -112,6 +181,7 @@ def reduce():
         aperset.save_txt('trace.trc')
         aperset.save_reg('trace.reg')
 
+    ######################### find flat groups #################################
     ########################### Combine flat images ############################
     flat_groups = {}
     for item in log:
