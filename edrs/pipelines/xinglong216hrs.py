@@ -748,7 +748,7 @@ def reduce():
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = _section.getint('scan_step'),
                         minimum    = _section.getfloat('minimum'),
-                        seperation = _section.getfloat('seperation'),
+                        separation = _section.getfloat('separation'),
                         sep_der    = _section.getfloat('sep_der'),
                         filling    = _section.getfloat('filling'),
                         degree     = _section.getint('degree'),

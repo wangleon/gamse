@@ -1141,7 +1141,6 @@ def reduce():
                 # bias needs to be smoothed
                 smooth_method = section.get('smooth_method')
 
-                h, w = bias.shape
                 if smooth_method in ['gauss','gaussian']:
                     # perform 2D gaussian smoothing
                     smooth_sigma = section.getint('smooth_sigma')
@@ -1269,16 +1268,16 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            _section = config['reduce.trace']
+            section = config['reduce.trace']
             fig_file = os.path.join(report, 'trace_%s.%s'%(flatname, fig_format))
             aperset = find_apertures(flat_data, mask_array,
-                        scan_step  = _section.getint('scan_step'),
-                        minimum    = _section.getfloat('minimum'),
-                        seperation = _section.getfloat('seperation'),
-                        sep_der    = _section.getfloat('sep_der'),
-                        filling    = _section.getfloat('filling'),
-                        degree     = _section.getint('degree'),
-                        display    = _section.getboolean('display'),
+                        scan_step  = section.getint('scan_step'),
+                        minimum    = section.getfloat('minimum'),
+                        separation = section.getfloat('separation'),
+                        sep_der    = section.getfloat('sep_der'),
+                        filling    = section.getfloat('filling'),
+                        degree     = section.getint('degree'),
+                        display    = section.getboolean('display'),
                         filename   = flat_filename,
                         fig_file   = fig_file,
                         )

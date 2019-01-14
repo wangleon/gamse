@@ -492,8 +492,8 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
 
         for aper, aper_loc in aperset.items():
 
-            # get local seperations
-            loc_sep = aperset.get_local_seperation(aper)
+            # get local separations
+            loc_sep = aperset.get_local_separation(aper)
 
             if iaperset == 0:
                 # append all the apertures in the first trace file into the

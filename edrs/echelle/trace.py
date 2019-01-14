@@ -398,16 +398,16 @@ class ApertureSet(object):
     def __iter__(self):
         return _ApertureSetIterator(self._dict)
 
-    def get_local_seperation(self, aper):
+    def get_local_separation(self, aper):
         '''
-        Get the local seperation in pixels per aperture number in the center
+        Get the local separation in pixels per aperture number in the center
         of the aperture set.
 
         Args:
             aper (int): Aperture number.
 
         Returns:
-            *float*: Local seperation in pixels per aperture number.
+            *float*: Local separation in pixels per aperture number.
         '''
 
         aper_lst, center_lst = [], []
@@ -415,9 +415,9 @@ class ApertureSet(object):
             aper_lst.append(_aper)
             center_lst.append(_aper_loc.get_center())
 
-        seperation_lst = derivative(aper_lst, center_lst)
+        separation_lst = derivative(aper_lst, center_lst)
         i = aper_lst.index(aper)
-        return seperation_lst[i]
+        return separation_lst[i]
 
 
     def find_aper_offset(self, aperset):
@@ -444,8 +444,8 @@ class ApertureSet(object):
         # calculate the approximate distance between these two common apertures
         diff_cen = self[aper].get_center() - aperset[aper].get_center()
         # calculate the approximate aperture difference
-        sep1 = self.get_local_seperation(aper)
-        sep2 = aperset.get_local_seperation(aper)
+        sep1 = self.get_local_separation(aper)
+        sep2 = aperset.get_local_separation(aper)
 
         sep = (sep1 + sep2)/2.
         offset0 = int(round(diff_cen/sep))
@@ -566,7 +566,7 @@ class _ApertureSetIterator(object):
         else:
             raise StopIteration()
 
-def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
+def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         sep_der=0.0, filling=0.3, degree=3, display=True, filename=None,
         fig_file=None):
     '''
@@ -579,10 +579,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
-        seperation (float): Estimated order seperations (in pixel)
+        separation (float): Estimated order separations (in pixel)
             along the cross-dispersion.
-        sep_der (float): Estimated differential order seperations per 1000
-            pixels. The real order seperations are estimated by **seperation**
+        sep_der (float): Estimated differential order separations per 1000
+            pixels. The real order separations are estimated by **separation**
             + **sep_der** × *pixel* / 1000
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (int): Degree of polynomials to fit aperture locations.
@@ -721,15 +721,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
         return ypeak
 
 
-    # generate a window list according to seperation and sep_der
+    # generate a window list according to separation and sep_der
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
-    seperation_lst = seperation + dense_y/1000.*sep_der
-    seperation_lst = np.int32(np.round(seperation_lst))
-    window = 2*seperation_lst*density+1
+    separation_lst = separation + dense_y/1000.*sep_der
+    separation_lst = np.int32(np.round(separation_lst))
+    window = 2*separation_lst*density+1
 
     # convolution core for the cross-sections. used to eliminate the "flat" tops
     # of the saturated orders
-    core = np.hanning(int(seperation))
+    core = np.hanning(int(separation))
     core /= core.sum()
 
     message = ['Finding flat curves for "%s"'%filename,
@@ -845,16 +845,16 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     csec_nlst = np.maximum(csec_nlst, 1)
     csec_lst /= csec_nlst
     # convolve csec_lst (optional)
-    #smcore = np.hanning(seperation*2+1)
+    #smcore = np.hanning(separation*2+1)
     #smcore /= smcore.sum()
     #csec_conv_lst = np.convolve(csec_lst, smcore, mode='same')
 
 
     # find aperture positions
     # first, generate a window list
-    csec_seperation_lst = seperation + np.arange(csec_i1, csec_i2)/1000.*sep_der
-    csec_seperation_lst = np.int32(np.round(csec_seperation_lst))
-    csec_win = 2*csec_seperation_lst + 1
+    csec_separation_lst = separation + np.arange(csec_i1, csec_i2)/1000.*sep_der
+    csec_separation_lst = np.int32(np.round(csec_separation_lst))
+    csec_win = 2*csec_separation_lst + 1
     # detect peaks in stacked cross-sections
     peaky, _ = get_local_minima(-csec_lst[istart:iend],
                                 window=csec_win[istart:iend])
@@ -914,8 +914,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     mid_lst = []
     for y in peaky:
         f = csec_lst[y]
-        # find the local seperation
-        sep = csec_seperation_lst[y]
+        # find the local separation
+        sep = csec_separation_lst[y]
         # search for the maximum value of cutn around y
         i1, i2 = y-int(sep/2), y+int(sep/2)
         ymax = cutn[i1:i2].argmax() + i1
@@ -960,11 +960,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
     # write debug information
     logger.debug((os.linesep+' '*4).join(message))
 
-    # check the first and last peak. If the seperation is larger than 2x of 
-    # the local seperation, remove them
+    # check the first and last peak. If the separation is larger than 2x of 
+    # the local separation, remove them
     # check the last peak
     while(len(mid_lst)>3):
-        sep = seperation + mid_lst[-1]*sep_der/1000.
+        sep = separation + mid_lst[-1]*sep_der/1000.
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
             logger.info('Remove the last aperture at %d for "%s" (distance=%d > 2 x %d)'%(
                         mid_lst[-1], filename, mid_lst[-1]-mid_lst[-2], sep))
@@ -974,7 +974,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
     # check the first peak
     while(len(mid_lst)>3):
-        sep = seperation + mid_lst[0]*sep_der/1000.
+        sep = separation + mid_lst[0]*sep_der/1000.
         print(sep, mid_lst[0], mid_lst[1])
         if mid_lst[1] - mid_lst[0] > 2*sep:
             logger.info('Remove the first aperture at %d for "%s" (distance=%d > 2 x %d)'%(
@@ -1022,7 +1022,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
                     xfit.append(x1)
                     yfit.append(ystep)
                 elif option == 2:
-                    local_sep = ystep/1000*sep_der + seperation
+                    local_sep = ystep/1000*sep_der + separation
                     y1 = max(0, int(ystep-local_sep/2))
                     y2 = min(h, int(ystep+local_sep/2))
                     if y2 - y1 <= 5:
@@ -1105,11 +1105,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, seperation=20,
 
         aperture_set[aperture] = aperture_loc
 
-    # plot the order seperation information in ax3
+    # plot the order separation information in ax3
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
     ax3.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
-    ax3.plot(np.arange(h), np.arange(h)/1000*sep_der+seperation,
+    ax3.plot(np.arange(h), np.arange(h)/1000*sep_der+separation,
                 'k--', alpha=0.2, zorder=-1)
     ax3.set_xlim(0, h-1)
     for tickline in ax3.yaxis.get_ticklines():
