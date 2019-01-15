@@ -1,4 +1,8 @@
 import os
+import logging
+logger = logging.getLogger(__name__)
+import configparser
+
 import numpy as np
 import astropy.io.fits as fits
 import scipy.signal as sg
@@ -155,20 +159,34 @@ def reduce():
     else:
         # combine trace file from narrow flats
         trace_lst = []
+        info_lst  = []
         for item in log:
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
-                data = fits.getdata(filename)
+                data, head = fits.getdata(filename, header=True)
                 data = correct_overscan(data)
                 trace_lst.append(data - bias)
+                # pack info_lst
+                info = {'filename': filename,
+                        'fileid': item.fileid,
+                        'statime': head[statime_key],
+                        'exptime': head[exptime_key],
+                        }
+                info_lst.append(info)
 
         # combine images
         upper_clip = section.getfloat('upper_clip')
         maxiter    = section.getint('maxiter')
+
+        print('Combine Images for Order Tracing: %s'%trace_file)
+        for info in info_lst:
+            print('  {filename} {exptime} {statime}'.format(**info))
+
         trace = combine_images(trace_lst, mode='mean',
                 upper_clip=upper_clip, maxiter=maxiter)
         trace = trace.T
         fits.writeto(trace_file, trace, overwrite=True)
+    exit()
 
     # find the name of .trc file
     trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
