@@ -7,38 +7,46 @@ import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 
-def combine_images(data_lst,
+def combine_images(data,
         mode       = 'mean',  # mode = ['mean'|'sum']
         upper_clip = None,
         lower_clip = None,
         maxiter    = None,
+        mask       = None,
         ):
-    '''Combine multiple FITS images.
+    """Combine multiple FITS images.
 
     Args:
-        data_lst (list): A list of 2D `numpy.ndarray`.
+        data (:class:`numpy.ndarray`): Datacube of input images.
         mode (str): Combine mode. Either "mean" or "sum".
         upper_clip (float): Upper threshold of the sigma-clipping. Default is
             *None*.
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
         maxiter (int): Maximum number of iterations.
+        mask (str or :class:`numpy.ndarray`): Initila mask.
 
     Returns:
         :class:`numpy.ndarray`: Combined image array.
 
-    '''
+    Raises:
+        TypeError: Dimension of **data** not equal to 3.
+        ValueError: Unknown **mode**.
+
+    """
+
+    if data.ndim != 3:
+        raise ValueError
 
     # if anyone of upper_clip and lower_clip is not None, then clip is True
     clip = (upper_clip is not None) or (lower_clip is not None)
 
-    data_lst = np.array(data_lst)
-    nimage, h, w = data_lst.shape
+    nimage, h, w = data.shape
 
     if clip:
         # perform sigma-clipping algorithm
         # initialize result array
-        res_array = np.zeros_like(data_lst[0])
+        res_array = np.zeros((h, w))
 
         # split the image into small segmentations
         if h>4000 and h%4==0:   dy = h//4
@@ -55,20 +63,27 @@ def combine_images(data_lst,
             for x1 in np.arange(0, w, dx):
                 x2 = x1 + dx
 
-                _data_lst = data_lst[:,y1:y2,x1:x2]
-                nz, ny, nx = _data_lst.shape
+                small_data = data[:,y1:y2,x1:x2]
+                nz, ny, nx = small_data.shape
                 # generate a mask containing the positions of maximum pixel
                 # along the first dimension
-                mask_lst = (np.mgrid[0:nz,0:ny,0:nx][0]==_data_lst.argmax(axis=0))
+                if mask is None:
+                    mask = np.zeros_like(small_data, dtype=np.bool)
+                elif mask == 'max':
+                    mask = (np.mgrid[0:nz,0:ny,0:nx][0]==small_data.argmax(axis=0))
+                elif mask == 'min':
+                    mask = (np.mgrid[0:nz,0:ny,0:nx][0]==small_data.argmin(axis=0))
+                else:
+                    pass
                 
                 niter = 0
                 while(True):
                     niter += 1
-                    mdata = np.ma.masked_array(_data_lst, mask=mask_lst)
+                    mdata = np.ma.masked_array(small_data, mask=mask)
                     m = mdata.mean(axis=0, dtype=np.float64).data
                     s = mdata.std(axis=0, dtype=np.float64).data
-                    new_mask_lst = np.ones_like(mask_lst, dtype=np.bool)
-                    for i, data in enumerate(_data_lst):
+                    new_mask = np.ones_like(mask, dtype=np.bool)
+                    for i, data in enumerate(small_data):
                 
                         # parse upper clipping
                         if upper_clip is None:
@@ -84,14 +99,14 @@ def combine_images(data_lst,
                         else:
                             mask2 = data < m - abs(lower_clip)*s
                 
-                        new_mask_lst[i,:,:] = np.logical_or(mask1, mask2)
+                        new_mask[i,:,:] = np.logical_or(mask1, mask2)
                     if niter >= maxiter:
                         break
-                    if new_mask_lst.sum() == mask_lst.sum():
+                    if new_mask.sum() == mask.sum():
                         break
-                    mask_lst = new_mask_lst
+                    mask = new_mask
                 
-                mdata = np.ma.masked_array(_data_lst, mask=mask_lst)
+                mdata = np.ma.masked_array(small_data, mask=mask)
                 
                 if mode == 'mean':
                     mean = mdata.mean(axis=0).data
@@ -107,11 +122,11 @@ def combine_images(data_lst,
         return res_array
     else:
         if mode == 'mean':
-            return data_lst.mean(axis=0)
+            return data.mean(axis=0)
         elif mode == 'sum':
-            return data_lst.sum(axis=0)
+            return data.sum(axis=0)
         elif mode == 'median':
-            return np.median(data_lst, axis=0)
+            return np.median(data, axis=0)
         else:
             raise ValueError
             return None
