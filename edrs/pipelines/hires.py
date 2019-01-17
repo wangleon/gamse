@@ -12,8 +12,7 @@ from ..echelle.imageproc import combine_images
 from ..utils import obslog
 
 def make_log(path):
-    '''
-    Scan the raw data, and generated a log file containing the detail
+    """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running. The name of the ascii file is
@@ -22,7 +21,7 @@ def make_log(path):
     Args:
         path (str): Path to the raw FITS files.
 
-    '''
+    """
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
@@ -151,9 +150,8 @@ def make_log(path):
 
 
 def reduce():
-    '''
-    2D to 1D pipeline for Keck/HIRES
-    '''
+    """2D to 1D pipeline for Keck/HIRES
+    """
     # read obs log
     obslogfile = obslog.find_log(os.curdir)
     log = obslog.read_log(obslogfile)
@@ -179,20 +177,21 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata = config['data'].get('rawdata')
-    section = config['reduce']
-    midproc = section.get('midproc')
-    result  = section.get('result')
-    report  = section.get('report')
-    mode    = section.get('mode')
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
+    section     = config['reduce']
+    midproc     = section.get('midproc')
+    result      = section.get('result')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format = section.get('fig_format')
 
     # create folders if not exist
-    if not os.path.exists(report):
-        os.mkdir(report)
-    if not os.path.exists(result):
-        os.mkdir(result)
-    if not os.path.exists(midproc):
-        os.mkdir(midproc)
+    if not os.path.exists(report):  os.mkdir(report)
+    if not os.path.exists(result):  os.mkdir(result)
+    if not os.path.exists(midproc): os.mkdir(midproc)
 
     nccd = 3
 
