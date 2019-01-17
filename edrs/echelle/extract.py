@@ -11,8 +11,7 @@ from .imageproc import table_to_array
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     upper_limit=5, lower_limit=5, figure=None):
-    '''
-    Extract 1-D spectra from an individual image.
+    """Extract 1-D spectra from an individual image.
     
     Args:
         infilename (str): Name of the input image.
@@ -24,7 +23,7 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         lower_limit (float): Lower limit of the extracted aperture.
         figure (:class:`matplotlib.figure.Figure`): Figure to display the
             extracted 1d spectra.
-    '''
+    """
     data, head = fits.getdata(infilename, header=True)
     h, w = data.shape
 
@@ -138,8 +137,7 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
 def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
-    '''
-    Extract 1-D spectra from the input image data following the input
+    """Extract 1-D spectra from the input image data following the input
     :class:`~edrs.echelle.trace.ApertureSet`.
 
     Args:
@@ -149,11 +147,12 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
             :class:`~edrs.echelle.trace.ApertureSet` instance.
         lower_limit (float): Lower limit of the extracted aperture.
         upper_limit (float): Upper limit of the extracted aperture.
+
     Returns:
         dict: A dict of 1-d spectra with the aperture numbers as keys, and a
             dict of ("flux_sum", "flux_mean", "mask_sat") as values.
         
-    '''
+    """
     h, w = data.shape
 
     # find saturation mask and bad pixel mask

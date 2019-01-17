@@ -21,8 +21,7 @@ from .trace             import ApertureSet
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     disp_axis=0, mask_suffix = '_msk'):
-    '''
-    Display an interacitve GUI to mosaic the flat images.
+    """Display an interacitve GUI to mosaic the flat images.
 
     Args:
         filename_lst (list): A list containing filenames of flat images.
@@ -40,7 +39,7 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     See Also:
         :func:`mosaic_flat_auto`
 
-    '''
+    """
 
     # parse dispersion axis
     if disp_axis in ['x','X']:
@@ -184,8 +183,8 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
         fig.canvas.draw()
 
     def onclick(event):
-        '''Select an area when clicking on the figure.
-        '''
+        """Select an area when clicking on the figure.
+        """
         ax = event.inaxes
         if ax is not None and ax.filename is not None:
             i = np.searchsorted(fig.nodes, event.xdata) - 1
@@ -199,8 +198,8 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
             replot()
 
     def onpress(event):
-        '''Add or remove a boundary when pressing 'a' or 'd' on the keyboard.
-        '''
+        """Add or remove a boundary when pressing 'a' or 'd' on the keyboard.
+        """
         ax = event.inaxes
         if ax is not None and ax.filename is not None:
             if event.key == 'a':
@@ -318,8 +317,7 @@ def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     os.system('ds9 -language en %s -region %s'%(outfile, reg_file))
 
 def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
-    '''
-    Detect the curve of gap between two orders along Y-axis.
+    """Detect the curve of gap between two orders along Y-axis.
 
     This is realized by calculating the cross-correlation function and detect
     the position of the maximum value.
@@ -337,8 +335,7 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
     Returns:
         :class:`numpy.ndarray`: Cofficients of the polynomial.
 
-
-    '''
+    """
 
     h, w = data.shape
     row0, row1 = h//2, h//2
@@ -398,8 +395,7 @@ def detect_gap(data, x0, ccf_ulimit=50, ccf_llimit=50, step=50, order=4):
     return coeff
 
 def load_mosaic(filename):
-    '''
-    Read mosaic boundary information from an existing ASCII file.
+    """Read mosaic boundary information from an existing ASCII file.
 
     Args:
         filename (str): Name of the mosaic file.
@@ -411,7 +407,7 @@ def load_mosaic(filename):
               polynomials for the boundaries.
             * **select_area** (*dict*): A dict containing the selected areas.
 
-    '''
+    """
     coeff_lst = []
     select_area = {}
 
@@ -464,7 +460,7 @@ def load_mosaic(filename):
 
 
 def mosaic_flat_auto(aperture_set_lst, max_count):
-    '''Mosaic flat images automatically.
+    """Mosaic flat images automatically.
 
     Args:
         aperture_set_lst (list): Dict of :class:`~edrs.echelle.trace.ApertureSet`.
@@ -478,7 +474,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
         * :func:`mosaic_flat_interact`
         * :func:`mosaic_images`
 
-    '''
+    """
 
     all_aperloc_lst = []
     # all_aperloc_lst  = [
@@ -594,8 +590,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
 
 
 def mosaic_images(image_lst, mosaic_aperset):
-    '''
-    Mosaic input images with the identifications in the input aperture set.
+    """Mosaic input images with the identifications in the input aperture set.
 
     Args:
         images_lst (dict): A dict containing {*names*: *images*}, where *names*
@@ -611,7 +606,7 @@ def mosaic_images(image_lst, mosaic_aperset):
     See Also:
         :func:`mosaic_flat_auto`
 
-    '''
+    """
 
     # get the shape of the first aperloc in mosaic_aperset
     shape = list(mosaic_aperset.values())[0].shape
@@ -669,7 +664,7 @@ def mosaic_images(image_lst, mosaic_aperset):
     return mosaic_image
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
-    '''Save boundaries data in a SAO-DS9 region file.
+    """Save boundaries data in a SAO-DS9 region file.
 
     Args:
         filename (str): Filename of the output region file.
@@ -677,7 +672,7 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
         disp_axis (int): 0 or 1, depending on the dispersion axis.
         shape (tuple): A tuple containing the shape of the image.
         npoints (int): Number of sampling points.
-    '''
+    """
     outfile = open(filename, 'w')
     outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
     #outfile.write('# Filename: flat.fits'+os.linesep)
@@ -708,7 +703,7 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     outfile.close()
 
 def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -738,7 +733,7 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`default_smooth_aperpar_c`
         * :func:`default_smooth_aperpar_bkg`
     
-    '''
+    """
     has_fringe_lst = []
     aperpar = np.array([np.nan]*w)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
@@ -866,7 +861,7 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
 
 def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -896,7 +891,7 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`default_smooth_aperpar_c`
         * :func:`default_smooth_aperpar_bkg`
     
-    '''
+    """
 
     allx = np.arange(w)
 
@@ -942,7 +937,7 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -972,12 +967,12 @@ def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`default_smooth_aperpar_k`
         * :func:`default_smooth_aperpar_bkg`
     
-    '''
+    """
 
     return default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
 def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -1007,7 +1002,7 @@ def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`default_smooth_aperpar_k`
         * :func:`default_smooth_aperpar_c`
     
-    '''
+    """
 
     allx = np.arange(w)
 
@@ -1073,7 +1068,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         fig_aperpar=None, fig_overlap=None,
         fig_slit=None, slit_file=None,
     ):
-    '''Get the flat fielding image from the input file.
+    """Get the flat fielding image from the input file.
 
     Args:
         data (:class:`numpy.ndarray`): Image data of flat fielding.
@@ -1095,7 +1090,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     Returns:
         :class:`numpy.ndarray`: 2D response map.
 
-    '''
+    """
     # define the fitting and error functions
     def gaussian_bkg(A, center, fwhm, bkg, x):
         s = fwhm/2./math.sqrt(2*math.log(2))
@@ -1778,7 +1773,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 def get_slit_flat(data, mask, apertureset, spectra1d,
         lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
     ):
-    '''Get the flat fielding image for the slit-fed flat fielding image.
+    """Get the flat fielding image for the slit-fed flat fielding image.
 
     Args:
         data (:class:`numpy.ndarray`): Image data of flat fielding.
@@ -1789,7 +1784,7 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
     Returns:
         :class:`numpy.ndarray`: 2D response map.
 
-    '''
+    """
     h, w = data.shape
 
     # find saturation mask and bad pixel mask
