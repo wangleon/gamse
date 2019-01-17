@@ -8,7 +8,7 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 
 def combine_images(data,
-        mode       = 'mean',  # mode = ['mean'|'sum']
+        mode       = 'mean',  # mode = ['mean'|'sum'|'median']
         upper_clip = None,
         lower_clip = None,
         maxiter    = None,
@@ -45,8 +45,8 @@ def combine_images(data,
 
     if clip:
         # perform sigma-clipping algorithm
-        # initialize result array
-        res_array = np.zeros((h, w))
+        # initialize the final result array
+        final_array = np.zeros((h, w))
 
         # split the image into small segmentations
         if h>4000 and h%4==0:   dy = h//4
@@ -68,58 +68,61 @@ def combine_images(data,
                 # generate a mask containing the positions of maximum pixel
                 # along the first dimension
                 if mask is None:
-                    mask = np.zeros_like(small_data, dtype=np.bool)
-                elif mask == 'max':
-                    mask = (np.mgrid[0:nz,0:ny,0:nx][0]==small_data.argmax(axis=0))
-                elif mask == 'min':
-                    mask = (np.mgrid[0:nz,0:ny,0:nx][0]==small_data.argmin(axis=0))
+                    small_mask = np.zeros_like(small_data, dtype=np.bool)
+                elif isinstance(mask, str):
+                    if mask == 'max':
+                        small_mask = (np.mgrid[0:nz,0:ny,0:nx][0]
+                                      == small_data.argmax(axis=0))
+                    elif mask == 'min':
+                        small_mask = (np.mgrid[0:nz,0:ny,0:nx][0]
+                                      == small_data.argmin(axis=0))
+                    else:
+                        pass
                 else:
                     pass
                 
-                niter = 0
-                while(True):
-                    niter += 1
-                    mdata = np.ma.masked_array(small_data, mask=mask)
-                    m = mdata.mean(axis=0, dtype=np.float64).data
-                    s = mdata.std(axis=0, dtype=np.float64).data
-                    new_mask = np.ones_like(mask, dtype=np.bool)
-                    for i, data in enumerate(small_data):
+                for niter in range(maxiter):
+                    mdata = np.ma.masked_array(small_data, mask=small_mask)
+                    mean = mdata.mean(axis=0, dtype=np.float64).data
+                    std  = mdata.std(axis=0, dtype=np.float64).data
+                    new_small_mask = np.ones_like(small_mask, dtype=np.bool)
+                    for i in np.arange(nimage):
+                        chunk = small_data[i,:,:]
                 
                         # parse upper clipping
                         if upper_clip is None:
                             # mask1 = [False....]
-                            mask1 = np.zeros_like(data, dtype=np.bool)
+                            mask1 = np.zeros_like(chunk, dtype=np.bool)
                         else:
-                            mask1 = data > m + abs(upper_clip)*s
+                            mask1 = chunk > mean + abs(upper_clip)*std
                 
                         # parse lower clipping
                         if lower_clip is None:
                             # mask2 = [False....]
-                            mask2 = np.zeros_like(data, dtype=np.bool)
+                            mask2 = np.zeros_like(chunk, dtype=np.bool)
                         else:
-                            mask2 = data < m - abs(lower_clip)*s
+                            mask2 = chunk < mean - abs(lower_clip)*std
                 
-                        new_mask[i,:,:] = np.logical_or(mask1, mask2)
-                    if niter >= maxiter:
+                        new_small_mask[i,:,:] = np.logical_or(mask1, mask2)
+
+                    if new_small_mask.sum() == small_mask.sum():
                         break
-                    if new_mask.sum() == mask.sum():
-                        break
-                    mask = new_mask
+                    small_mask = new_small_mask
                 
-                mdata = np.ma.masked_array(small_data, mask=mask)
+                mdata = np.ma.masked_array(small_data, mask=small_mask)
                 
                 if mode == 'mean':
                     mean = mdata.mean(axis=0).data
-                    res_array[y1:y2,x1:x2] = mean
+                    final_array[y1:y2,x1:x2] = mean
                 elif mode == 'sum':
                     mean = mdata.mean(axis=0).data
-                    res_array[y1:y2,x1:x2] = mean*nimage
+                    final_array[y1:y2,x1:x2] = mean*nimage
                 elif mode == 'median':
-                    res_array[y1:y2,x1:x2] = np.median(mdata, axis=0).data
+                    final_array[y1:y2,x1:x2] = np.median(mdata, axis=0).data
                 else:
                     raise ValueError
         # segmentation loop ends here
-        return res_array
+        return final_array
     else:
         if mode == 'mean':
             return data.mean(axis=0)

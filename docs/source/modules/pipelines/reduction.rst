@@ -2,13 +2,6 @@
 General Reduction Pipeline
 ==========================
 
-.. currentmodule:: edrs.pipelines
-.. autosummary::
-   find_rawdata
-   get_instrument
-   make_log
-   reduce_echelle
-
 .. currentmodule:: edrs.pipelines.reduction.Reduction
 .. autosummary::
    load_log
@@ -27,10 +20,6 @@ General Reduction Pipeline
    extract
    wvcalib
    deblaze
-
-
-.. automodule:: edrs.pipelines
-   :members:
 
 .. automodule:: edrs.pipelines.reduction
    :members:
