@@ -242,15 +242,12 @@ def reduce():
 
             # combine trace images
             trace_data_lst = np.array(trace_data_lst)
-            upper_clip = section.getfloat('upper_clip')
-            maxiter    = section.getint('maxiter')
-            mask = (None, 'max')[trace_data_lst.shape[0]>=3]
 
             trace = combine_images(trace_data_lst,
                     mode       = 'mean',
-                    upper_clip = section.getfloat('cosmic_clip'),
+                    upper_clip = section.getfloat('upper_clip'),
                     maxiter    = section.getint('maxiter'),
-                    mask       = None,
+                    mask       = (None, 'max')[trace_data_lst.shape[0]>=3],
                     )
             trace = trace.T
             fits.writeto(trace_file, trace, overwrite=True)
@@ -259,6 +256,7 @@ def reduce():
             # no trace image found
             pass
 
+    exit()
     # find the name of .trc file
     trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
     trc_reg  = '.'.join(trace_file.split('.')[:-1])+'.reg'
