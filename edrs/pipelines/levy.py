@@ -21,6 +21,18 @@ from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
 from ..echelle.background import find_background
 
 def correct_overscan(data):
+    """Correct the overscan of CCD image.
+
+    Args:
+        data (:class:`numpy.dtype`): Input image.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **corrdata** (:class:`numpy.dtype`): – Array of overscan corrected
+              image.
+            * **overmean** (*float*) – Average of overscan values.
+    """
     if data.shape==(4608, 2080):
         overmean = data[:,2049:2088].mean(axis=1)
         oversmooth = sg.savgol_filter(overmean, window_length=1201, polyorder=3)
@@ -36,12 +48,12 @@ def correct_overscan(data):
         #plt.close(fig)
         overdata = np.tile(oversmooth, (2048, 1)).T
         corrdata = data[:,0:2048] - overdata
-        return corrdata
+        overmean = overdata.mean()
+        return corrdata, overmean
 
 def reduce():
-    '''
-    Reduce the APF/Levy spectra.
-    '''
+    """Reduce the APF/Levy spectra.
+    """
 
     # read obs log
     obslogfile = obslog.find_log(os.curdir)
@@ -94,30 +106,48 @@ def reduce():
         bias = fits.getdata(bias_file)
         logger.info('Load bias from image: %s'%bias_file)
     else:
-        bias_lst = []
+        bias_data_lst = []
+        print('* Combine Bias Images: %s'%bias_file)
+
+        columns = [
+                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
+                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
+                ('overscan', '{3:8s}',  '{1:8.2f}'),
+                ('mean',     '{4:8s}',  '{2:8.2f}'),
+                ]
+        title, fmt_title, fmt_item = zip(*columns)
+        fmt_title = ' '.join(fmt_title)
+        fmt_item  = ' '.join(fmt_item)
+        print(' '*2 + fmt_title.format(*title))
         for item in log:
             if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data = fits.getdata(filename)
                 # correct overscan here
-                data = correct_overscan(data)
-                bias_lst.append(data)
+                data, overmean = correct_overscan(data)
+                bias_data_lst.append(data)
+                # print info
+                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
 
-        has_bias = len(bias_lst)>0
+        has_bias = len(bias_data_lst)>0
 
         if has_bias:
             # there is bias frames
 
             # combine bias images
-            bias = combine_images(bias_lst,
+            bias_data_lst = np.array(bias_data_lst)
+            mask = (None, 'max')[bias_data_lst.shape[0]>=3]
+            bias = combine_images(bias_data_lst,
                     mode       = 'mean',
                     upper_clip = section.getfloat('cosmic_clip'),
                     maxiter    = section.getint('maxiter'),
+                    mask       = mask,
                     )
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = len(bias_lst)
+            head['HIERARCH EDRS BIAS NFILE'] = bias_data_lst.shape[0]
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -158,31 +188,23 @@ def reduce():
         trace = fits.getdata(trace_file)
     else:
         # combine trace file from narrow flats
-        trace_lst = []
-        info_lst  = []
+        trace_data_lst = []
+        print('* Combine Images for Order Tracing: %s'%trace_file)
+        print('  {0:10s} {1:7s} {2:25s}'.format('fileid', 'exptime', 'obsdate'))
         for item in log:
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
                 data = correct_overscan(data)
-                trace_lst.append(data - bias)
-                # pack info_lst
-                info = {'filename': filename,
-                        'fileid': item.fileid,
-                        'statime': head[statime_key],
-                        'exptime': head[exptime_key],
-                        }
-                info_lst.append(info)
+                trace_data_lst.append(data - bias)
+                print('  {0.fileid:10s} {0.exptime:7g} {0.obsdate:25s}'.format(item))
 
         # combine images
         upper_clip = section.getfloat('upper_clip')
         maxiter    = section.getint('maxiter')
 
-        print('Combine Images for Order Tracing: %s'%trace_file)
-        for info in info_lst:
-            print('  {filename} {exptime} {statime}'.format(**info))
-
-        trace = combine_images(trace_lst, mode='mean',
+        tracecube = np.array(trace_data_lst)
+        trace = combine_images(tracecube, mode='mean',
                 upper_clip=upper_clip, maxiter=maxiter)
         trace = trace.T
         fits.writeto(trace_file, trace, overwrite=True)
@@ -502,11 +524,11 @@ def reduce():
 
 
 def make_log(path):
-    '''
+    """Print the observing log.
 
     Args:
-        path (string): Path to the raw FITS files.
-    '''
+        path (str): Path to the raw FITS files.
+    """
     cal_objects = ['bias', 'wideflat', 'narrowflat', 'flat', 'dark', 'iodine',
                     'thar']
     log = obslog.Log()

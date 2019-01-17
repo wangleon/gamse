@@ -48,6 +48,20 @@ FOCES
    :inherited-members:
    :undoc-members:
 
+Levy
+----
+.. currentmodule:: edrs.pipelines.levy
+.. autosummary::
+   make_log
+   correct_overscan
+   reduce
+
+.. automodule:: edrs.pipelines.levy
+   :members:
+   :private-members:
+   :inherited-members:
+   :undoc-members:
+
 Xinglong 2.16m HRS
 ------------------
 .. currentmodule:: edrs.pipelines.xinglong216hrs
