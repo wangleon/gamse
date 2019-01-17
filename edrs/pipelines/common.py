@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 def plot_spectra1d():
-    '''Plot 1d spectra.
-    '''
+    """Plot 1d spectra.
+    """
     config = read_config('')
 
     obslog_file = find_log(os.curdir)
@@ -70,7 +70,7 @@ def plot_spectra1d():
 
 
 def plot_background_aspect1(data, stray, figname):
-    '''Plot a figure showing the image before background correction and the
+    """Plot a figure showing the image before background correction and the
     stray light.
 
     Args:
@@ -78,7 +78,7 @@ def plot_background_aspect1(data, stray, figname):
         stray (:class:`numpy.ndarray`): Stray light.
         figname (str): Name of the output figure.
 
-    '''
+    """
     h, w = data.shape
 
     fig = plt.figure(figsize=(16,7), dpi=150)

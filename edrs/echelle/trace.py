@@ -18,14 +18,13 @@ import matplotlib.ticker as tck
 from ..utils.onedarray import get_local_minima, pairwise, derivative
 
 class ApertureLocation(object):
-    '''
-    Location of an echelle order.
+    """Location of an echelle order.
 
     Attributes:
         direction (int): 0 if along Y axis; 1 if along X axis.
         position (:class:`numpy.polynomial`): Polynomial of aperture location.
         
-    '''
+    """
     def __init__(self, *args, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
@@ -33,8 +32,7 @@ class ApertureLocation(object):
         self.__update_attr()
 
     def set_nodes(self, key, xdata, ydata):
-        '''
-        Set nodes for center, lower, or upper lines.
+        """Set nodes for center, lower, or upper lines.
         
         Args:
             key (str): Keyword.
@@ -43,7 +41,7 @@ class ApertureLocation(object):
             ydata (list): List of y coordinates [*y*:sub:`1`, *y*:sub:`2`,
                 *y*:sub:`3`, ...].
 
-        '''
+        """
         # filter the None values in (xdata, ydata)
         xydata = [(x,y) for x, y in zip(xdata, ydata)
                   if x is not None and y is not None]
@@ -65,8 +63,7 @@ class ApertureLocation(object):
         setattr(self, 'nodes_%s'%key, xydata)
 
     def fit_nodes(self, key, degree, clipping, maxiter):
-        '''
-        Fit the polynomial iteratively with sigma-clipping method and get the
+        """Fit the polynomial iteratively with sigma-clipping method and get the
         coefficients.
 
         Args:
@@ -76,7 +73,7 @@ class ApertureLocation(object):
                 method.
             maxiter (int): Maximum number of iteration of the polynomial
                 fitting.
-        '''
+        """
 
         h, w = self.shape
         nodes = getattr(self, 'nodes_%s'%key)
@@ -132,11 +129,11 @@ class ApertureLocation(object):
         setattr(self, 'position', poly)
 
     def get_center(self):
-        '''Get coordinate of the center pixel.
+        """Get coordinate of the center pixel.
 
         Returns:
             *float*: coordinate of the center pixel.
-        '''
+        """
         h, w = self.shape
         if self.direct == 0:
             # aperture along Y direction
@@ -164,9 +161,8 @@ class ApertureLocation(object):
                 coord[0], coord[1], axis)
 
     def to_string(self):
-        '''
-        Convert aperture information to string.
-        '''
+        """Convert aperture information to string.
+        """
 
         string  = '%8s = %d'%('direct', self.direct)+os.linesep
         string += '%8s = %s'%('shape',  str(self.shape))+os.linesep
@@ -202,7 +198,7 @@ class ApertureLocation(object):
         return string
 
     def __update_attr(self):
-        '''Update attributes'''
+        """Update attributes"""
 
         # udpate direction attribute
         if hasattr(self, 'direct'):
@@ -212,7 +208,7 @@ class ApertureLocation(object):
                 self.direct = 0
 
     def get_distance(self, aperloc):
-        '''Calculate the distance to another :class:`ApertureLocation` instance.
+        """Calculate the distance to another :class:`ApertureLocation` instance.
         
         Args:
             aperloc (:class:`ApertureLocation`): Another
@@ -221,20 +217,19 @@ class ApertureLocation(object):
         Returns:
             *float*: The distance between the centeral positions.
 
-        '''
+        """
         if self.direct != aperloc.direct:
             print('ApertureLocations have different directions')
             return None
         return self.get_center() - aperloc.get_center()
 
 class ApertureSet(object):
-    '''
-    ApertureSet is a group of :class:`ApertureLocation` instances.
+    """ApertureSet is a group of :class:`ApertureLocation` instances.
 
     Attributes:
         _dict (dict): Dict containing aperture numbers and
             :class:`ApertureLocation` instances.
-    '''
+    """
     def __init__(self, *args, **kwargs):
         self._dict = {}
         for key, value in kwargs.items():
@@ -269,13 +264,13 @@ class ApertureSet(object):
         return string
 
     def add_aperture(self, aperture_loc):
-        '''Add an :class:`ApertureLocation` instance into this set.
+        """Add an :class:`ApertureLocation` instance into this set.
 
         Args:
             aperture_loc (:class:`ApertureLocation`): An
                 :class:`ApertureLocation` instance to be added.
 
-        '''
+        """
         n = len(self._dict)
         if n == 0:
             self._dict[0] = aperture_loc
@@ -284,35 +279,32 @@ class ApertureSet(object):
             self._dict[maxi+1] = aperture_loc
 
     def sort(self):
-        '''
-        Sort the apertures according to their positions inside this instance.
-        '''
+        """Sort the apertures according to their positions inside this instance.
+        """
         aperloc_lst = sorted([aper_loc for aper, aper_loc in self._dict.items()],
                               key=lambda aper_loc: aper_loc.get_center())
         for i in range(len(aperloc_lst)):
             self._dict[i] = aperloc_lst[i]
 
     def save_txt(self, filename):
-        '''
-        Save the aperture set into an ascii file.
+        """Save the aperture set into an ascii file.
         
         Args:
             filename (str): Name of the output ascii file.
-        '''
+        """
         outfile = open(filename, 'w')
         outfile.write(str(self))
         outfile.close()
 
     def save_reg(self, filename, color='green', channel=None):
-        '''
-        Save the aperture set into a reg file that can be loaded in SAO-DS9.
+        """Save the aperture set into a reg file that can be loaded in SAO-DS9.
 
         Args:
             filename (str): Name of the output reg file.
             color (str): Color of the lines.
             channel (str): Write the channel name if not *None*.
 
-        '''
+        """
         outfile = open(filename, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
         outfile.write('global color=%s dashlist=8 3 width=1 '%color)
@@ -360,8 +352,7 @@ class ApertureSet(object):
         outfile.close()
 
     def to_fitsheader(self, header, channel=None):
-        '''
-        Save aperture informtion to FITS header.
+        """Save aperture informtion to FITS header.
 
         Args:
             header (:class:`astropy.io.fits.Header`): FITS header to save the
@@ -375,7 +366,7 @@ class ApertureSet(object):
         See also:
             :func:`load_aperture_set_from_header`
         
-        '''
+        """
         prefix = 'HIERARCH EDRS TRACE'
         if channel is not None:
             prefix += ' CHANNLE %s'%channel
@@ -399,8 +390,7 @@ class ApertureSet(object):
         return _ApertureSetIterator(self._dict)
 
     def get_local_separation(self, aper):
-        '''
-        Get the local separation in pixels per aperture number in the center
+        """Get the local separation in pixels per aperture number in the center
         of the aperture set.
 
         Args:
@@ -408,7 +398,7 @@ class ApertureSet(object):
 
         Returns:
             *float*: Local separation in pixels per aperture number.
-        '''
+        """
 
         aper_lst, center_lst = [], []
         for _aper, _aper_loc in sorted(self.items()):
@@ -421,8 +411,7 @@ class ApertureSet(object):
 
 
     def find_aper_offset(self, aperset):
-        '''
-        Find the aperture offset between this instance and the input
+        """Find the aperture offset between this instance and the input
         :class:`ApertureSet` instance.
         
         The offset means that the Aperture *n* aperture of this
@@ -435,7 +424,7 @@ class ApertureSet(object):
 
         Returns:
             *int*: Offset between the two offsets.
-        '''
+        """
         # fint the smalleset common aper number.
         for aper in self:
             if aper in aperset:
@@ -483,12 +472,12 @@ class ApertureSet(object):
         return offset_lst[i]
 
     def shift_aperture(self, offset):
-        '''Shift the aperture number by offset.
+        """Shift the aperture number by offset.
 
         Args:
             offset (int): Offset to shift.
 
-        '''
+        """
 
         new_dict = {}
         for _aper, _aper_loc in self.items():
@@ -496,7 +485,7 @@ class ApertureSet(object):
         self._dict = new_dict
 
     def get_positions(self, x):
-        '''Get central positions of all chelle orders.
+        """Get central positions of all chelle orders.
 
         Args:
             x (*int* or :class:`numpy.ndarray`): Input *X* coordiantes of the
@@ -506,11 +495,11 @@ class ApertureSet(object):
             *dict*: A dict of `{aperture: y}` containing cetral positions of
                 all orders.
             
-        '''
+        """
         return {aper: aperloc.position(x) for aper,aperloc in self.items()}
 
     def get_boundaries(self, x):
-        '''Get upper and lower boundaries of all echelle orders.
+        """Get upper and lower boundaries of all echelle orders.
         
         Args:
             x (*int* or :class:`numpy.ndarray`): Input *X* coordiantes of the
@@ -519,7 +508,7 @@ class ApertureSet(object):
         Returns:
             *dict*: A dict of `{aperture: (lower, upper)}`, where `lower` and
                 `upper` are boundary arries.
-        '''
+        """
         lower_bounds = {}
         upper_bounds = {}
         prev_aper     = None
@@ -549,9 +538,8 @@ class ApertureSet(object):
                 for aper in self.keys()}
 
 class _ApertureSetIterator(object):
-    '''
-    Interator class for :class:`ApertureSet`.
-    '''
+    """Interator class for :class:`ApertureSet`.
+    """
     def __init__(self, item_dict):
         self.item_dict = item_dict
         self.n = len(self.item_dict)
@@ -569,8 +557,7 @@ class _ApertureSetIterator(object):
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         sep_der=0.0, filling=0.3, degree=3, display=True, filename=None,
         fig_file=None):
-    '''
-    Find the positions of apertures on a CCD image.
+    """Find the positions of apertures on a CCD image.
 
     Args:
         data (:class:`numpy.ndarray`): Image data.
@@ -595,7 +582,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
             aperture locations.
 
-    '''
+    """
 
     sat_mask = (mask & 4 > 0)
 
@@ -1170,15 +1157,14 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     return aperture_set
 
 def load_aperture_set(filename):
-    '''
-    Reads an ApertureSet instance from an Ascii file.
+    """Reads an ApertureSet instance from an Ascii file.
 
     Args:
         filename (str): Name of the ASCII file.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance.
-    '''
+    """
 
     aperture_set = ApertureSet()
 
@@ -1213,7 +1199,7 @@ def load_aperture_set(filename):
     return aperture_set
 
 def load_aperture_set_from_header(header, channel=None):
-    '''Load Aperture Set from FITS header.
+    """Load Aperture Set from FITS header.
 
     Args:
         header (:class:`astropy.io.fits.Header`): Input FITS header.
@@ -1225,8 +1211,7 @@ def load_aperture_set_from_header(header, channel=None):
     See also:
         :func:`ApertureSet.to_fitsheader`
         
-        
-    '''
+    """
     prefix = 'EDRS TRACE'
     if channel is not None:
         prefix += ' CHANNEL %s'%channel
@@ -1297,7 +1282,7 @@ def load_aperture_set_from_header(header, channel=None):
     return aperture_set
 
 def gaussian_bkg(A, center, fwhm, bkg, x):
-    '''Gaussian plus constant background function.
+    """Gaussian plus constant background function.
 
     Args:
         A (float): Amplitude of gaussian function.
@@ -1309,12 +1294,12 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
     Returns:
         :class:`numpy.ndarray`: Output function values.
         
-    '''
+    """
     s = fwhm/2./math.sqrt(2*math.log(2))
     return A*np.exp(-(x-center)**2/2./s**2) + bkg
 
 def errfunc(p, x, y, fitfunc):
-    '''Error function used in fitting.
+    """Error function used in fitting.
 
     Args:
         p (list): List of parameters.
@@ -1323,11 +1308,11 @@ def errfunc(p, x, y, fitfunc):
 
     Returns:
         :class:`numpy.ndarray`: Values of residuals.
-    '''
+    """
     return y - fitfunc(p, x)
 
 def fitfunc(p, x):
-    '''Fitting function used in the least-square fitting.
+    """Fitting function used in the least-square fitting.
 
     Args:
         p (list): List of parameters.
@@ -1335,6 +1320,6 @@ def fitfunc(p, x):
 
     Returns:
         :class:`numpy.ndarray`: Values of function.
-    '''
+    """
     return gaussian_bkg(p[0], p[1], p[2], p[3], x)
 

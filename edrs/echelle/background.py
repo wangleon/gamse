@@ -23,7 +23,7 @@ def find_background2(data, mask, channels, apertureset_lst,
         xorder=2, yorder=2, maxiter=5, upper_clip=3, lower_clip=3,
         extend=True, display=True, fig_file=None, reg_file=None):
 
-    '''Subtract the background for an input FITS image.
+    """Subtract the background for an input FITS image.
 
     Args:
         data (:class:`numpy.ndarray`): Input data image.
@@ -54,7 +54,7 @@ def find_background2(data, mask, channels, apertureset_lst,
 
     Returns:
         :class:`numpy.ndarray`: Image of background light.
-    '''
+    """
     
     plot = (display or fig_file is not None)
 
@@ -412,7 +412,7 @@ def find_background2(data, mask, channels, apertureset_lst,
 
 def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     maxiter=5, upper_clip=3, lower_clip=3):
-    '''
+    """
     Find the background light by fitting a 2D polynomial.
 
     Args:
@@ -438,7 +438,7 @@ def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
 
     See also:
         :func:`interpolate_background`
-    '''
+    """
 
     h, w = shape
     # normalize to 0 ~ 1 for x and y nodes
@@ -477,7 +477,7 @@ def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     return background_data, mask
 
 def interpolate_background(shape, xnodes, ynodes, znodes):
-    '''
+    """
     Find the background light by interpolating 2D cubic splines.
 
     Args:
@@ -496,7 +496,7 @@ def interpolate_background(shape, xnodes, ynodes, znodes):
 
     See also:
         :func:`fit_background`
-    '''
+    """
     h, w = shape
     yy, xx = np.mgrid[:h:, :w:]
     background_data = intp.griddata((xnodes, ynodes), znodes, (xx, yy),
@@ -521,8 +521,7 @@ def interpolate_background(shape, xnodes, ynodes, znodes):
 def find_background(data, mask, apertureset_lst, ncols, distance,
         yorder=7, ymaxiter=5, yupper_clip=3, ylower_clip=3,
         fig_stray=None, fig_section=None):
-
-    '''Subtract the background for an input FITS image.
+    """Subtract the background for an input FITS image.
 
     Args:
         data (:class:`numpy.ndarray`): Input data image.
@@ -539,7 +538,7 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
     Returns:
         :class:`numpy.ndarray`: Image of background light. It has the same shape
             and datatype as the arg **data**.
-    '''
+    """
 
     h, w = data.shape
     cols = np.int32(np.round(np.linspace(1, w-2, ncols)))

@@ -4,18 +4,18 @@ logger = logging.getLogger(__name__)
 import configparser
 
 def read_config(i):
-    '''
-    Read the config file ended with `.cfg` in the current directory.
+    """Read the config file ended with `.cfg` in the current directory.
 
     Default config file is `reduction.cfg`. If the file does not exist, find a
     file ended with `.cfg`. If such file does not exist, return *None*.
 
     Args:
         instrument (str): Name of the instrument.
+
     Returns:
         :class:`configparser.ConfigParser`: A
             :class:`configparser.ConfigParser` instance.
-    '''
+    """
     # scan the built-in config file
     config_path = os.path.join(os.path.dirname(__file__), '../data/config')
     config_file = os.path.join(config_path, '%s.cfg'%instrument)
@@ -50,14 +50,14 @@ def read_config(i):
     return config
 
 def find_config(path):
-    '''Find the config file in the given directory.
+    """Find the config file in the given directory.
 
     Args:
         path (str): Path to the searching directory.
     Returns:
         *str* or *None*: Path to the config file with filename ended with `.cfg`.
             If not found, return *None*.
-    '''
+    """
     cfg_lst = [fname for fname in sorted(os.listdir(path))
                         if fname[-4:]=='.cfg']
     if len(cfg_lst)==1:
@@ -67,11 +67,11 @@ def find_config(path):
         return None
 
 def read_global_config(names):
-    '''Read built-in global config files.
+    """Read built-in global config files.
 
     Args:
         names (*str* or *list* of *str*): Names of config files.
 
     Returns:
         config (
-    '''
+    """

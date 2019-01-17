@@ -5,11 +5,11 @@ import astropy.io.fits as fits
 from ..utils import obslog
 
 def make_log(path):
-    '''
+    """
 
     Args:
         path (string): path to the raw FITS files
-    '''
+    """
     log = obslog.Log()
     for fname in sorted(os.listdir(path)):
         if fname[-4:] != '.fts':

@@ -5,7 +5,7 @@ import scipy.optimize as opt
 import matplotlib.pyplot as plt
 
 def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
-    '''Two-dimensional polynomial fit.
+    """Two-dimensional polynomial fit.
 
     Args:
         x (:class:`numpy.ndarray`): Input X array.
@@ -59,7 +59,7 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
             ... + ...   + ...     + ... + ...     +
             y^m + x*y^m + x^2*y^m + ... + x^n*y^m
 
-    '''
+    """
     ncols = (xorder + 1)*(yorder + 1)
     G = np.zeros((x.size, ncols))
     ji = itertools.product(range(yorder+1), range(xorder+1))
@@ -72,7 +72,7 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
     return coeff
 
 def polyval2d(x, y, m):
-    '''Get values for the 2-D polynomial values
+    """Get values for the 2-D polynomial values
 
     Args:
         x (:class:`numpy.ndarray`): Input X array.
@@ -80,7 +80,7 @@ def polyval2d(x, y, m):
         m (:class:`numpy.ndarray`): Coefficients of the 2-D polynomial.
     Returns:
         z (:class:`numpy.ndarray`): Values of the 2-D polynomial.
-    '''
+    """
     yorder = m.shape[0] - 1
     xorder = m.shape[1] - 1
     z = np.zeros_like(x)

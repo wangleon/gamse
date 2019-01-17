@@ -135,18 +135,18 @@ def combine_images(data,
             return None
 
 def make_mask():
-    '''
+    """
     Generate a mask
     1: pixel does not covered by read out region of the detector
     2: bad pixel
     3: flux saturated
     4: cosmic ray
-    '''
+    """
     pass
 
 
 def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
-    '''Savitzky-Golay 2D filter, with different window size and order along *x*
+    """Savitzky-Golay 2D filter, with different window size and order along *x*
     and *y* directions.
 
     Args:
@@ -162,9 +162,7 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
             derivative arries along *x*- and *y*-axes, respetively, if
             derivative = "both".
         
-
-
-    '''
+    """
     if xwindow%2 == 0:
         xwindow += 1
     if ywindow%2 == 0:
@@ -228,7 +226,7 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
                 scipy.signal.fftconvolve(Z, -c, mode='valid'))
 
 def array_to_table(array):
-    '''Convert the non-zeros elements of a Numpy array to a stuctured array.
+    """Convert the non-zeros elements of a Numpy array to a stuctured array.
 
     Args:
         array (:class:`numpy.ndarray`): Input Numpy array.
@@ -264,7 +262,7 @@ def array_to_table(array):
                    (2, 3, 11)], 
                   dtype=[('axis_0', '<i2'), ('axis_1', '<i2'), ('value', '<i8')])
 
-    '''
+    """
     dimension = len(array.shape)
     types = [('axis_%d'%i, np.int16) for i in range(dimension)]
     types.append(('value', array.dtype.type))
@@ -282,7 +280,7 @@ def array_to_table(array):
     return(table)
 
 def table_to_array(table, shape):
-    '''Convert a structured array to Numpy array.
+    """Convert a structured array to Numpy array.
 
     This is the reverse process of :func:`array_to_table`.
     For the elements of which coordinates are not listed in the table, zeros are
@@ -325,7 +323,7 @@ def table_to_array(table, shape):
                    [ 4,  5,  6,  7],
                    [ 8,  9, 10, 11]])
 
-    '''
+    """
 
     array = np.zeros(shape, dtype=table.dtype[-1].type)
     coords = tuple(table[col] for col in table.dtype.names[0:-1])
@@ -335,7 +333,7 @@ def table_to_array(table, shape):
 
 
 def fix_pixels(data, mask, direction, method):
-    '''Fix specific pixels of the CCD image by interpolating surrounding pixels.
+    """Fix specific pixels of the CCD image by interpolating surrounding pixels.
 
     Args:
         data (:class:`numpy.ndarray`): Input image as a 2-D array.
@@ -348,7 +346,7 @@ def fix_pixels(data, mask, direction, method):
 
     Returns:
         :class:`numpy.ndarray`: The fixed image as a 2-D array.
-    '''
+    """
     # make a new copy of the input data
     newdata = np.copy(data)
 

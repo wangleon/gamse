@@ -4,15 +4,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 class LogItem(object):
-    '''Class for observing log items
-    '''
+    """Class for observing log items
+    """
     def __init__(self,**kwargs):
         for key in kwargs:
             value = kwargs[key]
             object.__setattr__(self,key,value)
 
 class Log(object):
-    '''
+    """
     Class for observing log.
 
     Attributes:
@@ -39,7 +39,7 @@ class Log(object):
             for item in log:
                 print(item.frameid, item.exptime)
     
-    '''
+    """
     def __init__(self):
         self.item_list = []
 
@@ -47,42 +47,40 @@ class Log(object):
         return _LogIterator(self.item_list)
 
     def find_nchannels(self):
-        '''Find the number of channels by checking the column of "objectname".
-        '''
+        """Find the number of channels by checking the column of "objectname".
+        """
         self.nchannels = max([len(item.objectname) for item in self.item_list])
 
     def add_item(self, item):
-        '''
-        Add a :class:`LogItem` instance into the observing log.
+        """Add a :class:`LogItem` instance into the observing log.
 
         Args:
             item (:class:`LogItem`): A :class:`LogItem` instance to be added
                 into this observing log.
         
-        '''
+        """
         self.item_list.append(item)
 
     def sort(self, key):
-        '''Sort the items by the given keyword.
+        """Sort the items by the given keyword.
 
         Args:
             key (str): Keyword to sort.
-        '''
+        """
 
         new_item_list = sorted(self.item_list,
                                key=lambda item: getattr(item, key))
         self.item_list = new_item_list
 
     def get_frameid_lst(self, objectname=None, exptime=None, channel=None):
-        '''
-        Get a list of frameids from given conditions.
+        """Get a list of frameids from given conditions.
 
         Args:
             objectname (str): Name of objects.
             exptime (float): Exposure time.
             channel (str): Name of channel.
         
-        '''
+        """
         if self.nchannels > 1:
             # for multi channels
             if channel is not None:
@@ -104,9 +102,8 @@ class Log(object):
 
 
 class _LogIterator(object):
-    '''
-    Iterator class for :class:`Log`.
-    '''
+    """Iterator class for :class:`Log`.
+    """
     def __init__(self, item_list):
         self.item_list = item_list
         self.n = len(self.item_list)
@@ -123,7 +120,7 @@ class _LogIterator(object):
 
 def read_logitem(string, names, types, column_separator='|',
     channel_separator=';'):
-    '''Read log items.
+    """Read log items.
 
     The objectname in each item is splitted into a list of names.
 
@@ -138,7 +135,7 @@ def read_logitem(string, names, types, column_separator='|',
     Returns:
         :class:`LogItem`: A :class:`LogItem` instance.
 
-    '''
+    """
     logitem = LogItem()
 
     g = string.split(column_separator)
@@ -162,7 +159,7 @@ def read_logitem(string, names, types, column_separator='|',
     return logitem
 
 def read_log(filename):
-    '''Read observing log from an ascii file.
+    """Read observing log from an ascii file.
 
     Args:
         filename (str): Name of the observing log file.
@@ -172,7 +169,7 @@ def read_log(filename):
         
             * **log** (:class:`Log`): The observing log.
             * **frame_lst** (*tuple*): Frame list.
-    '''
+    """
 
     frame_lst = {}
     log = Log()
@@ -215,14 +212,14 @@ def read_log(filename):
     return log
 
 def get_input_fileids(log, string):
-    '''Get the fileids of the input.
+    """Get the fileids of the input.
 
     Args:
         log (:class:`Log`): A :class:`Log` instance
         string (str): The input string
     Returns:
         list: The list of file IDs
-    '''
+    """
 
     if len(string.strip())==0:
         return []
@@ -235,8 +232,7 @@ def get_input_fileids(log, string):
     return [fileid_lst[n] for n in lst]
 
 def parse_num_seq(string):
-    '''
-    Convert the number sequence to list of numbers
+    """Convert the number sequence to list of numbers.
 
     Args:
         string (str): The input string to be parsed.
@@ -244,7 +240,7 @@ def parse_num_seq(string):
     Returns:
         list: A list of integer numbers.
 
-    '''
+    """
     lst = []
     g1 = string.strip().split(',')
     for rec in g1:
@@ -262,7 +258,7 @@ def parse_num_seq(string):
     return lst
 
 def find_log(path):
-    '''Find the log file in the given directory.
+    """Find the log file in the given directory.
 
     The name of the observing log file should terminate in `.log`, but should
     not be `edrs.log`, which is used for the name of the running log of EDRS.
@@ -273,7 +269,7 @@ def find_log(path):
         *str* or *None*: Name of the log file. Return *None* if not found or more
             than one file found.
     
-    '''
+    """
     filename_lst = [fname for fname in sorted(os.listdir(path))
                         if len(fname)>4 and fname[-4:]=='.log' and
                         fname != 'edrs.log']

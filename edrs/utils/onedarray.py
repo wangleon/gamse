@@ -2,8 +2,7 @@ from itertools import tee
 import numpy as np
 
 def get_edge_bin(array):
-    '''
-    Detect the edge indcies of a binary 1-D array.
+    """Detect the edge indcies of a binary 1-D array.
 
     Args:
         array (:class:`numpy.ndarray`): A list or Numpy 1d array, with binary
@@ -23,7 +22,7 @@ def get_edge_bin(array):
             >>> b = [True, False, True, True, False, False]
             >>> get_edge_bin(b)
             [(0, 1), (2, 4)]
-    '''
+    """
     array1 = np.int64(array)
     array1 = np.insert(array1, 0, 0)
     array1 = np.append(array1, 0)
@@ -33,8 +32,7 @@ def get_edge_bin(array):
     return list(zip(i1_lst, i2_lst))
 
 def get_local_minima(x, window=None):
-    '''
-    Get the local minima of a 1d array in a window.
+    """Get the local minima of a 1d array in a window.
 
     Args:
         x (:class:`numpy.ndarray`): A list or Numpy 1d array.
@@ -48,7 +46,7 @@ def get_local_minima(x, window=None):
             * **x[index]** (:class:`numpy.ndarray`): A numpy 1d array containing
               values of all local minima.
 
-    '''
+    """
     x = np.array(x)
     dif = np.diff(x)
     ind = dif > 0
@@ -93,8 +91,7 @@ def get_local_minima(x, window=None):
             return np.array([]), np.array([])
 
 def implete_none(lst):
-    '''
-    Replace the None elemnets at the beginning and the end of list by auto
+    """Replace the None elemnets at the beginning and the end of list by auto
     increment integers.
     
     Convert the first and last few `None` elements to auto increment integers.
@@ -115,7 +112,7 @@ def implete_none(lst):
             >>> implete_none(a)
             [1, 2, 3, 4, None, 5, 6, 7, 8]
 
-    '''
+    """
     # filter the None values
     notnone_lst = [v for v in lst if v is not None]
     for i, v in enumerate(lst):
@@ -139,8 +136,7 @@ def implete_none(lst):
 
 
 def derivative(*args, **kwargs):
-    '''
-    Get the first derivative of data arrays (*x*, *y*).
+    """Get the first derivative of data arrays (*x*, *y*).
 
     If **y** is not given, the first argument will be taken as **y**, and the
     differential of the input array will be returned.
@@ -150,9 +146,10 @@ def derivative(*args, **kwargs):
         y (list or :class:`numpy.ndarray`): Y-values of the input array.
         points (int): Number of points used to calculate derivative
             (optional, default is 3).
+
     Returns:
         :class:`numpy.ndarray`: Derivative of the input array.
-    '''
+    """
     if len(args) == 1:
         y = np.array(args[0], dtype=np.float64)
         x = np.arange(y.size)
@@ -173,13 +170,13 @@ def derivative(*args, **kwargs):
         raise ValueError
 
 def pairwise(array):
-    '''Return pairwises of an iterable arrary.
+    """Return pairwises of an iterable arrary.
 
     Args:
         array (list or :class:`numpy.ndarray`): The input iterable array.
     Returns:
         :class:`zip`: zip objects.
-    '''
+    """
     a, b = tee(array)
     next(b, None)
     return zip(a, b)

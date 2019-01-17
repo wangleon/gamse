@@ -21,7 +21,7 @@ from . import xinglong216hrs
 #from .reduction import Reduction
 
 def reduce_echelle():
-    '''Automatically select the instrument and reduce echelle spectra
+    """Automatically select the instrument and reduce echelle spectra
     accordingly.
 
     Available instruments include:
@@ -30,7 +30,7 @@ def reduce_echelle():
             Germany.
         * *Xinglong216HRS*: HRS on 2.16m telescope in Xinglong Station, China.
 
-    '''
+    """
 
     # initialize running log
     log_fmt = ' '.join(['*',
@@ -76,8 +76,8 @@ def reduce_echelle():
         exit()
 
 def make_log():
-    '''Scan the path to the raw FITS files and generate an observing log.
-    '''
+    """Scan the path to the raw FITS files and generate an observing log.
+    """
     config_file_lst = []
 
     # find local config file
@@ -111,11 +111,11 @@ def make_log():
         exit()
 
 def show_spectra1d(filename_lst):
-    '''Show 1-D spectra in a pop-up window.
+    """Show 1-D spectra in a pop-up window.
 
     Args:
         filename_lst (list): List of filenames of 1-D spectra.
-    '''
+    """
     spec_lst = []
     for filename in filename_lst:
         data = fits.getdata(filename)

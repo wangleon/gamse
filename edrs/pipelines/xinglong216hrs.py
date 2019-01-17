@@ -28,18 +28,19 @@ from .common import plot_background_aspect1
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
-    '''Get the mask of bad pixels and columns.
+    """Get the mask of bad pixels and columns.
 
     Args:
         shape (tuple): Shape of image.
         bins (tuple): CCD bins.
+
     Returns:
         :class:`numpy.ndarray`: 2D binary mask, where bad pixels are marked with
             *True*, others *False*.
 
     The bad pixels are found *empirically*.
         
-    '''
+    """
     mask = np.zeros(shape, dtype=np.bool)
     if bins == (1, 1) and shape == (4136, 4096):
         h, w = shape
@@ -69,7 +70,7 @@ def get_badpixel_mask(shape, bins):
     return mask
 
 def get_mask(data, head):
-    '''Get the mask of input image.
+    """Get the mask of input image.
 
     Args:
         data (:class:`numpy.ndarray`): Input image data.
@@ -87,7 +88,7 @@ def get_mask(data, head):
 
     where *head* is the input FITS header. 
 
-    '''
+    """
 
     saturation_adu = 65535
 
@@ -110,7 +111,7 @@ def get_mask(data, head):
 
 
 def correct_overscan(data, head, mask=None):
-    '''Correct overscan for an input image and update related information in the
+    """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
@@ -125,7 +126,7 @@ def correct_overscan(data, head, mask=None):
               corrected.
             * **head** (:class:`astropy.io.fits.Header`): The updated FITS
               header.
-    '''
+    """
     # define the cosmic ray fixing function
     def fix_cr(data):
         m = data.mean(dtype=np.float64)
@@ -179,7 +180,7 @@ def correct_overscan(data, head, mask=None):
     return new_data, head
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -209,7 +210,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
     
-    '''
+    """
 
     has_fringe_lst = []
     aperpar = np.array([np.nan]*w)
@@ -337,7 +338,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -366,7 +367,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
-    '''
+    """
 
     allx = np.arange(w)
 
@@ -412,7 +413,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -441,11 +442,11 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_bkg`
-    '''
+    """
     return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
 def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -474,7 +475,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_c`
-    '''
+    """
 
     allx = np.arange(w)
 
@@ -532,9 +533,9 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def reduce():
-    '''2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
+    """2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
     telescope.
-    '''
+    """
 
     # read obs log
     obslogfile = obslog.find_log(os.curdir)
@@ -1505,8 +1506,7 @@ class Xinglong216HRS(Reduction):
         return True
 
 def make_log(path):
-    '''
-    Scan the raw data, and generated a log file containing the detail
+    """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running. The name of the ascii file is
@@ -1515,7 +1515,7 @@ def make_log(path):
     Args:
         path (str): Path to the raw FITS files.
 
-    '''
+    """
 
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 

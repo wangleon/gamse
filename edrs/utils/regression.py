@@ -2,7 +2,7 @@ import math
 import numpy as np
 
 def get_clip_mean(x, err=None, mask=None, high=3, low=3, maxiter=5):
-    '''Get the mean value of an input array using the sigma-clipping method
+    """Get the mean value of an input array using the sigma-clipping method
 
     Args:
         x (:class:`numpy.ndarray`): The input array.
@@ -11,6 +11,7 @@ def get_clip_mean(x, err=None, mask=None, high=3, low=3, maxiter=5):
         high (float): Upper rejection threshold.
         low (float): Loweer rejection threshold.
         maxiter (int): Maximum number of iterations.
+
     Returns:
         tuple: A tuple containing:
 
@@ -18,7 +19,7 @@ def get_clip_mean(x, err=None, mask=None, high=3, low=3, maxiter=5):
             * **std** (*float*) – Standard deviation after the sigma-clipping.
             * **mask** (:class:`numpy.ndarray`) – Mask of accepted values in the
               input array.
-    '''
+    """
     x = np.array(x)
     if mask is None:
         mask = np.zeros_like(x)<1
@@ -49,7 +50,7 @@ def get_clip_mean(x, err=None, mask=None, high=3, low=3, maxiter=5):
     return mean, std, new_mask
 
 def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
-    '''Fit the input arrays using a linear function.
+    """Fit the input arrays using a linear function.
 
     Args:
         x (:class:`numpy.ndarray`): The input X values.
@@ -70,7 +71,7 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
             * **func** (*func*) – Function.
             * **r2** (*float*) – *R*:sup:`2` value.
             * **p_std** (*tuple*) – Standar deviations of the parameters.
-    '''
+    """
     x = np.array(x)
     y = np.array(y)
     if yerr is not None:
@@ -132,7 +133,7 @@ def linear_fit(x,y,yerr=None,maxiter=10,high=3.0,low=3.0,full=False):
 
 def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
     upper_clip=None, lower_clip=None):
-    '''Fit data with polynomial iteratively. This is a wrap of numpy.polyfit
+    """Fit data with polynomial iteratively. This is a wrap of numpy.polyfit
     function.
 
     Args:
@@ -153,7 +154,7 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
             * **yres** (:class:`numpy.ndarray`) – 
             * **mask** (:class:`numpy.ndarray`) – 
             * **std** (float) – 
-    '''
+    """
 
     x = np.array(x)
     y = np.array(y)

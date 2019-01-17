@@ -31,7 +31,7 @@ from .common import plot_background_aspect1
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
-    '''Correct overscan for an input image and update related information in the
+    """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
@@ -45,7 +45,7 @@ def correct_overscan(data, head, mask=None):
             * data (:class:`numpy.ndarray`): The output image with overscan
               corrected.
             * head (:class:`astropy.io.fits.Header`): The updated FITS header.
-    '''
+    """
     h, w = data.shape
     overdata1 = data[:, 0:20]
     overdata2 = data[:, w-18:w]
@@ -84,7 +84,7 @@ def correct_overscan(data, head, mask=None):
     return new_data, head
 
 def get_mask(data, head):
-    '''Get the mask of input image.
+    """Get the mask of input image.
 
     Args:
         data (:class:`numpy.ndarray`): Input image data.
@@ -92,7 +92,7 @@ def get_mask(data, head):
 
     Returns:
         :class:`numpy.ndarray`: Image mask.
-    '''
+    """
     # saturated CCD count
     saturation_adu = 63000
 
@@ -106,8 +106,8 @@ def get_mask(data, head):
     return mask
 
 class FOCES(Reduction):
-    '''Reduction pipleline for FOCES.
-    '''
+    """Reduction pipleline for FOCES.
+    """
 
     def __init__(self):
         super(FOCES, self).__init__(instrument='FOCES')
@@ -310,8 +310,7 @@ class FOCES(Reduction):
 
 
     def bias(self):
-        '''
-        Bias correction.
+        """Bias correction.
 
         .. csv-table:: Accepted options in config file
            :header: Option, Type, Description
@@ -341,7 +340,7 @@ class FOCES(Reduction):
         #. smooth the mean-bias-file with a 2d gaussian filter
         #. final_bias = mean_bias - smooth_bias
           
-        '''
+        """
         # find output suffix for fits
         self.output_suffix = self.config.get('bias', 'suffix')
 
@@ -499,11 +498,10 @@ class FOCES(Reduction):
         self.input_suffix = self.output_suffix
    
     def plot_bias_variation(self, data_lst, head_lst, time_key='FRAME'):
-        '''
-        Plot the variation of bias level with time.
+        """Plot the variation of bias level with time.
         A figure will be generated in the report directory of the reduction. The
         name of the figure is given in the config file.
-        '''
+        """
     
         mean_lst, std_lst = [], []
         time_lst = []
@@ -580,8 +578,7 @@ class FOCES(Reduction):
         plt.close(fig)
 
 def make_log(path):
-    '''
-    Scan the raw data, and generated a log file containing the detail
+    """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running. The name of the ascii file is
@@ -590,7 +587,7 @@ def make_log(path):
     Args:
         path (str): Path to the raw FITS files.
 
-    '''
+    """
     
     # standard naming convenction for fileid
     name_pattern = '^\d{8}_\d{4}_FOC\d{4}_\w{3}\d$'
@@ -721,8 +718,7 @@ def make_log(path):
 
 
 def get_primary_header(input_lst):
-    '''
-    Return a list of header records with length of 80 characters.
+    """Return a list of header records with length of 80 characters.
     The order and datatypes of the records follow the FOCES FITS standards.
 
     Args:
@@ -731,7 +727,7 @@ def get_primary_header(input_lst):
     Returns:
         *list*: A list containing the records
 
-    '''
+    """
     lst = [
         # 12345678    12345678901234567890123456789012345678901234567
         ('SIMPLE'  , 'file does conform to FITS standard'             ),
@@ -878,9 +874,8 @@ def get_primary_header(input_lst):
     return header_lst
 
 def plot_overscan_variation(t_lst, overscan_lst, figfile):
-    '''
-    Plot the variation of overscan.
-    '''
+    """Plot the variation of overscan.
+    """
     
     # Quality check plot of the mean overscan value over time 
     fig = plt.figure(figsize=(8,6), dpi=150)
@@ -915,8 +910,7 @@ def plot_overscan_variation(t_lst, overscan_lst, figfile):
     plt.close(fig)
 
 def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
-    '''
-    Plot the bias, smoothed bias, and residual after smoothing.
+    """Plot the bias, smoothed bias, and residual after smoothing.
 
     A figure will be generated in the report directory of the reduction.
     The name of the figure is given in the config file.
@@ -926,7 +920,7 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
         bias_smooth (:class:`numpy.ndarray`): Smoothed bias array.
         comp_figfile (str): Filename of the comparison figure.
         hist_figfile (str): Filename of the histogram figure.
-    '''
+    """
     h, w = bias.shape
     # calculate the residual between bias and smoothed bias data
     bias_res = bias - bias_smooth
@@ -1053,9 +1047,8 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     plt.close(fig2)
 
 def reduce():
-    '''
-    2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope.
-    '''
+    """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope.
+    """
 
     # read obs log
     obslogfile = obslog.find_log(os.curdir)
@@ -1636,7 +1629,7 @@ def reduce():
 
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -1666,7 +1659,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
     
-    '''
+    """
 
     has_fringe_lst = []
     aperpar = np.array([np.nan]*w)
@@ -1794,7 +1787,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -1823,7 +1816,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
-    '''
+    """
 
     allx = np.arange(w)
 
@@ -1869,7 +1862,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -1898,11 +1891,11 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_bkg`
-    '''
+    """
     return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
 
 def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
-    '''Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
+    """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
     Args:
@@ -1931,7 +1924,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_c`
-    '''
+    """
 
     allx = np.arange(w)
 
