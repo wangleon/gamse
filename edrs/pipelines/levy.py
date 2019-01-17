@@ -107,33 +107,42 @@ def reduce():
         logger.info('Load bias from image: %s'%bias_file)
     else:
         bias_data_lst = []
-        print('* Combine Bias Images: %s'%bias_file)
+        info_lst = []
 
-        columns = [
-                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{3:8s}',  '{1:8.2f}'),
-                ('mean',     '{4:8s}',  '{2:8.2f}'),
-                ]
-        title, fmt_title, fmt_item = zip(*columns)
-        fmt_title = ' '.join(fmt_title)
-        fmt_item  = ' '.join(fmt_item)
-        print(' '*2 + fmt_title.format(*title))
         for item in log:
-            if item.objectname[0]=='Dark' and abs(item.exptime-1)<1e-3:
+            if item.objectname[0]=='Bias' and abs(item.exptime)<1e-3:
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data = fits.getdata(filename)
                 # correct overscan here
                 data, overmean = correct_overscan(data)
                 bias_data_lst.append(data)
-                # print info
-                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+                info_lst.append({
+                    'fileid':  item.fileid,  'exptime': item.exptime,
+                    'obsdate': item.obsdate, 'overscan': overmean,
+                    'mean':    data.mean()
+                    })
 
-        has_bias = len(bias_data_lst)>0
+        has_bias = len(bias_data_lst) > 0
 
         if has_bias:
             # there is bias frames
+            print('* Combine Bias Images: %s'%bias_file)
+
+            columns = [
+                    ('fileid',   '{0:10s}', '{fileid:10s}'),
+                    ('exptime',  '{1:7s}',  '{exptime:7g}'),
+                    ('obsdate',  '{2:25s}', '{obsdate:25s}'),
+                    ('overscan', '{3:8s}',  '{overscan:8.2f}'),
+                    ('mean',     '{4:8s}',  '{mean:8.2f}'),
+                    ]
+            title, fmt_title, fmt_item = zip(*columns)
+            fmt_title = ' '.join(fmt_title)
+            fmt_item  = ' '.join(fmt_item)
+            print(' '*2 + fmt_title.format(*title))
+            for info in info_lst:
+                # print info
+                print(' '*2 + fmt_item.format(**info))
+
 
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)
@@ -179,36 +188,76 @@ def reduce():
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             logger.info('Bias image written to "%s"'%bias_file)
 
+        else:
+            # no bias found
+            pass
+
     ############################# trace the orders ############################
     section = config['reduce.trace']
     trace_file = section['trace_file']
 
     if os.path.exists(trace_file):
         # load trace image from existing file
+        has_trace = True
         trace = fits.getdata(trace_file)
     else:
         # combine trace file from narrow flats
         trace_data_lst = []
-        print('* Combine Images for Order Tracing: %s'%trace_file)
-        print('  {0:10s} {1:7s} {2:25s}'.format('fileid', 'exptime', 'obsdate'))
+        info_lst = []
+
         for item in log:
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
-                data = correct_overscan(data)
-                trace_data_lst.append(data - bias)
-                print('  {0.fileid:10s} {0.exptime:7g} {0.obsdate:25s}'.format(item))
+                data, overmean = correct_overscan(data)
+                if has_bias:
+                    data = data - bias
+                trace_data_lst.append(data)
+                info_lst.append({
+                    'fileid':  item.fileid,  'exptime': item.exptime,
+                    'obsdate': item.obsdate, 'overscan': overmean,
+                    'mean':    data.mean()
+                    })
 
-        # combine images
-        upper_clip = section.getfloat('upper_clip')
-        maxiter    = section.getint('maxiter')
+        has_trace = len(trace_data_lst) > 0
 
-        tracecube = np.array(trace_data_lst)
-        trace = combine_images(tracecube, mode='mean',
-                upper_clip=upper_clip, maxiter=maxiter)
-        trace = trace.T
-        fits.writeto(trace_file, trace, overwrite=True)
-    exit()
+        if has_trace:
+            # there is trace frames
+            print('* Combine Images for Order Tracing: %s'%trace_file)
+
+            columns = [
+                    ('fileid',   '{0:10s}', '{fileid:10s}'),
+                    ('exptime',  '{1:7s}',  '{exptime:7g}'),
+                    ('obsdate',  '{2:25s}', '{obsdate:25s}'),
+                    ('overscan', '{3:8s}',  '{overscan:8.2f}'),
+                    ('mean',     '{4:8s}',  '{mean:8.2f}'),
+                    ]
+            title, fmt_title, fmt_item = zip(*columns)
+            fmt_title = ' '.join(fmt_title)
+            fmt_item  = ' '.join(fmt_item)
+            print(' '*2 + fmt_title.format(*title))
+            for info in info_lst:
+                # print info
+                print(' '*2 + fmt_item.format(**info))
+
+            # combine trace images
+            trace_data_lst = np.array(trace_data_lst)
+            upper_clip = section.getfloat('upper_clip')
+            maxiter    = section.getint('maxiter')
+            mask = (None, 'max')[trace_data_lst.shape[0]>=3]
+
+            trace = combine_images(trace_data_lst,
+                    mode       = 'mean',
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
+                    mask       = None,
+                    )
+            trace = trace.T
+            fits.writeto(trace_file, trace, overwrite=True)
+
+        else:
+            # no trace image found
+            pass
 
     # find the name of .trc file
     trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
