@@ -20,17 +20,19 @@ from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database,
                                wv_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
 
-def correct_overscan(data):
+def correct_overscan(data, head):
     """Correct the overscan of CCD image.
 
     Args:
-        data (:class:`numpy.dtype`): Input image.
+        data (:class:`numpy.dtype`): Input data image.
+        head (:class:`astropy.io.fits.Header`): Input FITS header.
 
     Returns:
         tuple: A tuple containing:
 
-            * **corrdata** (:class:`numpy.dtype`): – Array of overscan corrected
-              image.
+            * **corrdata** (:class:`numpy.dtype`) – Output image with overscan 
+              corrected.
+            * **head** (:class:`astropy.io.fits.Header`) – Updated FITS header.
             * **overmean** (*float*) – Average of overscan values.
     """
     if data.shape==(4608, 2080):
@@ -49,7 +51,15 @@ def correct_overscan(data):
         overdata = np.tile(oversmooth, (2048, 1)).T
         corrdata = data[:,0:2048] - overdata
         overmean = overdata.mean()
-        return corrdata, overmean
+
+        # update fits header
+        head['HIERARCH EDRS OVERSCAN']        = True
+        head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
+        head['HIERARCH EDRS OVERSCAN AXIS-1'] = '2049:2088'
+        head['HIERARCH EDRS OVERSCAN AXIS-2'] = '0:4608'
+        head['HIERARCH EDRS OVERSCAN MEAN']   = overmean
+
+        return corrdata, head, overmean
 
 def reduce():
     """Reduce the APF/Levy spectra.
@@ -123,9 +133,9 @@ def reduce():
         for item in log:
             if item.objectname[0]=='Bias' and abs(item.exptime)<1e-3:
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
-                data = fits.getdata(filename)
+                data, head = fits.getdata(filename, header=True)
                 # correct overscan here
-                data, overmean = correct_overscan(data)
+                data, head, overmean = correct_overscan(data, head)
 
                 # print info
                 if len(bias_data_lst) == 0:
@@ -153,7 +163,7 @@ def reduce():
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = bias_data_lst.shape[0]
+            head['HIERARCH EDRS BIAS NFILE'] = n_bias
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -216,8 +226,8 @@ def reduce():
         for item in log:
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
-                data = fits.getdata(filename)
-                data, overmean = correct_overscan(data)
+                data, head = fits.getdata(filename, header=True)
+                data, head, overmean = correct_overscan(data, head)
                 if has_bias:
                     data = data - bias
 
@@ -305,12 +315,12 @@ def reduce():
             data_lst = []
             for ifile, fileid in enumerate(fileids):
                 filename = os.path.join(rawdata, '%s.fits'%fileid)
-                data = fits.getdata(filename)
+                data, head = fits.getdata(filename, header=True)
                 mask = (data[:,0:2048]==65535)
                 if ifile==0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += mask
-                data = correct_overscan(data)
+                data, head = correct_overscan(data, head)
                 data = data - bias
                 data_lst.append(data)
             nflat = len(data_lst)
@@ -421,7 +431,7 @@ def reduce():
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
                 mask = np.int16(data == 65535)*4
-                data = correct_overscan(data)
+                data, head, overmean = correct_overscan(data, head)
                 spectra1d = extract_aperset(data.T, mask.T,
                                 apertureset = aperset,
                                 lower_limit = 5,
@@ -515,7 +525,7 @@ def reduce():
             data, head = fits.getdata(filename, header=True)
             mask = np.int16(data == 65535)*4
 
-            data = correct_overscan(data)
+            data, head, overmean = correct_overscan(data, head)
 
             # write order locations to header
             head = aperset.to_fitsheader(head, channel=None)
