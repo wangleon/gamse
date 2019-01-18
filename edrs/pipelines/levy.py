@@ -107,7 +107,18 @@ def reduce():
         logger.info('Load bias from image: %s'%bias_file)
     else:
         bias_data_lst = []
-        info_lst = []
+
+        # prepare print info
+        columns = [
+                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
+                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
+                ('overscan', '{3:8s}',  '{1:8.2f}'),
+                ('mean',     '{4:8s}',  '{2:8.2f}'),
+                ]
+        title, fmt_title, fmt_item = zip(*columns)
+        fmt_title = ' '.join(fmt_title)
+        fmt_item  = ' '.join(fmt_item)
 
         for item in log:
             if item.objectname[0]=='Bias' and abs(item.exptime)<1e-3:
@@ -115,43 +126,29 @@ def reduce():
                 data = fits.getdata(filename)
                 # correct overscan here
                 data, overmean = correct_overscan(data)
-                bias_data_lst.append(data)
-                info_lst.append({
-                    'fileid':  item.fileid,  'exptime': item.exptime,
-                    'obsdate': item.obsdate, 'overscan': overmean,
-                    'mean':    data.mean()
-                    })
 
-        has_bias = len(bias_data_lst) > 0
+                # print info
+                if len(bias_data_lst) == 0:
+                    print('* Combine Bias Images: %s'%bias_file)
+                    print(' '*2 + fmt_title.format(*title))
+                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+
+                bias_data_lst.append(data)
+
+        n_bias = len(bias_data_lst)         # number of bias images
+        has_bias = n_bias > 0
 
         if has_bias:
             # there is bias frames
-            print('* Combine Bias Images: %s'%bias_file)
-
-            columns = [
-                    ('fileid',   '{0:10s}', '{fileid:10s}'),
-                    ('exptime',  '{1:7s}',  '{exptime:7g}'),
-                    ('obsdate',  '{2:25s}', '{obsdate:25s}'),
-                    ('overscan', '{3:8s}',  '{overscan:8.2f}'),
-                    ('mean',     '{4:8s}',  '{mean:8.2f}'),
-                    ]
-            title, fmt_title, fmt_item = zip(*columns)
-            fmt_title = ' '.join(fmt_title)
-            fmt_item  = ' '.join(fmt_item)
-            print(' '*2 + fmt_title.format(*title))
-            for info in info_lst:
-                # print info
-                print(' '*2 + fmt_item.format(**info))
-
 
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)
-            mask = (None, 'max')[bias_data_lst.shape[0]>=3]
+
             bias = combine_images(bias_data_lst,
                     mode       = 'mean',
                     upper_clip = section.getfloat('cosmic_clip'),
                     maxiter    = section.getint('maxiter'),
-                    mask       = mask,
+                    mask       = (None, 'max')[n_bias>=3],
                     )
 
             # create new FITS Header for bias
@@ -203,42 +200,40 @@ def reduce():
     else:
         # combine trace file from narrow flats
         trace_data_lst = []
-        info_lst = []
+
+        # prepare print info
+        columns = [
+                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
+                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
+                ('overscan', '{3:8s}',  '{1:8.2f}'),
+                ('mean',     '{4:8s}',  '{2:8.2f}'),
+                ]
+        title, fmt_title, fmt_item = zip(*columns)
+        fmt_title = ' '.join(fmt_title)
+        fmt_item  = ' '.join(fmt_item)
 
         for item in log:
             if item.objectname[0]=='NarrowFlat':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
-                data, head = fits.getdata(filename, header=True)
+                data = fits.getdata(filename)
                 data, overmean = correct_overscan(data)
                 if has_bias:
                     data = data - bias
-                trace_data_lst.append(data)
-                info_lst.append({
-                    'fileid':  item.fileid,  'exptime': item.exptime,
-                    'obsdate': item.obsdate, 'overscan': overmean,
-                    'mean':    data.mean()
-                    })
 
-        has_trace = len(trace_data_lst) > 0
+                # print info
+                if len(trace_data_lst) == 0:
+                    print('* Combine Images for Order Tracing: %s'%trace_file)
+                    print(' '*2 + fmt_title.format(*title))
+                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+
+                trace_data_lst.append(data)
+
+        n_trace = len(trace_data_lst)  # number of trace images
+        has_trace = n_trace > 0
 
         if has_trace:
             # there is trace frames
-            print('* Combine Images for Order Tracing: %s'%trace_file)
-
-            columns = [
-                    ('fileid',   '{0:10s}', '{fileid:10s}'),
-                    ('exptime',  '{1:7s}',  '{exptime:7g}'),
-                    ('obsdate',  '{2:25s}', '{obsdate:25s}'),
-                    ('overscan', '{3:8s}',  '{overscan:8.2f}'),
-                    ('mean',     '{4:8s}',  '{mean:8.2f}'),
-                    ]
-            title, fmt_title, fmt_item = zip(*columns)
-            fmt_title = ' '.join(fmt_title)
-            fmt_item  = ' '.join(fmt_item)
-            print(' '*2 + fmt_title.format(*title))
-            for info in info_lst:
-                # print info
-                print(' '*2 + fmt_item.format(**info))
 
             # combine trace images
             trace_data_lst = np.array(trace_data_lst)
@@ -247,7 +242,7 @@ def reduce():
                     mode       = 'mean',
                     upper_clip = section.getfloat('upper_clip'),
                     maxiter    = section.getint('maxiter'),
-                    mask       = (None, 'max')[trace_data_lst.shape[0]>=3],
+                    mask       = (None, 'max')[n_trace>=3],
                     )
             trace = trace.T
             fits.writeto(trace_file, trace, overwrite=True)
@@ -256,7 +251,6 @@ def reduce():
             # no trace image found
             pass
 
-    exit()
     # find the name of .trc file
     trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
     trc_reg  = '.'.join(trace_file.split('.')[:-1])+'.reg'
