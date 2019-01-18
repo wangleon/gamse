@@ -1673,14 +1673,14 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     Returns:
         tuple: A tuple containing:
 
-            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
               paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
+            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling
+              pixels in **newx_lst** participating in fitting or smoothing.
 
     See Also:
 
@@ -1831,14 +1831,14 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     Returns:
         tuple: A tuple containing:
 
-            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
               paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
+            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling
+              pixels in **newx_lst** participating in fitting or smoothing.
 
     See Also:
 
@@ -1906,14 +1906,14 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
     Returns:
         tuple: A tuple containing:
 
-            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
               paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
+            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling
+              pixels in **newx_lst** participating in fitting or smoothing.
 
     See Also:
 
@@ -1939,14 +1939,14 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
     Returns:
         tuple: A tuple containing:
 
-            * **aperpar** (:class:`numpy.ndarray`): Reconstructed profile
+            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
               paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`): Reconstructed profile
+            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`): Residuals of profile
+            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
               parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`): Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
+            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling
+              pixels in **newx_lst** participating in fitting or smoothing.
 
     See Also:
 
