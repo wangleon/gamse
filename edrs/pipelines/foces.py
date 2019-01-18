@@ -42,10 +42,10 @@ def correct_overscan(data, head, mask=None):
     Returns:
         tuple: A tuple containing:
 
-            * data (:class:`numpy.ndarray`): The output image with overscan
+            * **data** (:class:`numpy.ndarray`) – Output image with overscan
               corrected.
-            * head (:class:`astropy.io.fits.Header`): The updated FITS header.
-            * overmean (float): Mean value of overscan pixels.
+            * **head** (:class:`astropy.io.fits.Header`) – Updated FITS header.
+            * **overmean** (*float*) – Mean value of overscan pixels.
     """
     h, w = data.shape
     overdata1 = data[:, 0:20]
@@ -1124,7 +1124,7 @@ def reduce():
                 if data.ndim == 3:
                     data = data[0,:,:]
                 mask = get_mask(data, head)
-                data, head, overmean, overstd = correct_overscan(data, head, mask)
+                data, head, overmean = correct_overscan(data, head, mask)
 
                 # print info
                 if len(bias_data_lst) == 0:
