@@ -603,15 +603,10 @@ def make_log(path):
         filepath = os.path.join(path, fname)
         data, head = fits.getdata(filepath, header=True)
 
-        if data.ndim == 3:
-            # old FOCES data are 3-dimensional arrays
-            scidata = data[0, 20:-20]
-        elif data.ndim == 2:
-            scidata = data[:,20:-20]
-        else:
-            print('Unknow dimension of data array')
-            raise ValueError
-
+        # old FOCES data are 3-dimensional arrays
+        if data.ndim == 3: scidata = data[0, 20:-20]
+        else:              scidata = data[:,20:-20]
+            
         obsdate = head['FRAME']
         exptime = head['EXPOSURE']
 
@@ -625,10 +620,7 @@ def make_log(path):
                 imagetype, objectname = 'cal', 'ThAr'
             else:
                 objectname = 'Unknown'
-                if fileid[22:25]=='SCI':
-                    imagetype = 'sci'
-                else:
-                    imagetype = 'cal'
+                imagetype = ('cal', 'sci')[fileid[22:25]=='SCI']
         else:
             # fileid does not follow the naming convetion
             imagetype, objectname = 'cal', ''
@@ -661,7 +653,7 @@ def make_log(path):
                   ('objectname', 's'), ('exptime',    'f'), ('obsdate',    's'),
                   ('saturation', 'f'), ('brightness', 'f'),
                  ]
-    columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
+    columns = ['{0} {1}'.format(_name, _type) for _name, _type in column_lst]
 
     prev_frameid = -1
     for item in log:
@@ -1108,17 +1100,18 @@ def reduce():
         # prepare print info
         columns = [
                 ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{3:8s}',  '{1:8.2f}'),
-                ('mean',     '{4:8s}',  '{2:8.2f}'),
+                ('object',   '{1:10s}', '{0.objectname:10s}'),
+                ('exptime',  '{2:7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{3:25s}', '{0.obsdate:25s}'),
+                ('overscan', '{4:8s}',  '{1:8.2f}'),
+                ('mean',     '{5:8s}',  '{2:8.2f}'),
                 ]
         title, fmt_title, fmt_item = zip(*columns)
         fmt_title = ' '.join(fmt_title)
         fmt_item  = ' '.join(fmt_item)
 
         for item in log:
-            if item.objectname[0].strip().lower()=='bias':
+            if item.objectname.strip().lower()=='bias':
                 filename = os.path.join(rawdata, '%s.fits'%item.fileid)
                 data, head = fits.getdata(filename, header=True)
                 if data.ndim == 3:
@@ -1188,7 +1181,6 @@ def reduce():
             # no bias found
             pass
 
-    exit()
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
     # initialize flat_groups for single fiber
@@ -1196,20 +1188,19 @@ def reduce():
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
     for item in log:
-        name = item.objectname[0]
-        g = name.split()
+        g = item.objectname.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
-            if name.lower().strip()=='flat':
+            if item.objectname.lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
                 flatname = 'flat_%g'%(item.exptime)
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
                 # "Flat Red" becomes "Red" 
-                char = name[4:].strip()
+                char = item.objectname[4:].strip()
                 flatname = 'flat_%s'%(char.replace(' ','_'))
 
             # add flatname to flat_groups

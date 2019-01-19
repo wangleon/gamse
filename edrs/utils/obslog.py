@@ -18,6 +18,7 @@ class Log(object):
     Attributes:
         nchannels (int): Number of fiber channels.
         item_list (list): List containing :class:`LogItem` instances.
+
     Examples:
         Initialization
     
@@ -118,18 +119,21 @@ class _LogIterator(object):
         else:
             raise StopIteration()
 
-def read_logitem(string, names, types, column_separator='|',
-    channel_separator=';'):
+def read_logitem(string, names, types, column_separator='|', multi_object=False,
+    object_separator=';'):
     """Read log items.
 
-    The objectname in each item is splitted into a list of names.
+    If **multi_object** is *True*, the mulit-object mode is on, the "objectname"
+    in each item is splitted into a list of names by the character given by
+    **object_separator**.
 
     Args:
         string (str): Input string.
         names (list): A list of names.
         types (list): A list of type strings.
         column_separator (str): Separator of columns.
-        channel_separator (str): Separator of channels in "objectname"
+        multi_object (bool): If turn on the multi-object mode.
+        object_separator (str): Separator of channels in "objectname"
             column.
     
     Returns:
@@ -151,24 +155,25 @@ def read_logitem(string, names, types, column_separator='|',
             value = value.strip()
 
         # parse object names for multi-channels
-        if name == 'objectname':
-            value = [v.strip() for v in value.split(channel_separator)]
+        if multi_object and name == 'objectname':
+            value = [v.strip() for v in value.split(object_separator)]
 
         setattr(logitem, name, value)
 
     return logitem
 
-def read_log(filename):
+def read_log(filename, multi_object=False):
     """Read observing log from an ascii file.
 
     Args:
         filename (str): Name of the observing log file.
+        multi_object (bool): If turn on the multi-object mode.
 
     Returns:
         tuple: A tuple containing:
         
-            * **log** (:class:`Log`): The observing log.
-            * **frame_lst** (*tuple*): Frame list.
+            * **log** (:class:`Log`) – An observing log instance.
+            * **frame_lst** (*tuple*) – Frame list.
     """
 
     frame_lst = {}
@@ -201,11 +206,15 @@ def read_log(filename):
                     val = float(val)
                 setattr(log, key, val)
         else:
-            logitem = read_logitem(row, names, types)
+            logitem = read_logitem(row, names, types, multi_object=multi_object)
             log.add_item(logitem)
 
     infile.close()
-    log.find_nchannels()
+
+    if multi_object:
+        log.find_nchannels()
+    else:
+        log.nchannels = 1
 
     logger.info('Observational log file "%s" loaded'%filename)
 
@@ -215,10 +224,11 @@ def get_input_fileids(log, string):
     """Get the fileids of the input.
 
     Args:
-        log (:class:`Log`): A :class:`Log` instance
-        string (str): The input string
+        log (:class:`Log`): A :class:`Log` instance.
+        string (str): The input string.
+
     Returns:
-        list: The list of file IDs
+        list: The list of file IDs.
     """
 
     if len(string.strip())==0:
@@ -265,9 +275,10 @@ def find_log(path):
 
     Args:
         path (str): Searching directory.
+
     Returns:
-        *str* or *None*: Name of the log file. Return *None* if not found or more
-            than one file found.
+        *str* or *None*: Name of the log file. Return *None* if not found or
+            more than one file found.
     
     """
     filename_lst = [fname for fname in sorted(os.listdir(path))
