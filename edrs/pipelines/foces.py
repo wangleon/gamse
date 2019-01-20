@@ -1099,12 +1099,12 @@ def reduce():
 
         # prepare print info
         columns = [
-                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('object',   '{1:10s}', '{0.objectname:10s}'),
-                ('exptime',  '{2:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{3:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{4:8s}',  '{1:8.2f}'),
-                ('mean',     '{5:8s}',  '{2:8.2f}'),
+                ('fileid',   '{:-^10s}', '{0.fileid:10s}'),
+                ('object',   '{:-^10s}', '{0.objectname:10s}'),
+                ('exptime',  '{:-^7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{:-^25s}', '{0.obsdate:25s}'),
+                ('overscan', '{:-^8s}',  '{1:8.2f}'),
+                ('mean',     '{:-^8s}',  '{2:8.2f}'),
                 ]
         title, fmt_title, fmt_item = zip(*columns)
         fmt_title = ' '.join(fmt_title)
@@ -1188,19 +1188,20 @@ def reduce():
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
     for item in log:
-        g = item.objectname.split()
+        name = item.objectname          # only valid for single fiber
+        g = name.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
-            if item.objectname.lower().strip()=='flat':
+            if name.lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
                 flatname = 'flat_%g'%(item.exptime)
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
                 # "Flat Red" becomes "Red" 
-                char = item.objectname[4:].strip()
+                char = name[4:].strip()
                 flatname = 'flat_%s'%(char.replace(' ','_'))
 
             # add flatname to flat_groups

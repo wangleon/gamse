@@ -593,11 +593,12 @@ def reduce():
 
         # prepare print info
         columns = [
-                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{3:8s}',  '{1:8.2f}'),
-                ('mean',     '{4:8s}',  '{2:8.2f}'),
+                ('fileid',   '{:-^12s}', '{0.fileid:12s}'),
+                ('object',   '{:-^12s}', '{0.objectname:12s}'),
+                ('exptime',  '{:-^7s}',  '{0.exptime:7g}'),
+                ('obsdate',  '{:-^25s}', '{0.obsdate:25s}'),
+                ('overscan', '{:-^8s}',  '{1:8.2f}'),
+                ('mean',     '{:-^8s}',  '{2:8.2f}'),
                 ]
         title, fmt_title, fmt_item = zip(*columns)
         fmt_title = ' '.join(fmt_title)
@@ -683,7 +684,7 @@ def reduce():
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
     for item in log:
-        name = item.objectname[0]
+        name = item.objectname   # only valid for single fiber
         g = name.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
@@ -712,14 +713,15 @@ def reduce():
 
     # prepare print info
     columns = [
-            ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-            ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-            ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-            ('overscan', '{3:8s}',  '{1:8.2f}'),
-            ('mean',     '{4:8s}',  '{2:8.2f}'),
+            ('fileid',   '{-^12s}', '{0.fileid:12s}'),
+            ('object',   '{-^12s}', '{0.objectname:12s}'),
+            ('exptime',  '{-^7s}',  '{0.exptime:7g}'),
+            ('obsdate',  '{-^25s}', '{0.obsdate:25s}'),
+            ('overscan', '{-^8s}',  '{1:8.2f}'),
+            ('mean',     '{-^8s}',  '{2:8.2f}'),
             ]
     title, fmt_title, fmt_item = zip(*columns)
-    fmt_title = ' '.join(fmt_title)
+    fmt_title = '|'.join(fmt_title)
     fmt_item  = ' '.join(fmt_item)
 
     # first combine the flats
