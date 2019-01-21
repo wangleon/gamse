@@ -9,6 +9,7 @@ from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
@@ -1554,12 +1555,12 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
-def make_log(path):
+def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running. The name of the ascii file is
-    `YYYY-MM-DD.log`.
+    `YYYY-MM-DD.obslog`.
 
     Args:
         path (str): Path to the raw FITS files.
@@ -1570,13 +1571,17 @@ def make_log(path):
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
-    log = obslog.Log()
+    logtable = Table(dtype=[
+        ('frameid', 'i2'),  ('fileid',     'S12'),  ('imagetype',  'S3'),
+        ('object',  'S12'), ('i2',         'bool'), ('exptime',    'f4'),
+        ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ])
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
         fileid  = fname[0:-5]
         filepath = os.path.join(path, fname)
-        data,head = fits.getdata(filepath, header=True)
+        data, head = fits.getdata(filepath, header=True)
         naxis1 = head['NAXIS1']
         cover  = head['COVER']
         y1 = head['CRVAL2']
@@ -1593,39 +1598,44 @@ def make_log(path):
             imagetype = 'sci'
 
         # determine the fraction of saturated pixels permillage
-        mask_sat = (data>=65535)
-        prop = mask_sat.sum()/data.size*1e3
+        saturation = (data>=65535).sum()
 
-        # find the brightness index in the central region
-        h, w = data.shape
-        data1 = data[int(h*0.3):int(h*0.7), w//2-2:w//2+3]
-        bri_index = np.median(data1, axis=1).mean()
+        # find the 95% quantile
+        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
         # change to regular name
         for regname in regular_names:
             if objectname.lower() == regname.lower():
                 objectname = regname
                 break
+        
+        item = [0, fileid, imagetype, objectname, 0, exptime, obsdate,
+                saturation, quantile95]
+        logtable.add_row(item)
 
-        item = obslog.LogItem(
-                fileid     = fileid,
-                obsdate    = obsdate,
-                exptime    = exptime,
-                imagetype  = imagetype,
-                i2         = 0,
-                objectname = objectname,
-                saturation = prop,
-                brightness = bri_index,
-                )
-        log.add_item(item)
+        #item = obslog.LogItem(
+        #        fileid     = fileid,
+        #        obsdate    = obsdate,
+        #        exptime    = exptime,
+        #        imagetype  = imagetype,
+        #        i2         = 0,
+        #        objectname = objectname,
+        #        saturation = saturation,
+        #        quantile95 = quantile95,
+        #        )
+        #log.add_item(item)
 
-    log.sort('obsdate')
+    logtable.sort('obsdate')
+    logtable.pprint(max_lines=-1, max_width=-1)
+    return True
+
+    #log.sort('obsdate')
 
     # make info list
     all_info_lst = []
     column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
                   ('objectname', 's'), ('i2',         'i'), ('exptime',    'f'),
-                  ('obsdate',    's'), ('saturation', 'f'), ('brightness', 'f'),
+                  ('obsdate',    's'), ('saturation', 'i'), ('quantile95', 'i'),
                  ]
     columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
     
@@ -1633,7 +1643,8 @@ def make_log(path):
     for logitem in log:
         frameid = int(logitem.fileid[8:])
         if frameid <= prev_frameid:
-            print('Warning: frameid {} > prev_frameid {}'.format(frameid, prev_frameid))
+            print('Warning: frameid {} > prev_frameid {}'.format(
+                    frameid, prev_frameid))
         info_lst = [
                     str(frameid),
                     str(logitem.fileid),
@@ -1642,8 +1653,8 @@ def make_log(path):
                     str(logitem.i2),
                     '%8.3f'%logitem.exptime,
                     str(logitem.obsdate),
-                    '%.3f'%logitem.saturation,
-                    '%.1f'%logitem.brightness,
+                    '%6d'%logitem.saturation,
+                    '%6d'%logitem.quantile95,
                 ]
         prev_frameid = frameid
         all_info_lst.append(info_lst)

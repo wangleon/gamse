@@ -2,7 +2,7 @@
 import os
 import sys
 
-from edrs.pipelines import (make_log, reduce_echelle, show_spectra1d)
+from edrs.pipelines import make_obslog, reduce_echelle, show_spectra1d
 
 def print_help():
     pass
@@ -14,7 +14,7 @@ def main():
         exit()
     elif sys.argv[1] == 'list':
         # list the observing log of raw data
-        make_log()
+        make_obslog()
     elif sys.argv[1] == 'reduce':
         # reduce the spectra
         reduce_echelle()

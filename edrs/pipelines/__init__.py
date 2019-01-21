@@ -75,7 +75,7 @@ def reduce_echelle():
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
-def make_log():
+def make_obslog():
     """Scan the path to the raw FITS files and generate an observing log.
     """
     config_file_lst = []
@@ -100,7 +100,7 @@ def make_log():
     if telescope == 'Fraunhofer' and instrument == 'FOCES':
         foces.make_log(rawdata)
     elif telescope == 'Xinglong216' and instrument == 'HRS':
-        xinglong216hrs.make_log(rawdata)
+        xinglong216hrs.make_obslog(rawdata)
     elif telescope == 'APF' and instrument == 'Levy':
         levy.make_log(rawdata)
     elif (telescope == 'Keck' or telescope == 'Keck-I') and \
