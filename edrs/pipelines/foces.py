@@ -12,6 +12,7 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
@@ -578,7 +579,7 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-def make_log(path):
+def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
@@ -593,15 +594,38 @@ def make_log(path):
     # standard naming convenction for fileid
     name_pattern = '^\d{8}_\d{4}_FOC\d{4}_\w{3}\d$'
 
-    # scan the raw files
     fname_lst = sorted(os.listdir(path))
-    log = obslog.Log()
+
+    # prepare logtable
+    logtable = Table(dtype=[
+        ('frameid', 'i2'),  ('fileid',     'S20'),  ('imagetype',  'S3'),
+        ('object',  'S12'), ('exptime',    'f4'),
+        ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ])
+
+    # prepare infomation to print
+    columns = [
+            ('fileid',     '{:^20s}', '{:20s}'),
+            ('object',     '{:^12s}', '{:12s}'),
+            ('exptime',    '{:^7s}',  '{:7g}'),
+            ('obsdate',    '{:^25s}', '{:25s}'),
+            ('saturation', '{:^10s}', '{:10d}'),
+            ('quantile95', '{:^10s}', '{:10d}'),
+            ]
+    titles, fmt_title, fmt_item = zip(*columns)
+    fmt_title = ' '.join(fmt_title)
+    fmt_item  = ' '.join(fmt_item)
+    # print titles and a set of lines
+    print(fmt_title.format(*titles))
+    print(' '.join(['-'*len(fmt.format(title)) for title, fmt, _ in columns]))
+
+    # start scanning the raw files
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
         fileid = fname[0:-5]
-        filepath = os.path.join(path, fname)
-        data, head = fits.getdata(filepath, header=True)
+        filename = os.path.join(path, fname)
+        data, head = fits.getdata(filename, header=True)
 
         # old FOCES data are 3-dimensional arrays
         if data.ndim == 3: scidata = data[0, 20:-20]
@@ -625,27 +649,48 @@ def make_log(path):
             # fileid does not follow the naming convetion
             imagetype, objectname = 'cal', ''
 
-        # determine the fraction of saturated pixels permillage
-        mask_sat = (scidata>=63000)
-        prop = mask_sat.sum()/scidata.size*1e3
+        # determine the total number of saturated pixels
+        saturation = (data>=63000).sum()
 
-        # find the brightness index in the central region
-        h, w = scidata.shape
-        data1 = scidata[int(h*0.3):int(h*0.7), w//2-2:w//2+3]
-        brightness = np.median(data1,axis=1).mean()
+        # find the 95% quantile
+        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        item = obslog.LogItem(
-                fileid     = fileid,
-                obsdate    = obsdate,
-                exptime    = exptime,
-                objectname = objectname,
-                imagetype  = imagetype,
-                saturation = prop,
-                brightness = brightness,
-                )
-        log.add_item(item)
+        item = [0, fileid, imagetype, objectname, exptime, obsdate,
+                saturation, quantile95]
+        logtable.add_row(item)
 
-    log.sort('obsdate')
+        print(fmt_item.format(fileid, objectname, exptime, obsdate, saturation, quantile95))
+
+        #item = obslog.LogItem(
+        #        fileid     = fileid,
+        #        obsdate    = obsdate,
+        #        exptime    = exptime,
+        #        objectname = objectname,
+        #        imagetype  = imagetype,
+        #        saturation = prop,
+        #        brightness = brightness,
+        #        )
+        #log.add_item(item)
+
+    logtable.sort('obsdate')
+
+    # use the obsdate of the second frame. Here assume total number of files>2
+    obsdate = logtable[1]['obsdate'][0:10]
+    outname = '{}.obslog'.format(obsdate)
+    if os.path.exists(outname):
+        i = 0
+        while(True):
+            i += 1
+            outname = '{}.{}.obslog'.format(obsdate, i)
+            if not os.path.exists(outname):
+                outfilename = outname
+                break
+    else:
+        outfilename = outname
+    logtable.write(outfilename, format='ascii.fixed_width_two_line')
+
+
+    return True
 
     # make info list
     all_info_lst = []
