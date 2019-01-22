@@ -7,11 +7,12 @@ import configparser
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 import astropy.io.fits as fits
+from astropy.table import Table
 
 from ..echelle.imageproc import combine_images
 from ..utils import obslog
 
-def make_log(path):
+def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 

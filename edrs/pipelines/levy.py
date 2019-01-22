@@ -5,6 +5,7 @@ import configparser
 
 import numpy as np
 import astropy.io.fits as fits
+from astropy.table import Table
 import scipy.signal as sg
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
@@ -574,7 +575,7 @@ def reduce():
             hdu_lst.writeto('%s_wlc.fits'%item.fileid, overwrite=True)
 
 
-def make_log(path):
+def make_obslog(path):
     """Print the observing log.
 
     Args:

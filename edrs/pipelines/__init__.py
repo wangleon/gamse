@@ -98,14 +98,14 @@ def make_obslog():
     rawdata    = section['rawdata']
 
     if telescope == 'Fraunhofer' and instrument == 'FOCES':
-        foces.make_log(rawdata)
+        foces.make_obslog(rawdata)
     elif telescope == 'Xinglong216' and instrument == 'HRS':
         xinglong216hrs.make_obslog(rawdata)
     elif telescope == 'APF' and instrument == 'Levy':
-        levy.make_log(rawdata)
+        levy.make_obslog(rawdata)
     elif (telescope == 'Keck' or telescope == 'Keck-I') and \
         (instrument == 'HIRES'):
-        hires.make_log(rawdata)
+        hires.make_obslog(rawdata)
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
