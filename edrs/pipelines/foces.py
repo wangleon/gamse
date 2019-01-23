@@ -659,21 +659,31 @@ def make_obslog(path):
                 saturation, quantile95]
         logtable.add_row(item)
 
-        print(fmt_item.format(fileid, objectname, exptime, obsdate, saturation, quantile95))
-
-        #item = obslog.LogItem(
-        #        fileid     = fileid,
-        #        obsdate    = obsdate,
-        #        exptime    = exptime,
-        #        objectname = objectname,
-        #        imagetype  = imagetype,
-        #        saturation = prop,
-        #        brightness = brightness,
-        #        )
-        #log.add_item(item)
+        print(fmt_item.format(fileid, objectname, exptime, obsdate,
+                saturation, quantile95))
 
     logtable.sort('obsdate')
 
+    # allocate frameid
+    prev_frameid = -1
+    for item in logtable:
+
+        if re.match(name_pattern, item['fileid']) is None:
+            # fileid follows the standard name convention of FOCES
+            frameid = prev_frameid + 1
+        else:
+            # doesn't follow
+            frameid = int(item['fileid'].split('_')[1])
+
+        if frameid <= prev_frameid:
+            print('Warning: frameid {} > prev_frameid {}'.format(frameid,
+                prev_frameid))
+
+        item['frameid'] = frameid
+
+        prev_frameid = frameid
+
+    # determine filename of logtable.
     # use the obsdate of the second frame. Here assume total number of files>2
     obsdate = logtable[1]['obsdate'][0:10]
     outname = '{}.obslog'.format(obsdate)
@@ -687,73 +697,11 @@ def make_obslog(path):
                 break
     else:
         outfilename = outname
+
+    # save the logtable
     logtable.write(outfilename, format='ascii.fixed_width_two_line')
 
-
     return True
-
-    # make info list
-    all_info_lst = []
-    column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
-                  ('objectname', 's'), ('exptime',    'f'), ('obsdate',    's'),
-                  ('saturation', 'f'), ('brightness', 'f'),
-                 ]
-    columns = ['{0} {1}'.format(_name, _type) for _name, _type in column_lst]
-
-    prev_frameid = -1
-    for item in log:
-
-        if re.match(name_pattern, item.fileid) is None:
-            frameid = prev_frameid + 1
-        else:
-            frameid = int(item.fileid.split('_')[1])
-
-        if frameid <= prev_frameid:
-            print('Warning: frameid {} > prev_frameid {}'.format(frameid, prev_frameid))
-
-        info_lst = [
-                    str(frameid),
-                    str(item.fileid),
-                    str(item.imagetype),
-                    str(item.objectname),
-                    '%g'%item.exptime,
-                    str(item.obsdate),
-                    '%.3f'%item.saturation,
-                    '%.1f'%item.brightness,
-                ]
-        prev_frameid = frameid
-        all_info_lst.append(info_lst)
-
-    # find the maximum length of each column
-    length = []
-    for info_lst in all_info_lst:
-        length.append([len(info) for info in info_lst])
-    length = np.array(length)
-    maxlen = length.max(axis=0)
-
-    # find the output format for each column
-    for info_lst in all_info_lst:
-        for i, info in enumerate(info_lst):
-            if columns[i] in ['filename','object']:
-                fmt = '%%-%ds'%maxlen[i]
-            else:
-                fmt = '%%%ds'%maxlen[i]
-            info_lst[i] = fmt%(info_lst[i])
-
-    # write the obslog into an ascii file
-    #date = log[0].fileid.split('_')[0]
-    #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
-    #outfile = open(outfilename,'w')
-    string = '% columns = ' + ', '.join(columns)
-    #outfile.write(string+os.linesep)
-    print(string)
-    for info_lst in all_info_lst:
-        string = ' | '.join(info_lst)
-        string = ' '+string
-        #outfile.write(string+os.linesep)
-        print(string)
-    #outfile.close()
-
 
 def get_primary_header(input_lst):
     """Return a list of header records with length of 80 characters.

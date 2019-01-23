@@ -1576,12 +1576,32 @@ def make_obslog(path):
         ('object',  'S12'), ('i2',         'bool'), ('exptime',    'f4'),
         ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
+
+    # prepare infomation to print
+    columns = [
+            ('fileid',     '{:^12s}', '{:12s}'),
+            ('object',     '{:^12s}', '{:12s}'),
+            ('exptime',    '{:^7s}',  '{:7g}'),
+            ('obsdate',    '{:^25s}', '{:25s}'),
+            ('saturation', '{:^10s}', '{:10d}'),
+            ('quantile95', '{:^10s}', '{:10d}'),
+            ]
+    titles, fmt_title, fmt_item = zip(*columns)
+    fmt_title = ' '.join(fmt_title)
+    fmt_item  = ' '.join(fmt_item)
+    # print titles and a set of lines
+    print(fmt_title.format(*titles))
+    print(' '.join(['-'*len(fmt.format(title)) for title, fmt, _ in columns]))
+
+    # start scanning the raw files
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
         fileid  = fname[0:-5]
-        filepath = os.path.join(path, fname)
-        data, head = fits.getdata(filepath, header=True)
+        filename = os.path.join(path, fname)
+        data, head = fits.getdata(filename, header=True)
+
+        # determine the science and overscan regions
         naxis1 = head['NAXIS1']
         cover  = head['COVER']
         y1 = head['CRVAL2']
@@ -1589,15 +1609,17 @@ def make_obslog(path):
         x1 = head['CRVAL1']
         x2 = x1 + head['NAXIS1'] - head['COVER']
         data = data[y1:y2,x1:x2]
+
         obsdate = head['DATE-STA']
         exptime = head['EXPTIME']
+
         objectname = head['OBJECT'].strip()
         if objectname.lower().strip() in ['bias', 'flat', 'dark', 'i2', 'thar']:
             imagetype = 'cal'
         else:
             imagetype = 'sci'
 
-        # determine the fraction of saturated pixels permillage
+        # determine the total number of saturated pixels
         saturation = (data>=65535).sum()
 
         # find the 95% quantile
@@ -1613,78 +1635,39 @@ def make_obslog(path):
                 saturation, quantile95]
         logtable.add_row(item)
 
-        #item = obslog.LogItem(
-        #        fileid     = fileid,
-        #        obsdate    = obsdate,
-        #        exptime    = exptime,
-        #        imagetype  = imagetype,
-        #        i2         = 0,
-        #        objectname = objectname,
-        #        saturation = saturation,
-        #        quantile95 = quantile95,
-        #        )
-        #log.add_item(item)
+        print(fmt_item.format(fileid, objectname, exptime, obsdate,
+                saturation, quantile95))
 
     logtable.sort('obsdate')
-    logtable.pprint(max_lines=-1, max_width=-1)
-    return True
 
-    #log.sort('obsdate')
-
-    # make info list
-    all_info_lst = []
-    column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
-                  ('objectname', 's'), ('i2',         'i'), ('exptime',    'f'),
-                  ('obsdate',    's'), ('saturation', 'i'), ('quantile95', 'i'),
-                 ]
-    columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
-    
+    # allocate frameid
     prev_frameid = -1
-    for logitem in log:
-        frameid = int(logitem.fileid[8:])
+    for item in logtable:
+        frameid = int(item['fileid'][8:])
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
-        info_lst = [
-                    str(frameid),
-                    str(logitem.fileid),
-                    logitem.imagetype,
-                    str(logitem.objectname),
-                    str(logitem.i2),
-                    '%8.3f'%logitem.exptime,
-                    str(logitem.obsdate),
-                    '%6d'%logitem.saturation,
-                    '%6d'%logitem.quantile95,
-                ]
+
+        item['frameid'] = frameid
+
         prev_frameid = frameid
-        all_info_lst.append(info_lst)
 
-    # find the maximum length of each column
-    length = []
-    for info_lst in all_info_lst:
-        length.append([len(info) for info in info_lst])
-    length = np.array(length)
-    maxlen = length.max(axis=0)
+    # determine filename of logtable.
+    # use the obsdate of the first frame
+    obsdate = logtable[0]['obsdate'][0:10]
+    outname = '{}.obslog'.format(obsdate)
+    if os.path.exists(outname):
+        i = 0
+        while(True):
+            i += 1
+            outname = '{}.{}.obslog'.format(obsdate, i)
+            if not os.path.exists(outname):
+                outfilename = outname
+                break
+    else:
+        outfilename = outname
 
-    # find the output format for each column
-    for info_lst in all_info_lst:
-        for i, info in enumerate(info_lst):
-            if columns[i] in ['fileid (s)','objectname (s)']:
-                fmt = '%%-%ds'%maxlen[i]
-            else:
-                fmt = '%%%ds'%maxlen[i]
-            info_lst[i] = fmt%(info_lst[i])
+    # save the logtable
+    logtable.write(outfilename, format='ascii.fixed_width_two_line')
 
-    # write the obslog into an ascii file
-    #date = log[0].fileid.split('_')[0]
-    #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
-    #outfile = open(outfilename,'w')
-    string = '% columns = '+', '.join(columns)
-    #outfile.write(string+os.linesep)
-    print(string)
-    for info_lst in all_info_lst:
-        string = ' | '.join(info_lst)
-        string = ' '+string
-        #outfile.write(string+os.linesep)
-        print(string)
-    #outfile.close()
+    return True
