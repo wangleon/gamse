@@ -95,7 +95,9 @@ def make_obslog():
     section = config['data']
     telescope  = section['telescope']
     instrument = section['instrument']
-    rawdata    = section['rawdata']
+    rawdata    = 'rawdata'
+    if not os.path.exists(rawdata):
+        rawdata = section['rawdata']
 
     if telescope == 'Fraunhofer' and instrument == 'FOCES':
         foces.make_obslog(rawdata)

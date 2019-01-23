@@ -1566,7 +1566,7 @@ def make_obslog(path):
         path (str): Path to the raw FITS files.
 
     """
-
+    cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
     # scan the raw files
@@ -1614,10 +1614,7 @@ def make_obslog(path):
         exptime = head['EXPTIME']
 
         objectname = head['OBJECT'].strip()
-        if objectname.lower().strip() in ['bias', 'flat', 'dark', 'i2', 'thar']:
-            imagetype = 'cal'
-        else:
-            imagetype = 'sci'
+        imagetype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # determine the total number of saturated pixels
         saturation = (data>=65535).sum()
