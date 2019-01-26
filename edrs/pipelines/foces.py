@@ -28,7 +28,7 @@ from ..echelle.background import find_background
 from ..utils             import obslog
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
-from .common import plot_background_aspect1
+from .common import plot_background_aspect1, PrintInfo
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
@@ -579,6 +579,14 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
+print_columns = [('fileid',     '{:^20s}', '{0[fileid]:20s}'),
+                 ('object',     '{:^12s}', '{0[object]:12s}'),
+                 ('exptime',    '{:^7s}',  '{0[exptime]:7g}'),
+                 ('obsdate',    '{:^23s}', '{0[obsdate]:23s}'),
+                 ('saturation', '{:^10s}', '{0[saturation]:10d}'),
+                 ('quantile95', '{:^10s}', '{0[quantile95]:10d}'),
+                 ]
+
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
@@ -604,20 +612,10 @@ def make_obslog(path):
         ])
 
     # prepare infomation to print
-    columns = [
-            ('fileid',     '{:^20s}', '{:20s}'),
-            ('object',     '{:^12s}', '{:12s}'),
-            ('exptime',    '{:^7s}',  '{:7g}'),
-            ('obsdate',    '{:^25s}', '{:25s}'),
-            ('saturation', '{:^10s}', '{:10d}'),
-            ('quantile95', '{:^10s}', '{:10d}'),
-            ]
-    titles, fmt_title, fmt_item = zip(*columns)
-    fmt_title = ' '.join(fmt_title)
-    fmt_item  = ' '.join(fmt_item)
-    # print titles and a set of lines
-    print(fmt_title.format(*titles))
-    print(' '.join(['-'*len(fmt.format(title)) for title, fmt, _ in columns]))
+    pinfo = PrintInfo(print_columns)
+
+    print(pinfo.get_title())
+    print(pinfo.get_separator())
 
     # start scanning the raw files
     for fname in fname_lst:
@@ -658,9 +656,11 @@ def make_obslog(path):
         item = [0, fileid, imagetype, objectname, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
+        # get table Row object. (not elegant!)
+        item = logtable[-1]
 
-        print(fmt_item.format(fileid, objectname, exptime, obsdate,
-                saturation, quantile95))
+        print(pinfo.get_format().format(item))
+    print(pinfo.get_separator())
 
     logtable.sort('obsdate')
 
@@ -1089,6 +1089,8 @@ def reduce():
     if not os.path.exists(result):  os.mkdir(result)
     if not os.path.exists(midproc): os.mkdir(midproc)
 
+    pinfo = PrintInfo(print_columns)
+
     ################################ parse bias ################################
     section = config['reduce.bias']
     bias_file = section['bias_file']
@@ -1103,20 +1105,7 @@ def reduce():
         bias_data_lst = []
 
         # prepare print info
-        columns = [
-                ('fileid',     '{^20s}', '{0[fileid]:20s}'),
-                ('object',     '{^12s}', '{0[object]:12s}'),
-                ('exptime',    '{^7s}',  '{0[exptime]:7g}'),
-                ('obsdate',    '{^25s}', '{0[obsdate]:25s}'),
-                ('saturation', '{^10s}', '{0[saturation]:10d}'),
-                ('quantile95', '{^10s}', '{0[quantile95]:10d}'),
-                ('overscan',   '{^8s}',  '{1:8.2f}'),
-                ]
-        title, fmt_title, fmt_item = zip(*columns)
-        fmt_title = ' '.join(fmt_title)
-        fmt_item  = ' '.join(fmt_item)
-        separator = ' '.join(['-'*len(fmt.format(title))
-                              for title, fmt, _ in columns])
+        newpinfo = pinfo.add_columns([('overscan',   '{:^8s}',  '{1:8.2f}')])
 
         for item in logtable:
             if item['object'].strip().lower()=='bias':
@@ -1130,9 +1119,9 @@ def reduce():
                 # print info
                 if len(bias_data_lst) == 0:
                     print('* Combine Bias Images: %s'%bias_file)
-                    print(' '*2 + fmt_title.format(*title))
-                    print(' '*2 + separator)
-                print(' '*2 + fmt_item.format(item, overmean))
+                    print(' '*2 + newpinfo.get_title())
+                    print(' '*2 + newpinfo.get_separator())
+                print(' '*2 + newpinfo.get_format().format(item, overmean))
 
                 bias_data_lst.append(data)
 
@@ -1141,7 +1130,7 @@ def reduce():
 
         if has_bias:
             # there is bias frames
-            print(' '*2 + separator)
+            print(' '*2 + newpinfo.get_separator())
 
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)

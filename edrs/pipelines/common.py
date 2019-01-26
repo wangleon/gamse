@@ -150,3 +150,27 @@ def plot_background_aspect1_alt(data, stray, figname1, figname2):
 
     fig1.savefig(figname1)
     fig2.savefig(figname2)
+
+
+class PrintInfo(object):
+    def __init__(self, columns):
+        self.columns = columns
+
+    def add_columns(self, columns):
+        new_columns = self.columns.copy()
+        for element in columns:
+            new_columns.append(element)
+        return PrintInfo(new_columns)
+
+    def get_title(self):
+        titles, fmt_title, _ = zip(*self.columns)
+        fmt_title = ' '.join(fmt_title)
+        return fmt_title.format(*titles)
+
+    def get_separator(self):
+        lst = ['-'*len(fmt.format(title)) for title, fmt, _ in self.columns]
+        return ' '.join(lst)
+
+    def get_format(self):
+        _, _, fmt_item = zip(*self.columns)
+        return ' '.join(fmt_item)
