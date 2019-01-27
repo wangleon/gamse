@@ -1206,7 +1206,7 @@ def reduce():
             # add flatname to flat_groups
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(item['fileid'])
+            flat_groups[flatname].append(item)
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
@@ -1214,21 +1214,11 @@ def reduce():
     flat_mask_lst = {}
     aperset_lst   = {}
 
-    # prepare print info
-    columns = [
-            ('fileid',   '{^20s}', '{0[fileid]:20s}'),
-            ('object',   '{^12s}', '{0[object]:12s}'),
-            ('exptime',  '{^7s}',  '{0[exptime]:7g}'),
-            ('obsdate',  '{^25s}', '{0[obsdate]:25s}'),
-            ('overscan', '{^8s}',  '{1:8.2f}'),
-            ('mean',     '{^8s}',  '{2:8.2f}'),
-            ]
-    title, fmt_title, fmt_item = zip(*columns)
-    fmt_title = '|'.join(fmt_title)
-    fmt_item  = ' '.join(fmt_item)
+    tsect = config['reduce.trace']
 
     # first combine the flats
-    for flatname, fileids in flat_groups.items():
+    for flatname, item_lst in flat_groups.items():
+        nflat = len(item_lst)       # number of flat fieldings
         flat_filename    = os.path.join(midproc, '%s.fits.gz'%flatname)
         aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
         aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
@@ -1244,9 +1234,14 @@ def reduce():
         else:
             data_lst = []
             _exptime_lst = []
-            for ifile, fileid in enumerate(fileids):
+
+            print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            print(' '*2 + newpinfo.get_title())
+            print(' '*2 + newpinfo.get_separator())
+
+            for i_item, item in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                filename = os.path.join(rawdata, item['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 _exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
@@ -1254,7 +1249,7 @@ def reduce():
                 mask = get_mask(data, head)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
-                if ifile==0:
+                if i_item == 0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += sat_mask
 
@@ -1268,9 +1263,13 @@ def reduce():
                 else:
                     logger.info('No bias. skipped bias correction')
 
+                # print info
+                print(' '*2 + newpinfo.get_format().format(item, overmean))
+
                 data_lst.append(data)
-            nflat = len(data_lst)
-            print('combine %d images for %s'%(nflat, flatname))
+
+            print(' '*2 + newpinfo.get_separator())
+
             if nflat==1:
                 flat_data = data_lst[0]
             else:
@@ -1300,16 +1299,15 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            section = config['reduce.trace']
-            fig_file = os.path.join(report, 'trace_%s.%s'%(flatname, fig_format))
+            fig_file = os.path.join(report, 'trace_{}.{}'.format(flatname, fig_format))
             aperset = find_apertures(flat_data, mask_array,
-                        scan_step  = section.getint('scan_step'),
-                        minimum    = section.getfloat('minimum'),
-                        separation = section.getfloat('separation'),
-                        sep_der    = section.getfloat('sep_der'),
-                        filling    = section.getfloat('filling'),
-                        degree     = section.getint('degree'),
-                        display    = section.getboolean('display'),
+                        scan_step  = tsect.getint('scan_step'),
+                        minimum    = tsect.getfloat('minimum'),
+                        separation = tsect.getfloat('separation'),
+                        sep_der    = tsect.getfloat('sep_der'),
+                        filling    = tsect.getfloat('filling'),
+                        degree     = tsect.getint('degree'),
+                        display    = tsect.getboolean('display'),
                         filename   = flat_filename,
                         fig_file   = fig_file,
                         )
@@ -1324,7 +1322,7 @@ def reduce():
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
-    _section = config['reduce.flat']
+    fsect = config['reduce.flat']
     for flatname in sorted(flat_groups.keys()):
         flat_filename = os.path.join(midproc, '%s.fits.gz'%flatname)
         hdu_lst = fits.open(flat_filename)
@@ -1343,9 +1341,9 @@ def reduce():
                         data        = flat_data_lst[flatname],
                         mask        = flat_mask_lst[flatname],
                         apertureset = aperset_lst[flatname],
-                        slit_step   = _section.getint('slit_step'),
+                        slit_step   = fsect.getint('slit_step'),
                         nflat       = len(flat_groups[flatname]),
-                        q_threshold = _section.getfloat('q_threshold'),
+                        q_threshold = fsect.getfloat('q_threshold'),
                         smooth_A_func   = smooth_aperpar_A,
                         smooth_k_func   = smooth_aperpar_k,
                         smooth_c_func   = smooth_aperpar_c,
