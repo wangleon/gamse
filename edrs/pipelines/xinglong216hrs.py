@@ -22,7 +22,6 @@ from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wl_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
-from ..utils import obslog
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from .common import plot_background_aspect1
@@ -539,9 +538,21 @@ def reduce():
     telescope.
     """
 
+    # find obs log
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-7:]=='.obslog']
+    if len(logname_lst)==0:
+        print('No observation log found')
+        exit()
+    elif len(logname_lst)>1:
+        print('Multiple observation log found:')
+        for logname in sorted(logname_lst):
+            print('  '+logname)
+    else:
+        pass
+
     # read obs log
-    obslogfile = obslog.find_log(os.curdir)
-    log = obslog.read_log(obslogfile)
+    logtable = Table.read(logname_lst[0], format='ascii.fixed_width_two_line')
 
     # load config files
     config_file_lst = []
@@ -580,6 +591,10 @@ def reduce():
     if not os.path.exists(result):  os.mkdir(result)
     if not os.path.exists(midproc): os.mkdir(midproc)
 
+    # initialize printing infomation
+    pinfo1 = PrintInfo(print_columns)
+    pinfo2 = pinfo1.add_columns([('overscan',   '{:^8s}',  '{1:8.2f}')])
+
     ############################# parse bias ###################################
     section = config['reduce.bias']
     bias_file = section['bias_file']
@@ -592,31 +607,20 @@ def reduce():
     else:
         bias_data_lst = []
 
-        # prepare print info
-        columns = [
-                ('fileid',   '{:-^12s}', '{0.fileid:12s}'),
-                ('object',   '{:-^12s}', '{0.objectname:12s}'),
-                ('exptime',  '{:-^7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{:-^25s}', '{0.obsdate:25s}'),
-                ('overscan', '{:-^8s}',  '{1:8.2f}'),
-                ('mean',     '{:-^8s}',  '{2:8.2f}'),
-                ]
-        title, fmt_title, fmt_item = zip(*columns)
-        fmt_title = ' '.join(fmt_title)
-        fmt_item  = ' '.join(fmt_item)
 
-        for item in log:
-            if item.objectname[0].strip().lower()=='bias':
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+        for item in logtable:
+            if item['object'].strip().lower()=='bias':
+                filename = os.path.join(rawdata, item['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
                 data, head, overmean = correct_overscan(data, head, mask)
 
                 # print info
                 if len(bias_data_lst) == 0:
-                    print('* Combine Bias Images: %s'%bias_file)
-                    print(' '*2 + fmt_title.format(*title))
-                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+                    print('* Combine Bias Images: {}'.format(bias_file))
+                    print(' '*2 + pinfo2.get_title())
+                    print(' '*2 + pinfo2.get_separator())
+                print(' '*2 + pinfo2.get_format().format(item, overmean))
 
                 bias_data_lst.append(data)
 
@@ -625,6 +629,7 @@ def reduce():
 
         if has_bias:
             # there is bias frames
+            print(' '*2 + pinfo2.get_separator())
 
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)
@@ -684,8 +689,8 @@ def reduce():
     flat_groups = {}
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
-    for item in log:
-        name = item.objectname   # only valid for single fiber
+    for item in logtable:
+        name = item['object']   # only valid for single fiber
         g = name.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
@@ -693,7 +698,7 @@ def reduce():
             # find a proper name for this flat
             if name.lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
-                flatname = 'flat_%g'%(item.exptime)
+                flatname = 'flat_%g'%(item['exptime'])
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
@@ -704,7 +709,7 @@ def reduce():
             # add flatname to flat_groups
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(item.fileid)
+            flat_groups[flatname].append(item)
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
@@ -712,21 +717,9 @@ def reduce():
     flat_mask_lst = {}
     aperset_lst   = {}
 
-    # prepare print info
-    columns = [
-            ('fileid',   '{-^12s}', '{0.fileid:12s}'),
-            ('object',   '{-^12s}', '{0.objectname:12s}'),
-            ('exptime',  '{-^7s}',  '{0.exptime:7g}'),
-            ('obsdate',  '{-^25s}', '{0.obsdate:25s}'),
-            ('overscan', '{-^8s}',  '{1:8.2f}'),
-            ('mean',     '{-^8s}',  '{2:8.2f}'),
-            ]
-    title, fmt_title, fmt_item = zip(*columns)
-    fmt_title = '|'.join(fmt_title)
-    fmt_item  = ' '.join(fmt_item)
-
     # first combine the flats
-    for flatname, fileids in flat_groups.items():
+    for flatname, item_lst in flat_groups.items():
+        nflat = len(item_lst)       # number of flat fieldings
         flat_filename    = os.path.join(midproc, '%s.fits.gz'%flatname)
         aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
         aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
@@ -742,15 +735,20 @@ def reduce():
         else:
             data_lst = []
             _exptime_lst = []
-            for ifile, fileid in enumerate(fileids):
+
+            print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            print(' '*2 + pinfo2.get_title())
+            print(' '*2 + pinfo2.get_separator())
+
+            for i_item, item in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                filename = os.path.join(rawdata, item['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 _exptime_lst.append(head[exptime_key])
                 mask = get_mask(data, head)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
-                if ifile==0:
+                if i_item == 0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += sat_mask
 
@@ -765,16 +763,22 @@ def reduce():
                     logger.info('No bias. skipped bias correction')
 
                 # print info
-                if len(data_lst) == 0:
-                    print('* Combine flat Images for %s'%(flatname))
-                    print(' '*2 + fmt_title.format(*title))
-                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+                print(' '*2 + pinfo2.get_format().format(item, overmean))
 
                 data_lst.append(data)
-            nflat = len(data_lst)
-            print('combine %d images for %s'%(nflat, flatname))
-            flat_data = combine_images(data_lst, mode='mean',
-                                        upper_clip=10, maxiter=5)
+
+            print(' '*2 + pinfo2.get_separator())
+
+            if nflat == 1:
+                flat_data = data_lst[0]
+            else:
+                data_lst = np.array(data_lst)
+                flat_data = combine_images(data_lst,
+                                mode       = 'mean',
+                                upper_clip = 10,
+                                maxiter    = 5,
+                                mask       = (None, 'max')[nflat>3],
+                                )
 
             # get mean exposure time and write it to header
             head = fits.Header()
@@ -794,16 +798,16 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            _section = config['reduce.trace']
-            fig_file = os.path.join(report, 'trace_%s.%s'%(flatname, fig_format))
+            fig_file = os.path.join(report, 'trace_{}.{}'.format(flatname, fig_format))
+            section = config['reduce.trace']
             aperset = find_apertures(flat_data, mask_array,
-                        scan_step  = _section.getint('scan_step'),
-                        minimum    = _section.getfloat('minimum'),
-                        separation = _section.getfloat('separation'),
-                        sep_der    = _section.getfloat('sep_der'),
-                        filling    = _section.getfloat('filling'),
-                        degree     = _section.getint('degree'),
-                        display    = _section.getboolean('display'),
+                        scan_step  = section.getint('scan_step'),
+                        minimum    = section.getfloat('minimum'),
+                        separation = section.getfloat('separation'),
+                        sep_der    = section.getfloat('sep_der'),
+                        filling    = section.getfloat('filling'),
+                        degree     = section.getint('degree'),
+                        display    = section.getboolean('display'),
                         filename   = flat_filename,
                         fig_file   = fig_file,
                         )
@@ -818,9 +822,8 @@ def reduce():
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
-    _section = config['reduce.flat']
     for flatname in sorted(flat_groups.keys()):
-        flat_filename = os.path.join(midproc, '%s.fits.gz'%flatname)
+        flat_filename = os.path.join(midproc, flatname+'.fits.gz')
         hdu_lst = fits.open(flat_filename)
         if len(hdu_lst)>=3:
             flatmap = hdu_lst[2].data
@@ -828,26 +831,30 @@ def reduce():
             # do flat fielding
             print('*** Start parsing flat fielding: %s ***'%flatname)
             fig_aperpar = {
-                'debug': os.path.join(report, 'flat_aperpar_%s_%%03d.%s'%(flatname, fig_format)),
+                'debug': os.path.join(report,
+                    'flat_aperpar_{}_%03d.{}'.format(flatname, fig_format)),
                 'normal': None,
                 }[mode]
-            fig_slit = os.path.join(report, 'slit_%s.%s'%(flatname, fig_format))
+            fig_slit = os.path.join(report,
+                            'slit_{}.{}'.format(flatname, fig_format))
+
+            section = config['reduce.flat']
 
             flatmap = get_fiber_flat(
-                        data        = flat_data_lst[flatname],
-                        mask        = flat_mask_lst[flatname],
-                        apertureset = aperset_lst[flatname],
-                        slit_step   = _section.getint('slit_step'),
-                        nflat       = len(flat_groups[flatname]),
-                        q_threshold = _section.getfloat('q_threshold'),
+                        data            = flat_data_lst[flatname],
+                        mask            = flat_mask_lst[flatname],
+                        apertureset     = aperset_lst[flatname],
+                        slit_step       = section.getint('slit_step'),
+                        nflat           = len(flat_groups[flatname]),
+                        q_threshold     = section.getfloat('q_threshold'),
                         smooth_A_func   = smooth_aperpar_A,
                         smooth_k_func   = smooth_aperpar_k,
                         smooth_c_func   = smooth_aperpar_c,
                         smooth_bkg_func = smooth_aperpar_bkg,
-                        fig_aperpar = fig_aperpar,
-                        fig_overlap = None,
-                        fig_slit    = fig_slit,
-                        slit_file   = None,
+                        fig_aperpar     = fig_aperpar,
+                        fig_overlap     = None,
+                        fig_slit        = fig_slit,
+                        slit_file       = None,
                         )
         
             # append the sensitity map to fits file
@@ -863,19 +870,19 @@ def reduce():
     if len(flat_groups) == 1:
         # there's only 1 kind of flat
         flatname = flat_groups.keys()[0]
-        shutil.copyfile(os.path.join(midproc, '%s.fits.gz'%flatname),
+        shutil.copyfile(os.path.join(midproc, flatname+'.fits.gz'),
                         flat_file)
-        shutil.copyfile(os.path.join(midproc, 'trace_%s.trc'),
+        shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
                         trac_file)
-        shutil.copyfile(os.path.join(midproc, 'trace_%s.reg'),
+        shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
                         treg_file)
         flat_map = flatmap_lst[flatname]
     else:
         # mosaic apertures
-        mosaic_maxcount = config['reduce.flat'].getfloat('mosaic_maxcount')
+        section = config['reduce.flat']
         mosaic_aperset = mosaic_flat_auto(
                 aperture_set_lst = aperset_lst,
-                max_count        = mosaic_maxcount,
+                max_count        = section.getfloat('mosaic_maxcount'),
                 )
         # mosaic original flat images
         flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
@@ -917,10 +924,10 @@ def reduce():
     
         calib_lst = {}
         count_thar = 0
-        for item in log:
-            if item.objectname[0].strip().lower()=='thar':
+        for item in logtable:
+            if item['object'].strip().lower()=='thar':
                 count_thar += 1
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                filename = os.path.join(rawdata, item['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
 
@@ -934,11 +941,12 @@ def reduce():
                 else:
                     logger.info('No bias. skipped bias correction')
 
-                _section = config['reduce.extract']
+                section = config['reduce.extract']
+
                 spectra1d = extract_aperset(data, mask,
                             apertureset = mosaic_aperset,
-                            lower_limit = _section.getfloat('lower_limit'),
-                            upper_limit = _section.getfloat('upper_limit'),
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
                             )
                 head = mosaic_aperset.to_fitsheader(head, channel=None)
     
@@ -951,7 +959,8 @@ def reduce():
     
                 section = config['reduce.wlcalib']
 
-                wlcalib_fig = os.path.join(report, 'wlcalib_%s.%s'%(item.fileid, fig_format))
+                wlcalib_fig = os.path.join(report,
+                        'wlcalib_{}.{}'.format(item['fileid'], fig_format))
 
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
@@ -968,7 +977,7 @@ def reduce():
                         # the wavelengths manually
                         if ref_spec is None or ref_calib is None:
                             calib = wlcalib(spec,
-                                filename      = '%s.fits'%item.fileid,
+                                filename      = item['fileid']+'.fits',
                                 figfilename   = wlcalib_fig,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
@@ -983,7 +992,7 @@ def reduce():
                             # if success, run recalib
                             aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
                             calib = recalib(spec,
-                                filename      = '%s.fits'%item.fileid,
+                                filename      = item['fileid']+'.fits',
                                 figfilename   = wlcalib_fig,
                                 ref_spec      = ref_spec,
                                 channel       = None,
@@ -1003,7 +1012,7 @@ def reduce():
                     else:
                         # do not search the database
                         calib = wlcalib(spec,
-                            filename      = '%s.fits'%item.fileid,
+                            filename      = item['fileid']+'.fits',
                             figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
@@ -1022,7 +1031,7 @@ def reduce():
                 else:
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
-                        filename      = '%s.fits'%item.fileid,
+                        filename      = item['fileid']+'.fits',
                         figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
@@ -1041,18 +1050,18 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+                filename = os.path.join(result, item['fileid']+'_wlc.fits')
                 hdu_lst.writeto(filename, overwrite=True)
     
                 # add more infos in calib
-                calib['fileid']   = item.fileid
+                calib['fileid']   = item['fileid']
                 calib['date-obs'] = head[statime_key]
                 calib['exptime']  = head[exptime_key]
                 # pack to calib_lst
-                calib_lst[item.frameid] = calib
+                calib_lst[item['frameid']] = calib
     
         for frameid, calib in sorted(calib_lst.items()):
-            print(' [%3d] %s - %4d/%4d r.m.s = %7.5f'%(frameid,
+            print(' [{:3d}] {} - {:4d}/{:4d} r.m.s. = {:7.5f}'.format(frameid,
                     calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
     
         # print promotion and read input frameid list
@@ -1096,37 +1105,38 @@ def reduce():
     hdu_lst.writeto(filename, overwrite=True)
 
     #################### Extract Science Spectrum ##############################
-    for item in log:
-        if (item.imagetype=='cal' and item.objectname[0].strip().lower()=='i2')\
-            or item.imagetype=='sci':
+    for item in logtable:
+        if (item['imagetype']=='cal'
+            and item['object'].strip().lower()=='i2') \
+            or item['imagetype']=='sci':
 
-            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+            filename = os.path.join(rawdata, item.fileid+'.fits')
 
-            logger.info('FileID: %s (%s) - start reduction: %s'%(
-                item.fileid, item.imagetype, filename))
+            logger.info('FileID: {} ({}) - start reduction: {}'.format(
+                item['fileid'], item['imagetype'], filename))
 
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
             # correct overscan
             data, head, overmean = correct_overscan(data, head, mask)
-            logger.info('FileID: %s - overscan corrected'%(item.fileid))
+            logger.info('FileID: {} - overscan corrected'.format(item['fileid']))
 
             # correct bias
             if has_bias:
                 data = data - bias
-                logger.info('FileID: %s - bias corrected. mean value = %f'%(
-                    item.fileid, bias.mean()))
+                logger.info('FileID: {} - bias corrected. mean value = {}'.format(
+                    item['fileid'], bias.mean()))
             else:
-                logger.info('FileID: %s - no bias'%(item.fileid))
+                logger.info('FileID: {} - no bias'%(item['fileid']))
 
             # correct flat
             data = data/flat_map
-            logger.info('FileID: %s - flat corrected'%item.fileid)
+            logger.info('FileID: {} - flat corrected'.format(item['fileid']))
 
             # correct background
             section = config['reduce.background']
             fig_sec = os.path.join(report,
-                            'bkg_%s_sec.%s'%(item.fileid, fig_format))
+                        'bkg_{}_sec.{}'.format(item['fileid'], fig_format))
 
             stray = find_background(data, mask,
                     apertureset_lst = {'A': mosaic_aperset},
@@ -1143,10 +1153,10 @@ def reduce():
 
             # plot stray light
             fig_stray = os.path.join(report,
-                        'bkg_%s_stray.%s'%(item.fileid, fig_format))
+                        'bkg_{}_stray.{}'.format(item['fileid'], fig_format))
             plot_background_aspect1(data + stray, stray, fig_stray)
 
-            logger.info('FileID: %s - background corrected'%(item.fileid))
+            logger.info('FileID: {} - background corrected'%(item['fileid']))
 
             # extract 1d spectrum
             section = config['reduce.extract']
@@ -1155,8 +1165,8 @@ def reduce():
                         lower_limit = section.getfloat('lower_limit'),
                         upper_limit = section.getfloat('upper_limit'),
                         )
-            logger.info('FileID: %s - 1D spectra of %d orders are extracted'%(
-                item.fileid, len(spectra1d)))
+            logger.info('FileID: {} - 1D spectra of {} orders are extracted'.format(
+                item['fileid'], len(spectra1d)))
 
             # pack spectrum
             spec = []
@@ -1169,8 +1179,8 @@ def reduce():
             # wavelength calibration
             weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-            logger.info('FileID: %s - wavelength calibration weights: %s'%(
-                item.fileid, ','.join(['%8.4f'%w for w in weight_lst])))
+            logger.info('FileID: {} - wavelength calibration weights: {}'%(
+                item['fileid'], ','.join(['%8.4f'%w for w in weight_lst])))
 
             spec, head = wl_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
@@ -1180,10 +1190,10 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(result, '%s_wlc.fits'%item.fileid)
+            filename = os.path.join(result, item['fileid']+'_wlc.fits')
             hdu_lst.writeto(filename, overwrite=True)
-            logger.info('FileID: %s - Spectra written to %s'%(
-                item.fileid, filename))
+            logger.info('FileID: {} - Spectra written to {}'.format(
+                item['fileid'], filename))
 
 class Xinglong216HRS(Reduction):
 
@@ -1555,6 +1565,15 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
+print_columns = [('fileid',     '{:^12s}', '{0[fileid]:12s}'),
+                 ('object',     '{:^12s}', '{0[object]:12s}'),
+                 ('i2cell',     '{:^6s}',  '{0[i2cell]:6b}'),
+                 ('exptime',    '{:^7s}',  '{0[exptime]:7g}'),
+                 ('obsdate',    '{:^25s}', '{0[obsdate]:25s}'),
+                 ('saturation', '{:^10s}', '{0[saturation]:10d}'),
+                 ('quantile95', '{:^10s}', '{0[quantile95]:10d}'),
+                 ]
+
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
@@ -1573,25 +1592,15 @@ def make_obslog(path):
     fname_lst = sorted(os.listdir(path))
     logtable = Table(dtype=[
         ('frameid', 'i2'),  ('fileid',     'S12'),  ('imagetype',  'S3'),
-        ('object',  'S12'), ('i2',         'bool'), ('exptime',    'f4'),
+        ('object',  'S12'), ('i2cell',     'bool'), ('exptime',    'f4'),
         ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
 
     # prepare infomation to print
-    columns = [
-            ('fileid',     '{:^12s}', '{:12s}'),
-            ('object',     '{:^12s}', '{:12s}'),
-            ('exptime',    '{:^7s}',  '{:7g}'),
-            ('obsdate',    '{:^25s}', '{:25s}'),
-            ('saturation', '{:^10s}', '{:10d}'),
-            ('quantile95', '{:^10s}', '{:10d}'),
-            ]
-    titles, fmt_title, fmt_item = zip(*columns)
-    fmt_title = ' '.join(fmt_title)
-    fmt_item  = ' '.join(fmt_item)
-    # print titles and a set of lines
-    print(fmt_title.format(*titles))
-    print(' '.join(['-'*len(fmt.format(title)) for title, fmt, _ in columns]))
+    pinfo = PrintInfo(print_columns)
+
+    print(pinfo.get_title())
+    print(pinfo.get_separator())
 
     # start scanning the raw files
     for fname in fname_lst:
@@ -1631,9 +1640,11 @@ def make_obslog(path):
         item = [0, fileid, imagetype, objectname, 0, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
+        # get table Row object. (not elegant!)
+        item = logtable[-1]
 
-        print(fmt_item.format(fileid, objectname, exptime, obsdate,
-                saturation, quantile95))
+        print(pinfo.get_format().format(item))
+    print(pinfo.get_separator())
 
     logtable.sort('obsdate')
 
