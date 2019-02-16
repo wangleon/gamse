@@ -3,15 +3,19 @@ import datetime
 import logging
 logger = logging.getLogger(__name__)
 import configparser
+import dateutil.parser
 
 import numpy as np
 from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import astropy.io.fits as fits
+from astropy.io import registry as io_registry
 from astropy.table import Table
+from astropy.time import Time
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+import matplotlib.dates as mdates
 
 from ..echelle.imageproc import (combine_images, array_to_table,
                                  fix_pixels)
@@ -24,7 +28,8 @@ from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ..echelle.background import find_background
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
-from .common import plot_background_aspect1
+from ..utils.obslog import parse_num_seq, read_obslog
+from .common import plot_background_aspect1, PrintInfo
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
@@ -1565,14 +1570,17 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
-print_columns = [('fileid',     '{:^12s}', '{0[fileid]:12s}'),
-                 ('object',     '{:^12s}', '{0[object]:12s}'),
-                 ('i2cell',     '{:^6s}',  '{0[i2cell]:6b}'),
-                 ('exptime',    '{:^7s}',  '{0[exptime]:7g}'),
-                 ('obsdate',    '{:^25s}', '{0[obsdate]:25s}'),
-                 ('saturation', '{:^10s}', '{0[saturation]:10d}'),
-                 ('quantile95', '{:^10s}', '{0[quantile95]:10d}'),
-                 ]
+print_columns = [
+        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',     'str',   '{:^12s}', '{0[fileid]:12s}'),
+        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
+        ('i2cell',     'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
+        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
+        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
+        ]
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -1588,20 +1596,30 @@ def make_obslog(path):
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
+    io_registry.register_reader('obslog', Table, read_obslog)
+    addinfo_table = Table.read('obsinfo.txt', format='obslog')
+    print(addinfo_table)
+    addinfo_lst = {row['frameid']:row for row in addinfo_table}
+
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
+    data_rows = []
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S12'),  ('imagetype',  'S3'),
+        ('frameid', 'i2'),  ('fileid',     'S12'),  ('imgtype',    'S3'),
         ('object',  'S12'), ('i2cell',     'bool'), ('exptime',    'f4'),
-        ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
 
     # prepare infomation to print
     pinfo = PrintInfo(print_columns)
 
     print(pinfo.get_title())
+    print(pinfo.get_dtype())
     print(pinfo.get_separator())
+    real_obsdate_lst = []
+    delta_t_lst = []
 
+    prev_frameid = -1
     # start scanning the raw files
     for fname in fname_lst:
         if fname[-5:] != '.fits':
@@ -1619,11 +1637,44 @@ def make_obslog(path):
         x2 = x1 + head['NAXIS1'] - head['COVER']
         data = data[y1:y2,x1:x2]
 
-        obsdate = head['DATE-STA']
+        # find frame-id
+        frameid = int(fileid[8:])
+        if frameid <= prev_frameid:
+            print('Warning: frameid {} > prev_frameid {}'.format(
+                    frameid, prev_frameid))
+
+        # parse obsdae
+        obsdate = Time(head['DATE-STA'])
+        if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
+            and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
+            real_obsdate = dateutil.parser.parse(addinfo_lst[frameid]['obsdate'].isot)
+            #file_obsdate = dateutil.parser.parse(head['DATE-STA'])
+            file_obsdate = obsdate.datetime
+            delta_t = real_obsdate - file_obsdate
+            real_obsdate_lst.append(real_obsdate)
+            delta_t_lst.append(delta_t.total_seconds())
+            #print(frameid, real_obsdate, delta_t)
+
         exptime = head['EXPTIME']
 
+        # parse object name
         objectname = head['OBJECT'].strip()
-        imagetype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
+        if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
+            and addinfo_lst[frameid]['object'] is not np.ma.masked):
+            objectname = addinfo_lst[frameid]['object']
+        # change to regular name
+        for regname in regular_names:
+            if objectname.lower() == regname.lower():
+                objectname = regname
+                break
+
+        # parse I2 cell
+        i2cell = objectname.lower()=='i2'
+        if (frameid in addinfo_lst and 'i2cell' in addinfo_table.colnames
+            and addinfo_lst[frameid]['i2cell'] is not np.ma.masked):
+            i2cell = addinfo_lst[frameid]['i2cell']
+
+        imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # determine the total number of saturated pixels
         saturation = (data>=65535).sum()
@@ -1631,13 +1682,10 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        # change to regular name
-        for regname in regular_names:
-            if objectname.lower() == regname.lower():
-                objectname = regname
-                break
+        data_rows.append((frameid, fileid, imgtype, objectname, i2cell,
+                          exptime, obsdate, saturation, quantile95))
         
-        item = [0, fileid, imagetype, objectname, 0, exptime, obsdate,
+        item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
@@ -1646,23 +1694,40 @@ def make_obslog(path):
         print(pinfo.get_format().format(item))
     print(pinfo.get_separator())
 
-    logtable.sort('obsdate')
+    if len(real_obsdate_lst)>0:
+        # determine the time offset as median value
+        time_offset = np.median(np.array(delta_t_lst))
+        time_offset_dt = datetime.timedelta(seconds=time_offset)
+        # plot time offset
+        fig = plt.figure(figsize=(8, 4), dpi=150)
+        ax = fig.add_axes([0.1,0.2,0.85,0.75])
+        xdates = mdates.date2num(real_obsdate_lst)
+        ax.plot_date(xdates, delta_t_lst, 'o-')
+        ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
+        ax.set_xlabel('Real Time', fontsize=9)
+        ax.set_ylabel('Real Time - FTIS Time (sec)', fontsize=9)
+        x1, x2 = ax.get_xlim()
+        y1, y2 = ax.get_ylim()
+        ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2,
+                'Time offset = %d seconds'%time_offset)
+        ax.set_xlim(x1, x2)
+        ax.set_ylim(y1, y2)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+        #plt.setp(ax.get_xticklabels(), rotation=30)i
+        fig.autofmt_xdate()
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(9)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(9)
+        fig.savefig('obsdate_offset.png')
+        plt.close(fig)
 
-    # allocate frameid
-    prev_frameid = -1
-    for item in logtable:
-        frameid = int(item['fileid'][8:])
-        if frameid <= prev_frameid:
-            print('Warning: frameid {} > prev_frameid {}'.format(
-                    frameid, prev_frameid))
-
-        item['frameid'] = frameid
-
-        prev_frameid = frameid
+        for row in logtable:
+            row['obsdate'] = row['obsdate'] + time_offset_dt
 
     # determine filename of logtable.
     # use the obsdate of the first frame
-    obsdate = logtable[0]['obsdate'][0:10]
+    obsdate = logtable[0]['obsdate'].iso[0:10]
     outname = '{}.obslog'.format(obsdate)
     if os.path.exists(outname):
         i = 0
@@ -1676,6 +1741,12 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
-    logtable.write(outfilename, format='ascii.fixed_width_two_line')
+    outfile = open(outfilename, 'w')
+    outfile.write(pinfo.get_title()+os.linesep)
+    outfile.write(pinfo.get_dtype()+os.linesep)
+    outfile.write(pinfo.get_separator()+os.linesep)
+    for row in logtable:
+        outfile.write(pinfo.get_format().format(row)+os.linesep)
+    outfile.close()
 
     return True

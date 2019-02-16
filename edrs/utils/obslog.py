@@ -3,6 +3,78 @@ import re
 import logging
 logger = logging.getLogger(__name__)
 
+from astropy.table import Table, MaskedColumn
+from astropy.time import Time
+
+def read_obslog(filename, delimiter=' '):
+    infile = open(filename)
+    count_row = 0
+    for row in infile:
+        if len(row.strip())==0 or row[0] in ['#']:
+            continue
+        count_row += 1
+        if count_row == 1:
+            name_row = row
+        elif count_row == 2:
+            dtype_row = row
+        elif count_row == 3:
+            row = row.strip()
+            index_lst = []
+            g = row.split(delimiter)
+            lens = [len(v) for v in g]
+            i2 = -1
+            for i, l in enumerate(lens):
+                i1 = i2 + 1
+                i2 = i1 + l
+                index_lst.append((i1, i2))
+
+            # parse column names
+            names = [name_row[i1:i2].strip() for (i1, i2) in index_lst]
+            data = [[] for title in names]
+            mask = [[] for title in names]
+
+            # parse data type list
+            dtypes = [dtype_row[i1:i2].strip() for (i1, i2) in index_lst]
+
+        elif count_row > 3:
+            g = [row[i1:i2].strip() for (i1, i2) in index_lst]
+            if dtypes[0]=='int' and ('-' in g[0] or ',' in g[0]):
+                fid_lst = parse_num_seq(g[0])
+                for fid in fid_lst:
+                    data[0].append(fid)
+                    mask[0].append(False)
+                    for iv, v in enumerate(g[1:]):
+                        v = v.strip()
+                        data[iv+1].append(v)
+                        mask[iv+1].append(len(v)==0)
+            else:
+                for iv, v in enumerate(g):
+                    v = v.strip()
+                    data[iv].append(v)
+                    mask[iv].append(len(v)==0)
+    infile.close()
+    for icol, dtype in enumerate(dtypes):
+        if dtype=='int':
+            data[icol] = [(int(v), 0)[mask[icol][i]]
+                            for i, v in enumerate(data[icol])]
+        elif dtype=='float':
+            data[icol] = [(float(v), -990.)[mask[icol][i]]
+                            for i, v in enumerate(data[icol])]
+        elif dtype=='bool':
+            data[icol] = [(v=='True', False)[mask[icol][i]]
+                            for i, v in enumerate(data[icol])]
+        elif dtype=='time':
+            data[icol] = Time([(v, '1970-01-01T00:00:00')[mask[icol][i]]
+                            for i, v in enumerate(data[icol])])
+
+    logtable = Table(masked=True)
+    for icol, name in enumerate(names):
+        column = MaskedColumn(data[icol], name=name, mask=mask[icol])
+        logtable.add_column(column)
+
+    return logtable
+
+
 class LogItem(object):
     """Class for observing log items
     """

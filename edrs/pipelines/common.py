@@ -163,14 +163,19 @@ class PrintInfo(object):
         return PrintInfo(new_columns)
 
     def get_title(self):
-        titles, fmt_title, _ = zip(*self.columns)
+        titles, _, fmt_title, _ = zip(*self.columns)
         fmt_title = ' '.join(fmt_title)
         return fmt_title.format(*titles)
 
+    def get_dtype(self):
+        _, dtypes, fmt_title, _ = zip(*self.columns)
+        fmt_title = ' '.join(fmt_title)
+        return fmt_title.format(*dtypes)
+
     def get_separator(self):
-        lst = ['-'*len(fmt.format(title)) for title, fmt, _ in self.columns]
+        lst = ['-'*len(fmt.format(title)) for title, _, fmt, _ in self.columns]
         return ' '.join(lst)
 
     def get_format(self):
-        _, _, fmt_item = zip(*self.columns)
+        _, _, _, fmt_item = zip(*self.columns)
         return ' '.join(fmt_item)
