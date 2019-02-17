@@ -13,6 +13,7 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
 from astropy.table import Table
+from astropy.time  import Time
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
@@ -578,13 +579,16 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-print_columns = [('fileid',     '{:^20s}', '{0[fileid]:20s}'),
-                 ('object',     '{:^12s}', '{0[object]:12s}'),
-                 ('exptime',    '{:^7s}',  '{0[exptime]:7g}'),
-                 ('obsdate',    '{:^23s}', '{0[obsdate]:23s}'),
-                 ('saturation', '{:^10s}', '{0[saturation]:10d}'),
-                 ('quantile95', '{:^10s}', '{0[quantile95]:10d}'),
-                 ]
+print_columns = [
+        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',     'str',   '{:^20s}', '{0[fileid]:20s}'),
+        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
+        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
+        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
+        ]
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -605,15 +609,16 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S20'),  ('imagetype',  'S3'),
+        ('frameid', 'i2'),  ('fileid',     'S20'),  ('imgtype',  'S3'),
         ('object',  'S12'), ('exptime',    'f4'),
-        ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
 
     # prepare infomation to print
     pinfo = PrintInfo(print_columns)
 
     print(pinfo.get_title())
+    print(pinfo.get_dtype())
     print(pinfo.get_separator())
 
     # start scanning the raw files
@@ -628,23 +633,23 @@ def make_obslog(path):
         if data.ndim == 3: scidata = data[0, 20:-20]
         else:              scidata = data[:,20:-20]
             
-        obsdate = head['FRAME']
+        obsdate = Time(head['FRAME'])
         exptime = head['EXPOSURE']
 
         if re.match(name_pattern, fileid) is not None:
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
-                imagetype, objectname = 'cal', 'Bias'
+                imgtype, objectname = 'cal', 'Bias'
             elif fileid[22:25]=='FLA':
-                imagetype, objectname = 'cal', 'Flat'
+                imgtype, objectname = 'cal', 'Flat'
             elif fileid[22:25]=='THA':
-                imagetype, objectname = 'cal', 'ThAr'
+                imgtype, objectname = 'cal', 'ThAr'
             else:
                 objectname = 'Unknown'
-                imagetype = ('cal', 'sci')[fileid[22:25]=='SCI']
+                imgtype = ('cal', 'sci')[fileid[22:25]=='SCI']
         else:
             # fileid does not follow the naming convetion
-            imagetype, objectname = 'cal', ''
+            imgtype, objectname = 'cal', ''
 
         # determine the total number of saturated pixels
         saturation = (data>=63000).sum()
@@ -652,8 +657,8 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        item = [0, fileid, imagetype, objectname, exptime, obsdate,
-                saturation, quantile95]
+        item = [0, fileid, imgtype, objectname, exptime, obsdate, saturation,
+                quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
@@ -684,7 +689,7 @@ def make_obslog(path):
 
     # determine filename of logtable.
     # use the obsdate of the second frame. Here assume total number of files>2
-    obsdate = logtable[1]['obsdate'][0:10]
+    obsdate = logtable[1]['obsdate'].iso[0:10]
     outname = '{}.obslog'.format(obsdate)
     if os.path.exists(outname):
         i = 0
@@ -698,9 +703,14 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
-    logtable.write(outfilename, format='ascii.fixed_width_two_line')
+    outfile = open(outfilename, 'w')
+    outfile.write(pinfo.get_title()+os.linesep)
+    outfile.write(pinfo.get_dtype()+os.linesep)
+    outfile.write(pinfo.get_separator()+os.linesep)
+    for row in logtable:
+        outfile.write(pinfo.get_format().format(row)+os.linesep)
+    outfile.close()
 
-    return True
 
 def get_primary_header(input_lst):
     """Return a list of header records with length of 80 characters.

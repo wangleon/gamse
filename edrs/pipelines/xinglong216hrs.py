@@ -1599,14 +1599,21 @@ def make_obslog(path):
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
-    io_registry.register_reader('obslog', Table, read_obslog)
-    addinfo_table = Table.read('obsinfo.txt', format='obslog')
-    print(addinfo_table)
-    addinfo_lst = {row['frameid']:row for row in addinfo_table}
+    # if the obsinfo file exists, read and pack the information
+    addinfo_lst = {}
+    obsinfo_file = 'obsinfo.txt'
+    has_obsinfo = os.path.exists(obsinfo_file)
+    if has_obsinfo:
+        io_registry.register_reader('obslog', Table, read_obslog)
+        addinfo_table = Table.read(obsinfo_file, format='obslog')
+        addinfo_lst = {row['frameid']:row for row in addinfo_table}
+        # prepare the difference list between real observation time and FITS
+        # time
+        real_obsdate_lst = []
+        delta_t_lst = []
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
-    data_rows = []
     logtable = Table(dtype=[
         ('frameid', 'i2'),  ('fileid',     'S12'),  ('imgtype',    'S3'),
         ('object',  'S12'), ('i2cell',     'bool'), ('exptime',    'f4'),
@@ -1619,8 +1626,6 @@ def make_obslog(path):
     print(pinfo.get_title())
     print(pinfo.get_dtype())
     print(pinfo.get_separator())
-    real_obsdate_lst = []
-    delta_t_lst = []
 
     prev_frameid = -1
     # start scanning the raw files
@@ -1646,17 +1651,15 @@ def make_obslog(path):
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
 
-        # parse obsdae
+        # parse obsdate
         obsdate = Time(head['DATE-STA'])
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
             real_obsdate = dateutil.parser.parse(addinfo_lst[frameid]['obsdate'].isot)
-            #file_obsdate = dateutil.parser.parse(head['DATE-STA'])
             file_obsdate = obsdate.datetime
             delta_t = real_obsdate - file_obsdate
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
-            #print(frameid, real_obsdate, delta_t)
 
         exptime = head['EXPTIME']
 
@@ -1685,9 +1688,6 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        data_rows.append((frameid, fileid, imgtype, objectname, i2cell,
-                          exptime, obsdate, saturation, quantile95))
-        
         item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
@@ -1696,8 +1696,11 @@ def make_obslog(path):
 
         print(pinfo.get_format().format(item))
     print(pinfo.get_separator())
+    
+    # sort by obsdate
+    #logtable.sort('obsdate')
 
-    if len(real_obsdate_lst)>0:
+    if has_obsinfo and len(real_obsdate_lst)>0:
         # determine the time offset as median value
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
@@ -1725,6 +1728,7 @@ def make_obslog(path):
         fig.savefig('obsdate_offset.png')
         plt.close(fig)
 
+        # correct time offset
         for row in logtable:
             row['obsdate'] = row['obsdate'] + time_offset_dt
 

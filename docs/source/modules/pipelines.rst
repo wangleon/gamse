@@ -4,7 +4,7 @@ Pipelines for Individual Spectrographs
 .. currentmodule:: edrs.pipelines
 .. autosummary::
    reduce_echelle
-   make_log
+   make_obslog
    show_spectra1d
 
 .. automodule:: edrs.pipelines
@@ -32,7 +32,7 @@ FOCES
 .. currentmodule:: edrs.pipelines.foces
 .. autosummary::
    get_primary_header
-   make_log
+   make_obslog
    correct_overscan
    plot_overscan_variation
    plot_bias_smooth
@@ -52,7 +52,7 @@ Levy
 ----
 .. currentmodule:: edrs.pipelines.levy
 .. autosummary::
-   make_log
+   make_obslog
    correct_overscan
    reduce
 
