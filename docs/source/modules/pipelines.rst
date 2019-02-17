@@ -66,7 +66,7 @@ Xinglong 2.16m HRS
 ------------------
 .. currentmodule:: edrs.pipelines.xinglong216hrs
 .. autosummary::
-   make_log
+   make_obslog
    get_mask
    get_badpixel_mask
    correct_overscan

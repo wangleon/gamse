@@ -5,19 +5,32 @@
 Pipeline for Xinglong 2.16m HRS
 ===============================
 
-Introduction
-------------
+Introduction to Instrument
+--------------------------
 Since 2009, A fiber-fed High Resolution Spectrograph (HRS) was attached on the
 Cassegrain focus of the 2.16m telescope in Xinglong Observatory of National
 Astronomical Observatories, Chinese Academy of Sciences (CAS).
 The spectrograph has a resolving power (*R* = *λ*/Δ\ *λ*) of ~49,800 at the slit
-width of 0.19 mm, covering the wavelength range of 360 ~ 1000 nm.
+width of 0.19 mm, covering the wavelength range of 365 ~ 1000 nm.
 The CCD detector is a back-illuminated E2V CCD 203-82 chip with 4096 × 4096
 pixels and the pixel size of 12.0 μm.
+For more information, see Fan et al. 2016 [#Fan2016]_.
+
+
+
+.. csv-table::
+   :header: Parameter, Value
+   :widths: 6, 10
+
+   Wavelength Coverage,       "3,650 - 10,000 Å"
+   Resolving Power,           "32,000 - 106,000"
+   Fiber Diameter,            2".4/1".6
+   CCD Detector,              "E2V 4k × 4k back illuminated, 12 μm/pixel"
+   Radial Velocity Precision, ±6 m/s (with an I\ :sub:`2` cell)
 
 
 CCD Detector
-------------
+^^^^^^^^^^^^
 
 The CCD gain and readout noise of four gates at different readout speeds are
 summarized as below:
@@ -47,8 +60,48 @@ summarized as below:
 +---------------+-----------+---------------+---------------+---------------+---------------+-------------+-------------+--------------+-------------+
 
 
-Configuration File
+Spectral Reduction
 ------------------
+
+Generation of Observing Log
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following command scans the raw images and generate an observing log file
+with name of `YYYY-MM-DD.obslog`, where `YYYY-MM-DD` is the date of the *first*
+FITS image in the data folder.
+
+.. code-block:: bash
+
+   $ edrs2 list
+
+If the file name already exists, `YYYY-MM-DD.1.obslog`, `YYYY-MM-DD.2.obslog`
+... will be used as substituions.
+
+At this step, the program also reads a file `obsinfo.txt` if it exists.
+This file contains addtional infomations, such as whether an iodine cell is
+used, and the accurate starting time of an exposure, since these parameters are
+not included in the FITS files of HRS on the Xinglong 2.16m telescope.
+An example of `obsinfo.txt` is shown below::
+
+        frameid  object   i2cell      obsdate       
+          int      str     bool         time        
+        -------- -------- ------ -------------------
+        01-10    Flat                               
+        12-21    Flat                               
+        22       I2                                 
+        23       thar                               
+        24       thar                               
+        25       HD195820 True   2014-11-03T18:25:27
+        26       HD195820 True   2014-11-03T19:00:44
+        27       HD210460 False  2014-11-03T19:28:04
+        ... ...
+
+comparing to the 'ascii.fixed_width_two_line' format in `astropy.table` module,
+the second row contains the data types of table columns.
+
+
+Perpare the Configuration File
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The pipeline accepts the following options in the config file:
 
@@ -84,3 +137,7 @@ The pipeline accepts the following options in the config file:
    **background**, **lower_clip**,    *float*,  ,                Lower sigma clipping threshold.
    **background**, **extend**,        *bool*,   ,                Extend the grid to the whole image if *True*.
    **background**, **display**,       *bool*,   ,                Display a graphics if *yes*.
+
+References
+----------
+.. [#Fan2016] Fan et al., 2016, *PASP*, 128, 115005 :ads:`2016PASP..128k5005F`

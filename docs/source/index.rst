@@ -28,7 +28,9 @@ The software has three modii namely:
 
 Supported Spectrographs
 -------------------------
-* :ref:`FOCES<pipeline_foces>` on 2.1m Fraunhofer Telescope in Wendelstein Observatory
+* :ref:`FOCES<pipeline_foces>` on 2m Fraunhofer Telescope in Wendelstein Observatory
+* :ref:`HRS<pipeline_xinglong216hrs>` on 2.16m telescope in Xinglong Observatory
+* :ref:`Levy<>` on APF
 .. * :ref:`HIRES<pipeline_hires>` on 10m Keck II Telescope in  W. M. Keck Observatory
 
 Steps performed by the software

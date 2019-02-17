@@ -1586,8 +1586,11 @@ def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
-    An ascii file will be generated after running. The name of the ascii file is
-    `YYYY-MM-DD.obslog`.
+    An ascii file will be generated after running.
+    The name of the ascii file is `YYYY-MM-DD.obslog`, where `YYYY-MM-DD` is the
+    date of the *first* FITS image in the data folder.
+    If the file name already exists, `YYYY-MM-DD.1.obslog`,
+    `YYYY-MM-DD.2.obslog` ... will be used as substituions.
 
     Args:
         path (str): Path to the raw FITS files.
@@ -1748,5 +1751,3 @@ def make_obslog(path):
     for row in logtable:
         outfile.write(pinfo.get_format().format(row)+os.linesep)
     outfile.close()
-
-    return True
