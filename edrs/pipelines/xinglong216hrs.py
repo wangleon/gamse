@@ -557,7 +557,8 @@ def reduce():
         pass
 
     # read obs log
-    logtable = Table.read(logname_lst[0], format='ascii.fixed_width_two_line')
+    io_registry.register_reader('obslog', Table, read_obslog)
+    logtable = Table.read(logname_lst[0], format='obslog')
 
     # load config files
     config_file_lst = []
@@ -598,7 +599,7 @@ def reduce():
 
     # initialize printing infomation
     pinfo1 = PrintInfo(print_columns)
-    pinfo2 = pinfo1.add_columns([('overscan',   '{:^8s}',  '{1:8.2f}')])
+    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ############################# parse bias ###################################
     section = config['reduce.bias']

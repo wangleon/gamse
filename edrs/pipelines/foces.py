@@ -12,6 +12,7 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
+from astropy.io import registry as io_registry
 from astropy.table import Table
 from astropy.time  import Time
 import matplotlib.pyplot as plt
@@ -28,6 +29,7 @@ from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ..echelle.background import find_background
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
+from ..utils.obslog import read_obslog
 from .common import plot_background_aspect1, PrintInfo
 from .reduction          import Reduction
 
@@ -1059,7 +1061,8 @@ def reduce():
         pass
 
     # read obs log
-    logtable = Table.read(logname_lst[0], format='ascii.fixed_width_two_line')
+    io_registry.register_reader('obslog', Table, read_obslog)
+    logtable = Table.read(logname_lst[0], format='obslog')
 
     # load config files
     config_file_lst = []
@@ -1100,7 +1103,7 @@ def reduce():
 
     # initialize printing infomation
     pinfo1 = PrintInfo(print_columns)
-    pinfo2 = pinfo1.add_columns([('overscan',   '{:^8s}',  '{1:8.2f}')])
+    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ################################ parse bias ################################
     section = config['reduce.bias']
