@@ -1656,7 +1656,7 @@ def make_obslog(path):
         obsdate = Time(head['DATE-STA'])
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
-            real_obsdate = dateutil.parser.parse(addinfo_lst[frameid]['obsdate'].isot)
+            real_obsdate = addinfo_lst[frameid]['obsdate'].datetime
             file_obsdate = obsdate.datetime
             delta_t = real_obsdate - file_obsdate
             real_obsdate_lst.append(real_obsdate)
