@@ -1310,11 +1310,11 @@ def reduce():
 
             fig_file = os.path.join(report, 'trace_{}.{}'.format(flatname, fig_format))
             section = config['reduce.trace']
+
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
-                        separation = section.getfloat('separation'),
-                        sep_der    = section.getfloat('sep_der'),
+                        separation = section.get('separation'),
                         filling    = section.getfloat('filling'),
                         degree     = section.getint('degree'),
                         display    = section.getboolean('display'),

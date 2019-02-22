@@ -6,7 +6,7 @@ import os
 import time
 import math
 import numpy as np
-from numpy.polynomial import Chebyshev
+from numpy.polynomial import Polynomial, Chebyshev
 import astropy.io.fits   as fits
 import scipy.interpolate as intp
 import scipy.signal      as sg
@@ -555,8 +555,7 @@ class _ApertureSetIterator(object):
             raise StopIteration()
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
-        sep_der=0.0, filling=0.3, degree=3, display=True, filename=None,
-        fig_file=None):
+        filling=0.3, degree=3, display=True, filename=None, fig_file=None):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -566,11 +565,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
-        separation (float): Estimated order separations (in pixel)
+        separation (str): Estimated order separations (in pixel)
             along the cross-dispersion.
-        sep_der (float): Estimated differential order separations per 1000
-            pixels. The real order separations are estimated by **separation**
-            + **sep_der** × *pixel* / 1000
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (int): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
@@ -590,6 +586,39 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     # filter the pixels smaller than the input "minimum" value
     logdata = np.log10(np.maximum(data, minimum))
+
+    # initialize order separation relation v.s. row number
+    # find the proper type of separation. either a float or a polynomial object
+    try:
+        separation = float(separation)
+    except:
+        x_lst, y_lst = [], []
+        for substring in separation.split(','):
+            g = substring.split(':')
+            x, y = float(g[0]), float(g[1])
+            x_lst.append(x)
+            y_lst.append(y)
+        x_lst = np.array(x_lst)
+        y_lst = np.array(y_lst)
+        # sort x and y
+        index = x_lst.argsort()
+        x_lst = x_lst[index]
+        y_lst = y_lst[index]
+        separation = Polynomial.fit(x_lst, y_lst, deg=x_lst.size-1)
+
+    # initialize fsep as an ufunc.
+    if isinstance(separation, int) or isinstance(separation, float):
+        func = lambda x: separation
+        # convert it to numpy ufunc
+        fsep = np.frompyfunc(func, 1, 1)
+    elif isinstance(separation, Polynomial):
+        # separation is alreay a numpy ufunc
+        fsep = separation
+    else:
+        print('cannot understand the meaning of separation')
+        exit()
+    # now fsep is an numpy unfunc telling you the order separations at any given
+    # rows
 
     # create a background image
     fig = plt.figure(figsize=(20,10), dpi=150)
@@ -708,15 +737,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         return ypeak
 
 
-    # generate a window list according to separation and sep_der
+    # generate a window list according to separations
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
-    separation_lst = separation + dense_y/1000.*sep_der
+    separation_lst = fsep(dense_y)
     separation_lst = np.int32(np.round(separation_lst))
     window = 2*separation_lst*density+1
 
     # convolution core for the cross-sections. used to eliminate the "flat" tops
     # of the saturated orders
-    core = np.hanning(int(separation))
+    core = np.hanning(int(fsep(h/2)))
     core /= core.sum()
 
     message = ['Finding flat curves for "%s"'%filename,
@@ -839,7 +868,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     # find aperture positions
     # first, generate a window list
-    csec_separation_lst = separation + np.arange(csec_i1, csec_i2)/1000.*sep_der
+    csec_separation_lst = fsep(np.arange(csec_i1, csec_i2))
     csec_separation_lst = np.int32(np.round(csec_separation_lst))
     csec_win = 2*csec_separation_lst + 1
     # detect peaks in stacked cross-sections
@@ -951,7 +980,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # the local separation, remove them
     # check the last peak
     while(len(mid_lst)>3):
-        sep = separation + mid_lst[-1]*sep_der/1000.
+        sep = fsep(mid_lst[-1])
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
             logger.info('Remove the last aperture at %d for "%s" (distance=%d > 2 x %d)'%(
                         mid_lst[-1], filename, mid_lst[-1]-mid_lst[-2], sep))
@@ -961,8 +990,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     # check the first peak
     while(len(mid_lst)>3):
-        sep = separation + mid_lst[0]*sep_der/1000.
-        print(sep, mid_lst[0], mid_lst[1])
+        sep = fsep(mid_lst[0])
         if mid_lst[1] - mid_lst[0] > 2*sep:
             logger.info('Remove the first aperture at %d for "%s" (distance=%d > 2 x %d)'%(
                         mid_lst[0], filename, mid_lst[1]-mid_lst[0], sep))
@@ -1009,7 +1037,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                     xfit.append(x1)
                     yfit.append(ystep)
                 elif option == 2:
-                    local_sep = ystep/1000*sep_der + separation
+                    local_sep = fsep(ystep)
                     y1 = max(0, int(ystep-local_sep/2))
                     y2 = min(h, int(ystep+local_sep/2))
                     if y2 - y1 <= 5:
@@ -1096,16 +1124,16 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
     ax3.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
-    ax3.plot(np.arange(h), np.arange(h)/1000*sep_der+separation,
-                'k--', alpha=0.2, zorder=-1)
+    newx = np.arange(h)
+    ax3.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
     ax3.set_xlim(0, h-1)
     for tickline in ax3.yaxis.get_ticklines():
         tickline.set_color('gray')
-        tickline.set_alpha(0.6)
+        tickline.set_alpha(0.8)
     for tick in ax3.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
-        tick.label2.set_alpha(0.6)
-    ax3.set_ylabel('Aperture Number', color='gray', alpha=0.6, fontsize=12)
+        tick.label2.set_alpha(0.8)
+    ax3.set_ylabel('Separation (Pixels)', color='gray', alpha=0.8, fontsize=12)
 
     fig.canvas.draw()
     if fig_file is not None:
