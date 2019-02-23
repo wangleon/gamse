@@ -1334,8 +1334,9 @@ def reduce():
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
         flat_filename = os.path.join(midproc, flatname+'.fits.gz')
-        hdu_lst = fits.open(flat_filename)
+        hdu_lst = fits.open(flat_filename, mode='update')
         if len(hdu_lst)>=3:
+            # sensitivity map already exists in fits file
             flatmap = hdu_lst[2].data
         else:
             # do flat fielding
@@ -1367,11 +1368,15 @@ def reduce():
                         slit_file       = None,
                         )
             
-            # append the sensitity map to fits file
-            fits.append(flat_filename, flatmap)
+            # append the sensivity map to fits file
+            hdu_lst.append(fits.ImageHDU(flatmap))
+            # write back to the original file
+            hdu_lst.flush()
 
         # append the flatmap
         flatmap_lst[flatname] = flatmap
+
+        # continue to the next colored flat
 
     ############################# Mosaic Flats #################################
     flat_file = os.path.join(midproc, 'flat.fits.gz')
@@ -1590,12 +1595,12 @@ def reduce():
     #################### Extract Science Spectrum ##############################
 
     for item in logtable:
-        if item['imagetype']=='sci':
+        if item['imgtype']=='sci':
 
             filename = os.path.join(rawdata, item['fileid']+'.fits')
 
             logger.info('FileID: {} ({}) - start reduction: {}'.format(
-                item['fileid'], item['imagetype'], filename))
+                item['fileid'], item['imgtype'], filename))
 
             data, head = fits.getdata(filename, header=True)
             if data.ndim == 3:
@@ -1664,7 +1669,7 @@ def reduce():
             # wavelength calibration
             weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-            logger.info('FileID: {} - wavelength calibration weights: {}'%(
+            logger.info('FileID: {} - wavelength calibration weights: {}'.format(
                 item['fileid'], ','.join(['%8.4f'%w for w in weight_lst])))
 
             spec, head = wl_reference_singlefiber(spec, head,
