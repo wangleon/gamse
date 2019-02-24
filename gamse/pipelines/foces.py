@@ -1680,7 +1680,7 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(result, item['fileid']+'_wlc.fits')
+            filename = os.path.join(result, item['fileid']+'_ods.fits')
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: {} - Spectra written to {}'.format(
                 item['fileid'], filename))
