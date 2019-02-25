@@ -2,22 +2,22 @@
 from distutils.core import setup
 
 setup(
-    name         = 'edrs',
+    name         = 'gamse',
     version      = '2.0',
     description  = 'Echelle Data Reduction Software',
     author       = 'Liang Wang',
     author_email = 'lwang@mpe.mpg.de',
     license      = 'BSD',
-    scripts      = ['scripts/edrs2',
+    scripts      = ['scripts/gamse',
                     ],
     packages     = [
-                    'edrs',
-                    'edrs/utils',
-                    'edrs/echelle',
-                    'edrs/pipelines',
+                    'gamse',
+                    'gamse/utils',
+                    'gamse/echelle',
+                    'gamse/pipelines',
                    ],
     package_data = {
-                    'edrs': ['data/config/*',
-                             'data/linelist/*',]
+                    'gamse': ['data/config/*',
+                              'data/linelist/*',]
                     },
     )

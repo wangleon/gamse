@@ -16,9 +16,9 @@ from ..echelle.imageproc import combine_images, table_to_array, array_to_table
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat import get_slit_flat
 from ..echelle.extract import extract_aperset
-from ..echelle.wvcalib import (wvcalib, recalib, select_calib_from_database, 
+from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
                                self_reference_singlefiber,
-                               wv_reference_singlefiber, get_time_weight)
+                               wl_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
 
 def correct_overscan(data, head):

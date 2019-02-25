@@ -20,7 +20,7 @@ from ..echelle.trace      import find_apertures, load_aperture_set
 from ..echelle.flat       import mosaic_flat_auto, mosaic_images, get_fiber_flat
 from ..echelle.background import find_background
 from ..echelle.extract    import sum_extract
-from ..echelle.wvcalib    import wvcalib, recalib, reference_wv
+from ..echelle.wlcalib    import wlcalib, recalib, reference_wl
 
 class Reduction(object):
     '''General echelle reduction.
