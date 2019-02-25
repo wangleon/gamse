@@ -1885,10 +1885,10 @@ def search_linelist(linelistname):
     if os.path.exists(newname):
         return newname
 
-    # seach EDRS_DATA path
-    edrs_data = os.getenv('EDRS_DATA')
-    if len(edrs_data)>0:
-        data_path = os.path.join(edrs_data, 'linelist')
+    # seach GAMSE_DATA path
+    gamse_data = os.getenv('GAMSE_DATA')
+    if len(gamse_data)>0:
+        data_path = os.path.join(gamse_data, 'linelist')
         newname = os.path.join(data_path, linelistname+'.dat')
         if os.path.exists(newname):
             return newname
@@ -2212,19 +2212,19 @@ def select_calib_from_database(path, time_key, current_time, channel):
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
-        if fname[-9:]=='_wlc.fits':
+        if fname[-9:]=='_ods.fits':
             filename = os.path.join(path, fname)
             head = fits.getheader(filename)
-            _datetime = dateutil.parser.parse(head[time_key])
+            dt = dateutil.parser.parse(head[time_key])
             filename_lst.append(filename)
-            datetime_lst.append(_datetime)
+            datetime_lst.append(dt)
     if len(filename_lst)==0:
         return None, None, None
 
     # select the FITS file with the shortest interval in time.
     input_datetime = dateutil.parser.parse(current_time)
-    deltat_lst = np.array([abs((input_datetime - _datetime).total_seconds())
-                            for _datetime in datetime_lst])
+    deltat_lst = np.array([abs((input_datetime - dt).total_seconds())
+                            for dt in datetime_lst])
     imin = deltat_lst.argmin()
     sel_filename = filename_lst[imin]
 
@@ -2440,9 +2440,9 @@ def save_calibrated_thar(head, spec, calib, channel):
     coeff  = calib['coeff']
 
     if channel is None:
-        leading_str = 'HIERARCH EDRS WVCALIB'
+        leading_str = 'HIERARCH GAMSE WLCALIB'
     else:
-        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+        leading_str = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
     head[leading_str+' K']      = k
     head[leading_str+' OFFSET'] = offset
     head[leading_str+' XORDER'] = xorder
@@ -2452,12 +2452,14 @@ def save_calibrated_thar(head, spec, calib, channel):
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
         head[leading_str+' COEFF %d %d'%(j, i)] = coeff[j,i]
 
-    head[leading_str+' MAXITER']    = calib['maxiter']
-    head[leading_str+' STDDEV']     = calib['std']
-    head[leading_str+' WINDOWSIZE'] = calib['window_size']
-    head[leading_str+' NTOT']       = calib['ntot']
-    head[leading_str+' NUSE']       = calib['nuse']
-    head[leading_str+' NPIXEL']     = calib['npixel']
+    head[leading_str+' MAXITER']       = calib['maxiter']
+    head[leading_str+' STDDEV']        = calib['std']
+    head[leading_str+' WINDOW_SIZE']   = calib['window_size']
+    head[leading_str+' SNR_THRESHOLD'] = calib['snr_threshold']
+    head[leading_str+' CLIPPING']      = calib['clipping']
+    head[leading_str+' NTOT']          = calib['ntot']
+    head[leading_str+' NUSE']          = calib['nuse']
+    head[leading_str+' NPIXEL']        = calib['npixel']
 
     file_identlist = []
 
@@ -2492,9 +2494,9 @@ def reference_wl_new(spec, calib, head, channel, include_identlist):
        row['wavelength'] = wavelength
 
     if channel is None:
-        leading_str = 'HIERARCH EDRS WVCALIB'
+        leading_str = 'HIERARCH GAMSE WLCALIB'
     else:
-        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+        leading_str = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
     head[leading_str+' K']      = k
     head[leading_str+' OFFSET'] = offset
     head[leading_str+' XORDER'] = xorder
@@ -2572,9 +2574,9 @@ def get_calib_from_header(header, channel):
     """
 
     if channel is None:
-        prefix = 'HIERARCH EDRS WVCALIB'
+        prefix = 'HIERARCH GAMSE WLCALIB'
     else:
-        prefix = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+        prefix = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
 
     k      = header[prefix+' K']
     offset = header[prefix+' OFFSET']
@@ -2629,7 +2631,7 @@ def self_reference_singlefiber(spec, header, calib):
        row['order']      = order
        row['wavelength'] = wavelength
 
-    prefix = 'HIERARCH EDRS WVCALIB'
+    prefix = 'HIERARCH GAMSE WLCALIB'
     header[prefix+' K']      = k
     header[prefix+' OFFSET'] = offset
     header[prefix+' XORDER'] = xorder
@@ -2685,7 +2687,7 @@ def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
        row['order']      = order
        row['wavelength'] = wavelength
 
-    prefix = 'HIERARCH EDRS WVCALIB'
+    prefix = 'HIERARCH GAMSE WLCALIB'
     header[prefix+' K']      = k
     header[prefix+' OFFSET'] = offset
     header[prefix+' XORDER'] = xorder
@@ -2807,7 +2809,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
             coeff = coeff_lst.mean(axis=0, dtype=np.float64)
 
         # write important parameters into the FITS header
-        leading_str = 'HIERARCH EDRS WVCALIB CHANNEL %s'%channel
+        leading_str = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
         head[leading_str+' K']      = k
         head[leading_str+' OFFSET'] = offset
         head[leading_str+' XORDER'] = xorder
@@ -2944,7 +2946,7 @@ def get_aperture_coeffs_in_header(head):
     
     coeffs = {}
     for key, value in head.items():
-        exp = '^EDRS TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
+        exp = '^GAMSE TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
         if re.match(exp, key) is not None:
             g = key.split()
             channel  = g[3]

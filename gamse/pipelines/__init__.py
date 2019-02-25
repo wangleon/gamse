@@ -12,6 +12,7 @@ from ..utils.obslog import read_log, find_log
 from ..utils.misc   import write_system_info
 
 from . import common
+from . import feros
 from . import foces
 from . import hires
 from . import levy
@@ -39,7 +40,7 @@ def reduce_echelle():
                         '%(name)s - %(lineno)d - %(funcName)s():'+os.linesep,
                         ' %(message)s'+os.linesep+'-'*80,
                         ])
-    logging.basicConfig(filename='edrs.log',level=logging.DEBUG,
+    logging.basicConfig(filename='gamse.log',level=logging.DEBUG,
             format=log_fmt, datefmt='%Y-%m-%dT%H:%M:%S')
     logger = logging.getLogger(__name__)
 
@@ -108,6 +109,8 @@ def make_obslog():
     elif (telescope == 'Keck' or telescope == 'Keck-I') and \
         (instrument == 'HIRES'):
         hires.make_obslog(rawdata)
+    elif (telescope, instrument) == ('MPG/ESO-220' 'FEROS'):
+        feros.make_obslog(rawdata)
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()

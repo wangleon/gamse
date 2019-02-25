@@ -367,7 +367,7 @@ class ApertureSet(object):
             :func:`load_aperture_set_from_header`
         
         """
-        prefix = 'HIERARCH EDRS TRACE'
+        prefix = 'HIERARCH GAMSE TRACE'
         if channel is not None:
             prefix += ' CHANNLE %s'%channel
 
@@ -423,13 +423,12 @@ class ApertureSet(object):
                 to calculate the offset.
 
         Returns:
-            *int*: Offset between the two offsets.
+            *int*: Offset between the two aperture sets.
         """
         # fint the smalleset common aper number.
         for aper in self:
             if aper in aperset:
                 break
-
         # calculate the approximate distance between these two common apertures
         diff_cen = self[aper].get_center() - aperset[aper].get_center()
         # calculate the approximate aperture difference
@@ -1133,7 +1132,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     for tick in ax3.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    ax3.set_ylabel('Separation (Pixels)', color='gray', alpha=0.8, fontsize=12)
+    ax3.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
+        fontsize=12)
 
     fig.canvas.draw()
     if fig_file is not None:
@@ -1240,7 +1240,7 @@ def load_aperture_set_from_header(header, channel=None):
         :func:`ApertureSet.to_fitsheader`
         
     """
-    prefix = 'EDRS TRACE'
+    prefix = 'GAMSE TRACE'
     if channel is not None:
         prefix += ' CHANNEL %s'%channel
     

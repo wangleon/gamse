@@ -1385,6 +1385,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         fitpar_lst  = [] # stores (A, k, c, bkg).has the same length as newx_lst
         aperpar_lst = []
 
+        # prepare the figure for plotting the parameters of each aperture
+        if plot_aperpar:
+            if iaper%5==0:
+                fig = plt.figure(figsize=(15,8), dpi=150)
+                ax_lst = {}
+
         # central positions of this aperture
         position = positions[aper]
         lbound, ubound = bounds[aper]
@@ -1484,11 +1490,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             logger.debug('Break aperture %d because of too few real values in aperpar'%aper)
             continue
 
-        # prepare the figure for plotting the parameters of each aperture
-        if plot_aperpar:
-            if iaper%5==0:
-                fig = plt.figure(figsize=(15,8), dpi=150)
-                ax_lst = {}
 
         mask_lst = []
 

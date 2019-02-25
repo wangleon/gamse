@@ -78,12 +78,12 @@ def correct_overscan(data, head, mask=None):
     if 'BLANK' in head:
         del head['BLANK']
 
-    head['HIERARCH EDRS OVERSCAN']        = True
-    head['HIERARCH EDRS OVERSCAN METHOD'] = 'mean'
-    head['HIERARCH EDRS OVERSCAN AXIS-1'] = '1:20'
-    head['HIERARCH EDRS OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
-    head['HIERARCH EDRS OVERSCAN MEAN']   = ovrmean1
-    head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
+    head['HIERARCH GAMSE OVERSCAN']        = True
+    head['HIERARCH GAMSE OVERSCAN METHOD'] = 'mean'
+    head['HIERARCH GAMSE OVERSCAN AXIS-1'] = '1:20'
+    head['HIERARCH GAMSE OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
+    head['HIERARCH GAMSE OVERSCAN MEAN']   = ovrmean1
+    head['HIERARCH GAMSE OVERSCAN STDEV']  = ovrstd1
 
     return new_data, head, ovrmean1
 
@@ -260,12 +260,12 @@ class FOCES(Reduction):
             # head['BLANK'] is only valid for integer arrays.
             if 'BLANK' in head:
                 del head['BLANK']
-            head['HIERARCH EDRS OVERSCAN']        = True
-            head['HIERARCH EDRS OVERSCAN METHOD'] = 'mean'
-            head['HIERARCH EDRS OVERSCAN AXIS-1'] = '1:20'
-            head['HIERARCH EDRS OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
-            head['HIERARCH EDRS OVERSCAN MEAN']   = ovrmean1
-            head['HIERARCH EDRS OVERSCAN STDEV']  = ovrstd1
+            head['HIERARCH GAMSE OVERSCAN']        = True
+            head['HIERARCH GAMSE OVERSCAN METHOD'] = 'mean'
+            head['HIERARCH GAMSE OVERSCAN AXIS-1'] = '1:20'
+            head['HIERARCH GAMSE OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
+            head['HIERARCH GAMSE OVERSCAN MEAN']   = ovrmean1
+            head['HIERARCH GAMSE OVERSCAN STDEV']  = ovrstd1
     
             # save data
             outname = '%s%s.fits'%(item.fileid, self.output_suffix)
@@ -415,7 +415,7 @@ class FOCES(Reduction):
 
         # create new FITS Header for bias
         head = fits.Header()
-        head['HIERARCH EDRS BIAS NFILE'] = len(bias_id_lst)
+        head['HIERARCH GAMSE BIAS NFILE'] = len(bias_id_lst)
 
         # get final bias filename from the config file
         bias_file = self.config.get('bias', 'file')
@@ -440,10 +440,10 @@ class FOCES(Reduction):
 
                 logger.info('Smoothing bias: Update bias FITS header')
 
-                head['HIERARCH EDRS BIAS SMOOTH']        = True
-                head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
-                head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                head['HIERARCH GAMSE BIAS SMOOTH']        = True
+                head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
+                head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
 
             else:
                 print('Unknown smoothing method: %s'%smooth_method)
@@ -469,7 +469,7 @@ class FOCES(Reduction):
         else:
             # no smoothing
             logger.info('No smoothing parameter for bias. Skip bias smoothing')
-            head['HIERARCH EDRS BIAS SMOOTH'] = False
+            head['HIERARCH GAMSE BIAS SMOOTH'] = False
             bias_data = bias
         
         # save the bias to FITS
@@ -488,7 +488,7 @@ class FOCES(Reduction):
             data, head = fits.getdata(inpath, header=True)
             data_new = data - bias_data
             # write information into FITS header
-            head['HIERARCH EDRS BIAS'] = True
+            head['HIERARCH GAMSE BIAS'] = True
             # save the bias corrected data
             fits.writeto(outpath, data_new, head, overwrite=True)
             info = ['Correct bias for item no. %d.'%item.frameid,
@@ -583,7 +583,7 @@ class FOCES(Reduction):
 
 print_columns = [
         ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',     'str',   '{:^20s}', '{0[fileid]:20s}'),
+        ('fileid',     'str',   '{:^26s}', '{0[fileid]:26s}'),
         ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
         ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
@@ -611,7 +611,7 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S20'),  ('imgtype',  'S3'),
+        ('frameid', 'i2'),  ('fileid',     'S26'),  ('imgtype',  'S3'),
         ('object',  'S12'), ('exptime',    'f4'),
         ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
@@ -1155,7 +1155,7 @@ def reduce():
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = n_bias
+            head['HIERARCH GAMSE BIAS NFILE'] = n_bias
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -1171,10 +1171,10 @@ def reduce():
                                     sigma=smooth_sigma, mode=smooth_mode)
 
                     # write information to FITS header
-                    head['HIERARCH EDRS BIAS SMOOTH']        = True
-                    head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                    head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
-                    head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                    head['HIERARCH GAMSE BIAS SMOOTH']        = True
+                    head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                    head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
+                    head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
                 else:
                     print('Unknown smooth method: ', smooth_method)
                     pass
@@ -1182,7 +1182,7 @@ def reduce():
                 bias = bias_smooth
             else:
                 # bias not smoothed
-                head['HIERARCH EDRS BIAS SMOOTH'] = False
+                head['HIERARCH GAMSE BIAS SMOOTH'] = False
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             logger.info('Bias image written to "%s"'%bias_file)
@@ -1338,6 +1338,7 @@ def reduce():
         if len(hdu_lst)>=3:
             # sensitivity map already exists in fits file
             flatmap = hdu_lst[2].data
+            hdu_lst.close()
         else:
             # do flat fielding
             print('*** Start parsing flat fielding: %s ***'%flatname)
@@ -1567,7 +1568,7 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(result, item['fileid']+'_wlc.fits')
+                filename = os.path.join(result, item['fileid']+'_ods.fits')
                 hdu_lst.writeto(filename, overwrite=True)
 
                 # add more infos in calib
