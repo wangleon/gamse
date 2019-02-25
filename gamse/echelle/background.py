@@ -701,7 +701,7 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
                         ecolor='C2', elinewidth=0.8, alpha=0.8)
             ax1.plot(ally, allflux, '-', color='C2', lw=0.7)
 
-            _ymin, _ymax = fity_lst.min(), fity_lst.max()
+            _ymin, _ymax = fity_lst[mask].min(), fity_lst[mask].max()
             _y1, _y2 = 1.2*_ymin-0.2*_ymax, 1.2*_ymax-0.2*_ymin
             ax1.set_ylim(_y1, _y2)
             ax1.set_xlim(0, h-1)

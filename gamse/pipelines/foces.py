@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -583,7 +584,7 @@ class FOCES(Reduction):
 
 print_columns = [
         ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',     'str',   '{:^26s}', '{0[fileid]:26s}'),
+        ('fileid',     'str',   '{:^30s}', '{0[fileid]:30s}'),
         ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
         ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
@@ -611,7 +612,7 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S26'),  ('imgtype',  'S3'),
+        ('frameid', 'i2'),  ('fileid',     'S30'),  ('imgtype',  'S3'),
         ('object',  'S12'), ('exptime',    'f4'),
         ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
         ])
@@ -1385,7 +1386,10 @@ def reduce():
     treg_file = os.path.join(midproc, 'trace.reg')
     if len(flat_groups) == 1:
         # there's only 1 kind of flat
-        flatname = flat_groups.keys()[0]
+        # flatname = flat_groups.keys()[0]  # python 2.x style
+        flatname = list(flat_groups)[0]
+        # in python3, dict keys does not support indexing.
+
         shutil.copyfile(os.path.join(midproc, flatname+'.fits.gz'),
                         flat_file)
         shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
@@ -1393,6 +1397,9 @@ def reduce():
         shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
                         treg_file)
         flat_map = flatmap_lst[flatname]
+
+        # no need to aperset mosaic
+        mosaic_aperset = list(aperset_lst.values())[0]
     else:
         # mosaic apertures
         section = config['reduce.flat']
@@ -1509,6 +1516,7 @@ def reduce():
                         else:
                             # if success, run recalib
                             aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                            print('Aperture Offset = %d relative to refrence spectrum'%aper_offset)
                             calib = recalib(spec,
                                 filename      = item['fileid']+'.fits',
                                 figfilename   = wlcalib_fig,

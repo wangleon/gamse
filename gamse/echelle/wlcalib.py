@@ -1977,7 +1977,7 @@ def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
     shift_lst = []
     for item1 in spec1:
         aperture1 = item1['aperture']
-        aperture2 = aperture1 + aperture_offset
+        aperture2 = aperture1 - aperture_offset
         m = spec2['aperture'] == aperture2
         if m.sum()==1:
             item2 = spec2[m][0]
@@ -2322,7 +2322,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
     for row in spec:
         aperture = row['aperture']
         flux     = row['flux']
-        order = k*(aperture - aperture_offset) + offset
+        order = k*(aperture + aperture_offset) + offset
         wl = get_wavelength(coeff, npixel, x-shift, np.repeat(order, npixel))
         w1 = min(wl[0], wl[-1])
         w2 = max(wl[0], wl[-1])
