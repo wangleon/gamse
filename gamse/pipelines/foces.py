@@ -1399,22 +1399,22 @@ def reduce():
         flat_map = flatmap_lst[flatname]
 
         # no need to aperset mosaic
-        mosaic_aperset = list(aperset_lst.values())[0]
+        master_aperset = list(aperset_lst.values())[0]
     else:
         # mosaic apertures
         section = config['reduce.flat']
-        mosaic_aperset = mosaic_flat_auto(
+        master_aperset = mosaic_flat_auto(
                 aperture_set_lst = aperset_lst,
                 max_count        = section.getfloat('mosaic_maxcount'),
                 )
         # mosaic original flat images
-        flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
+        flat_data = mosaic_images(flat_data_lst, master_aperset)
         # mosaic flat mask images
-        mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
+        mask_data = mosaic_images(flat_mask_lst, master_aperset)
         # mosaic sensitivity map
-        flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
+        flat_map = mosaic_images(flatmap_lst, master_aperset)
         # mosaic exptime-normalized flat images
-        flat_norm = mosaic_images(flat_norm_lst, mosaic_aperset)
+        flat_norm = mosaic_images(flat_norm_lst, master_aperset)
 
         # pack and save to fits file
         hdu_lst = fits.HDUList([
@@ -1425,8 +1425,9 @@ def reduce():
                     ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
-        mosaic_aperset.save_txt(trac_file)
-        mosaic_aperset.save_reg(treg_file)
+        master_aperset.save_txt(trac_file)
+        master_aperset.save_reg(treg_file)
+
 
     ############################## Extract ThAr ################################
 
@@ -1469,11 +1470,11 @@ def reduce():
                 section = config['reduce.extract']
 
                 spectra1d = extract_aperset(data, mask,
-                            apertureset = mosaic_aperset,
+                            apertureset = master_aperset,
                             lower_limit = section.getfloat('lower_limit'),
                             upper_limit = section.getfloat('upper_limit'),
                             )
-                head = mosaic_aperset.to_fitsheader(head, channel=None)
+                head = master_aperset.to_fitsheader(head, channel=None)
     
                 spec = []
                 for aper, _item in sorted(spectra1d.items()):
@@ -1515,7 +1516,7 @@ def reduce():
                                 )
                         else:
                             # if success, run recalib
-                            aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                            aper_offset = ref_aperset.find_aper_offset(master_aperset)
                             print('Aperture Offset = %d relative to refrence spectrum'%aper_offset)
                             calib = recalib(spec,
                                 filename      = item['fileid']+'.fits',
@@ -1637,11 +1638,11 @@ def reduce():
                       'bkg_{}_sec.{}'.format(item['fileid'], fig_format))
 
             stray = find_background(data, mask,
-                    apertureset_lst = {'A': mosaic_aperset},
-                    ncols           = section.getint('ncols'),
-                    distance        = section.getfloat('distance'),
-                    yorder          = section.getint('yorder'),
-                    fig_section     = fig_sec,
+                    aperturesets = master_aperset,
+                    ncols        = section.getint('ncols'),
+                    distance     = section.getfloat('distance'),
+                    yorder       = section.getint('yorder'),
+                    fig_section  = fig_sec,
                     )
             data = data - stray
 
@@ -1660,7 +1661,7 @@ def reduce():
             # extract 1d spectrum
             section = config['reduce.extract']
             spectra1d = extract_aperset(data, mask,
-                        apertureset = mosaic_aperset,
+                        apertureset = master_aperset,
                         lower_limit = section.getfloat('lower_limit'),
                         upper_limit = section.getfloat('upper_limit'),
                         )

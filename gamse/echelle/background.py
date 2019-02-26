@@ -13,6 +13,7 @@ import matplotlib.colors as colors
 import matplotlib.cm     as cmap
 import matplotlib.ticker as tck
 
+from ..echelle.trace      import ApertureSet
 from ..utils.onedarray    import get_local_minima
 from ..utils.regression   import get_clip_mean
 from ..utils.regression2d import polyfit2d, polyval2d
@@ -518,7 +519,7 @@ def interpolate_background(shape, xnodes, ynodes, znodes):
 
     return background_data, mask
 
-def find_background(data, mask, apertureset_lst, ncols, distance,
+def find_background(data, mask, aperturesets, ncols, distance,
         yorder=7, ymaxiter=5, yupper_clip=3, ylower_clip=3,
         fig_stray=None, fig_section=None):
     """Subtract the background for an input FITS image.
@@ -526,8 +527,9 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
     Args:
         data (:class:`numpy.ndarray`): Input data image.
         mask (:class:`numpy.ndarray`): Mask of input data image.
-        apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
-            at different channels.
+        aperturesets (:class:`~gamse.echelle.trace.ApertureSet` or dict):
+            A :class:`~gamse.echelle.trace.ApertureSet` instance, or a dict of
+            :class:`~gamse.echelle.trace.ApertureSet` at different channels.
         yorder (int): Order of polynomial along the cross-dispersion
             direction.
         fig_stray (str): Name of the figure showing stray light. No file
@@ -556,6 +558,16 @@ def find_background(data, mask, apertureset_lst, ncols, distance,
 
     # prepare interpolation grid
     grid = []
+
+    # parse apertureset_lst
+    if isinstance(aperturesets, ApertureSet):
+        # put input aperture in a dict
+        apertureset_lst = {'A': aperturesets}
+    elif isinstance(aperturesets, dict):
+        apertureset_lst = aperturesets
+    else:
+        print('Unknown aperturesets:',aperturesets)
+        exit()
 
     for x in cols:
         xsection = np.median(data[:,x-1:x+2], axis=1)
