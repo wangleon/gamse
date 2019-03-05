@@ -640,10 +640,16 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         # create an image shown in paper
         fig1p = plt.figure(figsize=(7,6.7), dpi=150)
         ax1p = fig1p.add_axes([0.13, 0.10, 0.85, 0.87])
+        ax1p2 = fig1p.add_axes([0.13, 0.09, 0.85, 0.91],facecolor='none')
         ax1m = fig1p.add_axes([0.53, 0.10, 0.45, 0.45])
         ax1p.imshow(logdata,cmap='gray',interpolation='none')
         ax1m.imshow(logdata,cmap='gray',interpolation='none', vmin=0.9, vmax=2.2)
         ax1p.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
+        for x in [0.3,0.4,0.5,0.6,0.7]:
+            ax1p2.axvline(x=x, ls='--', lw=1, color='k')
+        ax1p2.arrow(0.5-0.005, 0.985, -0.05, 0, width=0.002, head_width=0.01, color='k', edgecolor='k')
+        ax1p2.arrow(0.5+0.005, 0.985, +0.05, 0, width=0.002, head_width=0.01, color='k', edgecolor='k')
+        ax1p2.set_axis_off()
 
         fig2p = plt.figure(figsize=(7,4), dpi=150)
         ax2p = fig2p.add_axes([0.13, 0.16, 0.84, 0.80])
