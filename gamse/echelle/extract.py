@@ -17,7 +17,7 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
         infilename (str): Name of the input image.
         outfilename (str): Name of the output image.
         channels (list): List of channels as strings.
-        apertureset_lst (dict): Dict of :class:`~edrs.echelle.trace.ApertureSet`
+        apertureset_lst (dict): Dict of :class:`~gamse.echelle.trace.ApertureSet`
             instances for different channels.
         upper_limit (float): Upper limit of the extracted aperture.
         lower_limit (float): Lower limit of the extracted aperture.
@@ -205,3 +205,131 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
         spectra1d[aper]['mask_sat'] = fluxsat
 
     return spectra1d
+
+def optimal_extract(data, mask, apertureset):
+    """Optimal extraction
+    """
+
+    daper = 10
+    aper1_lst = np.arange(min(apertureset), max(apertureset), daper)
+    aper2_lst = aper1_lst + daper
+    if len(apertureset)%daper < daper/2:
+        aper1_lst = np.delete(aper1_lst, -1)
+        aper2_lst = np.delete(aper2_lst, -1)
+    else:
+        pass
+    aper2_lst[-1] = max(apertureset)+1
+
+    profy_lst = np.arange(-10, 10+1e-3, 0.5)
+    h, w = data.shape
+
+    for loop in range(2):
+        apercen_lst = []
+        profilesamp_lst = []
+        for iregion, (aper1, aper2) in enumerate(zip(aper1_lst, aper2_lst)):
+            print(aper1, aper2)
+            apernode_x_lst = []
+            apernode_y_lst = []
+            for iaper, aper in enumerate(np.arange(aper1, aper2)):
+                aperloc = apertureset[aper]
+                ycen_lst = aperloc.position(np.arange(w))
+
+                node_x_lst = []
+                node_y_lst = []
+                if loop > 0:
+                    profile = allprofile_lst[aper]
+                    interf = intp.InterpolatedUnivariateSpline(
+                                profy_lst, profile, k=3, ext=1)
+
+                for x in np.arange(w//2-200, w//2+200):
+                    ycen = ycen_lst[x]
+                    yceni = np.int(np.round(ycen))
+                    yrows = np.arange(yceni-10, yceni+10+1)
+                    flux = data[yrows, x]
+                    negative_mask = flux<0
+                    if negative_mask.sum()>0.5*flux.size:
+                        continue
+
+                    if loop == 0:
+                        A = flux.sum()
+                    else:
+                        para = [flux.sum(),ycen]
+                        mask = np.ones_like(flux, dtype=np.bool)
+                        for ite in range(10):
+                            result = opt.least_squares(errfunc, para,
+                                        bounds=((-np.inf,ycen-2),(np.inf,ycen+2)),
+                                        args=(flux[mask], interf, yrows[mask]))
+                            newpara = result['x']
+                            pro = fitfunc(newpara, interf, yrows)
+                            res = flux - pro
+                            std = res[mask].std()
+                            new_mask = (res < 3*std)*(res > -3*std)
+                            if new_mask.sum() == mask.sum():
+                                break
+                            mask = new_mask
+                            para = newpara
+                        A, ycen = newpara
+
+                    if A<0:
+                        continue
+                    normflux = flux/A
+                    for v in yrows-ycen:
+                        node_x_lst.append(v)
+                        apernode_x_lst.append(v)
+                    for v in normflux:
+                        node_y_lst.append(v)
+                        apernode_y_lst.append(v)
+                ### loop for x pixel ends here
+            apernode_x_lst = np.array(apernode_x_lst)
+            apernode_y_lst = np.array(apernode_y_lst)
+            profile, profile_std, profile_snr = get_mean_profile(
+                    apernode_x_lst, apernode_y_lst, profy_lst)
+            profile_cen = (profy_lst*profile).sum()/profile.sum()
+            func = intp.InterpolatedUnivariateSpline(
+                    profy_lst-profile_cen, profile, k=3, ext=3)
+            newprofile = func(profy_lst)
+            profilesamp_lst.append(newprofile)
+            apercen_lst.append((aper1+aper2)/2)
+
+            # plot figure for this aper group
+            fig1 = plt.figure(dpi=150, figsize=(12,8))
+            ax1 = fig1.gca()
+            ax1.scatter(apernode_x_lst, apernode_y_lst, c='gray', s=1, alpha=0.1)
+            ax1.plot(profy_lst, profile, '-', lw=1, c='C1')
+            ax1.plot(profy_lst, profile+profile_std, '--', lw=0.5, c='C1')
+            ax1.plot(profy_lst, profile-profile_std, '--', lw=0.5, c='C1')
+            ax1.set_xlim(-11, 11)
+            ax1.set_ylim(-0.02, 0.13)
+            ax1.axvline(x=0, color='k', ls='--', lw=1)
+            ax1.axhline(y=0, color='k', ls='--', lw=1)
+            ax1.grid(True, ls=':', color='k')
+            fig1.savefig('img2/apergroup_%02d_%02d_loop%d.png'%(aper1, aper2, loop))
+            plt.close(fig1)
+
+        ### loop for aper region ends here
+        # build interp functions for all apertures
+        profilesamp_lst = np.array(profilesamp_lst)
+
+        # get profiles for all apertures
+        allprofile_lst = {}
+        for aper in sorted(apertureset):
+            profile = []
+            for col in np.arange(profy_lst.size):
+                func = intp.InterpolatedUnivariateSpline(
+                        apercen_lst, profilesamp_lst[:,col], k=3, ext=0)
+                profile.append(func(aper))
+            allprofile_lst[aper] = np.array(profile)
+
+        # plot interpolated profiles
+        fig = plt.figure(dpi=150)
+        ax = fig.gca()
+        for aper in sorted(apertureset):
+            ax.plot(profy_lst, allprofile_lst[aper], alpha=0.6, lw=0.5)
+        ax.set_xlim(-11,11)
+        ax.set_ylim(-0.01, 0.12)
+        ax.grid(True, color='k', ls=':', lw=0.5)
+        fig.savefig('img2/intp_profiles_loop%d.png'%loop)
+        plt.close(fig)
+    # profile loop ends here
+
+
