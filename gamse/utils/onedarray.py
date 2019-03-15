@@ -180,3 +180,38 @@ def pairwise(array):
     a, b = tee(array)
     next(b, None)
     return zip(a, b)
+
+def smooth(array, points, deg):
+    """Smooth an array.
+
+    Args:
+        array (:class:`numpy.ndarray`): Input array.
+        points (int): Points of smoothing.
+        deg (int): Degree of smoothing.
+
+    Returns:
+        :class:`numpy.ndarray`: smoothed array
+
+    """
+    n = array.size
+    if points == 5:
+        if deg == 2:
+            w_2 = np.array([31.,  9., -3., -5.,  3.])/35.
+            w_1 = np.array([ 9., 13., 12.,  6., -5.])/35.
+            w_0 = np.array([-3., 12., 17., 12., -3.])/35.
+        elif deg == 3:
+            w_2 = np.array([69.,  4., -6.,  4., -1.])/70.
+            w_1 = np.array([ 2., 27., 12., -8.,  2.])/35.
+            w_0 = np.array([-3., 12., 17., 12., -3.])/35.
+
+        a = np.zeros((n, n))
+        a[0, 0:5] = w_2
+        a[1, 0:5] = w_1
+        for i in np.arange(2, n-2):
+            a[i, i-2:i+3] = w_0
+        a[-2, -5:] = w_1[::-1]
+        a[-1, -5:] = w_2[::-1]
+
+    result = np.matrix(a)*np.matrix(array.reshape(-1,1))
+    return np.array(result)[:,0]
+
