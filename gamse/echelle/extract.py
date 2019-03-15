@@ -4,10 +4,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
+import scipy.interpolate as intp
+import scipy.optimize as opt
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
 from .imageproc import table_to_array
+from ..utils.onedarray import pairwise, smooth
+from ..utils.regression import get_clip_mean
 
 def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     upper_limit=5, lower_limit=5, figure=None):
@@ -206,8 +210,64 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
 
     return spectra1d
 
+def get_mean_profile(nodex_lst, nodey_lst, profx_lst):
+    """Calculate the mean profiles for a series of (*x*, *y*) data.
+
+    Args:
+        nodex_lst (:class:`numpy.ndarray`): Input *x* data.
+        nodey_lst (:class:`numpy.ndarray`): Input *y* data with the same length
+            as **nodex_lst**.
+        profx_lst (:class:`numpy.ndarray`): X-coordinates of the mean profile.
+
+    Returns:
+        A tuple containing:
+            **profile** (:class:`numpy.ndarray`): Mean profile.
+            **profile_std** (:class:`numpy.ndarray`): Standard deviations of
+                mean profile.
+
+
+    """
+    # find middle points
+    mid_profx_lst = (profx_lst + np.roll(profx_lst, -1))/2
+    mid_profx_lst = np.insert(mid_profx_lst, 0,
+                    profx_lst[0]-(profx_lst[1]-profx_lst[0])/2)
+    mid_profx_lst[-1] = profx_lst[-1] + (profx_lst[-1] - profx_lst[-2])/2
+
+    # calculate mean profile
+    mean_x_lst, mean_y_lst, std_y_lst = [], [], []
+    for y1, y2 in pairwise(mid_profx_lst):
+        mask = (nodex_lst > y1)*(nodex_lst < y2)
+        if mask.sum() > 0:
+            meany, std, _ = get_clip_mean(nodey_lst[mask], maxiter=20)
+            #xcenter = (nodex_lst[mask]*nodey_lst[mask]).sum()/nodey_lst[mask].sum()
+            #mean_x_lst.append(xcenter)
+            mean_x_lst.append((y1+y2)/2)
+            mean_y_lst.append(meany)
+            std_y_lst.append(std)
+
+    # convert to numpy arrays
+    mean_x_lst = np.array(mean_x_lst)
+    mean_y_lst = np.array(mean_y_lst)
+    std_y_lst = np.array(std_y_lst)
+
+    # fill the missing values with cubic interpolation
+    if mean_x_lst.size < profx_lst.size:
+        f1 = intp.InterpolatedUnivariateSpline(mean_x_lst, mean_y_lst, k=3)
+        mean_y_lst = f1(profx_lst)
+        f2 = intp.InterpolatedUnivariateSpline(mean_x_lst, std_y_lst, k=3)
+        std_y_lst = f2(profx_lst)
+
+    return mean_y_lst, std_y_lst
+
 def optimal_extract(data, mask, apertureset):
-    """Optimal extraction
+    """Optimal extraction.
+
+    Args:
+        data (:class:`ndarray`):
+        mask (:class:`ndarray`):
+        apertureset ():
+
+    Returns:
     """
 
     daper = 10
@@ -220,7 +280,7 @@ def optimal_extract(data, mask, apertureset):
         pass
     aper2_lst[-1] = max(apertureset)+1
 
-    profy_lst = np.arange(-10, 10+1e-3, 0.5)
+    profx_lst = np.arange(-10, 10+1e-3, 0.5)
     h, w = data.shape
 
     for loop in range(2):
@@ -239,7 +299,7 @@ def optimal_extract(data, mask, apertureset):
                 if loop > 0:
                     profile = allprofile_lst[aper]
                     interf = intp.InterpolatedUnivariateSpline(
-                                profy_lst, profile, k=3, ext=1)
+                                profx_lst, profile, k=3, ext=1)
 
                 for x in np.arange(w//2-200, w//2+200):
                     ycen = ycen_lst[x]
@@ -280,14 +340,31 @@ def optimal_extract(data, mask, apertureset):
                         node_y_lst.append(v)
                         apernode_y_lst.append(v)
                 ### loop for x pixel ends here
+
+            # now calculate the mean profile
             apernode_x_lst = np.array(apernode_x_lst)
             apernode_y_lst = np.array(apernode_y_lst)
-            profile, profile_std, profile_snr = get_mean_profile(
-                    apernode_x_lst, apernode_y_lst, profy_lst)
-            profile_cen = (profy_lst*profile).sum()/profile.sum()
+            profile, profile_std = get_mean_profile(
+                    apernode_x_lst, apernode_y_lst, profx_lst)
+
+            # smooth the profile
+            profile     = smooth(profile,     points=5, deg=3)
+            profile_std = smooth(profile_std, points=5, deg=3)
+
+            # calculate the typical S/N of this profile
+            snr_lst = profile/profile_std
+            ic = profx_lst.size//2
+            snr = snr_lst[ic-1:ic+2].mean()
+
+            # calculate the center of mass
+            profile_cen = (profx_lst*profile).sum()/profile.sum()
+
+            # align the profile to the center of mass with cubic interpolataion
             func = intp.InterpolatedUnivariateSpline(
-                    profy_lst-profile_cen, profile, k=3, ext=3)
-            newprofile = func(profy_lst)
+                    profx_lst-profile_cen, profile, k=3, ext=3)
+            newprofile = func(profx_lst)
+
+            # append the results
             profilesamp_lst.append(newprofile)
             apercen_lst.append((aper1+aper2)/2)
 
@@ -295,10 +372,10 @@ def optimal_extract(data, mask, apertureset):
             fig1 = plt.figure(dpi=150, figsize=(12,8))
             ax1 = fig1.gca()
             ax1.scatter(apernode_x_lst, apernode_y_lst, c='gray', s=1, alpha=0.1)
-            ax1.plot(profy_lst, profile, '-', lw=1, c='C1')
-            ax1.plot(profy_lst, profile+profile_std, '--', lw=0.5, c='C1')
-            ax1.plot(profy_lst, profile-profile_std, '--', lw=0.5, c='C1')
-            ax1.set_xlim(-11, 11)
+            ax1.plot(profx_lst, profile, '-', lw=1, c='C1')
+            ax1.plot(profx_lst, profile+profile_std, '--', lw=0.5, c='C1')
+            ax1.plot(profx_lst, profile-profile_std, '--', lw=0.5, c='C1')
+            ax1.set_xlim(profx_lst[0]-1, profx_lst[-1]+1)
             ax1.set_ylim(-0.02, 0.13)
             ax1.axvline(x=0, color='k', ls='--', lw=1)
             ax1.axhline(y=0, color='k', ls='--', lw=1)
@@ -314,7 +391,7 @@ def optimal_extract(data, mask, apertureset):
         allprofile_lst = {}
         for aper in sorted(apertureset):
             profile = []
-            for col in np.arange(profy_lst.size):
+            for col in np.arange(profx_lst.size):
                 func = intp.InterpolatedUnivariateSpline(
                         apercen_lst, profilesamp_lst[:,col], k=3, ext=0)
                 profile.append(func(aper))
@@ -324,7 +401,7 @@ def optimal_extract(data, mask, apertureset):
         fig = plt.figure(dpi=150)
         ax = fig.gca()
         for aper in sorted(apertureset):
-            ax.plot(profy_lst, allprofile_lst[aper], alpha=0.6, lw=0.5)
+            ax.plot(profx_lst, allprofile_lst[aper], alpha=0.6, lw=0.5)
         ax.set_xlim(-11,11)
         ax.set_ylim(-0.01, 0.12)
         ax.grid(True, color='k', ls=':', lw=0.5)
