@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# EDRS2 documentation build configuration file, created by
+# GAMSE documentation build configuration file, created by
 # sphinx-quickstart on Sat Jan 30 22:18:59 2016.
 #
 # This file is execfile()d with the current directory set to its containing dir.
@@ -52,8 +52,8 @@ source_suffix = '.rst'
 master_doc = 'content'
 
 # General information about the project.
-project = u'EDRS2'
-copyright = u'2016, Liang Wang'
+project = u'GAMSE'
+copyright = u'2018, Liang Wang'
 author = u'Liang Wang'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -181,7 +181,7 @@ html_sidebars = {
 #html_file_suffix = None
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'EDRS2doc'
+htmlhelp_basename = 'GAMSEdoc'
 
 
 # -- Options for LaTeX output --------------------------------------------------
@@ -200,7 +200,7 @@ latex_elements = {
 # Grouping the document tree into LaTeX files. List of tuples
 # (source start file, target name, title, author, documentclass [howto/manual]).
 latex_documents = [
-  (master_doc, 'EDRS2.tex', u'EDRS2 Documentation',
+  (master_doc, 'GAMSE.tex', u'GAMSE Documentation',
    u'Liang Wang', 'manual'),
 ]
 
@@ -230,7 +230,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    (master_doc, 'edrs2', u'EDRS2 Documentation',
+    (master_doc, 'gamse', u'GAMSE Documentation',
      [u'Liang Wang'], 1)
 ]
 
@@ -244,8 +244,8 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  (master_doc, 'EDRS2', u'EDRS2 Documentation',
-   u'Liang Wang', 'EDRS2', 'One line description of project.',
+  (master_doc, 'GAMSE', u'GAMSE Documentation',
+   u'Liang Wang', 'GAMSE', 'One line description of project.',
    'Miscellaneous'),
 ]
 

@@ -1,7 +1,7 @@
-EDRS2 Documentation
+GAMSE Documentation
 =====================
 
-.. automodule:: edrs
+.. automodule:: gamse
    :members:
 
 

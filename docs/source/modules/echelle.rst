@@ -3,7 +3,7 @@ Echelle Module
 
 CCD Image Processing
 --------------------
-.. currentmodule:: edrs.echelle.imageproc
+.. currentmodule:: gamse.echelle.imageproc
 .. autosummary::
     combine_images
     savitzky_golay_2d
@@ -11,7 +11,7 @@ CCD Image Processing
     table_to_array
     fix_pixels
 
-.. automodule:: edrs.echelle.imageproc
+.. automodule:: gamse.echelle.imageproc
    :members:
    :private-members:
    :undoc-members:
@@ -19,7 +19,7 @@ CCD Image Processing
 
 Order Location and Tracing
 --------------------------
-.. currentmodule:: edrs.echelle.trace
+.. currentmodule:: gamse.echelle.trace
 .. autosummary::
     ApertureLocation
     ApertureSet
@@ -30,14 +30,14 @@ Order Location and Tracing
     fitfunc
     errfunc
 
-.. automodule:: edrs.echelle.trace
+.. automodule:: gamse.echelle.trace
    :members:
    :private-members:
    :undoc-members:
 
 Flat Fielding Correction
 ------------------------
-.. currentmodule:: edrs.echelle.flat
+.. currentmodule:: gamse.echelle.flat
 .. autosummary::
     load_mosaic
     mosaic_flat_auto
@@ -52,32 +52,32 @@ Flat Fielding Correction
     default_smooth_aperpar_c
     default_smooth_aperpar_bkg
 
-.. automodule:: edrs.echelle.flat
+.. automodule:: gamse.echelle.flat
    :members:
    :private-members:
    :undoc-members:
 
 Background Correction
 ---------------------
-.. currentmodule:: edrs.echelle.background
+.. currentmodule:: gamse.echelle.background
 .. autosummary::
     find_background
     fit_background
     interpolate_background
 
-.. automodule:: edrs.echelle.background
+.. automodule:: gamse.echelle.background
    :members:
    :private-members:
    :undoc-members:
 
 1-D Spectra Extraction
 ----------------------
-.. currentmodule:: edrs.echelle.extract
+.. currentmodule:: gamse.echelle.extract
 .. autosummary::
     sum_extract
     extract_aperset
 
-.. automodule:: edrs.echelle.extract
+.. automodule:: gamse.echelle.extract
    :members:
    :private-members:
    :undoc-members:
@@ -86,7 +86,7 @@ Wavelength Calibration
 ----------------------
 calibration functions:
 
-.. currentmodule:: edrs.echelle.wlcalib
+.. currentmodule:: gamse.echelle.wlcalib
 .. autosummary::
     wlcalib
     recalib
@@ -110,7 +110,7 @@ calibration functions:
 
 GUI-related:
 
-.. currentmodule:: edrs.echelle.wlcalib
+.. currentmodule:: gamse.echelle.wlcalib
 .. autosummary::
     CalibWindow
     CalibFigure
@@ -120,7 +120,7 @@ GUI-related:
     LineTable
     FitparaFrame
 
-.. automodule:: edrs.echelle.wlcalib
+.. automodule:: gamse.echelle.wlcalib
    :members:
    :private-members:
    :undoc-members:

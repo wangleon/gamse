@@ -1,13 +1,13 @@
 Pipelines for Individual Spectrographs
 ======================================
 
-.. currentmodule:: edrs.pipelines
+.. currentmodule:: gamse.pipelines
 .. autosummary::
    reduce_echelle
    make_obslog
    show_spectra1d
 
-.. automodule:: edrs.pipelines
+.. automodule:: gamse.pipelines
    :members:
    :private-members:
    :inherited-members:
@@ -16,12 +16,12 @@ Pipelines for Individual Spectrographs
 
 Common Resources
 ----------------
-.. currentmodule:: edrs.pipelines.common
+.. currentmodule:: gamse.pipelines.common
 .. autosummary::
    plot_spectra1d
    plot_background_aspect1
 
-.. automodule:: edrs.pipelines.common
+.. automodule:: gamse.pipelines.common
    :members:
    :private-members:
    :inherited-members:
@@ -29,7 +29,7 @@ Common Resources
 
 FOCES
 -----
-.. currentmodule:: edrs.pipelines.foces
+.. currentmodule:: gamse.pipelines.foces
 .. autosummary::
    get_primary_header
    make_obslog
@@ -42,7 +42,7 @@ FOCES
    smooth_aperpar_c
    smooth_aperpar_bkg
 
-.. automodule:: edrs.pipelines.foces
+.. automodule:: gamse.pipelines.foces
    :members:
    :private-members:
    :inherited-members:
@@ -50,13 +50,13 @@ FOCES
 
 Levy
 ----
-.. currentmodule:: edrs.pipelines.levy
+.. currentmodule:: gamse.pipelines.levy
 .. autosummary::
    make_obslog
    correct_overscan
    reduce
 
-.. automodule:: edrs.pipelines.levy
+.. automodule:: gamse.pipelines.levy
    :members:
    :private-members:
    :inherited-members:
@@ -64,7 +64,7 @@ Levy
 
 Xinglong 2.16m HRS
 ------------------
-.. currentmodule:: edrs.pipelines.xinglong216hrs
+.. currentmodule:: gamse.pipelines.xinglong216hrs
 .. autosummary::
    make_obslog
    get_mask
@@ -76,7 +76,7 @@ Xinglong 2.16m HRS
    smooth_aperpar_c
    smooth_aperpar_bkg
 
-.. automodule:: edrs.pipelines.xinglong216hrs
+.. automodule:: gamse.pipelines.xinglong216hrs
    :members:
    :private-members:
    :inherited-members:

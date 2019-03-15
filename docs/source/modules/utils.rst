@@ -3,19 +3,19 @@ Utilities
 
 Configuration
 -------------
-.. currentmodule:: edrs.utils.config
+.. currentmodule:: gamse.utils.config
 .. autosummary::
    read_config
    find_config
 
-.. automodule:: edrs.utils.config
+.. automodule:: gamse.utils.config
    :members:
    :private-members:
    :undoc-members:
 
 Observing Log
 -------------
-.. currentmodule:: edrs.utils.obslog
+.. currentmodule:: gamse.utils.obslog
 .. autosummary::
    LogItem
    Log
@@ -23,57 +23,57 @@ Observing Log
    get_input_fileids
    parse_num_seq
 
-.. automodule:: edrs.utils.obslog
+.. automodule:: gamse.utils.obslog
    :members:
    :private-members:
    :undoc-members:
 
 One Dimensional Array
 ---------------------
-.. currentmodule:: edrs.utils.onedarray
+.. currentmodule:: gamse.utils.onedarray
 .. autosummary::
    derivative
    get_edge_bin
    get_local_minima
    implete_none
 
-.. automodule:: edrs.utils.onedarray
+.. automodule:: gamse.utils.onedarray
    :members:
    :private-members:
    :undoc-members:
 
 Regression
 ----------
-.. currentmodule:: edrs.utils.regression
+.. currentmodule:: gamse.utils.regression
 .. autosummary::
    get_clip_mean
    linear_fit
    iterative_polyfit
 
-.. automodule:: edrs.utils.regression
+.. automodule:: gamse.utils.regression
    :members:
    :private-members:
    :undoc-members:
 
 2D Regression
 -------------
-.. currentmodule:: edrs.utils.regression2d
+.. currentmodule:: gamse.utils.regression2d
 .. autosummary::
    polyfit2d
    polyval2d
 
-.. automodule:: edrs.utils.regression2d
+.. automodule:: gamse.utils.regression2d
    :members:
    :private-members:
    :undoc-members:
 
 Miscellaneous
 -------------
-.. currentmodule:: edrs.utils.misc
+.. currentmodule:: gamse.utils.misc
 .. autosummary::
    write_system_info
 
-.. automodule:: edrs.utils.misc
+.. automodule:: gamse.utils.misc
    :members:
    :private-members:
    :undoc-members:
