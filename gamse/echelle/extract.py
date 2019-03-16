@@ -409,4 +409,123 @@ def optimal_extract(data, mask, apertureset):
         plt.close(fig)
     # profile loop ends here
 
+    ######################################################################
+    flux_opt_lst = {}
+    flux_sum_lst = {}
+    #for aper, aperloc in sorted(aperset.items()):
+    for aper in [10, 63]:
+        aperloc = aperset[aper]
+        print(aper)
+        ycen_lst = aperloc.position(np.arange(w))
+        profile = allprofile_lst[aper]
+        interf = intp.InterpolatedUnivariateSpline(
+                    profx_lst, profile, k=3, ext=1)
+        flux_opt_lst[aper] = []
+        flux_sum_lst[aper] = []
+        newycen_lst = []
+        for x in np.arange(w):
+            ycen = ycen_lst[x]
+            yceni = np.int(np.round(ycen))
+            yrows = np.arange(yceni-10, yceni+10+1)
+            flux = data[yrows, x]
+            para = [flux.sum(),ycen]
+            mask = np.ones_like(flux, dtype=np.bool)
+            for ite in range(10):
+                result = opt.least_squares(errfunc, para,
+                            bounds=((-np.inf,ycen-2),(np.inf,ycen+2)),
+                            args=(flux[mask], interf, yrows[mask]))
+                newpara = result['x']
+                pro = fitfunc(newpara, interf, yrows)
+                res = flux - pro
+                std = res[mask].std()
+                new_mask = (res < 3*std)*(res > -3*std)
+                if new_mask.sum() == mask.sum():
+                    break
+                mask = new_mask
+                para = newpara
+            print(x, newpara, mask.size-mask.sum(), ite)
+            newycen_lst.append(newpara[1])
+            s_lst = 1/(np.maximum((flux+240),0)+1.0**2)
+            normpro = pro/pro.sum()
+            fopt = ((s_lst*normpro*flux)[mask].sum())/((s_lst*normpro**2)[mask].sum())
+            flux_opt_lst[aper].append(fopt)
+            flux_sum_lst[aper].append(flux.sum())
+
+            ################################################
+            if aper==63:
+                if x%30==0:
+                    fig1 = plt.figure(figsize=(18,10), dpi=150)
+                irow = int((x%30)/6)
+                icol = (x%30)%6
+                _x = 0.04 + icol*0.16
+                _y = 0.05 + (4-irow)*0.19
+                ax = fig1.add_axes([_x, _y, 0.14, 0.17])
+                ax.plot(yrows-para[1], pro, 'o-', color='w',
+                        markeredgecolor='C0',ms=4, lw=0.8)
+                ax.plot(yrows[mask]-para[1], pro[mask], 'o', color='C0',
+                        ms=4)
+                ax.plot(yrows-para[1], pro+1*std, '--', color='C0', lw=0.5)
+                ax.plot(yrows-para[1], pro-1*std, '--', color='C0', lw=0.5)
+                ax.plot(yrows[mask]-para[1], flux[mask], '-', color='C1', lw=0.8)
+                x1, x2 = ax.get_xlim()
+                y1, y2 = ax.get_ylim()
+                ax.plot(yrows-para[1], flux, '--', color='C1', lw=0.8)
+                ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'X=%d'%x, fontsize=9)
+                ax.text(0.35*x1+0.65*x2, 0.1*y1+0.9*y2, '%7g'%(flux.sum()), fontsize=9, color='C0')
+                ax.text(0.35*x1+0.65*x2, 0.2*y1+0.8*y2, '%7g'%fopt, fontsize=9, color='C1')
+                ax.set_xlim(x1, x2)
+                ax.set_ylim(y1, y2)
+                ax.axhline(y=0, c='k', ls='--', lw=0.5)
+                ax.axvline(x=0, c='k', ls='--', lw=0.5)
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                if x%30 == 29 or x == w-1:
+                    fig1.savefig('img4/fitting-%02d-%04d.png'%(aper,x))
+                    plt.close(fig1)
+            ################################################
+
+
+
+        flux_opt_lst[aper] = np.array(flux_opt_lst[aper])
+        flux_sum_lst[aper] = np.array(flux_sum_lst[aper])
+
+        '''
+        fig = plt.figure(dpi=150, figsize=(15,10))
+        ax = fig.gca()
+        ax.plot(flux_opt_lst[aper], ls='-', lw=0.5, color='C1')
+        ax.set_xlim(0, w-1)
+        fig.savefig('img4/flux_%02d.png'%aper)
+        plt.close(fig)
+        '''
+        newycen_lst = np.array(newycen_lst)
+        fig2 = plt.figure(dpi=150, figsize=(12,8))
+        ax1 = fig2.add_subplot(211)
+        ax2 = fig2.add_subplot(212)
+        ax1.plot(ycen_lst, color='C0', ls='-')
+        ax1.plot(newycen_lst, color='C1', ls='-')
+        ax2.plot(newycen_lst-ycen_lst, color='C1', ls='-')
+        fig2.savefig('img4/comp_center_aper%02d.png'%aper)
+        plt.close(fig2)
+
+    types = [
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux_sum',   (np.float32, w)),
+            ('flux_opt',   (np.float32, w)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+    spec = []
+    for aper in sorted(flux_opt_lst):
+        flux_sum = flux_sum_lst[aper]
+        flux_opt = flux_opt_lst[aper]
+        n = flux_sum.size
+        spec.append((aper, 0, n,
+                    np.zeros(n, dtype=np.float64),
+                    flux_sum, flux_opt))
+    spec = np.array(spec, dtype=spectype)
 
