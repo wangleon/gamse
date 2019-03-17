@@ -881,7 +881,7 @@ def reduce():
     treg_file = os.path.join(midproc, 'trace.reg')
     if len(flat_groups) == 1:
         # there's only 1 kind of flat
-        flatname = flat_groups.keys()[0]    # python 2.x style
+        # flatname = flat_groups.keys()[0]    # python 2.x style
         flatname = list(flat_groups)[0]
         # in python3, dict keys does not support indexing.
 
@@ -892,21 +892,24 @@ def reduce():
         shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
                         treg_file)
         flat_map = flatmap_lst[flatname]
+
+        # no need to aperset mosaic
+        master_aperset = list(aperset_lst.values())[0]
     else:
         # mosaic apertures
         section = config['reduce.flat']
-        mosaic_aperset = mosaic_flat_auto(
+        master_aperset = mosaic_flat_auto(
                 aperture_set_lst = aperset_lst,
                 max_count        = section.getfloat('mosaic_maxcount'),
                 )
         # mosaic original flat images
-        flat_data = mosaic_images(flat_data_lst, mosaic_aperset)
+        flat_data = mosaic_images(flat_data_lst, master_aperset)
         # mosaic flat mask images
-        mask_data = mosaic_images(flat_mask_lst, mosaic_aperset)
+        mask_data = mosaic_images(flat_mask_lst, master_aperset)
         # mosaic sensitivity map
-        flat_map = mosaic_images(flatmap_lst, mosaic_aperset)
+        flat_map = mosaic_images(flatmap_lst, master_aperset)
         # mosaic exptime-normalized flat images
-        flat_norm = mosaic_images(flat_norm_lst, mosaic_aperset)
+        flat_norm = mosaic_images(flat_norm_lst, master_aperset)
 
         # pack and save to fits file
         hdu_lst = fits.HDUList([
@@ -917,8 +920,8 @@ def reduce():
                     ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
-        mosaic_aperset.save_txt(trac_file)
-        mosaic_aperset.save_reg(treg_file)
+        master_aperset.save_txt(trac_file)
+        master_aperset.save_reg(treg_file)
 
     ############################## Extract ThAr ################################
 
@@ -934,15 +937,18 @@ def reduce():
                 ('wavelength', (np.float64, w)),
                 ('flux',       (np.float32, w)),
                 ]
-        _names, _formats = list(zip(*types))
-        spectype = np.dtype({'names': _names, 'formats': _formats})
+        names, formats = list(zip(*types))
+        spectype = np.dtype({'names': names, 'formats': formats})
     
         calib_lst = {}
         count_thar = 0
-        for item in logtable:
-            if item['object'].strip().lower()=='thar':
+        for logitem in logtable:
+
+            fileid = logitem['fileid']
+
+            if logitem['object'].strip().lower()=='thar':
                 count_thar += 1
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+                filename = os.path.join(rawdata, fileid+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
 
@@ -959,15 +965,15 @@ def reduce():
                 section = config['reduce.extract']
 
                 spectra1d = extract_aperset(data, mask,
-                            apertureset = mosaic_aperset,
+                            apertureset = master_aperset,
                             lower_limit = section.getfloat('lower_limit'),
                             upper_limit = section.getfloat('upper_limit'),
                             )
-                head = mosaic_aperset.to_fitsheader(head, channel=None)
+                head = master_aperset.to_fitsheader(head, channel=None)
     
                 spec = []
-                for aper, _item in sorted(spectra1d.items()):
-                    flux_sum = _item['flux_sum']
+                for aper, item in sorted(spectra1d.items()):
+                    flux_sum = item['flux_sum']
                     spec.append((aper, 0, flux_sum.size,
                             np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
                 spec = np.array(spec, dtype=spectype)
@@ -975,7 +981,7 @@ def reduce():
                 section = config['reduce.wlcalib']
 
                 wlcalib_fig = os.path.join(report,
-                        'wlcalib_{}.{}'.format(item['fileid'], fig_format))
+                        'wlcalib_{}.{}'.format(fileid, fig_format))
 
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
@@ -992,7 +998,7 @@ def reduce():
                         # the wavelengths manually
                         if ref_spec is None or ref_calib is None:
                             calib = wlcalib(spec,
-                                filename      = item['fileid']+'.fits',
+                                filename      = fileid+'.fits',
                                 figfilename   = wlcalib_fig,
                                 channel       = None,
                                 linelist      = section.get('linelist'),
@@ -1005,9 +1011,9 @@ def reduce():
                                 )
                         else:
                             # if success, run recalib
-                            aper_offset = ref_aperset.find_aper_offset(mosaic_aperset)
+                            aper_offset = ref_aperset.find_aper_offset(master_aperset)
                             calib = recalib(spec,
-                                filename      = item['fileid']+'.fits',
+                                filename      = fileid+'.fits',
                                 figfilename   = wlcalib_fig,
                                 ref_spec      = ref_spec,
                                 channel       = None,
@@ -1027,7 +1033,7 @@ def reduce():
                     else:
                         # do not search the database
                         calib = wlcalib(spec,
-                            filename      = item['fileid']+'.fits',
+                            filename      = fileid+'.fits',
                             figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
@@ -1046,7 +1052,7 @@ def reduce():
                 else:
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
-                        filename      = item['fileid']+'.fits',
+                        filename      = fileid+'.fits',
                         figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
@@ -1065,15 +1071,15 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(result, item['fileid']+'_wlc.fits')
+                filename = os.path.join(result, fileid+'_ods.fits')
                 hdu_lst.writeto(filename, overwrite=True)
     
                 # add more infos in calib
-                calib['fileid']   = item['fileid']
+                calib['fileid']   = fileid
                 calib['date-obs'] = head[statime_key]
                 calib['exptime']  = head[exptime_key]
                 # pack to calib_lst
-                calib_lst[item['frameid']] = calib
+                calib_lst[logitem['frameid']] = calib
     
         for frameid, calib in sorted(calib_lst.items()):
             print(' [{:3d}] {} - {:4d}/{:4d} r.m.s. = {:7.5f}'.format(frameid,
@@ -1094,14 +1100,14 @@ def reduce():
     flat_norm = flat_norm/flat_map
     section = config['reduce.extract']
     spectra1d = extract_aperset(flat_norm, mask_data,
-                apertureset = mosaic_aperset,
+                apertureset = master_aperset,
                 lower_limit = section.getfloat('lower_limit'),
                 upper_limit = section.getfloat('upper_limit'),
                 )
     # pack spectrum
     spec = []
-    for aper, _item in sorted(spectra1d.items()):
-        flux_sum = _item['flux_sum']
+    for aper, item in sorted(spectra1d.items()):
+        flux_sum = item['flux_sum']
         spec.append((aper, 0, flux_sum.size,
             np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
     spec = np.array(spec, dtype=spectype)
@@ -1120,41 +1126,46 @@ def reduce():
     hdu_lst.writeto(filename, overwrite=True)
 
     #################### Extract Science Spectrum ##############################
-    for item in logtable:
-        if (item['imagetype']=='cal'
-            and item['object'].strip().lower()=='i2') \
-            or item['imagetype']=='sci':
+    for logitem in logtable:
 
-            filename = os.path.join(rawdata, item.fileid+'.fits')
+        fileid  = logitem['fileid']
+        imgtype = logitem['imgtype']
+        objname = logitem['object'].strip().lower()
+
+        if (imgtype == 'cal' and objname == 'i2') or imgtype == 'sci':
+
+            filename = os.path.join(rawdata, fileid+'.fits')
 
             logger.info('FileID: {} ({}) - start reduction: {}'.format(
-                item['fileid'], item['imagetype'], filename))
+                fileid, imgtype, filename))
 
+            # read raw data
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
+
             # correct overscan
             data, head, overmean = correct_overscan(data, head, mask)
-            logger.info('FileID: {} - overscan corrected'.format(item['fileid']))
+            logger.info('FileID: {} - overscan corrected'.format(fileid))
 
             # correct bias
             if has_bias:
                 data = data - bias
                 logger.info('FileID: {} - bias corrected. mean value = {}'.format(
-                    item['fileid'], bias.mean()))
+                    fileid, bias.mean()))
             else:
-                logger.info('FileID: {} - no bias'%(item['fileid']))
+                logger.info('FileID: {} - no bias'%(fileid))
 
             # correct flat
             data = data/flat_map
-            logger.info('FileID: {} - flat corrected'.format(item['fileid']))
+            logger.info('FileID: {} - flat corrected'.format(fileid))
 
             # correct background
             section = config['reduce.background']
             fig_sec = os.path.join(report,
-                        'bkg_{}_sec.{}'.format(item['fileid'], fig_format))
+                        'bkg_{}_sec.{}'.format(fileid, fig_format))
 
             stray = find_background(data, mask,
-                    apertureset_lst = {'A': mosaic_aperset},
+                    apertureset_lst = master_aperset,
                     ncols           = section.getint('ncols'),
                     distance        = section.getfloat('distance'),
                     yorder          = section.getint('yorder'),
@@ -1163,30 +1174,30 @@ def reduce():
             data = data - stray
 
             ####
-            outfilename = os.path.join(midproc, '%s_bkg.fits'%item.fileid)
-            fits.writeto(outfilename, data)
+            #outfilename = os.path.join(midproc, '%s_bkg.fits'%fileid)
+            #fits.writeto(outfilename, data)
 
             # plot stray light
             fig_stray = os.path.join(report,
-                        'bkg_{}_stray.{}'.format(item['fileid'], fig_format))
-            plot_background_aspect1(data + stray, stray, fig_stray)
+                        'bkg_{}_stray.{}'.format(fileid, fig_format))
+            plot_background_aspect1(data+stray, stray, fig_stray)
 
-            logger.info('FileID: {} - background corrected'%(item['fileid']))
+            logger.info('FileID: {} - background corrected'.format(fileid))
 
             # extract 1d spectrum
             section = config['reduce.extract']
             spectra1d = extract_aperset(data, mask,
-                        apertureset = mosaic_aperset,
+                        apertureset = master_aperset,
                         lower_limit = section.getfloat('lower_limit'),
                         upper_limit = section.getfloat('upper_limit'),
                         )
             logger.info('FileID: {} - 1D spectra of {} orders are extracted'.format(
-                item['fileid'], len(spectra1d)))
+                fileid, len(spectra1d)))
 
             # pack spectrum
             spec = []
-            for aper, _item in sorted(spectra1d.items()):
-                flux_sum = _item['flux_sum']
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
                 spec.append((aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
             spec = np.array(spec, dtype=spectype)
@@ -1194,8 +1205,8 @@ def reduce():
             # wavelength calibration
             weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-            logger.info('FileID: {} - wavelength calibration weights: {}'%(
-                item['fileid'], ','.join(['%8.4f'%w for w in weight_lst])))
+            logger.info('FileID: {} - wavelength calibration weights: {}'.format(
+                fileid, ','.join(['%8.4f'%w for w in weight_lst])))
 
             spec, head = wl_reference_singlefiber(spec, head,
                             ref_calib_lst, weight_lst)
@@ -1205,10 +1216,10 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(result, item['fileid']+'_wlc.fits')
+            filename = os.path.join(result, fileid+'_ods.fits')
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: {} - Spectra written to {}'.format(
-                item['fileid'], filename))
+                fileid, filename))
 
 class Xinglong216HRS(Reduction):
 
