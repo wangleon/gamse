@@ -7,10 +7,12 @@ import configparser
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 import astropy.io.fits as fits
+from astropy.io import registry as io_registry
 from astropy.table import Table
 from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
+from ..utils.obslog import read_obslog
 from ..utils import obslog
 from .common import PrintInfo
 
@@ -153,9 +155,23 @@ def make_obslog(path):
 def reduce():
     """2D to 1D pipeline for Keck/HIRES
     """
+
+    # find obs log
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-7:]=='.obslog']
+    if len(logname_lst)==0:
+        print('No observation log found')
+        exit()
+    elif len(logname_lst)>1:
+        print('Multiple observation log found:')
+        for logname in sorted(logname_lst):
+            print('  '+logname)
+    else:
+        pass
+
     # read obs log
-    obslogfile = obslog.find_log(os.curdir)
-    log = obslog.read_log(obslogfile)
+    io_registry.register_reader('obslog', Table, read_obslog)
+    logtable = Table.read(logname_lst[0], format='obslog')
 
     # load config files
     config_file_lst = []
@@ -194,6 +210,9 @@ def reduce():
     if not os.path.exists(result):  os.mkdir(result)
     if not os.path.exists(midproc): os.mkdir(midproc)
 
+    # initialize printing infomation
+    pinfo1 = PrintInfo(print_columns)
+
     nccd = 3
 
     ################################ parse bias ################################
@@ -204,52 +223,67 @@ def reduce():
         has_bias = True
         # load bias data from existing file
         hdu_lst = fits.open(bias_file)
-        biasdata_lst = [hdu_lst[iccd+1].data for iccd in range(nccd)]
+        bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
         hdu_lst.close()
         logger.info('Load bias from image: %s'%bias_file)
     else:
         # read each individual CCD
-        bias_lst = [[] for iccd in range(nccd)]
-        for item in log:
-            if item.objectname[0].strip().lower()=='bias':
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+        bias_data_lst = [[] for iccd in range(nccd)]
+
+        for logitem in logtable:
+            if logitem['object'].strip().lower()=='bias':
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 hdu_lst = fits.open(filename)
+
+                # print info
+                if len(bias_data_lst[0]) == 0:
+                    print('* Combine Bias Images: {}'.format(bias_file))
+                    print(' '*2 + pinfo1.get_title())
+                    print(' '*2 + pinfo1.get_separator())
+                print(' '*2 + pinfo1.get_format().format(logitem))
+
                 for iccd in range(nccd):
                     data = hdu_lst[iccd+1].data
-                    bias_lst[iccd].append(np.float64(data))
+                    bias_data_lst[iccd].append(data)
                 hdu_lst.close()
 
-        has_bias = len(bias_lst[0])>0
+        n_bias = len(bias_data_lst[0])      # number of bias images
+        has_bias = n_bias > 0
 
         if has_bias:
             # there is bias frames
-            head_lst     = [] # each bias has a head
-            biasdata_lst = []
-            hdu_lst = fits.HDUList([fits.PrimaryHDU()])
+            print(' '*2 + pinfo1.get_separator())
+
+            bias = []
+            hdu_lst = fits.HDUList([fits.PrimaryHDU()])  # the final HDU list
 
             # scan for each ccd
             for iccd in range(nccd):
                 ### 3 CCDs loop begins here ###
+                bias_data_lst[iccd] = np.array(bias_data_lst[iccd])
+
+                sub_bias = combine_images(bias_data_lst[iccd],
+                           mode       = 'mean',
+                           upper_clip = section.getfloat('cosmic_clip'),
+                           maxiter    = section.getint('maxiter'),
+                           mask       = (None, 'max')[n_bias>=3],
+                           )
+
                 head = fits.Header()
-                head['HIERARCH EDRS BIAS NFILE'] = len(bias_lst[iccd])
-                bias = combine_images(bias_lst[iccd],
-                        mode       = 'mean',
-                        upper_clip = section.getfloat('cosmic_clip'),
-                        maxiter    = section.getint('maxiter'),
-                        )
+                head['HIERARCH GAMSE BIAS NFILE'] = n_bias
 
                 ############## bias smooth ##################
                 if section.getboolean('smooth'):
                     # bias needs to be smoothed
                     smooth_method = section.get('smooth_method')
 
-                    h, w = bias.shape
+                    h, w = sub_bias.shape
                     if smooth_method in ['gauss','gaussian']:
                         # perform 2D gaussian smoothing
                         smooth_sigma = section.getint('smooth_sigma')
                         smooth_mode  = section.get('smooth_mode')
                         
-                        bias_smooth = gaussian_filter(bias,
+                        bias_smooth = gaussian_filter(sub_bias,
                                         sigma=smooth_sigma, mode=smooth_mode)
 
                         # write information to FITS header
@@ -261,16 +295,20 @@ def reduce():
                         print('Unknown smooth method: ', smooth_method)
                         pass
 
-                    bias = bias_smooth
+                    sub_bias = bias_smooth
                 else:
                     # bias not smoothed
-                    head['HIERARCH EDRS BIAS SMOOTH'] = False
+                    head['HIERARCH GAMSE BIAS SMOOTH'] = False
 
-                biasdata_lst.append(bias)
-                hdu_lst.append(fits.ImageHDU(data=bias, header=head))
+                bias.append(sub_bias)
+                hdu_lst.append(fits.ImageHDU(data=sub_bias, header=head))
                 ### 3 CCDs loop ends here ##
 
             hdu_lst.writeto(bias_file, overwrite=True)
+
+        else:
+            # no bias found
+            pass
 
     ########################## find flat groups #########################
 
