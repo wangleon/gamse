@@ -8,9 +8,27 @@ import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 import astropy.io.fits as fits
 from astropy.table import Table
+from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
 from ..utils import obslog
+from .common import PrintInfo
+
+print_columns = [
+        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',     'str',   '{:^17s}', '{0[fileid]:17s}'),
+        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',     'str',   '{:^15s}', '{0[object]:15s}'),
+        ('i2cell',     'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
+        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('deckname',   'str',   '{:^8s}',  '{0[deckname]:^8s}'),
+        ('filter1',    'str',   '{:^7s}',  '{0[filter1]:^7s}'),
+        ('filter2',    'str',   '{:^7s}',  '{0[filter2]:^7s}'),
+        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
+        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
+
+        ]
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -23,33 +41,55 @@ def make_obslog(path):
         path (str): Path to the raw FITS files.
 
     """
+    name_pattern = '^HI\.\d{8}\.\d{5}\.fits$'
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
-    log = obslog.Log()
+
+    # prepare logtable
+    logtable = Table(dtype=[
+        ('frameid', 'i2'),   ('fileid', 'S17'),   ('imgtype', 'S3'),
+        ('object',  'S15'),  ('i2cell', 'bool'),  ('exptime', 'f4'),
+        ('obsdate',  Time),
+        ('deckname', 'S2'),  ('filter1', 'S5'),   ('filter2', 'S5'),
+        ('saturation','i4'), ('quantile95', 'i4'),
+        ])
+
+    # prepare infomation to print
+    pinfo = PrintInfo(print_columns)
+
+    print(pinfo.get_title())
+    print(pinfo.get_dtype())
+    print(pinfo.get_separator())
+
+    # start scanning the raw files
+    prev_frameid = -1
     for fname in fname_lst:
-        if not re.match('HI\.\d{8}\.\d{5}\.fits', fname):
+        if not re.match(name_pattern, fname):
             continue
         fileid = fname[0:17]
-        filepath = os.path.join(path, fname)
-        hdu_lst = fits.open(filepath)
+        filename = os.path.join(path, fname)
+        hdu_lst = fits.open(filename)
         head0 = hdu_lst[0].header
+
+        frameid = prev_frameid + 1
 
         # get obsdate in 'YYYY-MM-DDTHH:MM:SS' format
         date = head0.get('DATE-OBS')
         utc  = head0.get('UTC', head0.get('UT'))
-        obsdate = '%sT%s'%(date, utc)
+        obsdate = Time('%sT%s'%(date, utc))
 
         exptime    = head0.get('ELAPTIME')
         i2in       = head0.get('IODIN', False)
         i2out      = head0.get('IODOUT', True)
+        i2cell     = i2in
         objectname = head0.get('TARGNAME', '')
-        _type      = head0.get('IMAGETYP')
-        if _type.strip() == 'object':
-            imagetype = 'sci'
+        itype      = head0.get('IMAGETYP')
+        if itype.strip() == 'object':
+            imgtype = 'sci'
         else:
-            imagetype = 'cal'
-            objectname = _type
+            imgtype = 'cal'
+            objectname = itype
         # get deck and filter information
         deckname = head0.get('DECKNAME', '')
         filter1  = head0.get('FIL1NAME', '')
@@ -59,95 +99,55 @@ def make_obslog(path):
         data2 = hdu_lst[2].data
         data3 = hdu_lst[3].data
 
-        # determine the fraction of saturated pixels permillage
+        # determine the total number of saturated pixels
         mask_sat1 = (data1==0)
         mask_sat2 = (data2==0)
         mask_sat3 = (data3==0)
-        prop = (mask_sat1.sum() + mask_sat2.sum() + mask_sat3.sum())/(
-                data1.size + data2.size + data3.size)*1e3
+        saturation = mask_sat1.sum() + mask_sat2.sum() + mask_sat3.sum()
 
-        # find the brightness index in the central region
-        h, w = data2.shape
-        d = data2[h//2-2:h//2+3, int(w*0.2):int(w*0.8)]
-        bri_index = np.median(d, axis=1).mean()
+        # find the 95% quantile
+        quantile95 = np.sort(data2.flatten())[int(data2.size*0.95)]
 
         hdu_lst.close()
 
-        item = obslog.LogItem(
-                   fileid     = fileid,
-                   obsdate    = obsdate,
-                   exptime    = exptime,
-                   imagetype  = imagetype,
-                   i2         = i2in,
-                   objectname = objectname,
-                   deckname   = deckname,
-                   filter1    = filter1,
-                   filter2    = filter2,
-                   saturation = prop,
-                   brightness = bri_index,
-                   )
-        log.add_item(item)
+        item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
+                deckname, filter1, filter2, saturation, quantile95]
+        logtable.add_row(item)
+        # get table Row object. (not elegant!)
+        item = logtable[-1]
 
-    log.sort('obsdate')
+        print(pinfo.get_format().format(item))
 
-    # make info list
-    all_info_lst = []
-    column_lst = [('frameid',    'i'), ('fileid',     's'), ('imagetype',  's'),
-                  ('objectname', 's'), ('i2',         'i'), ('exptime',    'f'),
-                  ('obsdate',    's'), ('deckname',   's'), ('filter1',    's'),
-                  ('filter2',    's'), ('saturation', 'f'), ('brightness', 'f'),
-                 ]
-    columns = ['%s (%s)'%(_name, _type) for _name, _type in column_lst]
-
-    prev_frameid = -1
-    for logitem in log:
-        frameid = prev_frameid + 1
-        info_lst = [
-                    str(frameid),
-                    str(logitem.fileid),
-                    logitem.imagetype,
-                    str(logitem.objectname),
-                    '%1d'%logitem.i2,
-                    '%g'%logitem.exptime,
-                    str(logitem.obsdate),
-                    '%2s'%logitem.deckname,
-                    '%5s'%logitem.filter1,
-                    '%5s'%logitem.filter2,
-                    '%.3f'%logitem.saturation,
-                    '%.1f'%logitem.brightness,
-                ]
         prev_frameid = frameid
-        all_info_lst.append(info_lst)
 
-    # find the maximum length of each column
-    length = []
-    for info_lst in all_info_lst:
-        length.append([len(info) for info in info_lst])
-    length = np.array(length)
-    maxlen = length.max(axis=0)
+    print(pinfo.get_separator())
 
-    # find the output format for each column
-    for info_lst in all_info_lst:
-        for i, info in enumerate(info_lst):
-            if columns[i] in ['fileid (s)','objectname (s)']:
-                fmt = '%%-%ds'%maxlen[i]
-            else:
-                fmt = '%%%ds'%maxlen[i]
-            info_lst[i] = fmt%(info_lst[i])
+    # sort by obsdate
+    #logtable.sort('obsdate')
 
-    # write the obslog into an ascii file
-    #date = log[0].fileid.split('_')[0]
-    #outfilename = '%s-%s-%s.log'%(date[0:4],date[4:6],date[6:8])
-    #outfile = open(outfilename,'w')
-    string = '% columns = '+', '.join(columns)
-    #outfile.write(string+os.linesep)
-    print(string)
-    for info_lst in all_info_lst:
-        string = ' | '.join(info_lst)
-        string = ' '+string
-        #outfile.write(string+os.linesep)
-        print(string)
-    #outfile.close()
+    # determine filename of logtable.
+    # use the obsdate of the LAST frame.
+    obsdate = logtable[-1]['obsdate'].iso[0:10]
+    outname = '{}.obslog'.format(obsdate)
+    if os.path.exists(outname):
+        i = 0
+        while(True):
+            i += 1
+            outname = '{}.{}.obslog'.format(obsdate, i)
+            if not os.path.exists(outname):
+                outfilename = outname
+                break
+    else:
+        outfilename = outname
+
+    # save the logtable
+    outfile = open(outfilename, 'w')
+    outfile.write(pinfo.get_title()+os.linesep)
+    outfile.write(pinfo.get_dtype()+os.linesep)
+    outfile.write(pinfo.get_separator()+os.linesep)
+    for row in logtable:
+        outfile.write(pinfo.get_format().format(row)+os.linesep)
+    outfile.close()
 
 
 def reduce():
