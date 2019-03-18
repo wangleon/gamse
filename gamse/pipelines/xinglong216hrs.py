@@ -614,10 +614,9 @@ def reduce():
     else:
         bias_data_lst = []
 
-
-        for item in logtable:
-            if item['object'].strip().lower()=='bias':
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+        for logitem in logtable:
+            if logitem['object'].strip().lower()=='bias':
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
                 data, head, overmean = correct_overscan(data, head, mask)
@@ -627,7 +626,7 @@ def reduce():
                     print('* Combine Bias Images: {}'.format(bias_file))
                     print(' '*2 + pinfo2.get_title())
                     print(' '*2 + pinfo2.get_separator())
-                print(' '*2 + pinfo2.get_format().format(item, overmean))
+                print(' '*2 + pinfo2.get_format().format(logitem, overmean))
 
                 bias_data_lst.append(data)
 
@@ -696,27 +695,27 @@ def reduce():
     flat_groups = {}
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
-    for item in logtable:
-        name = item['object']   # only valid for single fiber
-        g = name.split()
+    for logitem in logtable:
+        objname = logitem['object']   # only valid for single fiber
+        g = objname.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
-            if name.lower().strip()=='flat':
+            if objname.lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
-                flatname = 'flat_%g'%(item['exptime'])
+                flatname = 'flat_%g'%(logitem['exptime'])
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
                 # "Flat Red" becomes "Red" 
-                char = name[4:].strip()
+                char = objname[4:].strip()
                 flatname = 'flat_%s'%(char.replace(' ','_'))
 
             # add flatname to flat_groups
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(item)
+            flat_groups[flatname].append(logitem)
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
@@ -1635,6 +1634,8 @@ def make_obslog(path):
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
+
+    # prepare logtable
     logtable = Table(dtype=[
         ('frameid', 'i2'),  ('fileid',     'S12'),  ('imgtype',    'S3'),
         ('object',  'S12'), ('i2cell',     'bool'), ('exptime',    'f4'),
