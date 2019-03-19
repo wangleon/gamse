@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
@@ -214,6 +215,19 @@ class FormattedInfo(object):
         lst = ['-'*len(fmt.format(title)) for title, _, fmt, _ in self.columns]
         return ' '.join(lst)
 
-    def get_format(self):
+    def get_format(self, has_esc=True, color_rule=None):
         _, _, _, fmt_item = zip(*self.columns)
-        return ' '.join(fmt_item)
+        fmt_item = list(fmt_item)
+        if has_esc:
+            return ' '.join(fmt_item)
+        else:
+            pattern = re.compile('\x1b\[[\d;]+m([\s\S]*)\x1b\[0m')
+            newfmt_item = []
+            for item in fmt_item:
+                mobj = pattern.match(item)
+                if mobj is None:
+                    newfmt_item.append(item)
+                else:
+                    newfmt_item.append(mobj.group(1))
+            return ' '.join(newfmt_item)
+
