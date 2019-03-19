@@ -12,7 +12,7 @@ from astropy.table import Table
 from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
-from ..utils.obslog import read_obslog
+from ..utils.obslog import parse_num_seq, read_obslog
 from ..utils import obslog
 from .common import FormattedInfo
 
@@ -27,13 +27,22 @@ all_columns = [
         ('deckname', 'str',   '{:^8s}',  '{0[deckname]:^8s}'),
         ('filter1',  'str',   '{:^7s}',  '{0[filter1]:^7s}'),
         ('filter2',  'str',   '{:^7s}',  '{0[filter2]:^7s}'),
-        ('nsat_1',   'int',   '{:^8s}',  '{0[nsat_1]:8d}'),
-        ('nsat_2',   'int',   '{:^8s}',  '{0[nsat_2]:8d}'),
-        ('nsat_3',   'int',   '{:^8s}',  '{0[nsat_3]:8d}'),
-        ('q95_1',    'int',   '{:^8s}',  '{0[q95_1]:8d}'),
-        ('q95_2',    'int',   '{:^8s}',  '{0[q95_2]:8d}'),
-        ('q95_3',    'int',   '{:^8s}',  '{0[q95_3]:8d}'),
+        ('nsat_1',   'int',   '{:^8s}',  '\033[34m{0[nsat_1]:8d}\033[0m'),
+        ('nsat_2',   'int',   '{:^8s}',  '\033[32m{0[nsat_2]:8d}\033[0m'),
+        ('nsat_3',   'int',   '{:^8s}',  '\033[31m{0[nsat_3]:8d}\033[0m'),
+        ('q95_1',    'int',   '{:^8s}',  '\033[34m{0[q95_1]:8d}\033[0m'),
+        ('q95_2',    'int',   '{:^8s}',  '\033[32m{0[q95_2]:8d}\033[0m'),
+        ('q95_3',    'int',   '{:^8s}',  '\033[31m{0[q95_3]:8d}\033[0m'),
         ]
+
+def print_wrapper(string, item):
+    if len(item['object'])>=4 and item['object'][0:4]=='bias':
+        return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
+    elif item['imgtype']=='sci':
+        return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
+    else:
+        return string
+    
 
 def get_datasection(hdu_lst):
     """Get data section
@@ -41,12 +50,12 @@ def get_datasection(hdu_lst):
     # get bin
     tmp = hdu_lst[0].header['CCDSUM'].split()
     binx, biny = int(tmp[0]), int(tmp[1])
-    dataset_lst = {(2, 1): ('[7:1030,1:4096]', (6, 1024), (0, 4096)),
-                   (2, 2): ('[7:1030,1:2048]', (6, 1024), (0, 2048)),
+    dataset_lst = {(2, 1): ('[7:1030,1:4096]', (6, 1030), (0, 4096)),
+                   (2, 2): ('[7:1030,1:2048]', (6, 1030), (0, 2048)),
                    }
     datasec, (x1, x2), (y1, y2) = dataset_lst[(binx, biny)]
-    data_lst = (hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
-                if hdu_lst[i+1].header['DATASEC']==datasec)
+    data_lst = [hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
+                if hdu_lst[i+1].header['DATASEC']==datasec]
     return data_lst
 
 def make_obslog(path):
@@ -154,7 +163,9 @@ def make_obslog(path):
         # get table Row object. (not elegant!)
         item = logtable[-1]
 
-        print(pinfo.get_format().format(item))
+        #print(pinfo.get_format().format(item))
+        string = pinfo.get_format().format(item)
+        print(print_wrapper(string, item))
 
         prev_frameid = frameid
 
@@ -185,7 +196,7 @@ def make_obslog(path):
     outfile.write(loginfo.get_dtype()+os.linesep)
     outfile.write(loginfo.get_separator()+os.linesep)
     for row in logtable:
-        outfile.write(loginfo.get_format().format(row)+os.linesep)
+        outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
 
 
@@ -248,7 +259,8 @@ def reduce():
     if not os.path.exists(midproc): os.mkdir(midproc)
 
     # initialize printing infomation
-    pinfo1 = PrintInfo(print_columns)
+    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+                'object', 'exptime', 'obsdate', 'nsat_2', 'q95_2'])
 
     nccd = 3
 
@@ -273,7 +285,6 @@ def reduce():
             if logitem['object'].strip().lower()=='bias':
                 filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 hdu_lst = fits.open(filename)
-
                 # print info
                 if len(bias_data_lst[0]) == 0:
                     print('* Combine Bias Images: {}'.format(bias_file))
@@ -281,12 +292,14 @@ def reduce():
                     print(' '*2 + pinfo1.get_separator())
                 print(' '*2 + pinfo1.get_format().format(logitem))
 
-                for iccd in range(nccd):
-                    data = hdu_lst[iccd+1].data
-                    bias_data_lst[iccd].append(data)
+                # get data section
+                data_lst = get_datasection(hdu_lst)
                 hdu_lst.close()
 
-        n_bias = len(bias_data_lst[0])      # number of bias images
+                for iccd in range(nccd):
+                    bias_data_lst[iccd].append(data_lst[iccd])
+
+        n_bias = len(bias_data_lst[0])      # get number of bias images
         has_bias = n_bias > 0
 
         if has_bias:
@@ -294,7 +307,7 @@ def reduce():
             print(' '*2 + pinfo1.get_separator())
 
             bias = []
-            hdu_lst = fits.HDUList([fits.PrimaryHDU()])  # the final HDU list
+            bias_hdu_lst = fits.HDUList([fits.PrimaryHDU()])  # the final HDU list
 
             # scan for each ccd
             for iccd in range(nccd):
@@ -307,6 +320,8 @@ def reduce():
                            maxiter    = section.getint('maxiter'),
                            mask       = (None, 'max')[n_bias>=3],
                            )
+                print('Combined bias data for CCD {0}: Mean = {1:6.2f}'.format(
+                    iccd+1, sub_bias.mean()))
 
                 head = fits.Header()
                 head['HIERARCH GAMSE BIAS NFILE'] = n_bias
@@ -340,19 +355,83 @@ def reduce():
                     head['HIERARCH GAMSE BIAS SMOOTH'] = False
 
                 bias.append(sub_bias)
-                hdu_lst.append(fits.ImageHDU(data=sub_bias, header=head))
+                bias_hdu_lst.append(fits.ImageHDU(data=sub_bias, header=head))
                 ### 3 CCDs loop ends here ##
 
-            hdu_lst.writeto(bias_file, overwrite=True)
+            # write bias into file
+            bias_hdu_lst.writeto(bias_file, overwrite=True)
 
         else:
             # no bias found
             pass
 
     ########################## find flat groups #########################
+    section = config['reduce.flat']
+    flat_file = section['flat_file']
 
-    print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
-    # initialize flat_groups
-    flat_groups = {}
-    # flat_groups = {'flat_M': [fileid1, fileid2, ...],
-    #                'flat_N': [fileid1, fileid2, ...]}
+    if os.path.exists(flat_file):
+        pass
+
+    else:
+        print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
+        # print the flat list
+        pinfo_flat = FormattedInfo(all_columns, ['frameid', 'fileid', 'object',
+            'exptime', 'nsat_1', 'nsat_2', 'nsat_3', 'q95_1', 'q95_2', 'q95_3'])
+        print(' '*2 + pinfo_flat.get_title())
+        print(' '*2 + pinfo_flat.get_separator())
+        for logitem in logtable:
+            if len(logitem['object'])>=8 and logitem['object'][0:8]=='flatlamp':
+                print(' '*2 + pinfo_flat.get_format().format(logitem))
+        print(' '*2 + pinfo_flat.get_separator())
+        exit()
+
+
+        flat_hdu_lst = [fits.PrimaryHDU()]
+
+
+
+        flat_lst = []
+        for iccd in range(nccd):
+            string = input('Select a group of flats for CCD {}: '.format(iccd+1))
+            frameid_lst = parse_num_seq(string)
+            if len(frameid_lst)==0:
+                continue
+
+            # now combine flats for this CCD
+            flat_data_lst = []
+            for logitem in logtable:
+                if logitem['frameid'] in frameid_lst:
+                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    hdu_lst = fits.open(filename)
+                    data_lst = get_datasection(hdu_lst)
+                    flat_data_lst.append(data_lst[iccd])
+                    hdu_lst.close()
+
+            n_flat = len(flat_data_lst)
+
+            if n_flat == 0:
+                continue
+            elif n_flat == 1:
+                flatdata = flat_data_lst[0]
+            else:
+                flat_data_lst = np.array(flat_data_lst)
+                flatdata = combine_images(flat_data_lst,
+                            mode       = 'mean',
+                            upper_clip = 10,
+                            maxiter    = 5,
+                            mask       = (None, 'max')[n_flat>=3],
+                            )
+                print('Combined flat data for CCD {0}: '.format(
+                    iccd+1))
+
+            flat_lst.append(flatdata)
+            head = fits.Header()
+            flat_hdu_lst.append(fits.ImageHDU(flatdata, head))
+        # CCD loop ends here
+
+        # write flat data to file
+        flat_hdu_lst = fits.HDUList(flat_hdu_lst)
+        flat_hdu_lst.writeto(flat_file, overwrite=True)
+        print('Flat data writed to {}'.format(flat_file))
+
+
