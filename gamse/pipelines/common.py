@@ -179,3 +179,41 @@ class PrintInfo(object):
     def get_format(self):
         _, _, _, fmt_item = zip(*self.columns)
         return ' '.join(fmt_item)
+
+
+class FormattedInfo(object):
+    def __init__(self, all_columns, selected_columns=None):
+        if selected_columns is None:
+            self.columns = all_columns
+        else:
+            column_lst = []
+            for columns in selected_columns:
+                for item in all_columns:
+                    if item[0] == columns:
+                        column_lst.append(item)
+                        break
+            self.columns = column_lst
+
+    def add_columns(self, columns):
+        new_columns = self.columns.copy()
+        for element in columns:
+            new_columns.append(element)
+        return FormattedInfo(new_columns)
+
+    def get_title(self):
+        titles, _, fmt_title, _ = zip(*self.columns)
+        fmt_title = ' '.join(fmt_title)
+        return fmt_title.format(*titles)
+
+    def get_dtype(self):
+        _, dtypes, fmt_title, _ = zip(*self.columns)
+        fmt_title = ' '.join(fmt_title)
+        return fmt_title.format(*dtypes)
+
+    def get_separator(self):
+        lst = ['-'*len(fmt.format(title)) for title, _, fmt, _ in self.columns]
+        return ' '.join(lst)
+
+    def get_format(self):
+        _, _, _, fmt_item = zip(*self.columns)
+        return ' '.join(fmt_item)
