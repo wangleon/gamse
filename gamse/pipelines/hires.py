@@ -14,23 +14,40 @@ from astropy.time  import Time
 from ..echelle.imageproc import combine_images
 from ..utils.obslog import read_obslog
 from ..utils import obslog
-from .common import PrintInfo
+from .common import FormattedInfo
 
-print_columns = [
-        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',     'str',   '{:^17s}', '{0[fileid]:17s}'),
-        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',     'str',   '{:^15s}', '{0[object]:15s}'),
-        ('i2cell',     'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
-        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('deckname',   'str',   '{:^8s}',  '{0[deckname]:^8s}'),
-        ('filter1',    'str',   '{:^7s}',  '{0[filter1]:^7s}'),
-        ('filter2',    'str',   '{:^7s}',  '{0[filter2]:^7s}'),
-        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
-        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
-
+all_columns = [
+        ('frameid',  'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',   'str',   '{:^17s}', '{0[fileid]:17s}'),
+        ('imgtype',  'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',   'str',   '{:^20s}', '{0[object]:20s}'),
+        ('i2cell',   'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
+        ('exptime',  'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate',  'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('deckname', 'str',   '{:^8s}',  '{0[deckname]:^8s}'),
+        ('filter1',  'str',   '{:^7s}',  '{0[filter1]:^7s}'),
+        ('filter2',  'str',   '{:^7s}',  '{0[filter2]:^7s}'),
+        ('nsat_1',   'int',   '{:^8s}',  '{0[nsat_1]:8d}'),
+        ('nsat_2',   'int',   '{:^8s}',  '{0[nsat_2]:8d}'),
+        ('nsat_3',   'int',   '{:^8s}',  '{0[nsat_3]:8d}'),
+        ('q95_1',    'int',   '{:^8s}',  '{0[q95_1]:8d}'),
+        ('q95_2',    'int',   '{:^8s}',  '{0[q95_2]:8d}'),
+        ('q95_3',    'int',   '{:^8s}',  '{0[q95_3]:8d}'),
         ]
+
+def get_datasection(hdu_lst):
+    """Get data section
+    """
+    # get bin
+    tmp = hdu_lst[0].header['CCDSUM'].split()
+    binx, biny = int(tmp[0]), int(tmp[1])
+    dataset_lst = {(2, 1): ('[7:1030,1:4096]', (6, 1024), (0, 4096)),
+                   (2, 2): ('[7:1030,1:2048]', (6, 1024), (0, 2048)),
+                   }
+    datasec, (x1, x2), (y1, y2) = dataset_lst[(binx, biny)]
+    data_lst = (hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
+                if hdu_lst[i+1].header['DATASEC']==datasec)
+    return data_lst
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -51,17 +68,19 @@ def make_obslog(path):
     # prepare logtable
     logtable = Table(dtype=[
         ('frameid', 'i2'),   ('fileid', 'S17'),   ('imgtype', 'S3'),
-        ('object',  'S15'),  ('i2cell', 'bool'),  ('exptime', 'f4'),
+        ('object',  'S20'),  ('i2cell', 'bool'),  ('exptime', 'f4'),
         ('obsdate',  Time),
         ('deckname', 'S2'),  ('filter1', 'S5'),   ('filter2', 'S5'),
-        ('saturation','i4'), ('quantile95', 'i4'),
+        ('nsat_1',   'i4'),  ('nsat_2',  'i4'),   ('nsat_3',  'i4'),
+        ('q95_1',    'i4'),  ('q95_2',   'i4'),   ('q95_3',   'i4'),
         ])
 
     # prepare infomation to print
-    pinfo = PrintInfo(print_columns)
+    pinfo = FormattedInfo(all_columns,
+            ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
+            'obsdate', 'deckname', 'nsat_2', 'q95_2'])
 
     print(pinfo.get_title())
-    print(pinfo.get_dtype())
     print(pinfo.get_separator())
 
     # start scanning the raw files
@@ -85,35 +104,52 @@ def make_obslog(path):
         i2in       = head0.get('IODIN', False)
         i2out      = head0.get('IODOUT', True)
         i2cell     = i2in
-        objectname = head0.get('TARGNAME', '')
-        itype      = head0.get('IMAGETYP')
-        if itype.strip() == 'object':
-            imgtype = 'sci'
+        imagetyp   = head0.get('IMAGETYP')
+        targname   = head0.get('TARGNAME', '')
+        lampname   = head0.get('LAMPNAME', '')
+
+        if imagetyp == 'object':
+            # science frame
+            imgtype    = 'sci'
+            objectname = targname
+        elif imagetyp == 'flatlamp':
+            # flat
+            imgtype    = 'cal'
+            objectname = '{} ({})'.format(imagetyp, lampname)
+        elif imagetyp == 'arclamp':
+            # arc lamp
+            imgtype    = 'cal'
+            objectname = '{} ({})'.format(imagetyp, lampname)
+        elif imagetyp == 'bias':
+            imgtype    = 'cal'
+            objectname = 'bias'
         else:
-            imgtype = 'cal'
-            objectname = itype
+            print('Unknown IMAGETYP:', imagetyp)
+
+
         # get deck and filter information
         deckname = head0.get('DECKNAME', '')
         filter1  = head0.get('FIL1NAME', '')
         filter2  = head0.get('FIL2NAME', '')
 
-        data1 = hdu_lst[1].data
-        data2 = hdu_lst[2].data
-        data3 = hdu_lst[3].data
+        data1, data2, data3 = get_datasection(hdu_lst)
 
         # determine the total number of saturated pixels
-        mask_sat1 = (data1==0)
-        mask_sat2 = (data2==0)
-        mask_sat3 = (data3==0)
-        saturation = mask_sat1.sum() + mask_sat2.sum() + mask_sat3.sum()
+        nsat_1 = (data1==0).sum()
+        nsat_2 = (data2==0).sum()
+        nsat_3 = (data3==0).sum()
 
         # find the 95% quantile
-        quantile95 = np.sort(data2.flatten())[int(data2.size*0.95)]
+        q95_1 = np.sort(data1.flatten())[int(data1.size*0.95)]
+        q95_2 = np.sort(data2.flatten())[int(data2.size*0.95)]
+        q95_3 = np.sort(data3.flatten())[int(data3.size*0.95)]
 
         hdu_lst.close()
 
         item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
-                deckname, filter1, filter2, saturation, quantile95]
+                deckname, filter1, filter2,
+                nsat_1, nsat_2, nsat_3, q95_1, q95_2, q95_3]
+
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
@@ -143,12 +179,13 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
+    loginfo = FormattedInfo(all_columns)
     outfile = open(outfilename, 'w')
-    outfile.write(pinfo.get_title()+os.linesep)
-    outfile.write(pinfo.get_dtype()+os.linesep)
-    outfile.write(pinfo.get_separator()+os.linesep)
+    outfile.write(loginfo.get_title()+os.linesep)
+    outfile.write(loginfo.get_dtype()+os.linesep)
+    outfile.write(loginfo.get_separator()+os.linesep)
     for row in logtable:
-        outfile.write(pinfo.get_format().format(row)+os.linesep)
+        outfile.write(loginfo.get_format().format(row)+os.linesep)
     outfile.close()
 
 
@@ -225,7 +262,9 @@ def reduce():
         hdu_lst = fits.open(bias_file)
         bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
         hdu_lst.close()
-        logger.info('Load bias from image: %s'%bias_file)
+        message = 'Load bias from image: {}'.format(bias_file)
+        logger.info(message)
+        print(message)
     else:
         # read each individual CCD
         bias_data_lst = [[] for iccd in range(nccd)]
