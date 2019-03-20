@@ -364,6 +364,7 @@ def reduce():
         has_bias = True
         # load bias data from existing file
         hdu_lst = fits.open(bias_file)
+        # pack bias image
         bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
         hdu_lst.close()
         message = 'Load bias from image: {}'.format(bias_file)
@@ -483,7 +484,6 @@ def reduce():
                 print(' '*2 + print_wrapper(string, logitem))
         print(' '*2 + pinfo_flat.get_separator())
 
-        flat_hdu_lst = [fits.PrimaryHDU()]
 
 
         flat_group_lst = {}
@@ -515,12 +515,22 @@ def reduce():
                     sel_lst[key] = input_string.strip()
                     break
 
+        # now combine flat images
         flat_lst = []
+        # flat_lst is a list of the 3 final combined flat images.
+        # flat_lst = [Image1, Image2, Image3]
+
+        flat_hdu_lst = [fits.PrimaryHDU()]
+        # flat_hdu_lst is the final HDU list to be saved as fits
+
         for iccd in range(nccd):
             frameid_lst = flat_group_lst[iccd]
 
             # now combine flats for this CCD
             flat_data_lst = []
+            # flat_data_lst is a list of flat images to be combined.
+            # flat_data = [Image1, Image2, Image3, Image4, ... ...]
+
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
                     filename = os.path.join(rawdata, logitem['fileid']+'.fits')
@@ -528,7 +538,11 @@ def reduce():
                     data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                     hdu_lst.close()
 
-                    flat_data_lst.append(data_lst[iccd])
+                    # correct bias and pack into flat_data_lst
+                    if has_bias:
+                        flat_data_lst.append(data_lst[iccd]-bias[iccd])
+                    else:
+                        flat_data_lst.append(data_lst[iccd])
 
             n_flat = len(flat_data_lst)
 
@@ -546,8 +560,9 @@ def reduce():
                             )
                 #print('\033[{1}mCombined flat data for CCD {0}: \033[0m'.format(
                 #    iccd+1, (34, 32, 31)[iccd]))
-
             flat_lst.append(flatdata)
+
+            # pack the combined flat data into flat_hdu_lst
             head = fits.Header()
             flat_hdu_lst.append(fits.ImageHDU(flatdata, head))
         # CCD loop ends here
