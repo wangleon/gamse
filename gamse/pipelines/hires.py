@@ -91,7 +91,6 @@ def print_wrapper(string, item):
     else:
         return string
 
-
 def parse_3ccd_images(hdu_lst):
     """Parse the 3 CCD images
 
@@ -340,11 +339,22 @@ def reduce():
     if not os.path.exists(result):  os.mkdir(result)
     if not os.path.exists(midproc): os.mkdir(midproc)
 
-    # initialize printing infomation
-    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
-                'object', 'exptime', 'obsdate', 'nsat_2', 'q95_2'])
-
     nccd = 3
+
+    ########################## load file selection #############################
+    sel_lst = {}
+    filesel_filename = 'file_selection.txt'
+    if os.path.exists(filesel_filename):
+        sel_file = open(filesel_filename)
+        for row in sel_file:
+            row = row.strip()
+            if len(row)==0 or row[0] in '#':
+                continue
+            g = row.split(':')
+            key, value = g[0].strip(), g[1].strip()
+            if len(value)>0:
+                sel_lst[key] = value
+        sel_file.close()
 
     ################################ parse bias ################################
     section = config['reduce.bias']
@@ -363,20 +373,25 @@ def reduce():
         # read each individual CCD
         bias_data_lst = [[] for iccd in range(nccd)]
 
+        # initialize printing infomation
+        pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'object',
+                    'exptime', 'nsat_1', 'q95_1', 'nsat_2', 'q95_2',
+                    'nsat_3', 'q95_3'])
+
         for logitem in logtable:
             if logitem['object'].strip().lower()=='bias':
                 filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 hdu_lst = fits.open(filename)
+                data_lst, mask_lst = parse_3ccd_images(hdu_lst)
+                hdu_lst.close()
+
                 # print info
                 if len(bias_data_lst[0]) == 0:
                     print(' '*2 + pinfo1.get_separator())
                     print(' '*2 + pinfo1.get_title())
                     print(' '*2 + pinfo1.get_separator())
-                print(' '*2 + pinfo1.get_format().format(logitem))
-
-                # get data section
-                data_lst = get_datasection(hdu_lst)
-                hdu_lst.close()
+                string = pinfo1.get_format().format(logitem)
+                print(' '*2 + print_wrapper(string, logitem))
 
                 for iccd in range(nccd):
                     bias_data_lst[iccd].append(data_lst[iccd])
@@ -402,8 +417,8 @@ def reduce():
                            maxiter    = section.getint('maxiter'),
                            mask       = (None, 'max')[n_bias>=3],
                            )
-                print('Combined bias data for CCD {0}: Mean = {1:6.2f}'.format(
-                    iccd+1, sub_bias.mean()))
+                print('\033[{2}mCombined bias for CCD {0}: Mean = {1:6.2f}\033[0m'.format(
+                    iccd+1, sub_bias.mean(), (34, 32, 31)[iccd]))
 
                 head = fits.Header()
                 head['HIERARCH GAMSE BIAS NFILE'] = n_bias
@@ -458,26 +473,51 @@ def reduce():
         print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
         # print the flat list
         pinfo_flat = FormattedInfo(all_columns, ['frameid', 'fileid', 'object',
-            'exptime', 'nsat_1', 'nsat_2', 'nsat_3', 'q95_1', 'q95_2', 'q95_3'])
+            'exptime', 'nsat_1', 'q95_1', 'nsat_2', 'q95_2', 'nsat_3', 'q95_3'])
+        print(' '*2 + pinfo_flat.get_separator())
         print(' '*2 + pinfo_flat.get_title())
         print(' '*2 + pinfo_flat.get_separator())
         for logitem in logtable:
             if len(logitem['object'])>=8 and logitem['object'][0:8]=='flatlamp':
-                print(' '*2 + pinfo_flat.get_format().format(logitem))
+                string = pinfo_flat.get_format().format(logitem)
+                print(' '*2 + print_wrapper(string, logitem))
         print(' '*2 + pinfo_flat.get_separator())
-        exit()
-
 
         flat_hdu_lst = [fits.PrimaryHDU()]
 
 
+        flat_group_lst = {}
+        for iccd in range(nccd):
+
+            key = 'flat CCD%d'%(iccd+1)
+            sel_string = sel_lst[key] if key in sel_lst else ''
+            prompt = '\033[{1}mSelect flats for CCD {0} [{2}]: \033[0m'.format(
+                      iccd+1, (34, 32, 31)[iccd], sel_string)
+
+            # read selected files from terminal
+            while(True):
+                input_string = input(prompt)
+                if len(input_string.strip())==0:
+                    # nothing input
+                    if key in sel_lst:
+                        # nothing input but already in selection list
+                        flat_group_lst[iccd] = parse_num_seq(sel_lst[key])
+                        break
+                    else:
+                        # repeat prompt
+                        continue
+                else:
+                    # something input
+                    frameid_lst = parse_num_seq(input_string)
+                    # pack
+                    flat_group_lst[iccd] = frameid_lst
+                    # put input string into selection list
+                    sel_lst[key] = input_string.strip()
+                    break
 
         flat_lst = []
         for iccd in range(nccd):
-            string = input('Select a group of flats for CCD {}: '.format(iccd+1))
-            frameid_lst = parse_num_seq(string)
-            if len(frameid_lst)==0:
-                continue
+            frameid_lst = flat_group_lst[iccd]
 
             # now combine flats for this CCD
             flat_data_lst = []
@@ -485,9 +525,10 @@ def reduce():
                 if logitem['frameid'] in frameid_lst:
                     filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                     hdu_lst = fits.open(filename)
-                    data_lst = get_datasection(hdu_lst)
-                    flat_data_lst.append(data_lst[iccd])
+                    data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                     hdu_lst.close()
+
+                    flat_data_lst.append(data_lst[iccd])
 
             n_flat = len(flat_data_lst)
 
@@ -503,8 +544,8 @@ def reduce():
                             maxiter    = 5,
                             mask       = (None, 'max')[n_flat>=3],
                             )
-                print('Combined flat data for CCD {0}: '.format(
-                    iccd+1))
+                #print('\033[{1}mCombined flat data for CCD {0}: \033[0m'.format(
+                #    iccd+1, (34, 32, 31)[iccd]))
 
             flat_lst.append(flatdata)
             head = fits.Header()
