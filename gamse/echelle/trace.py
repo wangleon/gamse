@@ -296,13 +296,14 @@ class ApertureSet(object):
         outfile.write(str(self))
         outfile.close()
 
-    def save_reg(self, filename, color='green', channel=None):
+    def save_reg(self, filename, color='green', channel=None, transpose=False):
         """Save the aperture set into a reg file that can be loaded in SAO-DS9.
 
         Args:
             filename (str): Name of the output reg file.
             color (str): Color of the lines.
             channel (str): Write the channel name if not *None*.
+            transpose (bool): Transpose the *x* and *y* coodinates.
 
         """
         outfile = open(filename, 'w')
@@ -324,29 +325,51 @@ class ApertureSet(object):
                 # write text in the left edge
                 x = d1-6
                 y = aper_loc.position(x)
-                text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
+                if transpose:
+                    x, y = y, x
+                    angle = 90
+                else:
+                    angle = 0
+                text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '.format(
+                        x+1, y+1, angle, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the right edge
                 x = d2-1+6
                 y = aper_loc.position(x)
-                text = '# text(%7.2f, %7.2f) text={%3d} '%(x+1, y+1, aper)
+                if transpose:
+                    x, y = y, x
+                    angle = 90
+                else:
+                    angle = 0
+                text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '.format(
+                        x+1, y+1, angle, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the center
                 x = (d1+d2)/2.
                 y = aper_loc.position(x)
-                if channel is None:
-                    text = '# text(%7.2f, %7.2f) text={Aperture %3d} '%(x+1, y+1+5, aper)
+                if transpose:
+                    x, y = y, x
+                    angle = 90
                 else:
-                    text = '# text(%7.2f, %7.2f) text={Channel %s, Aperture %3d} '%(x+1, y+1+5, channel, aper)
+                    angle = 0
+                if channel is None:
+                    text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{Aperture {:3d}}} '.format(
+                            x+1, y+1+5, angle, aper)
+                else:
+                    text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{Channel {:s}, Aperture {:3d}}} '.format(
+                            x+1, y+1+5, angle, channel, aper)
                 outfile.write(text+os.linesep)
 
                 # draw lines
                 x = np.linspace(d1, d2, 50)
                 y = aper_loc.position(x)
+                if transpose:
+                    x, y = y, x
                 for (x1,x2), (y1, y2) in zip(pairwise(x), pairwise(y)):
-                    text = 'line(%7.2f,%7.2f,%7.2f,%7.2f)'%(x1+1, y1+1, x2+1, y2+1)
+                    text = 'line({:7.2f},{:7.2f},{:7.2f},{:7.2f})'.format(
+                            x1+1, y1+1, x2+1, y2+1)
                     outfile.write(text+os.linesep)
 
         outfile.close()
@@ -702,6 +725,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     def fitfunc(p, interfunc, n):
         slope, shift, zoom = p
         return interfunc(np.arange(n)*slope+shift) + zoom
+        #quad, slope, shift, zoom = p
+        #return interfunc(np.arange(n)**2/1000.*quad+np.arange(n)*slope+shift) + zoom
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
@@ -709,6 +734,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         return res_lst[mask]
     def find_shift(flux0, flux1):
         p0 = [1.0, 0.0, 0.0]
+        #p0 = [0.0, 1.0, 0.0, 0.0]
         interfunc = intp.InterpolatedUnivariateSpline(
                     np.arange(flux1.size), flux1, k=3)
         mask = np.ones_like(flux0, dtype=np.bool)
@@ -796,6 +822,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             # aperture alignment of each selected column, described by
             # (slope, shift)
             (slope, shift, zoom), mask = find_shift(flux0, flux1)
+            #(quad, slope, shift, zoom), mask = find_shift(flux0, flux1)
             message.append('%4d  %8.5f  %8.5f  %8.5f'%(x1, slope, shift, zoom))
             slope_lst[direction].append(slope)
             shift_lst[direction].append(shift)
