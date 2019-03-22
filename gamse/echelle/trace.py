@@ -718,15 +718,28 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     csec_maxlst = np.zeros(csec_i2 - csec_i1)
 
     # two-direction slope and shift list
-    slope_lst = {-1:[], 1:[]}
-    shift_lst = {-1:[], 1:[]}
+    #slope_lst = {-1:[], 1:[]}
+    #shift_lst = {-1:[], 1:[]}
+    param_lst = {-1:[], 1:[]}
     nodes_lst = {}
 
+    forward     = lambda x, p: x*p[0] + p[1]
+    forward_der = lambda x, p: p[0]
+    def backward(y, p):
+        x = y
+        for ite in range(20):
+            dy    = forward(x, p) - y
+            y_der = forward_der(x, p)
+            dx = dy/y_der
+            x = x - dx
+            if abs(dx) < 1e-7:
+                break
+        return x
+
     def fitfunc(p, interfunc, n):
-        slope, shift, zoom = p
-        return interfunc(np.arange(n)*slope+shift) + zoom
-        #quad, slope, shift, zoom = p
-        #return interfunc(np.arange(n)**2/1000.*quad+np.arange(n)*slope+shift) + zoom
+        #slope, shift, zoom = p
+        #return interfunc(np.arange(n)*slope+shift) + zoom
+        return interfunc(forward(np.arange(n), p)) + p[-1]
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
@@ -821,26 +834,37 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         else:
             # aperture alignment of each selected column, described by
             # (slope, shift)
-            (slope, shift, zoom), mask = find_shift(flux0, flux1)
-            #(quad, slope, shift, zoom), mask = find_shift(flux0, flux1)
+            #(slope, shift, zoom), mask = find_shift(flux0, flux1)
+            param, mask = find_shift(flux0, flux1)
+            slope, shift, zoom = param[0], param[1], param[2]
+
             message.append('%4d  %8.5f  %8.5f  %8.5f'%(x1, slope, shift, zoom))
-            slope_lst[direction].append(slope)
-            shift_lst[direction].append(shift)
+            #slope_lst[direction].append(slope)
+            #shift_lst[direction].append(shift)
+            param_lst[direction].append(param[0:2])
+
             for y, f in zip(ymax, fmax):
                 ystep = y
-                for slope, shift in zip(slope_lst[direction][::-1],
-                                        shift_lst[direction][::-1]):
-                    ystep = (ystep - shift)/slope
+                #for slope, shift in zip(slope_lst[direction][::-1],
+                #                        shift_lst[direction][::-1]):
+                for param in param_lst[direction][::-1]:
+                    slope, shift = param
+                    #ystep = (ystep - shift)/slope
+                    ystep = backward(ystep, param)
                 peak_lst.append((ystep,f))
                 nodes_lst[x1].append(y)
 
             # find ysta & yend, the start and point pixel after aperture
             # alignment
             ysta, yend = 0., h-1.
-            for slope, shift in zip(slope_lst[direction][::-1],
-                                    shift_lst[direction][::-1]):
-                ysta = (ysta - shift)/slope
-                yend = (yend - shift)/slope
+            #for slope, shift in zip(slope_lst[direction][::-1],
+            #                        shift_lst[direction][::-1]):
+            for param in param_lst[direction][::-1]:
+                slope, shift = param
+                #ysta = (ysta - shift)/slope
+                #yend = (yend - shift)/slope
+                ysta = backward(ysta, param)
+                yend = backward(yend, param)
             # interplote the new csection, from ysta to yend
             ynew = np.linspace(ysta, yend, h)
             interfunc = intp.InterpolatedUnivariateSpline(ynew, linflux1, k=3)
@@ -1052,10 +1076,13 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         xfit, yfit = [x0], [mid]
         for direction in [-1,1]:
             ystep = mid
-            for ix, (slope, shift) in enumerate(zip(slope_lst[direction],
-                                                    shift_lst[direction])):
+            #for ix, (slope, shift) in enumerate(zip(slope_lst[direction],
+            #                                        shift_lst[direction])):
+            for ix, param in enumerate(param_lst[direction]):
+                slope, shift = param
                 # use (slope, shift) as nodes for polynomial
-                ystep = ystep*slope + shift
+                #ystep = ystep*slope + shift
+                ystep = forward(ystep, param)
                 x1 = x_lst[direction][ix]
                 y_lst = nodes_lst[x1]
                 # now ystep is the calculated approximate position of peak along
