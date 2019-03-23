@@ -1045,7 +1045,8 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     plt.close(fig2)
 
 def reduce():
-    """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope.
+    """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
+    Observatory.
     """
 
     # find obs log
@@ -1316,11 +1317,12 @@ def reduce():
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
                         separation = section.get('separation'),
+                        align_deg  = section.getint('align_deg'),
                         filling    = section.getfloat('filling'),
                         degree     = section.getint('degree'),
                         display    = section.getboolean('display'),
-                        filename   = flat_filename,
-                        fig_file   = fig_file,
+                        figtitle   = 'Trace for {}'.format(flat_filename),
+                        figfile    = fig_file,
                         )
             aperset.save_txt(aperset_filename)
             aperset.save_reg(aperset_regname)
