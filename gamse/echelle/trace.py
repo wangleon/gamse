@@ -577,7 +577,8 @@ class _ApertureSetIterator(object):
             raise StopIteration()
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
-        filling=0.3, degree=3, display=True, filename=None, fig_file=None):
+        align_deg=2, filling=0.3, degree=3,
+        display=True, figtitle='', figfile=None):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -588,13 +589,14 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
         separation (str): Estimated order separations (in pixel)
-            along the cross-dispersion.
+            along the cross-dispersion direction.
+        align_deg (int): Degree of polynomial used to find the alignment of
+            cross-sections along the cross-dispersion direction.
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (int): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
-        filename (str): Name of the input file. Only used to display the
-            title in the figure.
-        fig_file (str): Path to the output figure.
+        title (str): Title to be displayed in the figure.
+        figfile (str): Path to the output figure.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -691,8 +693,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             ax1.set_xlim(x1, x2)
             ax1.set_ylim(y1, y2)
             fig.canvas.draw()
-    if filename is not None:
-        fig.suptitle('Trace for %s'%os.path.basename(filename), fontsize=15)
+    fig.suptitle(figtitle, fontsize=15)
     fig.canvas.mpl_connect('scroll_event',on_scroll)
     fig.canvas.draw()
     if display:
@@ -717,14 +718,20 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     csec_nlst   = np.zeros(csec_i2 - csec_i1, dtype=np.int32)
     csec_maxlst = np.zeros(csec_i2 - csec_i1)
 
-    # two-direction slope and shift list
-    #slope_lst = {-1:[], 1:[]}
-    #shift_lst = {-1:[], 1:[]}
+    # two-directioal param list
     param_lst = {-1:[], 1:[]}
     nodes_lst = {}
 
-    forward     = lambda x, p: x*p[0] + p[1]
-    forward_der = lambda x, p: p[0]
+    def forward(x, p):
+        deg = len(p)-1  # determine the polynomial degree
+        res = p[0]
+        for i in range(deg):
+            res = res*x + p[i+1]
+        return res
+    def forward_der(x, p):
+        deg = len(p)-1  # determine the polynomial degree
+        p_der = [(deg-i)*p[i] for i in range(deg)]
+        return forward(x, p_der)
     def backward(y, p):
         x = y
         for ite in range(20):
@@ -735,19 +742,21 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             if abs(dx) < 1e-7:
                 break
         return x
-
     def fitfunc(p, interfunc, n):
-        #slope, shift, zoom = p
-        #return interfunc(np.arange(n)*slope+shift) + zoom
-        return interfunc(forward(np.arange(n), p)) + p[-1]
+        return interfunc(forward(np.arange(n), p[0:-1])) + p[-1]
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
             mask = np.ones_like(flux0, dtype=np.bool)
         return res_lst[mask]
-    def find_shift(flux0, flux1):
-        p0 = [1.0, 0.0, 0.0]
+    def find_shift(flux0, flux1, deg):
+        #p0 = [1.0, 0.0, 0.0]
         #p0 = [0.0, 1.0, 0.0, 0.0]
+        #p0 = [0.0, 0.0, 1.0, 0.0, 0.0]
+
+        p0 = [0.0 for i in range(deg+1)]
+        p0[-3] = 1.0
+
         interfunc = intp.InterpolatedUnivariateSpline(
                     np.arange(flux1.size), flux1, k=3)
         mask = np.ones_like(flux0, dtype=np.bool)
@@ -792,8 +801,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     core = np.hanning(int(fsep(h/2)))
     core /= core.sum()
 
-    message = ['Finding flat curves for "%s"'%filename,
-                '   x    slope    offset    zoom']
+    figt = plt.figure(dpi=150, figsize=(12,8))
+    axt = figt.gca()
+
     while(True):
         # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
@@ -832,24 +842,13 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_nlst[i1:i2] += 1
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],linflux1)
         else:
-            # aperture alignment of each selected column, described by
-            # (slope, shift)
-            #(slope, shift, zoom), mask = find_shift(flux0, flux1)
-            param, mask = find_shift(flux0, flux1)
-            slope, shift, zoom = param[0], param[1], param[2]
-
-            message.append('%4d  %8.5f  %8.5f  %8.5f'%(x1, slope, shift, zoom))
-            #slope_lst[direction].append(slope)
-            #shift_lst[direction].append(shift)
-            param_lst[direction].append(param[0:2])
+            # aperture alignment of each selected column, described by param
+            param, mask = find_shift(flux0, flux1, deg=align_deg)
+            param_lst[direction].append(param[0:-1])
 
             for y, f in zip(ymax, fmax):
                 ystep = y
-                #for slope, shift in zip(slope_lst[direction][::-1],
-                #                        shift_lst[direction][::-1]):
                 for param in param_lst[direction][::-1]:
-                    slope, shift = param
-                    #ystep = (ystep - shift)/slope
                     ystep = backward(ystep, param)
                 peak_lst.append((ystep,f))
                 nodes_lst[x1].append(y)
@@ -857,12 +856,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             # find ysta & yend, the start and point pixel after aperture
             # alignment
             ysta, yend = 0., h-1.
-            #for slope, shift in zip(slope_lst[direction][::-1],
-            #                        shift_lst[direction][::-1]):
             for param in param_lst[direction][::-1]:
-                slope, shift = param
-                #ysta = (ysta - shift)/slope
-                #yend = (yend - shift)/slope
                 ysta = backward(ysta, param)
                 yend = backward(yend, param)
             # interplote the new csection, from ysta to yend
@@ -882,6 +876,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
             # for debug purpose
             #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
+            axt.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -904,6 +899,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             flux0 = flux1
             icol += 1
             continue
+
+    axt.set_xlim(0, h-1)
+    axt.grid(True)
+    axt.set_yscale('log')
+    figt.savefig('test-%04d.png'%x1)
+    plt.close(figt)
 
     logger.debug((os.linesep+' '*4).join(message))
 
@@ -933,8 +934,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # convert back to stacked cross-section coordinate
     peaky += istart
 
-    message = ['Detected peaks in stacked cross-section for "%s"'%filename,
-               'peak  window']
+    message = []
     for _peak in peaky:
         message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
     logger.debug((os.linesep+' '*3).join(message))
@@ -981,8 +981,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                 color='C1')
 
     # find central positions along Y axis for all apertures
-    message = ['Aperture Detection Information for "%s"'%filename,
-               'y, ymax, i1, i2, n, n_xsec, select?, peak']
+    message = []
     mid_lst = []
     for y in peaky:
         f = csec_lst[y]
@@ -1038,8 +1037,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[-1])
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
-            logger.info('Remove the last aperture at %d for "%s" (distance=%d > 2 x %d)'%(
-                        mid_lst[-1], filename, mid_lst[-1]-mid_lst[-2], sep))
+            logger.info('Remove the last aperture at %d (distance=%d > 2 x %d)'%(
+                        mid_lst[-1], mid_lst[-1]-mid_lst[-2], sep))
             mid_lst.pop(-1)
         else:
             break
@@ -1048,8 +1047,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[0])
         if mid_lst[1] - mid_lst[0] > 2*sep:
-            logger.info('Remove the first aperture at %d for "%s" (distance=%d > 2 x %d)'%(
-                        mid_lst[0], filename, mid_lst[1]-mid_lst[0], sep))
+            logger.info('Remove the first aperture at %d (distance=%d > 2 x %d)'%(
+                        mid_lst[0], mid_lst[1]-mid_lst[0], sep))
             mid_lst.pop(0)
         else:
             break
@@ -1076,12 +1075,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         xfit, yfit = [x0], [mid]
         for direction in [-1,1]:
             ystep = mid
-            #for ix, (slope, shift) in enumerate(zip(slope_lst[direction],
-            #                                        shift_lst[direction])):
             for ix, param in enumerate(param_lst[direction]):
-                slope, shift = param
-                # use (slope, shift) as nodes for polynomial
-                #ystep = ystep*slope + shift
                 ystep = forward(ystep, param)
                 x1 = x_lst[direction][ix]
                 y_lst = nodes_lst[x1]
@@ -1196,8 +1190,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         fontsize=12)
 
     fig.canvas.draw()
-    if fig_file is not None:
-        fig.savefig(fig_file)
+    if figfile is not None:
+        fig.savefig(figfile)
     
     if plot_paper_fig:
         # adjust figure 1 in paper
@@ -1217,7 +1211,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         ax1m.set_ylim(h-1, 1600)
         ax1m.set_xticks([])
         ax1m.set_yticks([])
-        fig1p.savefig(fig_file+'.pdf')
+        fig1p.savefig(figfile+'.pdf')
 
         # adjust figure 2 in paper
         ax2p.xaxis.set_major_locator(tck.MultipleLocator(500))
@@ -1230,7 +1224,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         ax2p.set_xlabel('Y', fontsize=18)
         ax2p.set_ylabel('Count', fontsize=18)
         ax2p.set_xlim(csec_ylst[istart], csec_ylst[iend])
-        fig2p.savefig(fig_file+'_2.pdf')
+        fig2p.savefig(figfile+'_2.pdf')
         plt.close(fig1p)
         plt.close(fig2p)
 
@@ -1238,7 +1232,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     #ax2.set_xlim(3400, 3500)
     #ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
     #ax2.xaxis.set_minor_locator(tck.MultipleLocator(10))
-    #fig.savefig(fig_file[0:-4]+'-debug.png')
+    #fig.savefig(figfile[0:-4]+'-debug.png')
 
     plt.close(fig)
 
