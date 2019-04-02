@@ -583,8 +583,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     Args:
         data (:class:`numpy.ndarray`): Image data.
-        mask (:class:`numpy.ndarray`): Image mask with the same shape as **data**,
-            where saturated pixels are marked with 4, and bad pixels with 2.
+        mask (:class:`numpy.ndarray`): Image mask with the same shape as
+            **data**, where saturated pixels are marked with 4, and bad pixels
+            with 2.
         scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
@@ -764,22 +765,25 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         for i in range(10):
             p, _ = opt.leastsq(resfunc, p0, args=(interfunc, flux0, mask))
             res_lst = resfunc(p, interfunc, flux0)
-            mean = res_lst.mean()
             std  = res_lst.std()
-            new_mask = (res_lst < mean + clipping*std)*(res_lst > mean - clipping*std)
+            mask1 = res_lst <  clipping*std
+            mask2 = res_lst > -clipping*std
+            new_mask = mask1*mask2
             if new_mask.sum() == mask.sum():
                 break
             mask = new_mask
         return p, mask
 
-    def find_local_peak(xdata, ydata, mask):
-
-        if mask.sum()>=2:
-            core = np.hanning(min(5, ydata.size))
+    def find_local_peak(xdata, ydata, mask, smooth=None, figname=''):
+        #fig = plt.figure(dpi=150, figsize=(8,6))
+        #ax = fig.gca()
+        #ax.plot(xdata, ydata, color='C0')
+        if smooth is not None:
+            core = np.hanning(min(smooth, ydata.size))
+            core = core/core.sum()
             # length of core should not be smaller than length of ydata
             # otherwise the length of ydata after convolution is reduced
             ydata = np.convolve(ydata, core, mode='same')
-
         argmax = ydata.argmax()
         xmax = xdata[argmax]
         if argmax<2 or argmax>ydata.size-2:
@@ -787,8 +791,43 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],deg=2)
         a, b,c = coeff
         ypeak = -b/2/a
+        #ax.plot(xdata, ydata, color='C1')
+        #ax.axvline(x=ypeak, color='C1', ls='--')
+        #fig.savefig(figname)
+        #plt.close(fig)
         return ypeak
+    def correct_background(section, figname):
+        h = section.size
+        allimin, allmin = get_local_minima(section, window=25)
+        #mask = np.ones_like(allmin, dtype=np.bool)
+        mask = allmin > 0
+        for i in range(2):
+            coeff = np.polyfit(allimin[mask]/h, np.log(allmin[mask]), deg=3)
+            res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
+            std = res_lst[mask].std()
+            print(std)
+            mask1 = res_lst < 3*std
+            mask2 = res_lst > -3*std
+            new_mask = mask1*mask2
+            print(i, new_mask)
+            if new_mask.sum() == mask.sum():
+                break
+            else:
+                mask = mask*new_mask
 
+        fig = plt.figure(dpi=150, figsize=(10,8))
+        ax = fig.gca()
+        #y1, y2 = ax.get_ylim()
+        xnew = np.arange(h)
+        ynew = np.exp(np.polyval(coeff, xnew/h))
+        ax.plot(xnew, ynew, color='C0')
+        #ax.plot(xnew, ynew+std, color='C0', ls='--')
+        #ax.plot(xnew, ynew-std, color='C0', ls='--')
+        ax.plot(xnew, section, color='C1')
+        ax.scatter(allimin, allmin, c='C3', s=10)
+        ax.set_yscale('log')
+        plt.savefig(figname)
+        plt.close(fig)
 
     # generate a window list according to separations
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
@@ -810,6 +849,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         flux1 = logdata[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
+        correct_background(linflux1, 'bkg-%04d.png'%x1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
         flux1 = np.convolve(flux1, core, mode='same')
         if icol == 0:
@@ -876,7 +916,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
             # for debug purpose
             #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
-            axt.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
+            if direction==-1:
+                axt.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -903,10 +944,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     axt.set_xlim(0, h-1)
     axt.grid(True)
     axt.set_yscale('log')
-    figt.savefig('test-%04d.png'%x1)
+    figt.savefig('order_alignment.png')
     plt.close(figt)
 
-    logger.debug((os.linesep+' '*4).join(message))
+    #logger.debug((os.linesep+' '*4).join(message))
 
     # filter the consecutive zero elements at the beginning and the end
     i_nonzero = np.nonzero(csec_nlst)[0]
@@ -1097,9 +1138,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                         # number of points is not enough to get a local peak
                         continue
                     xdata = np.arange(y1, y2)
-                    ydata = data[y1:y2, x1]
+                    ydata = logdata[y1:y2, x1-3:x1+2].mean(axis=1)
                     m = sat_mask[y1:y2, x1]
-                    ypeak = find_local_peak(xdata, ydata, m)
+                    ypeak = find_local_peak(xdata, ydata, m, smooth=15, figname='%02d.%04d.png'%(aperture, x1))
                     xfit.append(x1)
                     yfit.append(ypeak)
                 elif option == 3:
@@ -1117,7 +1158,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
-        #ax1.plot(xfit, yfit, 'ro-',lw=0.5,alpha=0.6)
+        ax1.plot(xfit, yfit, 'ro',lw=0.5, alpha=0.8, ms=1, markeredgewidth=0)
 
         # fit chebyshev polynomial
         # determine the left and right domain
