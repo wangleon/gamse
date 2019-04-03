@@ -12,6 +12,7 @@ from astropy.table import Table
 from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
+from ..echelle.trace import find_apertures, load_aperture_set
 from ..utils.obslog import parse_num_seq, read_obslog
 from ..utils import obslog
 from .common import FormattedInfo
@@ -112,14 +113,15 @@ def parse_3ccd_images(hdu_lst):
     data_lst = [hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
                 if hdu_lst[i+1].header['DATASEC']==datasec]
 
-    # get mask
-    mask_sat1 = data_lst[0]==65535
-    mask_sat2 = data_lst[1]==0
-    mask_sat3 = data_lst[2]==0
+    # get saturated masks
+    mask_sat1 = data_lst[0]==65535   # for UV CCD, saturated pixels are 65535.
+    mask_sat2 = data_lst[1]==0       # for green & red CCDs, saturated pixels
+    mask_sat3 = data_lst[2]==0       # are 0.
+    # get bad pixel masks
     mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
     mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
     mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
-
+    # pack masks
     mask1 = np.int16(mask_sat1)*4 + np.int16(mask_bad1)*2
     mask2 = np.int16(mask_sat2)*4 + np.int16(mask_bad2)*2
     mask3 = np.int16(mask_sat3)*4 + np.int16(mask_bad3)*2
@@ -367,7 +369,7 @@ def reduce():
         # pack bias image
         bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
         hdu_lst.close()
-        message = 'Load bias from image: {}'.format(bias_file)
+        message = 'Load bias data from file: {}'.format(bias_file)
         logger.info(message)
         print(message)
     else:
@@ -439,10 +441,10 @@ def reduce():
                                         sigma=smooth_sigma, mode=smooth_mode)
 
                         # write information to FITS header
-                        head['HIERARCH EDRS BIAS SMOOTH']        = True
-                        head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                        head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
-                        head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                        head['HIERARCH GAMSE BIAS SMOOTH']        = True
+                        head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                        head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
+                        head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
                     else:
                         print('Unknown smooth method: ', smooth_method)
                         pass
@@ -467,8 +469,17 @@ def reduce():
     section = config['reduce.flat']
     flat_file = section['flat_file']
 
+    flat_lst = [] # a list of 3 combined flat images. [Image1, Image2, Image3]
+                  # bias has been corrected already. but not rotated yet.
+
     if os.path.exists(flat_file):
-        pass
+        # read flat data from existing file
+        hdu_lst = fits.open(flat_file)
+        for iccd in range(nccd):
+            flat_lst.append(hdu_lst[iccd+1].data)
+        hdu_lst.close()
+        message = 'Loaded flat data from file: {}'.format(flat_file)
+        print(message)
 
     else:
         print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -516,9 +527,6 @@ def reduce():
                     break
 
         # now combine flat images
-        flat_lst = []
-        # flat_lst is a list of the 3 final combined flat images.
-        # flat_lst = [Image1, Image2, Image3]
 
         flat_hdu_lst = [fits.PrimaryHDU()]
         # flat_hdu_lst is the final HDU list to be saved as fits
@@ -564,6 +572,7 @@ def reduce():
 
             # pack the combined flat data into flat_hdu_lst
             head = fits.Header()
+            head['HIERARCH GAMSE FLAT CCD{} NFILE'.format(iccd+1)] = n_flat
             flat_hdu_lst.append(fits.ImageHDU(flatdata, head))
         # CCD loop ends here
 
@@ -572,4 +581,78 @@ def reduce():
         flat_hdu_lst.writeto(flat_file, overwrite=True)
         print('Flat data writed to {}'.format(flat_file))
 
+    ######################### trace orders ##################################
 
+    flatdata = flat_lst[0].T
+    mask = np.zeros_like(flatdata, dtype=np.int16)
+    aperset = find_apertures(flatdata[0:990,:], mask[0:990,:],
+                scan_step  = 80,
+                minimum    = 3,
+                separation = '100:32, 800:18',
+                align_deg  = 2,
+                filling    = 0.2,
+                degree     = 4,
+                display    = False,
+                figtitle   = 'trace_CCD1',
+                figfile    = 'trace_1.png',
+                )
+    aperset.save_reg('trace_1.reg', transpose=True)
+    exit()
+
+    flatdata = flat_lst[1].T
+    mask = np.zeros_like(flatdata, dtype=np.int16)
+    aperset = find_apertures(flatdata, mask,
+                scan_step  = 100,
+                minimum    = 3,
+                separation = '100:55, 800:35',
+                align_deg  = 2,
+                filling    = 0.2,
+                degree     = 4,
+                display    = False,
+                figtitle   = 'trace_CCD2',
+                figfile    = 'trace_2.png',
+                )
+    aperset.save_reg('trace_2.reg', transpose=True)
+
+    flatdata = flat_lst[2].T
+    mask = np.zeros_like(flatdata, dtype=np.int16)
+    aperset = find_apertures(flatdata, mask,
+                scan_step  = 100,
+                minimum    = 3,
+                separation = '100:84, 1000:55',
+                align_deg  = 2,
+                filling    = 0.2,
+                degree     = 4,
+                display    = False,
+                figtitle   = 'trace_CCD3',
+                figfile    = 'trace_3.png',
+                )
+    aperset.save_reg('trace_3.reg', transpose=True)
+
+    '''
+    gap_gb = 20
+    gap_rg = 26
+    image = np.zeros((1024+gap_rg+1024+gap_gb+1024, 4096))
+    r1, r2 = 0, 1024
+    image[r1:r2] = flat_lst[2].T
+    r1 = 1024+gap_rg
+    r2 = r1+1024
+    image[r1:r2] = flat_lst[1].T-300
+    r1 = 1024+gap_rg+1024+gap_gb
+    r2 = r1+1024
+    image[r1:r2] = flat_lst[0].T-1200
+
+    mask = np.zeros_like(image, dtype=np.int16)
+    aperset = find_apertures(image, mask,
+                scan_step  = 80,
+                minimum    = 3,
+                separation = '100:84, 3000:18',
+                align_deg  = 2,
+                filling    = 0.2,
+                degree     = 4,
+                display    = False,
+                figtitle   = 'trace_CCD12',
+                figfile    = 'trace_12.png',
+                )
+    aperset.save_reg('trace_12.reg', transpose=True)
+    '''
