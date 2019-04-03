@@ -798,7 +798,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         return ypeak
     def correct_background(section, figname):
         h = section.size
-        allimin, allmin = get_local_minima(section, window=25)
+        #allimin, allmin = get_local_minima(section, window=25)
+        core = np.hanning(20)
+        core = core/core.sum()
+        section_new = np.convolve(section, core, mode='same')
+        allimin, allmin = get_local_minima(section_new)
+        #allimin, allmin = get_local_minima(section)
         #mask = np.ones_like(allmin, dtype=np.bool)
         mask = allmin > 0
         for i in range(2):

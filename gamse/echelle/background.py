@@ -582,7 +582,10 @@ def find_background(data, mask, aperturesets, ncols, distance,
             ax1.plot(xsection, ls='-' ,color='C0', lw=0.5, alpha=0.2)
 
         for ichannel, (channel, apertureset) in enumerate(sorted(apertureset_lst.items())):
-            # predict post- and pre-aperutres
+            # predict post- and pre-aperutres.
+            # post- and pre-apertures are virtual apertures that are not
+            # identified by the order detection function, probabaly because they
+            # are too weak
             y_lst, aper_lst = [], []
             apercen_lst = []
             for aper, aperloc in apertureset.items():
