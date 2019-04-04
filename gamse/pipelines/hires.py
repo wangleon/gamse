@@ -121,9 +121,9 @@ def parse_3ccd_images(hdu_lst):
     #mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
     #mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
     #mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
-    mask_bad1 = np.get_badpixel_mask((binx, biny), ccd=1)
-    mask_bad2 = np.get_badpixel_mask((binx, biny), ccd=2)
-    mask_bad3 = np.get_badpixel_mask((binx, biny), ccd=3)
+    mask_bad1 = get_badpixel_mask((binx, biny), ccd=1)
+    mask_bad2 = get_badpixel_mask((binx, biny), ccd=2)
+    mask_bad3 = get_badpixel_mask((binx, biny), ccd=3)
     # pack masks
     mask1 = np.int16(mask_sat1)*4 + np.int16(mask_bad1)*2
     mask2 = np.int16(mask_sat2)*4 + np.int16(mask_bad2)*2
@@ -288,7 +288,7 @@ def make_obslog(path):
 def get_badpixel_mask(binning, ccd=0):
     # for only 1 CCD
     if ccd == 0:
-        if binning = (1, 1):
+        if binning == (1, 1):
             # all Flase
             mask = np.zeros((2048, 2048), dtype=np.bool)
             mask[:,    1127] = True
@@ -298,7 +298,7 @@ def get_badpixel_mask(binning, ccd=0):
     # for 3 CCDs
     elif ccd == 1:
         # for Blue CCD
-        if binning = (2, 1):
+        if binning == (2, 1):
             # all False
             mask = np.zeros((4096, 1024), dtype=np.bool)
             mask[3878:,   4]  = True
@@ -310,14 +310,14 @@ def get_badpixel_mask(binning, ccd=0):
             mask[:,     994:] = True
     elif ccd == 2:
         # for Green CCD
-        if binning = (2, 1):
+        if binning == (2, 1):
             # all False
             mask = np.zeros((4096, 1024), dtype=np.bool)
             mask[3726:, 323] = True
             mask[3726:, 324] = True
     elif ccd == 3:
         # for Red CCD
-        if binning = (2, 1):
+        if binning == (2, 1):
             # all False
             mask = np.zeros((4096, 1024), dtype=np.bool)
             mask[1489:2196, 449]  = True
@@ -513,6 +513,7 @@ def reduce():
 
     flat_lst = [] # a list of 3 combined flat images. [Image1, Image2, Image3]
                   # bias has been corrected already. but not rotated yet.
+    flatmask_lst = [] # a list of 3 flat masks
 
     if os.path.exists(flat_file):
         # read flat data from existing file
@@ -580,10 +581,10 @@ def reduce():
             flat_data_lst = []
             # flat_data_lst is a list of flat images to be combined.
             # flat_data_lst = [Image1, Image2, Image3, Image4, ... ...]
-            flat_mask_lst = []
-            # flat_mask_lst is a list of flat masks.
-            # flat_mask_lst = [Mask1, Mask2, Mask3, Mask4, ... ...]
 
+            #scan the logtable
+            # log loop inside the CCD loop because flats for different CCDs are
+            # in different files
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
                     filename = os.path.join(rawdata, logitem['fileid']+'.fits')
@@ -596,6 +597,11 @@ def reduce():
                         flat_data_lst.append(data_lst[iccd]-bias[iccd])
                     else:
                         flat_data_lst.append(data_lst[iccd])
+
+                    # initialize flat mask
+                    if len(flat_data_lst) == 1:
+                        flatmask = mask_lst[iccd]
+                    flatmask = flatmask | mask_lst[iccd]
 
             n_flat = len(flat_data_lst)
 
@@ -614,11 +620,13 @@ def reduce():
                 #print('\033[{1}mCombined flat data for CCD {0}: \033[0m'.format(
                 #    iccd+1, (34, 32, 31)[iccd]))
             flat_lst.append(flatdata)
+            flatmask_lst.append(flatmask)
 
             # pack the combined flat data into flat_hdu_lst
             head = fits.Header()
             head['HIERARCH GAMSE FLAT CCD{} NFILE'.format(iccd+1)] = n_flat
             flat_hdu_lst.append(fits.ImageHDU(flatdata, head))
+            flat_hdu_lst.append(fits.ImageHDU(flatmask))
         # CCD loop ends here
 
         # write flat data to file
