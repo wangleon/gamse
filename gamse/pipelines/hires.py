@@ -109,7 +109,7 @@ def parse_3ccd_images(hdu_lst):
                    (2, 2): ('[7:1030,1:2048]', (6, 1030), (0, 2048)),
                   }
     datasec, (x1, x2), (y1, y2) = dataset_lst[(binx, biny)]
-    # gete data section
+    # get data section
     data_lst = [hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
                 if hdu_lst[i+1].header['DATASEC']==datasec]
 
@@ -118,9 +118,12 @@ def parse_3ccd_images(hdu_lst):
     mask_sat2 = data_lst[1]==0       # for green & red CCDs, saturated pixels
     mask_sat3 = data_lst[2]==0       # are 0.
     # get bad pixel masks
-    mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
-    mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
-    mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
+    mask_bad1 = np.get_badpixel_mask((binx, biny), ccd=1)
+    mask_bad2 = np.get_badpixel_mask((binx, biny), ccd=2)
+    mask_bad3 = np.get_badpixel_mask((binx, biny), ccd=3)
     # pack masks
     mask1 = np.int16(mask_sat1)*4 + np.int16(mask_bad1)*2
     mask2 = np.int16(mask_sat2)*4 + np.int16(mask_bad2)*2
@@ -281,6 +284,45 @@ def make_obslog(path):
     for row in logtable:
         outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
+
+def get_badpixel_mask(binning, ccd=0):
+    # for only 1 CCD
+    if ccd == 0:
+        if binning = (1, 1):
+            # all Flase
+            mask = np.zeros((2048, 2048), dtype=np.bool)
+            mask[:,    1127] = True
+            mask[:375, 1128] = True
+            mask[:,    2007] = True
+            mask[:,    2008] = True
+    # for 3 CCDs
+    elif ccd == 1:
+        # for Blue CCD
+        if binning = (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[3878:,   4]  = True
+            mask[3008:, 219]  = True
+            mask[4005:, 337]  = True
+            mask[1466:, 411]  = True
+            mask[1466:, 412]  = True
+            mask[3486:, 969]  = True
+            mask[:,     994:] = True
+    elif ccd == 2:
+        # for Green CCD
+        if binning = (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[3726:, 323] = True
+            mask[3726:, 324] = True
+    elif ccd == 3:
+        # for Red CCD
+        if binning = (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[1489:2196, 449]  = True
+            mask[:,         0:45] = True
+    return np.int16(mask)
 
 
 def reduce():
@@ -537,7 +579,10 @@ def reduce():
             # now combine flats for this CCD
             flat_data_lst = []
             # flat_data_lst is a list of flat images to be combined.
-            # flat_data = [Image1, Image2, Image3, Image4, ... ...]
+            # flat_data_lst = [Image1, Image2, Image3, Image4, ... ...]
+            flat_mask_lst = []
+            # flat_mask_lst is a list of flat masks.
+            # flat_mask_lst = [Mask1, Mask2, Mask3, Mask4, ... ...]
 
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
@@ -583,6 +628,7 @@ def reduce():
 
     ######################### trace orders ##################################
 
+    '''
     flatdata = flat_lst[0].T
     mask = np.zeros_like(flatdata, dtype=np.int16)
     aperset = find_apertures(flatdata[0:990,:], mask[0:990,:],
@@ -597,7 +643,6 @@ def reduce():
                 figfile    = 'trace_1.png',
                 )
     aperset.save_reg('trace_1.reg', transpose=True)
-    exit()
 
     flatdata = flat_lst[1].T
     mask = np.zeros_like(flatdata, dtype=np.int16)
@@ -613,6 +658,7 @@ def reduce():
                 figfile    = 'trace_2.png',
                 )
     aperset.save_reg('trace_2.reg', transpose=True)
+    '''
 
     flatdata = flat_lst[2].T
     mask = np.zeros_like(flatdata, dtype=np.int16)
