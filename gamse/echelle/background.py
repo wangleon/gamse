@@ -23,7 +23,6 @@ def find_background2(data, mask, channels, apertureset_lst,
         method='poly', scale='linear', scan_step=200,
         xorder=2, yorder=2, maxiter=5, upper_clip=3, lower_clip=3,
         extend=True, display=True, fig_file=None, reg_file=None):
-
     """Subtract the background for an input FITS image.
 
     Args:
@@ -413,8 +412,7 @@ def find_background2(data, mask, channels, apertureset_lst,
 
 def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     maxiter=5, upper_clip=3, lower_clip=3):
-    """
-    Find the background light by fitting a 2D polynomial.
+    """Find the background light by fitting a 2D polynomial.
 
     Args:
         shape (tuple): Shape of image.
@@ -478,8 +476,7 @@ def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     return background_data, mask
 
 def interpolate_background(shape, xnodes, ynodes, znodes):
-    """
-    Find the background light by interpolating 2D cubic splines.
+    """Find the background light by interpolating 2D cubic splines.
 
     Args:
         shape (tuple): Shape of image.
@@ -750,3 +747,70 @@ def find_background(data, mask, aperturesets, ncols, distance,
         stray[y,:] = f(np.arange(w))
 
     return stray
+
+def correct_log_background(data, mask, xnodes, core=None):
+    """
+    """
+    h, w = data.shape
+    allx = np.arange(h)
+    # prepare interpolation grid
+    grid = []
+    for x in xnodes:
+        section   = data[:, x]
+        sect_mask = mask[:, x]>0
+
+        if sect_mask.sum() > 0:
+            f = intp.InterpolatedUnivariateSpline(allx[~sect_mask], section[~sect_mask], k=3, ext=3)
+            section = f(allx)
+        
+        if core is not None:
+            section_new = np.convolve(section, core, mode='same')
+        else:
+            section_new = section
+
+        allimin, allmin = get_local_minima(section_new)
+        # remove the first and last local minima
+        m = (allimin>0) * (allimin<h-1)
+        allimin = allimin[m]
+        allmin  = allmin[m]
+
+        #allimin, allmin = get_local_minima(section)
+        #mask = np.ones_like(allmin, dtype=np.bool)
+        fitmask = (allmin > 0)*(sect_mask[allimin]==0)
+        for i in range(10):
+            coeff = np.polyfit(allimin[fitmask]/h, np.log(allmin[fitmask]), deg=3)
+            res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
+            std = res_lst[fitmask].std()
+            mask1 = res_lst < 3*std
+            mask2 = res_lst > -3*std
+            new_fitmask = mask1*mask2
+            if new_fitmask.sum() == fitmask.sum():
+                break
+            else:
+                fitmask = fitmask*new_fitmask
+
+        logbkg = np.polyval(coeff, allx/h)
+        linbkg = np.exp(logbkg)
+        figname = 'bkg-b-%04d.png'%x
+        if figname is not None:
+            fig = plt.figure(dpi=150, figsize=(10,8))
+            ax = fig.gca()
+            ax.plot(allx, linbkg, color='C0')
+            #ax.plot(allx, linbkg+std, color='C0', ls='--')
+            #ax.plot(allx, linbkg-std, color='C0', ls='--')
+            ax.plot(allx, section, color='C1', lw=0.5)
+            if core is not None:
+                ax.plot(allx, section_new, color='C2', lw=0.5)
+            ax.scatter(allimin, allmin, c='C3', s=10)
+            ax.set_yscale('log')
+            plt.savefig(figname)
+            plt.close(fig)
+        logbkg = np.polyval(coeff, allx/h)
+        grid.append(logbkg)
+
+    grid = np.array(grid)
+    stray = np.zeros_like(data, dtype=data.dtype)
+    for y in np.arange(h):
+        f = intp.InterpolatedUnivariateSpline(xnodes, grid[:,y], k=3)
+        stray[y, :] = f(np.arange(w))
+    return np.exp(np.log(data) - stray)

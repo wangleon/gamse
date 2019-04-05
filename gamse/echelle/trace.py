@@ -606,6 +606,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     """
 
     sat_mask = (mask & 4 > 0)
+    bad_mask = (mask & 2 > 0)
 
     h, w = data.shape
 
@@ -648,13 +649,19 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # create a background image
     fig = plt.figure(figsize=(20,10), dpi=150)
     ax1 = fig.add_axes([0.05,0.07,0.43,0.86])
-    ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
-    ax3 = ax2.twinx()
+    #ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
+    ax2 = fig.add_axes([0.52,0.65,0.43,0.28])
+    ax3 = fig.add_axes([0.52,0.36,0.43,0.28])
+    ax4 = fig.add_axes([0.52,0.07,0.43,0.28])
+    #ax3 = ax2.twinx()
     ax1.imshow(logdata,cmap='gray',interpolation='none')
     # create a colormap for saturation mask
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
                [(1,0,0,0), (1,0,0,0.8)], N=2)
-    ax1.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
+    ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+    bad_cmap = mcolors.LinearSegmentedColormap.from_list('TransBlue',
+               [(0,0,1,0), (0,0,1,0.8)], N=2)
+    ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
     ax1.set_xlim(0,w-1)
     ax1.set_ylim(h-1,0)
     ax1.set_xlabel('X', fontsize=12)
@@ -796,7 +803,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #fig.savefig(figname)
         #plt.close(fig)
         return ypeak
-    def correct_background(section, figname):
+    ############################################################################
+    def correct_background(section, figname=None):
         h = section.size
         #allimin, allmin = get_local_minima(section, window=25)
         core = np.hanning(20)
@@ -810,29 +818,33 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             coeff = np.polyfit(allimin[mask]/h, np.log(allmin[mask]), deg=3)
             res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
             std = res_lst[mask].std()
-            print(std)
             mask1 = res_lst < 3*std
             mask2 = res_lst > -3*std
             new_mask = mask1*mask2
-            print(i, new_mask)
             if new_mask.sum() == mask.sum():
                 break
             else:
                 mask = mask*new_mask
 
-        fig = plt.figure(dpi=150, figsize=(10,8))
-        ax = fig.gca()
-        #y1, y2 = ax.get_ylim()
-        xnew = np.arange(h)
-        ynew = np.exp(np.polyval(coeff, xnew/h))
-        ax.plot(xnew, ynew, color='C0')
-        #ax.plot(xnew, ynew+std, color='C0', ls='--')
-        #ax.plot(xnew, ynew-std, color='C0', ls='--')
-        ax.plot(xnew, section, color='C1')
-        ax.scatter(allimin, allmin, c='C3', s=10)
-        ax.set_yscale('log')
-        plt.savefig(figname)
-        plt.close(fig)
+        x = np.arange(h)
+        logbkg = np.polyval(coeff, x/h)
+        linbkg = np.exp(logbkg)
+        if figname is not None:
+            fig = plt.figure(dpi=150, figsize=(10,8))
+            ax = fig.gca()
+            ax.plot(x, linbkg, color='C0')
+            #ax.plot(x, linbkg+std, color='C0', ls='--')
+            #ax.plot(x, linbkg-std, color='C0', ls='--')
+            ax.plot(x, section, color='C1')
+            ax.scatter(allimin, allmin, c='C3', s=10)
+            ax.set_yscale('log')
+            plt.savefig(figname)
+            plt.close(fig)
+        pmask = section>0
+        result = np.zeros_like(section)
+        result[pmask] = np.log(section[pmask]) - np.polyval(coeff, x[pmask]/h)
+        return result
+    ############################################################################
 
     # generate a window list according to separations
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
@@ -854,7 +866,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         flux1 = logdata[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
-        correct_background(linflux1, 'bkg-%04d.png'%x1)
+        #correct_background(linflux1, 'bkg-%04d.png'%x1)
+        flux1 = correct_background(linflux1, 'bkg-%04d.png'%x1)
+        linflux1 = np.exp(flux1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
         flux1 = np.convolve(flux1, core, mode='same')
         if icol == 0:
