@@ -857,19 +857,21 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     core = np.hanning(int(fsep(h/2)))
     core /= core.sum()
 
-    figt = plt.figure(dpi=150, figsize=(12,8))
-    axt = figt.gca()
-
     while(True):
         # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
         flux1 = logdata[:,x1]
+        mask1 = bad_mask[:, x1]==0
+        #flux1 = data[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
         #correct_background(linflux1, 'bkg-%04d.png'%x1)
-        flux1 = correct_background(linflux1, 'bkg-%04d.png'%x1)
-        linflux1 = np.exp(flux1)
+        #flux1 = correct_background(linflux1, 'bkg-%04d.png'%x1)
+        #linflux1 = np.exp(flux1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
+        fixfunc = intp.InterpolatedUnivariateSpline(
+                np.arange(h)[mask1], flux1[mask1], k=3, ext=3)
+        flux1 = fixfunc(np.arange(h))
         flux1 = np.convolve(flux1, core, mode='same')
         if icol == 0:
             # will be used when changing the direction
@@ -902,7 +904,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],linflux1)
         else:
             # aperture alignment of each selected column, described by param
-            param, mask = find_shift(flux0, flux1, deg=align_deg)
+            param, _ = find_shift(flux0, flux1, deg=align_deg)
             param_lst[direction].append(param[0:-1])
 
             for y, f in zip(ymax, fmax):
@@ -936,7 +938,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             # for debug purpose
             #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
             if direction==-1:
-                axt.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
+                ax2.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -960,12 +962,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             icol += 1
             continue
 
-    axt.set_xlim(0, h-1)
-    axt.grid(True)
-    axt.set_yscale('log')
-    figt.savefig('order_alignment.png')
-    plt.close(figt)
-
     #logger.debug((os.linesep+' '*4).join(message))
 
     # filter the consecutive zero elements at the beginning and the end
@@ -977,14 +973,18 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # set the zero elements to 1, preparing for the division
     csec_nlst = np.maximum(csec_nlst, 1)
     csec_lst /= csec_nlst
+    #pmask = csec_lst>1
+    #csec_lst_log = np.zeros_like(csec_lst)
+    #csec_lst_log[pmask] = np.log(csec_lst[pmask])
+    #csec_lst = csec_lst_log
     # convolve csec_lst (optional)
     #smcore = np.hanning(separation*2+1)
     #smcore /= smcore.sum()
-    #csec_conv_lst = np.convolve(csec_lst, smcore, mode='same')
+    #csec_lst = np.convolve(csec_lst, smcore, mode='same')
 
 
     # find aperture positions
-    # first, generate a window list
+    # first, generate a window list: csec_win
     csec_separation_lst = fsep(np.arange(csec_i1, csec_i2))
     csec_separation_lst = np.int32(np.round(csec_separation_lst))
     csec_win = 2*csec_separation_lst + 1
@@ -995,8 +995,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     peaky += istart
 
     message = []
-    for _peak in peaky:
-        message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
+    for peak in peaky:
+        string = '{:4d} {:4d}'.format(peak+csec_i1, csec_win[peak])
+        message.append(string)
     logger.debug((os.linesep+' '*3).join(message))
 
     ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
@@ -1004,7 +1005,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     ax2.set_yscale('log')
     ax2.set_xlabel('Y', fontsize=12)
     ax2.set_ylabel('Count', fontsize=12)
-    ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
+    ax2.set_ylim(0.5,)
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
@@ -1034,7 +1035,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     cuty = np.arange(cutn.size) + csec_i1
 
     #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
+    ax3.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
         ax2p.fill_between(cuty[istart:iend], cutn[istart:iend], step='mid',
@@ -1059,8 +1060,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #ii1 = max(i1,ymax-int(sep/2))
         #ii2 = min(i2,ymax+int(sep/2))
 
-        ii1 = y-int(sep/3)
-        ii2 = y+int(sep/3)
+        ii1 = y - int(sep/3)
+        ii2 = y + int(sep/3)
         n = cutn[ii1:ii2].sum()
 
         if n > csec_nlst[y]*filling:
@@ -1089,7 +1090,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
-    logger.debug((os.linesep+' '*4).join(message))
+    logger.info((os.linesep+' '*4).join(message))
 
     # check the first and last peak. If the separation is larger than 2x of 
     # the local separation, remove them
@@ -1122,9 +1123,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         if plot_paper_fig:
             ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
 
-    # set tickers for ax2
-    ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
-    ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -1153,6 +1151,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                     local_sep = fsep(ystep)
                     y1 = max(0, int(ystep-local_sep/2))
                     y2 = min(h, int(ystep+local_sep/2))
+                    print(aperture, x1, y1, y2)
                     if y2 - y1 <= 5:
                         # number of points is not enough to get a local peak
                         continue
@@ -1233,21 +1232,26 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
         aperture_set[aperture] = aperture_loc
 
-    # plot the order separation information in ax3
+    # plot the order separation information in ax4
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    ax3.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
+    ax4.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
     newx = np.arange(h)
-    ax3.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
-    ax3.set_xlim(0, h-1)
-    for tickline in ax3.yaxis.get_ticklines():
+    ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
+    ax4.set_xlim(0, h-1)
+    for tickline in ax4.yaxis.get_ticklines():
         tickline.set_color('gray')
         tickline.set_alpha(0.8)
-    for tick in ax3.yaxis.get_major_ticks():
+    for tick in ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    ax3.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
+    ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
         fontsize=12)
+    for ax in [ax2, ax3, ax4]:
+        ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
+        # set tickers
+        ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     fig.canvas.draw()
     if figfile is not None:

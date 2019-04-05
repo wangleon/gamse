@@ -13,6 +13,7 @@ from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
 from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.background import simple_debackground
 from ..utils.obslog import parse_num_seq, read_obslog
 from ..utils import obslog
 from .common import FormattedInfo
@@ -519,7 +520,8 @@ def reduce():
         # read flat data from existing file
         hdu_lst = fits.open(flat_file)
         for iccd in range(nccd):
-            flat_lst.append(hdu_lst[iccd+1].data)
+            flat_lst.append(hdu_lst[iccd*2+1].data)
+            flatmask_lst.append(hdu_lst[iccd*2+2].data)
         hdu_lst.close()
         message = 'Loaded flat data from file: {}'.format(flat_file)
         print(message)
@@ -636,12 +638,18 @@ def reduce():
 
     ######################### trace orders ##################################
 
-    '''
     flatdata = flat_lst[0].T
-    mask = np.zeros_like(flatdata, dtype=np.int16)
-    aperset = find_apertures(flatdata[0:990,:], mask[0:990,:],
+    flatmask = flatmask_lst[0].T
+
+    xnodes = np.arange(0, flatmask.shape[1], 200)
+
+    flatbkg1 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
+    fits.writeto('flat_bkg.fits', flatbkg1, overwrite=True)
+
+    '''
+    aperset = find_apertures(flatbkg1, flatmask,
                 scan_step  = 80,
-                minimum    = 3,
+                minimum    = 1e-3,
                 separation = '100:32, 800:18',
                 align_deg  = 2,
                 filling    = 0.2,
@@ -651,12 +659,18 @@ def reduce():
                 figfile    = 'trace_1.png',
                 )
     aperset.save_reg('trace_1.reg', transpose=True)
+    '''
 
     flatdata = flat_lst[1].T
-    mask = np.zeros_like(flatdata, dtype=np.int16)
-    aperset = find_apertures(flatdata, mask,
+    flatmask = flatmask_lst[1].T
+    xnodes = np.arange(0, flatmask.shape[1], 200)
+    flatbkg2 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
+    fits.writeto('flat_bkg2.fits', flatbkg2, overwrite=True)
+
+    '''
+    aperset = find_apertures(flatbkg2, flatmask,
                 scan_step  = 100,
-                minimum    = 3,
+                minimum    = 1e-3,
                 separation = '100:55, 800:35',
                 align_deg  = 2,
                 filling    = 0.2,
@@ -669,10 +683,15 @@ def reduce():
     '''
 
     flatdata = flat_lst[2].T
-    mask = np.zeros_like(flatdata, dtype=np.int16)
-    aperset = find_apertures(flatdata, mask,
+    flatmask = flatmask_lst[2].T
+    xnodes = np.arange(0, flatmask.shape[1], 200)
+    flatbkg3 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
+    fits.writeto('flat_bkg3.fits', flatbkg3, overwrite=True)
+
+    '''
+    aperset = find_apertures(flatbkg3, flatmask,
                 scan_step  = 100,
-                minimum    = 3,
+                minimum    = 1e-3,
                 separation = '100:84, 1000:55',
                 align_deg  = 2,
                 filling    = 0.2,
@@ -682,31 +701,35 @@ def reduce():
                 figfile    = 'trace_3.png',
                 )
     aperset.save_reg('trace_3.reg', transpose=True)
-
     '''
-    gap_gb = 20
-    gap_rg = 26
-    image = np.zeros((1024+gap_rg+1024+gap_gb+1024, 4096))
-    r1, r2 = 0, 1024
-    image[r1:r2] = flat_lst[2].T
-    r1 = 1024+gap_rg
-    r2 = r1+1024
-    image[r1:r2] = flat_lst[1].T-300
-    r1 = 1024+gap_rg+1024+gap_gb
-    r2 = r1+1024
-    image[r1:r2] = flat_lst[0].T-1200
 
-    mask = np.zeros_like(image, dtype=np.int16)
-    aperset = find_apertures(image, mask,
+    gap_rg, gap_gb = 26, 20
+
+    # mosaic image
+    hh, ww = 1024+gap_rg+1024+gap_gb+1024, 4096
+    allimage = np.ones((hh, ww), dtype=flatbkg1.dtype)
+    allmask = np.zeros((hh, ww), dtype=np.int16)
+    r1, g1, b1 = 0, 1024+gap_rg, 1024+gap_rg+1024+gap_gb
+    r2, g2, b2 = r1+1024, g1+1024, b1+1024
+    allimage[r1:r2] = flatbkg3
+    allimage[g1:g2] = flatbkg2
+    allimage[b1:b2] = flatbkg1
+    allmask[r1:r2] = flatmask_lst[2].T
+    allmask[g1:g2] = flatmask_lst[1].T
+    allmask[b1:b2] = flatmask_lst[0].T
+    allmask[r2:g1] = 2
+    allmask[g2:b1] = 2
+
+
+    aperset = find_apertures(allimage, allmask,
                 scan_step  = 80,
-                minimum    = 3,
-                separation = '100:84, 3000:18',
+                minimum    = 1e-3,
+                separation = '100:84, 1500:45, 3000:14',
                 align_deg  = 2,
                 filling    = 0.2,
                 degree     = 4,
                 display    = False,
-                figtitle   = 'trace_CCD12',
-                figfile    = 'trace_12.png',
+                figtitle   = 'trace_CCD123',
+                figfile    = 'trace_123.png',
                 )
-    aperset.save_reg('trace_12.reg', transpose=True)
-    '''
+    aperset.save_reg('trace_123.reg', transpose=True)

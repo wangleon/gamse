@@ -748,11 +748,17 @@ def find_background(data, mask, aperturesets, ncols, distance,
 
     return stray
 
-def correct_log_background(data, mask, xnodes, core=None):
+def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     """
     """
+
     h, w = data.shape
     allx = np.arange(h)
+
+    if smooth is not None:
+        core = np.hanning(smooth)
+        core = core/core.sum()
+
     # prepare interpolation grid
     grid = []
     for x in xnodes:
@@ -763,7 +769,7 @@ def correct_log_background(data, mask, xnodes, core=None):
             f = intp.InterpolatedUnivariateSpline(allx[~sect_mask], section[~sect_mask], k=3, ext=3)
             section = f(allx)
         
-        if core is not None:
+        if smooth is not None:
             section_new = np.convolve(section, core, mode='same')
         else:
             section_new = section
@@ -777,9 +783,10 @@ def correct_log_background(data, mask, xnodes, core=None):
         #allimin, allmin = get_local_minima(section)
         #mask = np.ones_like(allmin, dtype=np.bool)
         fitmask = (allmin > 0)*(sect_mask[allimin]==0)
-        for i in range(10):
-            coeff = np.polyfit(allimin[fitmask]/h, np.log(allmin[fitmask]), deg=3)
-            res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
+        for i in range(maxiter):
+            coeff = np.polyfit(allimin[fitmask]/h, np.log(allmin[fitmask]), deg=deg)
+            #res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
+            res_lst = np.log(allmin) - np.polyval(coeff, allimin/h)
             std = res_lst[fitmask].std()
             mask1 = res_lst < 3*std
             mask2 = res_lst > -3*std
@@ -791,7 +798,9 @@ def correct_log_background(data, mask, xnodes, core=None):
 
         logbkg = np.polyval(coeff, allx/h)
         linbkg = np.exp(logbkg)
-        figname = 'bkg-b-%04d.png'%x
+        ######################## plot #####################
+        #figname = 'bkg-b-%04d.png'%x
+        figname = None
         if figname is not None:
             fig = plt.figure(dpi=150, figsize=(10,8))
             ax = fig.gca()
@@ -799,18 +808,25 @@ def correct_log_background(data, mask, xnodes, core=None):
             #ax.plot(allx, linbkg+std, color='C0', ls='--')
             #ax.plot(allx, linbkg-std, color='C0', ls='--')
             ax.plot(allx, section, color='C1', lw=0.5)
-            if core is not None:
+            if smooth is not None:
                 ax.plot(allx, section_new, color='C2', lw=0.5)
             ax.scatter(allimin, allmin, c='C3', s=10)
             ax.set_yscale('log')
             plt.savefig(figname)
             plt.close(fig)
+        ###################################################
+
         logbkg = np.polyval(coeff, allx/h)
         grid.append(logbkg)
 
+    # interpolate the whole image
     grid = np.array(grid)
     stray = np.zeros_like(data, dtype=data.dtype)
     for y in np.arange(h):
         f = intp.InterpolatedUnivariateSpline(xnodes, grid[:,y], k=3)
         stray[y, :] = f(np.arange(w))
-    return np.exp(np.log(data) - stray)
+
+    pmask = data>0
+    corrected_data = np.zeros_like(data)
+    corrected_data[pmask] = np.log(data[pmask]) - stray[pmask]
+    return np.exp(corrected_data)
