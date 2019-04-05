@@ -638,88 +638,42 @@ def reduce():
 
     ######################### trace orders ##################################
 
-    flatdata = flat_lst[0].T
-    flatmask = flatmask_lst[0].T
+    flatdata1 = flat_lst[0].T
+    flatmask1 = flatmask_lst[0].T
+    xnodes = np.arange(0, flatdata1.shape[1], 200)
+    flat_debkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20)
 
-    xnodes = np.arange(0, flatmask.shape[1], 200)
+    flatdata2 = flat_lst[1].T
+    flatmask2 = flatmask_lst[1].T
+    xnodes = np.arange(0, flatdata2.shape[1], 200)
+    flat_debkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20)
 
-    flatbkg1 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
-    fits.writeto('flat_bkg.fits', flatbkg1, overwrite=True)
-
-    '''
-    aperset = find_apertures(flatbkg1, flatmask,
-                scan_step  = 80,
-                minimum    = 1e-3,
-                separation = '100:32, 800:18',
-                align_deg  = 2,
-                filling    = 0.2,
-                degree     = 4,
-                display    = False,
-                figtitle   = 'trace_CCD1',
-                figfile    = 'trace_1.png',
-                )
-    aperset.save_reg('trace_1.reg', transpose=True)
-    '''
-
-    flatdata = flat_lst[1].T
-    flatmask = flatmask_lst[1].T
-    xnodes = np.arange(0, flatmask.shape[1], 200)
-    flatbkg2 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
-    fits.writeto('flat_bkg2.fits', flatbkg2, overwrite=True)
-
-    '''
-    aperset = find_apertures(flatbkg2, flatmask,
-                scan_step  = 100,
-                minimum    = 1e-3,
-                separation = '100:55, 800:35',
-                align_deg  = 2,
-                filling    = 0.2,
-                degree     = 4,
-                display    = False,
-                figtitle   = 'trace_CCD2',
-                figfile    = 'trace_2.png',
-                )
-    aperset.save_reg('trace_2.reg', transpose=True)
-    '''
-
-    flatdata = flat_lst[2].T
-    flatmask = flatmask_lst[2].T
-    xnodes = np.arange(0, flatmask.shape[1], 200)
-    flatbkg3 = simple_debackground(flatdata, flatmask, xnodes, smooth=20)
-    fits.writeto('flat_bkg3.fits', flatbkg3, overwrite=True)
-
-    '''
-    aperset = find_apertures(flatbkg3, flatmask,
-                scan_step  = 100,
-                minimum    = 1e-3,
-                separation = '100:84, 1000:55',
-                align_deg  = 2,
-                filling    = 0.2,
-                degree     = 4,
-                display    = False,
-                figtitle   = 'trace_CCD3',
-                figfile    = 'trace_3.png',
-                )
-    aperset.save_reg('trace_3.reg', transpose=True)
-    '''
+    flatdata3 = flat_lst[2].T
+    flatmask3 = flatmask_lst[2].T
+    xnodes = np.arange(0, flatdata3.shape[1], 200)
+    flat_debkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20)
 
     gap_rg, gap_gb = 26, 20
 
-    # mosaic image
-    hh, ww = 1024+gap_rg+1024+gap_gb+1024, 4096
-    allimage = np.ones((hh, ww), dtype=flatbkg1.dtype)
-    allmask = np.zeros((hh, ww), dtype=np.int16)
-    r1, g1, b1 = 0, 1024+gap_rg, 1024+gap_rg+1024+gap_gb
-    r2, g2, b2 = r1+1024, g1+1024, b1+1024
-    allimage[r1:r2] = flatbkg3
-    allimage[g1:g2] = flatbkg2
-    allimage[b1:b2] = flatbkg1
-    allmask[r1:r2] = flatmask_lst[2].T
-    allmask[g1:g2] = flatmask_lst[1].T
-    allmask[b1:b2] = flatmask_lst[0].T
+    # mosaic image: allimage and allmask
+    h3, w3 = flatdata3.shape
+    h2, w2 = flatdata2.shape
+    h1, w1 = flatdata1.shape
+
+    hh = h3 + gap_rg + h2 + gap_gb + h1
+    allimage = np.ones((hh, w3), dtype=flat_debkg1.dtype)
+    allmask = np.zeros((hh, w3), dtype=np.int16)
+    r1, g1, b1 = 0, h3+gap_rg, h3+gap_rg+h2+gap_gb
+    r2, g2, b2 = r1+h3, g1+h2, b1+h1
+    allimage[r1:r2] = flat_debkg3
+    allimage[g1:g2] = flat_debkg2
+    allimage[b1:b2] = flat_debkg1
+    allmask[r1:r2] = flatmask3
+    allmask[g1:g2] = flatmask2
+    allmask[b1:b2] = flatmask1
+    # fill gap with bad pixels
     allmask[r2:g1] = 2
     allmask[g2:b1] = 2
-
 
     aperset = find_apertures(allimage, allmask,
                 scan_step  = 80,
