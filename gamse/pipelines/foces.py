@@ -27,7 +27,7 @@ from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wl_reference_singlefiber, get_time_weight)
-from ..echelle.background import find_background
+from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from ..utils.obslog import read_obslog
@@ -1230,7 +1230,7 @@ def reduce():
     # first combine the flats
     for flatname, item_lst in flat_groups.items():
         nflat = len(item_lst)       # number of flat fieldings
-        flat_filename    = os.path.join(midproc, '%s.fits.gz'%flatname)
+        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
         aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
         aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
 
@@ -1313,6 +1313,11 @@ def reduce():
             fig_file = os.path.join(report, 'trace_{}.{}'.format(flatname, fig_format))
             section = config['reduce.trace']
 
+            # if debackground before detecting the orders, then we loose the 
+            # ability to detect the weak blue orders.
+            #xnodes = np.arange(0, flat_data.shape[1], 200)
+            #flat_debkg = simple_debackground(flat_data, mask_array, xnodes, smooth=5)
+            #aperset = find_apertures(flat_debkg, mask_array,
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
@@ -1336,7 +1341,7 @@ def reduce():
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flat_filename = os.path.join(midproc, flatname+'.fits.gz')
+        flat_filename = os.path.join(midproc, flatname+'.fits')
         hdu_lst = fits.open(flat_filename, mode='update')
         if len(hdu_lst)>=3:
             # sensitivity map already exists in fits file
