@@ -12,6 +12,8 @@ from astropy.table import Table
 from astropy.time  import Time
 
 from ..echelle.imageproc import combine_images
+from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.background import simple_debackground
 from ..utils.obslog import parse_num_seq, read_obslog
 from ..utils import obslog
 from .common import FormattedInfo
@@ -108,18 +110,22 @@ def parse_3ccd_images(hdu_lst):
                    (2, 2): ('[7:1030,1:2048]', (6, 1030), (0, 2048)),
                   }
     datasec, (x1, x2), (y1, y2) = dataset_lst[(binx, biny)]
-    # gete data section
+    # get data section
     data_lst = [hdu_lst[i+1].data[y1:y2, x1:x2] for i in range(3)
                 if hdu_lst[i+1].header['DATASEC']==datasec]
 
-    # get mask
-    mask_sat1 = data_lst[0]==65535
-    mask_sat2 = data_lst[1]==0
-    mask_sat3 = data_lst[2]==0
-    mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
-    mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
-    mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
-
+    # get saturated masks
+    mask_sat1 = data_lst[0]==65535   # for UV CCD, saturated pixels are 65535.
+    mask_sat2 = data_lst[1]==0       # for green & red CCDs, saturated pixels
+    mask_sat3 = data_lst[2]==0       # are 0.
+    # get bad pixel masks
+    #mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
+    mask_bad1 = get_badpixel_mask((binx, biny), ccd=1)
+    mask_bad2 = get_badpixel_mask((binx, biny), ccd=2)
+    mask_bad3 = get_badpixel_mask((binx, biny), ccd=3)
+    # pack masks
     mask1 = np.int16(mask_sat1)*4 + np.int16(mask_bad1)*2
     mask2 = np.int16(mask_sat2)*4 + np.int16(mask_bad2)*2
     mask3 = np.int16(mask_sat3)*4 + np.int16(mask_bad3)*2
@@ -280,6 +286,45 @@ def make_obslog(path):
         outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
 
+def get_badpixel_mask(binning, ccd=0):
+    # for only 1 CCD
+    if ccd == 0:
+        if binning == (1, 1):
+            # all Flase
+            mask = np.zeros((2048, 2048), dtype=np.bool)
+            mask[:,    1127] = True
+            mask[:375, 1128] = True
+            mask[:,    2007] = True
+            mask[:,    2008] = True
+    # for 3 CCDs
+    elif ccd == 1:
+        # for Blue CCD
+        if binning == (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[3878:,   4]  = True
+            mask[3008:, 219]  = True
+            mask[4005:, 337]  = True
+            mask[1466:, 411]  = True
+            mask[1466:, 412]  = True
+            mask[3486:, 969]  = True
+            mask[:,     994:] = True
+    elif ccd == 2:
+        # for Green CCD
+        if binning == (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[3726:, 323] = True
+            mask[3726:, 324] = True
+    elif ccd == 3:
+        # for Red CCD
+        if binning == (2, 1):
+            # all False
+            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask[1489:2196, 449]  = True
+            mask[:,         0:45] = True
+    return np.int16(mask)
+
 
 def reduce():
     """2D to 1D pipeline for Keck/HIRES
@@ -367,7 +412,7 @@ def reduce():
         # pack bias image
         bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
         hdu_lst.close()
-        message = 'Load bias from image: {}'.format(bias_file)
+        message = 'Load bias data from file: {}'.format(bias_file)
         logger.info(message)
         print(message)
     else:
@@ -439,10 +484,10 @@ def reduce():
                                         sigma=smooth_sigma, mode=smooth_mode)
 
                         # write information to FITS header
-                        head['HIERARCH EDRS BIAS SMOOTH']        = True
-                        head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                        head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
-                        head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                        head['HIERARCH GAMSE BIAS SMOOTH']        = True
+                        head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                        head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
+                        head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
                     else:
                         print('Unknown smooth method: ', smooth_method)
                         pass
@@ -467,8 +512,19 @@ def reduce():
     section = config['reduce.flat']
     flat_file = section['flat_file']
 
+    flat_lst = [] # a list of 3 combined flat images. [Image1, Image2, Image3]
+                  # bias has been corrected already. but not rotated yet.
+    flatmask_lst = [] # a list of 3 flat masks
+
     if os.path.exists(flat_file):
-        pass
+        # read flat data from existing file
+        hdu_lst = fits.open(flat_file)
+        for iccd in range(nccd):
+            flat_lst.append(hdu_lst[iccd*2+1].data)
+            flatmask_lst.append(hdu_lst[iccd*2+2].data)
+        hdu_lst.close()
+        message = 'Loaded flat data from file: {}'.format(flat_file)
+        print(message)
 
     else:
         print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -516,9 +572,6 @@ def reduce():
                     break
 
         # now combine flat images
-        flat_lst = []
-        # flat_lst is a list of the 3 final combined flat images.
-        # flat_lst = [Image1, Image2, Image3]
 
         flat_hdu_lst = [fits.PrimaryHDU()]
         # flat_hdu_lst is the final HDU list to be saved as fits
@@ -529,8 +582,11 @@ def reduce():
             # now combine flats for this CCD
             flat_data_lst = []
             # flat_data_lst is a list of flat images to be combined.
-            # flat_data = [Image1, Image2, Image3, Image4, ... ...]
+            # flat_data_lst = [Image1, Image2, Image3, Image4, ... ...]
 
+            #scan the logtable
+            # log loop inside the CCD loop because flats for different CCDs are
+            # in different files
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
                     filename = os.path.join(rawdata, logitem['fileid']+'.fits')
@@ -543,6 +599,11 @@ def reduce():
                         flat_data_lst.append(data_lst[iccd]-bias[iccd])
                     else:
                         flat_data_lst.append(data_lst[iccd])
+
+                    # initialize flat mask
+                    if len(flat_data_lst) == 1:
+                        flatmask = mask_lst[iccd]
+                    flatmask = flatmask | mask_lst[iccd]
 
             n_flat = len(flat_data_lst)
 
@@ -561,10 +622,13 @@ def reduce():
                 #print('\033[{1}mCombined flat data for CCD {0}: \033[0m'.format(
                 #    iccd+1, (34, 32, 31)[iccd]))
             flat_lst.append(flatdata)
+            flatmask_lst.append(flatmask)
 
             # pack the combined flat data into flat_hdu_lst
             head = fits.Header()
+            head['HIERARCH GAMSE FLAT CCD{} NFILE'.format(iccd+1)] = n_flat
             flat_hdu_lst.append(fits.ImageHDU(flatdata, head))
+            flat_hdu_lst.append(fits.ImageHDU(flatmask))
         # CCD loop ends here
 
         # write flat data to file
@@ -572,4 +636,54 @@ def reduce():
         flat_hdu_lst.writeto(flat_file, overwrite=True)
         print('Flat data writed to {}'.format(flat_file))
 
+    ######################### trace orders ##################################
 
+    flatdata1 = flat_lst[0].T
+    flatmask1 = flatmask_lst[0].T
+    xnodes = np.arange(0, flatdata1.shape[1], 200)
+    flat_debkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20)
+
+    flatdata2 = flat_lst[1].T
+    flatmask2 = flatmask_lst[1].T
+    xnodes = np.arange(0, flatdata2.shape[1], 200)
+    flat_debkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20)
+
+    flatdata3 = flat_lst[2].T
+    flatmask3 = flatmask_lst[2].T
+    xnodes = np.arange(0, flatdata3.shape[1], 200)
+    flat_debkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20)
+
+    gap_rg, gap_gb = 26, 20
+
+    # mosaic image: allimage and allmask
+    h3, w3 = flatdata3.shape
+    h2, w2 = flatdata2.shape
+    h1, w1 = flatdata1.shape
+
+    hh = h3 + gap_rg + h2 + gap_gb + h1
+    allimage = np.ones((hh, w3), dtype=flat_debkg1.dtype)
+    allmask = np.zeros((hh, w3), dtype=np.int16)
+    r1, g1, b1 = 0, h3+gap_rg, h3+gap_rg+h2+gap_gb
+    r2, g2, b2 = r1+h3, g1+h2, b1+h1
+    allimage[r1:r2] = flat_debkg3
+    allimage[g1:g2] = flat_debkg2
+    allimage[b1:b2] = flat_debkg1
+    allmask[r1:r2] = flatmask3
+    allmask[g1:g2] = flatmask2
+    allmask[b1:b2] = flatmask1
+    # fill gap with bad pixels
+    allmask[r2:g1] = 2
+    allmask[g2:b1] = 2
+
+    aperset = find_apertures(allimage, allmask,
+                scan_step  = 80,
+                minimum    = 1e-3,
+                separation = '100:84, 1500:45, 3000:14',
+                align_deg  = 2,
+                filling    = 0.2,
+                degree     = 4,
+                display    = False,
+                figtitle   = 'trace_CCD123',
+                figfile    = 'trace_123.png',
+                )
+    aperset.save_reg('trace_123.reg', transpose=True)

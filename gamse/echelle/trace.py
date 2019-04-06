@@ -583,8 +583,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     Args:
         data (:class:`numpy.ndarray`): Image data.
-        mask (:class:`numpy.ndarray`): Image mask with the same shape as **data**,
-            where saturated pixels are marked with 4, and bad pixels with 2.
+        mask (:class:`numpy.ndarray`): Image mask with the same shape as
+            **data**, where saturated pixels are marked with 4, and bad pixels
+            with 2.
         scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
@@ -605,6 +606,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     """
 
     sat_mask = (mask & 4 > 0)
+    bad_mask = (mask & 2 > 0)
 
     h, w = data.shape
 
@@ -647,13 +649,19 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # create a background image
     fig = plt.figure(figsize=(20,10), dpi=150)
     ax1 = fig.add_axes([0.05,0.07,0.43,0.86])
-    ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
-    ax3 = ax2.twinx()
+    #ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
+    ax2 = fig.add_axes([0.52,0.65,0.43,0.28])
+    ax3 = fig.add_axes([0.52,0.36,0.43,0.28])
+    ax4 = fig.add_axes([0.52,0.07,0.43,0.28])
+    #ax3 = ax2.twinx()
     ax1.imshow(logdata,cmap='gray',interpolation='none')
     # create a colormap for saturation mask
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
                [(1,0,0,0), (1,0,0,0.8)], N=2)
-    ax1.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
+    ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+    bad_cmap = mcolors.LinearSegmentedColormap.from_list('TransBlue',
+               [(0,0,1,0), (0,0,1,0.8)], N=2)
+    ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
     ax1.set_xlim(0,w-1)
     ax1.set_ylim(h-1,0)
     ax1.set_xlabel('X', fontsize=12)
@@ -764,22 +772,25 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         for i in range(10):
             p, _ = opt.leastsq(resfunc, p0, args=(interfunc, flux0, mask))
             res_lst = resfunc(p, interfunc, flux0)
-            mean = res_lst.mean()
             std  = res_lst.std()
-            new_mask = (res_lst < mean + clipping*std)*(res_lst > mean - clipping*std)
+            mask1 = res_lst <  clipping*std
+            mask2 = res_lst > -clipping*std
+            new_mask = mask1*mask2
             if new_mask.sum() == mask.sum():
                 break
             mask = new_mask
         return p, mask
 
-    def find_local_peak(xdata, ydata, mask):
-
-        if mask.sum()>=2:
-            core = np.hanning(min(5, ydata.size))
+    def find_local_peak(xdata, ydata, mask, smooth=None, figname=''):
+        #fig = plt.figure(dpi=150, figsize=(8,6))
+        #ax = fig.gca()
+        #ax.plot(xdata, ydata, color='C0')
+        if smooth is not None:
+            core = np.hanning(min(smooth, ydata.size))
+            core = core/core.sum()
             # length of core should not be smaller than length of ydata
             # otherwise the length of ydata after convolution is reduced
             ydata = np.convolve(ydata, core, mode='same')
-
         argmax = ydata.argmax()
         xmax = xdata[argmax]
         if argmax<2 or argmax>ydata.size-2:
@@ -787,8 +798,53 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],deg=2)
         a, b,c = coeff
         ypeak = -b/2/a
+        #ax.plot(xdata, ydata, color='C1')
+        #ax.axvline(x=ypeak, color='C1', ls='--')
+        #fig.savefig(figname)
+        #plt.close(fig)
         return ypeak
+    ############################################################################
+    def correct_background(section, figname=None):
+        h = section.size
+        #allimin, allmin = get_local_minima(section, window=25)
+        core = np.hanning(20)
+        core = core/core.sum()
+        section_new = np.convolve(section, core, mode='same')
+        allimin, allmin = get_local_minima(section_new)
+        #allimin, allmin = get_local_minima(section)
+        #mask = np.ones_like(allmin, dtype=np.bool)
+        mask = allmin > 0
+        for i in range(2):
+            coeff = np.polyfit(allimin[mask]/h, np.log(allmin[mask]), deg=3)
+            res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
+            std = res_lst[mask].std()
+            mask1 = res_lst < 3*std
+            mask2 = res_lst > -3*std
+            new_mask = mask1*mask2
+            if new_mask.sum() == mask.sum():
+                break
+            else:
+                mask = mask*new_mask
 
+        x = np.arange(h)
+        logbkg = np.polyval(coeff, x/h)
+        linbkg = np.exp(logbkg)
+        if figname is not None:
+            fig = plt.figure(dpi=150, figsize=(10,8))
+            ax = fig.gca()
+            ax.plot(x, linbkg, color='C0')
+            #ax.plot(x, linbkg+std, color='C0', ls='--')
+            #ax.plot(x, linbkg-std, color='C0', ls='--')
+            ax.plot(x, section, color='C1')
+            ax.scatter(allimin, allmin, c='C3', s=10)
+            ax.set_yscale('log')
+            plt.savefig(figname)
+            plt.close(fig)
+        pmask = section>0
+        result = np.zeros_like(section)
+        result[pmask] = np.log(section[pmask]) - np.polyval(coeff, x[pmask]/h)
+        return result
+    ############################################################################
 
     # generate a window list according to separations
     dense_y = np.linspace(0, h-1, (h-1)*density+1)
@@ -801,16 +857,21 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     core = np.hanning(int(fsep(h/2)))
     core /= core.sum()
 
-    figt = plt.figure(dpi=150, figsize=(12,8))
-    axt = figt.gca()
-
     while(True):
         # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
         flux1 = logdata[:,x1]
+        mask1 = bad_mask[:, x1]==0
+        #flux1 = data[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
+        #correct_background(linflux1, 'bkg-%04d.png'%x1)
+        #flux1 = correct_background(linflux1, 'bkg-%04d.png'%x1)
+        #linflux1 = np.exp(flux1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
+        fixfunc = intp.InterpolatedUnivariateSpline(
+                np.arange(h)[mask1], flux1[mask1], k=3, ext=3)
+        flux1 = fixfunc(np.arange(h))
         flux1 = np.convolve(flux1, core, mode='same')
         if icol == 0:
             # will be used when changing the direction
@@ -843,7 +904,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],linflux1)
         else:
             # aperture alignment of each selected column, described by param
-            param, mask = find_shift(flux0, flux1, deg=align_deg)
+            param, _ = find_shift(flux0, flux1, deg=align_deg)
             param_lst[direction].append(param[0:-1])
 
             for y, f in zip(ymax, fmax):
@@ -876,7 +937,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
             # for debug purpose
             #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
-            axt.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
+            if direction==-1:
+                ax2.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -900,13 +962,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             icol += 1
             continue
 
-    axt.set_xlim(0, h-1)
-    axt.grid(True)
-    axt.set_yscale('log')
-    figt.savefig('test-%04d.png'%x1)
-    plt.close(figt)
-
-    logger.debug((os.linesep+' '*4).join(message))
+    #logger.debug((os.linesep+' '*4).join(message))
 
     # filter the consecutive zero elements at the beginning and the end
     i_nonzero = np.nonzero(csec_nlst)[0]
@@ -917,14 +973,18 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # set the zero elements to 1, preparing for the division
     csec_nlst = np.maximum(csec_nlst, 1)
     csec_lst /= csec_nlst
+    #pmask = csec_lst>1
+    #csec_lst_log = np.zeros_like(csec_lst)
+    #csec_lst_log[pmask] = np.log(csec_lst[pmask])
+    #csec_lst = csec_lst_log
     # convolve csec_lst (optional)
     #smcore = np.hanning(separation*2+1)
     #smcore /= smcore.sum()
-    #csec_conv_lst = np.convolve(csec_lst, smcore, mode='same')
+    #csec_lst = np.convolve(csec_lst, smcore, mode='same')
 
 
     # find aperture positions
-    # first, generate a window list
+    # first, generate a window list: csec_win
     csec_separation_lst = fsep(np.arange(csec_i1, csec_i2))
     csec_separation_lst = np.int32(np.round(csec_separation_lst))
     csec_win = 2*csec_separation_lst + 1
@@ -935,8 +995,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     peaky += istart
 
     message = []
-    for _peak in peaky:
-        message.append('%4d %4d'%(_peak + csec_i1, csec_win[_peak]))
+    for peak in peaky:
+        string = '{:4d} {:4d}'.format(peak+csec_i1, csec_win[peak])
+        message.append(string)
     logger.debug((os.linesep+' '*3).join(message))
 
     ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
@@ -944,7 +1005,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     ax2.set_yscale('log')
     ax2.set_xlabel('Y', fontsize=12)
     ax2.set_ylabel('Count', fontsize=12)
-    ax2.set_xlim(csec_ylst[istart], csec_ylst[iend])
+    ax2.set_ylim(0.5,)
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
@@ -974,7 +1035,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     cuty = np.arange(cutn.size) + csec_i1
 
     #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    ax2.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
+    ax3.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
         ax2p.fill_between(cuty[istart:iend], cutn[istart:iend], step='mid',
@@ -999,8 +1060,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #ii1 = max(i1,ymax-int(sep/2))
         #ii2 = min(i2,ymax+int(sep/2))
 
-        ii1 = y-int(sep/3)
-        ii2 = y+int(sep/3)
+        ii1 = y - int(sep/3)
+        ii2 = y + int(sep/3)
         n = cutn[ii1:ii2].sum()
 
         if n > csec_nlst[y]*filling:
@@ -1029,7 +1090,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
-    logger.debug((os.linesep+' '*4).join(message))
+    logger.info((os.linesep+' '*4).join(message))
 
     # check the first and last peak. If the separation is larger than 2x of 
     # the local separation, remove them
@@ -1062,9 +1123,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         if plot_paper_fig:
             ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
 
-    # set tickers for ax2
-    ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
-    ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     aperture_set = ApertureSet(shape=(h,w))
 
@@ -1093,13 +1151,14 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                     local_sep = fsep(ystep)
                     y1 = max(0, int(ystep-local_sep/2))
                     y2 = min(h, int(ystep+local_sep/2))
+                    print(aperture, x1, y1, y2)
                     if y2 - y1 <= 5:
                         # number of points is not enough to get a local peak
                         continue
                     xdata = np.arange(y1, y2)
-                    ydata = data[y1:y2, x1]
+                    ydata = logdata[y1:y2, x1-3:x1+2].mean(axis=1)
                     m = sat_mask[y1:y2, x1]
-                    ypeak = find_local_peak(xdata, ydata, m)
+                    ypeak = find_local_peak(xdata, ydata, m, smooth=15, figname='%02d.%04d.png'%(aperture, x1))
                     xfit.append(x1)
                     yfit.append(ypeak)
                 elif option == 3:
@@ -1117,7 +1176,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
-        #ax1.plot(xfit, yfit, 'ro-',lw=0.5,alpha=0.6)
+        ax1.plot(xfit, yfit, 'ro',lw=0.5, alpha=0.8, ms=1, markeredgewidth=0)
 
         # fit chebyshev polynomial
         # determine the left and right domain
@@ -1173,21 +1232,26 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
         aperture_set[aperture] = aperture_loc
 
-    # plot the order separation information in ax3
+    # plot the order separation information in ax4
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    ax3.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
+    ax4.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
     newx = np.arange(h)
-    ax3.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
-    ax3.set_xlim(0, h-1)
-    for tickline in ax3.yaxis.get_ticklines():
+    ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
+    ax4.set_xlim(0, h-1)
+    for tickline in ax4.yaxis.get_ticklines():
         tickline.set_color('gray')
         tickline.set_alpha(0.8)
-    for tick in ax3.yaxis.get_major_ticks():
+    for tick in ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    ax3.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
+    ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
         fontsize=12)
+    for ax in [ax2, ax3, ax4]:
+        ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
+        # set tickers
+        ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+        ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     fig.canvas.draw()
     if figfile is not None:
