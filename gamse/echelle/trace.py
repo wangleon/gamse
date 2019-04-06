@@ -781,10 +781,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             mask = new_mask
         return p, mask
 
-    def find_local_peak(xdata, ydata, mask, smooth=None, figname=''):
-        #fig = plt.figure(dpi=150, figsize=(8,6))
-        #ax = fig.gca()
-        #ax.plot(xdata, ydata, color='C0')
+    def find_local_peak(xdata, ydata, mask, smooth=None, figname=None):
+        if figname is not None:
+            fig = plt.figure(dpi=150, figsize=(8,6))
+            ax = fig.gca()
+            ax.plot(xdata, ydata, color='C0')
         if smooth is not None:
             core = np.hanning(min(smooth, ydata.size))
             core = core/core.sum()
@@ -798,52 +799,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],deg=2)
         a, b,c = coeff
         ypeak = -b/2/a
-        #ax.plot(xdata, ydata, color='C1')
-        #ax.axvline(x=ypeak, color='C1', ls='--')
-        #fig.savefig(figname)
-        #plt.close(fig)
-        return ypeak
-    ############################################################################
-    def correct_background(section, figname=None):
-        h = section.size
-        #allimin, allmin = get_local_minima(section, window=25)
-        core = np.hanning(20)
-        core = core/core.sum()
-        section_new = np.convolve(section, core, mode='same')
-        allimin, allmin = get_local_minima(section_new)
-        #allimin, allmin = get_local_minima(section)
-        #mask = np.ones_like(allmin, dtype=np.bool)
-        mask = allmin > 0
-        for i in range(2):
-            coeff = np.polyfit(allimin[mask]/h, np.log(allmin[mask]), deg=3)
-            res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
-            std = res_lst[mask].std()
-            mask1 = res_lst < 3*std
-            mask2 = res_lst > -3*std
-            new_mask = mask1*mask2
-            if new_mask.sum() == mask.sum():
-                break
-            else:
-                mask = mask*new_mask
-
-        x = np.arange(h)
-        logbkg = np.polyval(coeff, x/h)
-        linbkg = np.exp(logbkg)
         if figname is not None:
-            fig = plt.figure(dpi=150, figsize=(10,8))
-            ax = fig.gca()
-            ax.plot(x, linbkg, color='C0')
-            #ax.plot(x, linbkg+std, color='C0', ls='--')
-            #ax.plot(x, linbkg-std, color='C0', ls='--')
-            ax.plot(x, section, color='C1')
-            ax.scatter(allimin, allmin, c='C3', s=10)
-            ax.set_yscale('log')
-            plt.savefig(figname)
+            ax.plot(xdata, ydata, color='C1')
+            ax.axvline(x=ypeak, color='C1', ls='--')
+            fig.savefig(figname)
             plt.close(fig)
-        pmask = section>0
-        result = np.zeros_like(section)
-        result[pmask] = np.log(section[pmask]) - np.polyval(coeff, x[pmask]/h)
-        return result
+        return ypeak
     ############################################################################
 
     # generate a window list according to separations
@@ -865,8 +826,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         #flux1 = data[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
-        #correct_background(linflux1, 'bkg-%04d.png'%x1)
-        #flux1 = correct_background(linflux1, 'bkg-%04d.png'%x1)
         #linflux1 = np.exp(flux1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
         fixfunc = intp.InterpolatedUnivariateSpline(
@@ -1135,10 +1094,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             ystep = mid
             for ix, param in enumerate(param_lst[direction]):
                 ystep = forward(ystep, param)
+                if ystep < 0 or ystep > h-1:
+                    # order center out of CCD boundaries
+                    continue
                 x1 = x_lst[direction][ix]
                 y_lst = nodes_lst[x1]
                 # now ystep is the calculated approximate position of peak along
                 # column x1
+                if bad_mask[int(np.round(ystep)), x1] >0:
+                    continue
                 option = 2
                 # option 1: use (x1, ystep)
                 # option 2: find peak by parabola fitting of the 3 points near
@@ -1149,16 +1113,18 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                     yfit.append(ystep)
                 elif option == 2:
                     local_sep = fsep(ystep)
-                    y1 = max(0, int(ystep-local_sep/2))
-                    y2 = min(h, int(ystep+local_sep/2))
-                    print(aperture, x1, y1, y2)
+                    y1 = int(ystep-local_sep/2)
+                    y2 = int(ystep+local_sep/2)
+                    y1 = max(0, y1)
+                    y2 = min(h, y2)
                     if y2 - y1 <= 5:
                         # number of points is not enough to get a local peak
                         continue
                     xdata = np.arange(y1, y2)
                     ydata = logdata[y1:y2, x1-3:x1+2].mean(axis=1)
                     m = sat_mask[y1:y2, x1]
-                    ypeak = find_local_peak(xdata, ydata, m, smooth=15, figname='%02d.%04d.png'%(aperture, x1))
+                    #ypeak = find_local_peak(xdata, ydata, m, smooth=15, figname='%02d.%04d.png'%(aperture, x1))
+                    ypeak = find_local_peak(xdata, ydata, m, smooth=15)
                     xfit.append(x1)
                     yfit.append(ypeak)
                 elif option == 3:
