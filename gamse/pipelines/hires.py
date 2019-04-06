@@ -683,7 +683,12 @@ def reduce():
                 filling    = 0.2,
                 degree     = 4,
                 display    = False,
-                figtitle   = 'trace_CCD123',
-                figfile    = 'trace_123.png',
+                figtitle   = 'trace for all 3 CCDs',
+                figfile    = 'trace.png',
                 )
-    aperset.save_reg('trace_123.reg', transpose=True)
+    trace_hdu_lst = fits.HDUList([fits.PrimaryHDU(allimage.T),
+                                  fits.ImageHDU(allmask.T)])
+    aperset.save_txt('trace.trc')
+    aperset.save_reg('trace.reg', transpose=True)
+
+    trace_hdu_lst.writeto('trace.fits')
