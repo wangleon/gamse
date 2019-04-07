@@ -38,6 +38,16 @@ all_columns = [
         ]
 
 def print_wrapper(string, item):
+    """A wrapper for log printing for HIRES pipeline.
+
+    Args:
+        string (str): The output string for wrapping.
+        item (:class:`astropy.table.Row`): The log item.
+
+    Returns:
+        str: The color-coded string.
+
+    """
     imgtype = item['imgtype']
     obj     = item['object']
 
@@ -94,10 +104,17 @@ def print_wrapper(string, item):
         return string
 
 def parse_3ccd_images(hdu_lst):
-    """Parse the 3 CCD images
+    """Parse the 3 CCD images.
 
     Args:
         hdu_lst (:class:`astropy.io.fits.HDUList`): Input HDU list.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **data_lst** (*tuple*): A tuple of (Image1, Image2, Image3).
+            * **mask_lst** (*tuple*): A tuple of (Mask1, Mask2, Mask3).
+
     """
     if len(hdu_lst) != 4:
         raise ValueError
@@ -137,7 +154,6 @@ def parse_3ccd_images(hdu_lst):
     data_lst[2][mask_sat3] = 65535
 
     return (data_lst, mask_lst)
-
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -287,6 +303,16 @@ def make_obslog(path):
     outfile.close()
 
 def get_badpixel_mask(binning, ccd=0):
+    """Get bad pixel mask for HIRES CCDs.
+
+    Args:
+        binning (tuple): CCD binning (*bin_x*, *bin_y*).
+        ccd (int): CCD number.
+
+    Returns:
+        mask (:class:`numpy.dtype`): Mask Image.
+
+    """
     # for only 1 CCD
     if ccd == 0:
         if binning == (1, 1):
@@ -327,7 +353,7 @@ def get_badpixel_mask(binning, ccd=0):
 
 
 def reduce():
-    """2D to 1D pipeline for Keck/HIRES
+    """2D to 1D pipeline for Keck/HIRES.
     """
 
     # find obs log
