@@ -641,17 +641,20 @@ def reduce():
     flatdata1 = flat_lst[0].T
     flatmask1 = flatmask_lst[0].T
     xnodes = np.arange(0, flatdata1.shape[1], 200)
-    flat_debkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20)
+    flat_debkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20,
+                    deg=3, maxiter=10)
 
     flatdata2 = flat_lst[1].T
     flatmask2 = flatmask_lst[1].T
     xnodes = np.arange(0, flatdata2.shape[1], 200)
-    flat_debkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20)
+    flat_debkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20,
+                    deg=3, maxiter=10)
 
     flatdata3 = flat_lst[2].T
     flatmask3 = flatmask_lst[2].T
     xnodes = np.arange(0, flatdata3.shape[1], 200)
-    flat_debkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20)
+    flat_debkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20,
+                    deg=3, maxiter=10)
 
     gap_rg, gap_gb = 26, 20
 
@@ -671,24 +674,32 @@ def reduce():
     allmask[r1:r2] = flatmask3
     allmask[g1:g2] = flatmask2
     allmask[b1:b2] = flatmask1
-    # fill gap with bad pixels
-    allmask[r2:g1] = 2
-    allmask[g2:b1] = 2
+    # fill gap with gap pixels
+    allmask[r2:g1] = 1
+    allmask[g2:b1] = 1
+
+    section = config['reduce.trace']
+    figfile = os.path.join(report, 'trace.png')
+    trcfile = os.path.join(midproc, 'trace.trc')
+    regfile = os.path.join(midproc, 'trace.reg')
 
     aperset = find_apertures(allimage, allmask,
-                scan_step  = 80,
-                minimum    = 1e-3,
-                separation = '100:84, 1500:45, 3000:14',
-                align_deg  = 2,
-                filling    = 0.2,
-                degree     = 4,
-                display    = False,
-                figtitle   = 'trace for all 3 CCDs',
-                figfile    = 'trace.png',
+                scan_step  = section.getint('scan_step'),
+                minimum    = section.getfloat('minimum'),
+                separation = section.get('separation'),
+                align_deg  = section.getint('align_deg'),
+                filling    = section.getfloat('filling'),
+                degree     = section.getint('degree'),
+                display    = section.getboolean('display'),
+                figtitle   = 'Trace for all 3 CCDs',
+                figfile    = figfile,
                 )
-    trace_hdu_lst = fits.HDUList([fits.PrimaryHDU(allimage.T),
-                                  fits.ImageHDU(allmask.T)])
-    aperset.save_txt('trace.trc')
-    aperset.save_reg('trace.reg', transpose=True)
+    aperset.save_txt(trcfile)
+    aperset.save_reg(regfile, transpose=True)
 
-    trace_hdu_lst.writeto('trace.fits')
+    trace_hdu_lst = fits.HDUList(
+                        [fits.PrimaryHDU(allimage.T),
+                         fits.ImageHDU(allmask.T),]
+                        )
+    trace_hdu_lst.writeto(section.get('file'), overwrite=True)
+

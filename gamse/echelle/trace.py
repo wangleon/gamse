@@ -605,8 +605,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     """
 
-    sat_mask = (mask & 4 > 0)
+    gap_mask = (mask & 1 > 0)
     bad_mask = (mask & 2 > 0)
+    sat_mask = (mask & 4 > 0)
 
     h, w = data.shape
 
@@ -662,6 +663,9 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     bad_cmap = mcolors.LinearSegmentedColormap.from_list('TransBlue',
                [(0,0,1,0), (0,0,1,0.8)], N=2)
     ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
+    gap_cmap = mcolors.LinearSegmentedColormap.from_list('TransGreen',
+               [(0,1,0,0), (0,1,0,0.8)], N=2)
+    ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
     ax1.set_xlim(0,w-1)
     ax1.set_ylim(h-1,0)
     ax1.set_xlabel('X', fontsize=12)
@@ -822,7 +826,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
         flux1 = logdata[:,x1]
-        mask1 = bad_mask[:, x1]==0
+        mask1 = (bad_mask[:, x1]==0)*(gap_mask[:, x1]==0)
         #flux1 = data[:,x1]
         #linflux1 = data[:,x1]
         linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
@@ -1101,7 +1105,8 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                 y_lst = nodes_lst[x1]
                 # now ystep is the calculated approximate position of peak along
                 # column x1
-                if bad_mask[int(np.round(ystep)), x1] >0:
+                if bad_mask[int(np.round(ystep)), x1] > 0 \
+                    or gap_mask[int(np.round(ystep)), x1] > 0:
                     continue
                 option = 2
                 # option 1: use (x1, ystep)
