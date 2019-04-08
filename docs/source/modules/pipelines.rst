@@ -31,9 +31,9 @@ FOCES
 -----
 .. currentmodule:: gamse.pipelines.foces
 .. autosummary::
+   correct_overscan
    get_primary_header
    make_obslog
-   correct_overscan
    plot_overscan_variation
    plot_bias_smooth
    reduce

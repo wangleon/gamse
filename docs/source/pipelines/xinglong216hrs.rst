@@ -16,8 +16,6 @@ The CCD detector is a back-illuminated E2V CCD 203-82 chip with 4096 × 4096
 pixels and the pixel size of 12.0 μm.
 For more information, see Fan et al. 2016 [#Fan2016]_.
 
-
-
 .. csv-table::
    :header: Parameter, Value
    :widths: 6, 10

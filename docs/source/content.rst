@@ -16,6 +16,11 @@ Modules
    :glob:
 
    modules/utils
-   modules/echelle
+   modules/echelle.imageproc
+   modules/echelle.trace
+   modules/echelle.flat
+   modules/echelle.background
+   modules/echelle.extraction
+   modules/echelle.wlcalib
    modules/pipelines
    modules/pipelines/reduction
