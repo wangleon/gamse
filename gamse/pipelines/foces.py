@@ -31,7 +31,7 @@ from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from ..utils.obslog import read_obslog
-from .common import plot_background_aspect1, PrintInfo
+from .common import plot_background_aspect1, FormattedInfo
 from .reduction          import Reduction
 
 def correct_overscan(data, head, mask=None):
@@ -589,9 +589,37 @@ print_columns = [
         ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
         ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
         ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
-        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
+        ('nsat',       'int',   '{:^10s}', '{0[saturation]:10d}'),
+        ('q95',        'int',   '{:^10s}', '{0[quantile95]:10d}'),
         ]
+
+def print_wrapper(string, item):
+    """A wrapper for log printing for HIRES pipeline.
+
+    Args:
+        string (str): The output string for wrapping.
+        item (:class:`astropy.table.Row`): The log item.
+
+    Returns:
+        str: The color-coded string.
+
+    """
+    imgtype = item['imgtype']
+    obj     = item['object']
+
+    if len(obj)>=4 and obj[0:4]=='bias':
+        # bias images, use dim (2)
+        return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif imgtype=='sci':
+        # sci images, use highlights (1)
+        return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif len(obj)>=4 and obj[0:4]=='ThAr':
+        # arc lamp, use light yellow (93)
+        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    else:
+        return string
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -612,14 +640,19 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S30'),  ('imgtype',  'S3'),
-        ('object',  'S12'), ('exptime',    'f4'),
-        ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ('frameid', 'i2'),  ('fileid',  'S30'),  ('imgtype', 'S3'),
+        ('object',  'S12'), ('exptime', 'f4'),
+        ('obsdate', Time),  ('nsat',    'i4'),   ('q95',     'i4'),
         ])
 
     # prepare infomation to print
     pinfo = PrintInfo(print_columns)
+    # prepare infomation to print
+    pinfo = FormattedInfo(all_columns,
+            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
+             'nsat', 'q95'])
 
+    # print header of logtable
     print(pinfo.get_title())
     print(pinfo.get_dtype())
     print(pinfo.get_separator())
@@ -666,7 +699,9 @@ def make_obslog(path):
         # get table Row object. (not elegant!)
         item = logtable[-1]
 
-        print(pinfo.get_format().format(item))
+        # print log item with colors
+        string = pinfo.get_format(has_esc=False).format(item)
+        print(print_wrappere(string, item))
     print(pinfo.get_separator())
 
     logtable.sort('obsdate')
@@ -706,12 +741,13 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
+    loginfo = FormattedInfo(all_columns)
     outfile = open(outfilename, 'w')
-    outfile.write(pinfo.get_title()+os.linesep)
-    outfile.write(pinfo.get_dtype()+os.linesep)
-    outfile.write(pinfo.get_separator()+os.linesep)
+    outfile.write(loginfo.get_title()+os.linesep)
+    outfile.write(loginfo.get_dtype()+os.linesep)
+    outfile.write(loginfo.get_separator()+os.linesep)
     for row in logtable:
-        outfile.write(pinfo.get_format().format(row)+os.linesep)
+        outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
 
 
