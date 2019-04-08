@@ -1774,7 +1774,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
     See Also:
 
-        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`gamse.echelle.flat.get_fiber_flat`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
@@ -1932,7 +1932,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
 
     See Also:
 
-        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`gamse.echelle.flat.get_fiber_flat`
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_c`
         * :func:`smooth_aperpar_bkg`
@@ -2007,7 +2007,7 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
 
     See Also:
 
-        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`gamse.echelle.flat.get_fiber_flat`
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_bkg`
@@ -2040,7 +2040,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
 
     See Also:
 
-        * :func:`edrs.echelle.flat.get_fiber_flat`
+        * :func:`gamse.echelle.flat.get_fiber_flat`
         * :func:`smooth_aperpar_A`
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_c`

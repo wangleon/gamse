@@ -15,7 +15,6 @@ from ..echelle.imageproc import combine_images
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.background import simple_debackground
 from ..utils.obslog import parse_num_seq, read_obslog
-from ..utils import obslog
 from .common import FormattedInfo
 
 all_columns = [
@@ -184,7 +183,7 @@ def make_obslog(path):
     # prepare infomation to print
     pinfo = FormattedInfo(all_columns,
             ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
-            'obsdate', 'deckname', 'nsat_2', 'q95_2'])
+             'obsdate', 'deckname', 'nsat_2', 'q95_2'])
 
     # print header of logtable
     print(pinfo.get_separator())
@@ -293,6 +292,9 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
+
+    # loginfo is not pinfo because not all columns need to be printed in the
+    # screen, but all columns should be written in logfile.
     loginfo = FormattedInfo(all_columns)
     outfile = open(outfilename, 'w')
     outfile.write(loginfo.get_title()+os.linesep)
