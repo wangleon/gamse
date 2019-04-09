@@ -1,14 +1,13 @@
 
 GAMSE Documentation
-=====================
+===================
 
 .. image:: images/gamse.svg
     :alt: GAMSE logo
-    :align: left
-    :width: 240px
+    :width: 250px
 
 `GAMSE` is a data reduction package for high-resolution échelle spectrographs.
-It contains all necessary subroutines in spectral reduction process, including
+It contains necessary subroutines in spectral reduction process, including
 overscan correction, bias subtraction, order detection, flat-fielding
 correction, background correction, and optimal extraction.
 GAMSE supports a variety of instruments, e.g. FOCES on the 2m Fraunhofer
@@ -18,12 +17,23 @@ Observatory.
 Installation
 ------------
 
-Using Git:
+To install `GAMSE`, simply use `pip`
+
+.. code-block:: bash
+
+   sudo pip install gamse
+
+Or alternatively, use git
 
 .. code-block:: bash
 
    git clone https://github.com/wangleon/gamse.git
 
+then run the following command in the `GAMSE` directory
+
+.. code-block:: bash
+
+   sudo python3 setup.py install
 
 Introduction
 -------------
