@@ -582,15 +582,15 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-print_columns = [
+all_columns = [
         ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
         ('fileid',     'str',   '{:^30s}', '{0[fileid]:30s}'),
         ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
         ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
         ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',       'int',   '{:^10s}', '{0[saturation]:10d}'),
-        ('q95',        'int',   '{:^10s}', '{0[quantile95]:10d}'),
+        ('nsat',       'int',   '{:^7s}', '{0[nsat]:7d}'),
+        ('q95',        'int',   '{:^6s}', '{0[q95]:6d}'),
         ]
 
 def print_wrapper(string, item):
@@ -605,7 +605,7 @@ def print_wrapper(string, item):
 
     """
     imgtype = item['imgtype']
-    obj     = item['object']
+    obj     = item['object'].strip().lower()
 
     if len(obj)>=4 and obj[0:4]=='bias':
         # bias images, use dim (2)
@@ -646,15 +646,14 @@ def make_obslog(path):
         ])
 
     # prepare infomation to print
-    pinfo = PrintInfo(print_columns)
-    # prepare infomation to print
     pinfo = FormattedInfo(all_columns,
             ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
              'nsat', 'q95'])
 
     # print header of logtable
+    print(pinfo.get_separator())
     print(pinfo.get_title())
-    print(pinfo.get_dtype())
+    #print(pinfo.get_dtype())
     print(pinfo.get_separator())
 
     # start scanning the raw files
@@ -701,7 +700,7 @@ def make_obslog(path):
 
         # print log item with colors
         string = pinfo.get_format(has_esc=False).format(item)
-        print(print_wrappere(string, item))
+        print(print_wrapper(string, item))
     print(pinfo.get_separator())
 
     logtable.sort('obsdate')
@@ -1140,7 +1139,8 @@ def reduce():
     if not os.path.exists(midproc): os.mkdir(midproc)
 
     # initialize printing infomation
-    pinfo1 = PrintInfo(print_columns)
+    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ################################ parse bias ################################
@@ -1156,9 +1156,9 @@ def reduce():
         # read each individual CCD
         bias_data_lst = []
 
-        for item in logtable:
-            if item['object'].strip().lower()=='bias':
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+        for logitem in logtable:
+            if logitem['object'].strip().lower()=='bias':
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 if data.ndim == 3:
                     data = data[0,:,:]
@@ -1168,9 +1168,11 @@ def reduce():
                 # print info
                 if len(bias_data_lst) == 0:
                     print('* Combine Bias Images: {}'.format(bias_file))
+                    print(' '*2 + pinfo2.get_separator())
                     print(' '*2 + pinfo2.get_title())
                     print(' '*2 + pinfo2.get_separator())
-                print(' '*2 + pinfo2.get_format().format(item, overmean))
+                string = pinfo2.get_format().format(logitem, overmean)
+                print(' '*2 + print_wrapper(string, logitem))
 
                 bias_data_lst.append(data)
 
@@ -1235,27 +1237,27 @@ def reduce():
     flat_groups = {}
     # flat_groups = {'flat_M': [fileid1, fileid2, ...],
     #                'flat_N': [fileid1, fileid2, ...]}
-    for item in logtable:
-        name = item['object']          # only valid for single fiber
-        g = name.split()
+    for logitem in logtable:
+        obj = logitem['object']          # only valid for single fiber
+        g = obj.split()
         if len(g)>0 and g[0].lower().strip() == 'flat':
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
-            if name.lower().strip()=='flat':
+            if obj.lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
-                flatname = 'flat_%g'%(item['exptime'])
+                flatname = 'flat_%g'%(logitem['exptime'])
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
                 # "Flat Red" becomes "Red" 
-                char = name[4:].strip()
+                char = obj[4:].strip()
                 flatname = 'flat_%s'%(char.replace(' ','_'))
 
             # add flatname to flat_groups
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(item)
+            flat_groups[flatname].append(logitem)
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
@@ -1283,12 +1285,13 @@ def reduce():
             exptime_lst = []
 
             print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            print(' '*2 + pinfo2.get_separator())
             print(' '*2 + pinfo2.get_title())
             print(' '*2 + pinfo2.get_separator())
 
-            for i_item, item in enumerate(item_lst):
+            for i_item, logitem in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
@@ -1311,7 +1314,8 @@ def reduce():
                     logger.info('No bias. skipped bias correction')
 
                 # print info
-                print(' '*2 + pinfo2.get_format().format(item, overmean))
+                string = pinfo2.get_format().format(logitem, overmean)
+                print(' '*2 + print_wrapper(string, logitem))
 
                 data_lst.append(data)
 
