@@ -24,3 +24,8 @@ Modules
    modules/echelle.wlcalib
    modules/pipelines
    modules/pipelines/reduction
+   modules/pipeline.common
+   modules/pipeline.foces
+   modules/pipeline.hires
+   modules/pipeline.levy
+   modules/pipeline.xinglong216hrs
