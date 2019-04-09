@@ -4,6 +4,7 @@ GAMSE
 <img src="https://github.com/wangleon/gamse/blob/master/docs/images/gamse.svg"
  width=350>
 
+[![PyPI](https://img.shields.io/pypi/v/gamse.svg)](https://pypi.org/project/gamse/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 `GAMSE` is a data reduction package for high-resolution échelle spectrographs.

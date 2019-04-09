@@ -1,5 +1,10 @@
-build/*
-reduction/*
-docs/build/*
+# packages info
+build
+dist
+
+# cache files
 *.pyc
 *.swp
+
+# generated files
+MANIFEST
