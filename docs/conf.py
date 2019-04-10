@@ -106,7 +106,9 @@ pygments_style = 'sphinx'
 # a list of builtin themes.
 #html_theme = 'default'
 #html_theme = 'bizstyle'
-html_theme = 'sphinx_rtd_theme'
+#html_theme = 'sphinx_rtd_theme'
+html_theme = 'sphinx_catalystcloud_theme'
+import sphinx_catalystcloud_theme
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -116,7 +118,7 @@ html_theme_options = {
         }
 
 # Add any paths that contain custom themes here, relative to this directory.
-#html_theme_path = []
+html_theme_path = [sphinx_catalystcloud_theme.get_html_theme_path()]
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
@@ -271,5 +273,16 @@ intersphinx_mapping = {
         'astropy': ('http://docs.astropy.org/en/stable/', None),
         }
 
-
 #numpydoc_show_class_members = False
+
+from sphinx.apidoc import main
+
+def run_apidoc(_):
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    cur_dir = os.path.abspath(os.path.dirname(__file__))
+    api_dir = os.path.join(cur_dir, 'api')
+    module = os.path.join(cur_dir, '..', 'gamse')
+    main(['-e', '-P', '-o', api_dir, module, '--force'])
+
+def setup(app):
+    app.connect('builder-inited', run_apidoc)

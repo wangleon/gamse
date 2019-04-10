@@ -12,22 +12,38 @@ It contains necessary subroutines in spectral reduction process, including
 overscan correction, bias subtraction, order detection, flat-fielding
 correction, background correction, and optimal extraction.
 
+Dependencies
+------------
+`GAMSE` is based on Python 3.4 or later, and does not work in Python 2.x.
+To use `GAMSE` the following packages are required:
+
+* [Numpy](http://www.numpy.org/) 1.16.1 or later: A Python library for
+  multi-dimensional arrays and mathematics.
+* [Scipy](https://www.scipy.org/) 0.17.0 or later: A Python library for
+  scientific computing.
+* [Matplotlib](https://matplotlib.org/) 2.2.0 or later: To display and generate
+  output figures.
+* [Astropy](http://www.astropy.org/) 3.1.1 or later: To read and write FITS
+  files and ASCII tables.
+
 Installation
 ------------
-To install `GAMSE`, simply use `pip`
+To install `GAMSE` package with `pip`, simply use the following command
 
 ```bash
 sudo pip install gamse
 ```
 
-Or alternatively, use git
+Or alternatively, clone the whole repository with GIT
 
 ```bash
 git clone https://github.com/wangleon/gamse.git
 ```
 
-and run the following command in the `GAMSE` directory
+Then run the setup script in the cloned directory:
 
 ```bash
 sudo python3 setup.py install
 ```
+
+

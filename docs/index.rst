@@ -14,22 +14,36 @@ GAMSE supports a variety of instruments, e.g. FOCES on the 2m Fraunhofer
 Telescope in Wendelstein Observatory, and HRS on the 2.16m telescope in Xinglong
 Observatory.
 
+Dependencies
+------------
+`GAMSE` is based on Python 3.4 or later, and does not work in Python 2.x.
+To use `GAMSE` the following packages are required:
+
+* `Numpy <http://www.numpy.org/>`_ 1.16.1 or later: A Python library for
+  multi-dimensional arrays and mathematics.
+* `Scipy <https://www.scipy.org/>`_ 0.17.0 or later: A Python library for
+  scientific computing.
+* `Matplotlib <https://matplotlib.org/>`_ 2.2.0 or later: To display and
+  generate output figures.
+* `Astropy <http://www.astropy.org/>`_ 3.1.1 or later: To read and write FITS
+  files and ASCII tables.
+
 Installation
 ------------
 
-To install `GAMSE`, simply use `pip`
+To install `GAMSE` package with `pip`, simply usethe following command:
 
 .. code-block:: bash
 
    sudo pip install gamse
 
-Or alternatively, use git
+Or alternatively, clone the whole repository with GIT:
 
 .. code-block:: bash
 
    git clone https://github.com/wangleon/gamse.git
 
-then run the following command in the `GAMSE` directory
+Then run the setup script in the cloned directory:
 
 .. code-block:: bash
 
@@ -38,17 +52,14 @@ then run the following command in the `GAMSE` directory
 Introduction
 -------------
 
-Modes of execution 
--------------------
-This software package is designed to be easily adapted the data taken with an other echelle spectrograph.
 
-The software has three modii namely:
-    * **normal**
-        Mode for the normal day to day use.
-    * **learn**
-        Mode to teach the code to reduce data from other echelle spectrographs then FOCES.
-    * **compare**
-        This mode compare the results obtained with this data reduction pipline to other reduction piplines.
+General Description
+-------------------
+The reduction procedure and the input parameters are controlled by an
+user-defined ASCII configuration file.
+It consists of a series of key/values delimited by the equal signs.
+Comments prefixed by hash (#) or semicolons (;) symbols are supported,
+for example::
 
 
 Supported Spectrographs
@@ -83,9 +94,3 @@ Indices and Tables
 * :ref:`modindex`
 * :ref:`search`
 
-
-References
---------------
-.. [#Pfeiffer1998] Pfeiffer et al., 1998, *A&AS*, 130, 381 :ads:`1998A&AS..130..381P`
-.. [#Steinmetz2008] Steinmetz et al., 2008, *Science*, 321, 1335 :ads:`2008Sci...321.1335S`
-.. [#Wilken2012] Wilken et al., 2012, *Nature*, 485, 611 :ads:`2012Natur.485..611W`
