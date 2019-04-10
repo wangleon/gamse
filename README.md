@@ -28,13 +28,13 @@ To use `GAMSE` the following packages are required:
 
 Installation
 ------------
-To install `GAMSE` package with `pip`, simply use the following command
+To install `GAMSE` package with `pip`, simply use the following command:
 
 ```bash
 sudo pip install gamse
 ```
 
-Or alternatively, clone the whole repository with GIT
+Or alternatively, clone the whole repository with GIT:
 
 ```bash
 git clone https://github.com/wangleon/gamse.git
