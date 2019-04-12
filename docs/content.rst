@@ -6,5 +6,7 @@ Table of Contents
    :glob:
 
    index
-   fits_output
-   pipelines/*
+   config_file
+   obslog
+   manual.*
+   faq

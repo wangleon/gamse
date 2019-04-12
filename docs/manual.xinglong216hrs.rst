@@ -1,9 +1,9 @@
 .. |e| replace:: e\ :sup:`−`
 
-.. _pipeline_xinglong216hrs:
+.. _manual_xinglong216hrs:
 
-Pipeline for Xinglong 2.16m HRS
-===============================
+Reduction Manual for Xinglong 2.16m HRS
+=======================================
 
 Introduction to Instrument
 --------------------------

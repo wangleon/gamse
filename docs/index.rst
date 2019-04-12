@@ -49,10 +49,6 @@ Then run the setup script in the cloned directory:
 
    sudo python3 setup.py install
 
-Introduction
--------------
-
-
 General Description
 -------------------
 The reduction procedure and the input parameters are controlled by an
@@ -63,7 +59,7 @@ for example::
 
 
 Supported Spectrographs
--------------------------
+-----------------------
 * :ref:`FOCES<pipeline_foces>` on 2m Fraunhofer Telescope in Wendelstein Observatory
 * :ref:`HRS<pipeline_xinglong216hrs>` on 2.16m telescope in Xinglong Observatory
 * :ref:`Levy<>` on APF
