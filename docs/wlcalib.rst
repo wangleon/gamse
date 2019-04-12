@@ -1,0 +1,4 @@
+.. _wlcalib:
+
+Wavelength Calibration
+======================

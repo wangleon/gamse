@@ -8,5 +8,10 @@ Table of Contents
    index
    config_file
    obslog
+   order_tracing
+   flat_fielding
+   background
+   extraction
+   wlcalib
    manual.*
    faq
