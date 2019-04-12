@@ -1,0 +1,4 @@
+.. _obslog:
+
+Observing Log
+=============
