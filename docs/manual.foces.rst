@@ -181,6 +181,21 @@ After preparation of the configuration file ``*.cfg`` and the observing log file
 
    gamse reduce
 
+The following entries are accepted in the ``[reduce]`` section in the
+configuration file:
+
+.. csv-table:: Accepted entries in ``reduce`` section
+   :header: Key, Type, Default Value, Description
+   :escape: '
+   :widths: 12, 8, 12, 50
+
+   **midproc**,     *str*, *midproc*,  Path to the mid-process folder.
+   **report**,      *str*, *report*,   Path to the 1d spectra folder.
+   **onedspec**,    *str*, *onedspec*, Path to the report folder.
+   **mode**,        *str*, *normal*,   "Reduction mode. Available modes are '"normal'", '"debug'" and '"fast'"."
+   **oned_suffix**, *str*, *str*,      Suffix of the 1d spectra files.
+   **fig_format**,  *str*, *png*,      Format of figures.
+
 Overscan Correction
 -------------------
 The FOCES CCD has a pre-readout and a post-readout overscan regions at the left
@@ -306,7 +321,7 @@ APIs
 
 References
 -----------
-.. [#Grupp2009] Grupp et al., 2009, *SPIE*, 7440, 74401G :ads:`2009SPIE.7440E..1GG`
-.. [#Grupp2010] Grupp et al., 2010, *SPIE*, 7735, 773573 :ads:`2010SPIE.7735E..73G`
-.. [#Hopp2014] Hopp et al., 2014, *SPIE*, 9145, 91452D :ads:`2014SPIE.9145E..2DH`
-.. [#Pfeiffer1998] Pfeiffer et al., 1998, *A&AS*, 130, 381 :ads:`1998A%26AS..130..381P`
+.. [#Grupp2009] `Grupp et al., 2009, SPIE, 7440, 74401G <http://adsabs.harvard.edu/abs/2009SPIE.7440E..1GG>`_
+.. [#Grupp2010] `Grupp et al., 2010, SPIE, 7735, 773573 <http://adsabs.harvard.edu/abs/2010SPIE.7735E..73G>`_
+.. [#Hopp2014] `Hopp et al., 2014, SPIE, 9145, 91452D <http://adsabs.harvard.edu/abs/2014SPIE.9145E..2DH>`_
+.. [#Pfeiffer1998] `Pfeiffer et al., 1998, A&AS, 130, 381 <http://adsabs.harvard.edu/abs/1998A&AS..130..381P>`_
