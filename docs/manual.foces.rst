@@ -24,30 +24,33 @@ of 390 - 900 nm.
 
 The characteristics of FOCES are summaried as below:
 
-.. list-table::
-   :widths: 7 10
 
-   * - **Spectral resolving power**
-     - *R* = *λ*\ /Δ\ *λ* = 70,000
-   * - **Wavelength coverage**
-     - 390 - 900 nm
-   * - **Connection to the telescope**
-     - octagonal multi-mode fiber
-   * - **Main-disperser**
-     - 31.6 lines mm\ :sup:`−1` R2 VPHG
-   * - **Cross-disperser**
-     - A pair of prisms
-   * - **Detector**
-     - 2048 x 2048 pixels
-   * - **Pixel size**
-     - 13.5 μm
-   * - **Sampling per resolution element**
-     - ~2.3 pixels
-   * - **Wavelength calibration**
-     - ThAr/astrocomb simultaneous reference
 
-Preparing the Data & Config File
---------------------------------
++---------------------------+---------------------------------+---------------------------------------+
+| **Main-disperser**        | Spectral resovling power        | *R* = *λ*\ /Δ\ *λ* = 70,000           |
+|                           +---------------------------------+---------------------------------------+
+|                           | Groove density                  | 31.6 lines mm\ :sup:`−1`              |
+|                           +---------------------------------+---------------------------------------+
+|                           | Blazing angle                   |                                       |
++---------------------------+---------------------------------+---------------------------------------+
+| **Corss-disperser**       | A pair of prisms                                                        |
++---------------------------+---------------------------------+---------------------------------------+
+| **CCD Detector**          | Wavelength coverage             | 390 - 900 nm                          |
+|                           +---------------------------------+---------------------------------------+
+|                           | Number of pixels                | 2048 x 2048                           |
+|                           +---------------------------------+---------------------------------------+
+|                           | Pixel size                      | 13.5 μm                               |
+|                           +---------------------------------+---------------------------------------+
+|                           | Sampling per resolution element | ~2.3 pixels                           |
++---------------------------+---------------------------------+---------------------------------------+
+| **Others**                | Link to the telescope           | An octagonal multi-mode fiber         |
+|                           +---------------------------------+---------------------------------------+
+|                           | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
++---------------------------+---------------------------------+---------------------------------------+
+
+
+Preparing Data & Config File
+----------------------------
 The first step is to create a new working directory in a place where you have
 full read/write permissions.
 All the steps performed by `GAMSE` will be done in this directory.
@@ -288,18 +291,17 @@ Format of Output Spectra
 
 APIs
 ----
-.. currentmodule:: gamse.pipelines.foces
 .. autosummary::
-   correct_overscan
-   get_primary_header
-   make_obslog
-   plot_overscan_variation
-   plot_bias_smooth
-   reduce
-   smooth_aperpar_A
-   smooth_aperpar_k
-   smooth_aperpar_c
-   smooth_aperpar_bkg
+   gamse.pipelines.foces.correct_overscan
+   gamse.pipelines.foces.get_primary_header
+   gamse.pipelines.foces.make_obslog
+   gamse.pipelines.foces.plot_overscan_variation
+   gamse.pipelines.foces.plot_bias_smooth
+   gamse.pipelines.foces.reduce
+   gamse.pipelines.foces.smooth_aperpar_A
+   gamse.pipelines.foces.smooth_aperpar_k
+   gamse.pipelines.foces.smooth_aperpar_c
+   gamse.pipelines.foces.smooth_aperpar_bkg
 
 
 References
