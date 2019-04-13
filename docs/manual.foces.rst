@@ -286,6 +286,22 @@ Wavelength Calibration
 Format of Output Spectra
 ------------------------
 
+APIs
+----
+.. currentmodule:: gamse.pipelines.foces
+.. autosummary::
+   correct_overscan
+   get_primary_header
+   make_obslog
+   plot_overscan_variation
+   plot_bias_smooth
+   reduce
+   smooth_aperpar_A
+   smooth_aperpar_k
+   smooth_aperpar_c
+   smooth_aperpar_bkg
+
+
 References
 -----------
 .. [#Grupp2009] Grupp et al., 2009, *SPIE*, 7440, 74401G :ads:`2009SPIE.7440E..1GG`

@@ -136,6 +136,20 @@ The pipeline accepts the following options in the config file:
    **background**, **extend**,        *bool*,   ,                Extend the grid to the whole image if *True*.
    **background**, **display**,       *bool*,   ,                Display a graphics if *yes*.
 
+APIs
+----
+.. currentmodule:: gamse.pipelines.xinglong216hrs
+.. autosummary::
+   make_obslog
+   get_mask
+   get_badpixel_mask
+   correct_overscan
+   reduce
+   smooth_aperpar_A
+   smooth_aperpar_k
+   smooth_aperpar_c
+   smooth_aperpar_bkg
+
 References
 ----------
 .. [#Fan2016] Fan et al., 2016, *PASP*, 128, 115005 :ads:`2016PASP..128k5005F`

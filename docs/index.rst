@@ -65,23 +65,14 @@ Supported Spectrographs
 * :ref:`Levy<>` on APF
 .. * :ref:`HIRES<pipeline_hires>` on 10m Keck II Telescope in  W. M. Keck Observatory
 
-Steps performed by the software
---------------------------------
-The pipline performs the correction and wavelength calibration of the science data (therfore reduces the 2d image taken by the echelle spectrograph to a 1d list containing the normalisied photons over wavelength data). To do so the following tasks are performed:
+Spectral Reduction Process
+--------------------------
 
-    1. Overscan correction
-    2. Bias subtraction
-    3. Dark subtraction
-    4. Order tracing
-    5. Background subtraction
-    6. Flatfield correction
-    7. Wavelength calibration
-
-
-See also
---------
-* :ref:`Structure of output FITS files<fits_output>`
-
+.. figure:: images/reduction_process.svg
+   :alt: Spectral reduction process
+   :align: center
+   :width: 900px
+   :figwidth: 900px
 
 Indices and Tables
 --------------------
