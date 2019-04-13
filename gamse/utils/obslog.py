@@ -3,10 +3,21 @@ import re
 import logging
 logger = logging.getLogger(__name__)
 
+from astropy.io import registry as io_registry
 from astropy.table import Table, MaskedColumn
 from astropy.time import Time
 
-def read_obslog(filename, delimiter=' '):
+def _read_obslog(filename, delimiter=' '):
+    """A customized function use to read the observing log
+
+    Args:
+        filename (str): Filename of the obsereving log file.
+        delimiter (str): Delimiter of the items.
+
+    Returns:
+        :class:`astropy.table.Table`: An observing log object.
+
+    """
     infile = open(filename)
     count_row = 0
     for row in infile:
@@ -74,6 +85,20 @@ def read_obslog(filename, delimiter=' '):
 
     return logtable
 
+
+def read_obslog(filename, delimiter=' '):
+    """Read the observing log.
+
+    Args:
+        filename (str): Filename of the obsereving log file.
+        delimiter (str): Delimiter of the items.
+
+    Returns:
+        :class:`astropy.table.Table`: An observing log object.
+    
+    """
+    io_registry.register_reader('obslog', Table, _read_obslog)
+    return Table.read(filename, format='obslog', delimiter=delimiter)
 
 class LogItem(object):
     """Class for observing log items

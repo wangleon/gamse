@@ -13,7 +13,6 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
-from astropy.io import registry as io_registry
 from astropy.table import Table
 from astropy.time  import Time
 import matplotlib.pyplot as plt
@@ -605,9 +604,9 @@ def print_wrapper(string, item):
 
     """
     imgtype = item['imgtype']
-    obj     = item['object'].strip().lower()
+    obj     = item['object']
 
-    if len(obj)>=4 and obj[0:4]=='bias':
+    if len(obj)>=4 and obj[0:4].lower()=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
@@ -615,7 +614,7 @@ def print_wrapper(string, item):
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif len(obj)>=4 and obj[0:4]=='ThAr':
+    elif len(obj)>=4 and obj[0:4].lower()=='thar':
         # arc lamp, use light yellow (93)
         return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
     else:
@@ -1098,8 +1097,7 @@ def reduce():
         pass
 
     # read obs log
-    io_registry.register_reader('obslog', Table, read_obslog)
-    logtable = Table.read(logname_lst[0], format='obslog')
+    logtable = read_obslog(logname_lst[0])
 
     # load config files
     config_file_lst = []
@@ -1128,15 +1126,16 @@ def reduce():
     exptime_key = section.get('exptime_key')
     section     = config['reduce']
     midproc     = section.get('midproc')
-    result      = section.get('result')
+    onedspec    = section.get('onedspec')
     report      = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):  os.mkdir(report)
-    if not os.path.exists(result):  os.mkdir(result)
-    if not os.path.exists(midproc): os.mkdir(midproc)
+    if not os.path.exists(report):   os.mkdir(report)
+    if not os.path.exists(onedspec): os.mkdir(onedspec)
+    if not os.path.exists(midproc):  os.mkdir(midproc)
 
     # initialize printing infomation
     pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
@@ -1428,7 +1427,7 @@ def reduce():
         # continue to the next colored flat
 
     ############################# Mosaic Flats #################################
-    flat_file = os.path.join(midproc, 'flat.fits.gz')
+    flat_file = os.path.join(midproc, 'flat.fits')
     trac_file = os.path.join(midproc, 'trace.trc')
     treg_file = os.path.join(midproc, 'trace.reg')
     if len(flat_groups) == 1:
@@ -1437,7 +1436,7 @@ def reduce():
         flatname = list(flat_groups)[0]
         # in python3, dict keys does not support indexing.
 
-        shutil.copyfile(os.path.join(midproc, flatname+'.fits.gz'),
+        shutil.copyfile(os.path.join(midproc, flatname+'.fits'),
                         flat_file)
         shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
                         trac_file)
@@ -1627,7 +1626,7 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(result, fileid+'_ods.fits')
+                filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
                 hdu_lst.writeto(filename, overwrite=True)
 
                 # add more infos in calib
@@ -1746,7 +1745,7 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(result, fileid+'_ods.fits')
+            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: {} - Spectra written to {}'.format(
                         fileid, filename))
