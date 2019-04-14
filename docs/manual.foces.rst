@@ -9,9 +9,9 @@ Fibre Optics Cassegrain Echelle Spectrograph (FOCES, Pfeiffer et al. 1998
 [#Pfeiffer1998]_) was originally mounted to the Cassegrain focus of the 2.2m
 telescope in Calar Alto Observatory, Spain.
 After 15 years of operation, the spectrograph was brought back to `University
-Obserevatory Munich (USM) <http://www.usm.uni-muenchen.de/>`_ for a major
+Observatory Munich (USM) <http://www.usm.uni-muenchen.de/>`_ for a major
 upgrade (Grupp et al. 2009 [#Grupp2009]_, 2010 [#Grupp2010]_) to meet the
-requirements for precise spectroscopy, such as searching for extra-solar
+requirements for precision spectroscopy, such as searching for extra-solar
 planets with the Doppler method.
 In the summer of 2017, FOCES was successfully mounted on the 2m Fraunhofer
 Telescope (Hopp et al. 2014 [#Hopp2014]_) at the `Wendelstein Observatory
@@ -22,7 +22,7 @@ multi-mode optical fiber.
 FOCES has a resolving power (*R*) of ~ 70,000, and covers the wavelength range
 of 390 - 900 nm.
 
-The characteristics of FOCES are summaried as below:
+The characteristics of FOCES are summarised as below:
 
 
 
@@ -43,7 +43,7 @@ The characteristics of FOCES are summaried as below:
 |                           +---------------------------------+---------------------------------------+
 |                           | Sampling per resolution element | ~2.3 pixels                           |
 +---------------------------+---------------------------------+---------------------------------------+
-| **Others**                | Link to the telescope           | An circular multi-mode fiber (100µm)  |
+| **Others**                | Link to the telescope           | A circular multi-mode fiber (100µm)  |
 |                           +---------------------------------+---------------------------------------+
 |                           | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
 +---------------------------+---------------------------------+---------------------------------------+
@@ -152,7 +152,7 @@ observing log as a table in the terminal:
     ... ...
     ------- ------------------------------ ------- ------------ ------- ----------------------- ------- ------
 
-Menwhile, a text file with the name of ``2018-07-18.obslog`` containing almost
+Meanwhile, a text file with the name of ``2018-07-18.obslog`` containing almost
 the same table will be created in the working directory.
 The columns have the explicit meanings as shown in the header.
 ``nsat`` is the number of saturated pixels of the whole image, and ``q95`` is
@@ -169,7 +169,7 @@ changes *manually*.
 The obslog files will *NOT* be overwritten by running ``gamse list``, but new
 files named ``2018-07-18.1.oblog``, ``2018-07-18.2.oblog``... with extra numbers
 will be generated if there are existing obslog files in the working directory.
-Users have to decide which observing log file to use in the data reduction.
+`GAMSE` will us the first ``.oblog`` file it finds in the working directory, that is why the user is advised to verify that *ONLY* the ``.oblog`` file which should be used during data reduction remains in the working directory.
 
 
 Starting Data Reduction
@@ -216,8 +216,8 @@ regions, each with a width of 20 columns.
 
 `GAMSE` computes the mean values of the pre-readout overscan regions as the
 overscan level of the whole image.
-Due to the incomplete cleaning of pixel charges, The values in the post-readout
-regions are in average a few ADUs higher than the pre-readout regions.
+Due to the incomplete cleaning of pixel charges, the values in the post-readout
+regions are in average a few ADUs higher than the pre-readout regions and therefore not used in the data reduction.
 
 `GAMSE` does the overscan correction for every image throughout the data
 reduction processes.
@@ -226,11 +226,11 @@ reduction processes.
 Bias Correction
 ---------------
 `GAMSE` finds images marked with ``Bias`` in the observing log, and combines
-them with a sigma-clipping method.
-The result is saved as a FITS image as specified in the configuration file.
+them in a mean-stack with additional upper sigma-clipping.
+The resulting Master-Bias is saved as a FITS image as specified in the configuration file.
 
 There are usually some spatial patterns across the bias images.
-`GAMSE` is capble of smoothing this image with a Gaussian core.
+`GAMSE` is capable of smoothing this image with a Gaussian core.
 
 The behaviors during the bias correction are controlled by the ``reduce.bias``
 section in the configuration file.
@@ -254,10 +254,10 @@ Order Tracing
 -------------
 The order detection and location of FOCES data follow :ref:`the standard method
 <order_tracing>` of `GAMSE`.
-Orders are detected in combined flat fileding images.
-Below example shows the result of order detection in a combination of 11 flat
+Orders are detected in combined flat field images.
+The example below shows the result of the order detection algorithm in a combination of 11 flat
 images.
-Totally 85 échlle orders are found, and numbered as 0, 1, 2 ... 84.
+Totally 85 échelle orders are found, and numbered as 0, 1, 2 ... 84.
 All the images have exposure times of 1.5 seconds.
 
 
@@ -265,7 +265,7 @@ The behaviors during the order tracing are controlled by the ``reduce.trace``
 section in the configuration file.
 It accepts the following entries:
 
-.. csv-table:: Accepted entries in ``reduce.bias`` section
+.. csv-table:: Accepted entries in ``reduce.trace`` section
    :header: Key, Type, Default Value, Description
    :escape: '
    :widths: 12, 8, 18, 60
@@ -280,17 +280,17 @@ It accepts the following entries:
 
 Flat Fielding Correction
 ------------------------
-FOCES users usually take different group of flat fielding frames with different
-exposure times, to illustrate different regions of the CCD.
-`GASME` combines flat fieldings with the same exposure times, and assigns an
+FOCES users usually take different groups of flat fielding frames with different
+exposure times, to optimize signal-to-noise in different regions of the CCD.
+`GASME` combines flat field images with the same exposure time, and assigns an
 independent name ``flat_XX`` for each combined flat image, where ``XX`` is the
 exposure time.
-For example, ``flat_1.5`` means all the flat fielding frames have the expsosure
+For example, ``flat_1.5`` is the combination of all the flat field frames having the exposure
 time of 1.5 seconds.
-After combination, flat images with different exposure times are mosaiced
-together to generate a master flat image, usually named ``flat``.
-The stitching lines are some curves lying between échlle orders, and can be
+These combined flat images are then stitched together in a mosaic way to optimize for signal-to-noise in different regions of the CCD generating the so-called master flat image, which is by default named ``flat``.
+The stitching lines are some curves lying between échlle the orders and are
 determined automatically by the software.
+
 
 Background Correction
 ---------------------
