@@ -43,7 +43,7 @@ The characteristics of FOCES are summaried as below:
 |                           +---------------------------------+---------------------------------------+
 |                           | Sampling per resolution element | ~2.3 pixels                           |
 +---------------------------+---------------------------------+---------------------------------------+
-| **Others**                | Link to the telescope           | An octagonal multi-mode fiber         |
+| **Others**                | Link to the telescope           | An circular multi-mode fiber (100µm)  |
 |                           +---------------------------------+---------------------------------------+
 |                           | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
 +---------------------------+---------------------------------+---------------------------------------+
