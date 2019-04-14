@@ -51,11 +51,11 @@ The characteristics of FOCES are summarised as below:
 
 Preparing Data & Config File
 ----------------------------
-The first step is to create a new working directory in a place where you have
+The first step is to create a new working directory in a place where the user has
 full read/write permissions.
 All the steps performed by `GAMSE` will be done in this directory.
 For example, the following commands create a new working directory called
-``foces.2018-07-18``, where the FOCES data taken in July 18, 2018 will be
+``foces.2018-07-18``, where the FOCES data taken on July 18, 2018, will be
 reduced here.
 
 .. code-block:: bash
@@ -69,7 +69,7 @@ The name of the text file is arbitrary, but the suffix must be ``.cfg``.
 The user must make sure there is only one ``.cfg`` file in the working
 directory.
 For example, a text file called ``foces-2018-07-18.cfg`` with the following
-contents is created:
+content is created:
 ::
 
     [data]
@@ -83,16 +83,16 @@ The third keyword ``rawdata`` tells the software the path to the raw images.
 The default value is a sub-directory called ``rawdata`` in the working
 directory.
 The user may want to keep the raw data in their original places, but to use a
-softlink to the actual data path, instead.
-For example, the raw images taken in July 18, 2018 are in
+soft link to the actual data path, instead.
+For example, the raw images taken on July 18, 2018, are in
 ``/data/foces/rawdata/2018/0718/``, and the following command is to create a
-softlink called ``rawdata`` in the working directory:
+soft link called ``rawdata`` in the working directory:
 
 .. code-block:: bash
 
    ln -s /data/foces/rawdata/2018/0718 rawdata
 
-Or alternatively, one can use the actual data path in the configuration file:
+Alternatively, one can use the actual data path in the configuration file:
 ::
 
     [data]
@@ -100,7 +100,7 @@ Or alternatively, one can use the actual data path in the configuration file:
     instrument = FOCES
     rawdata    = /data/foces/rawdata/2018/0718
 
-In this case, the soft link to the data path is not necessary any more.
+In this case, the soft link to the data path is not necessary anymore.
 
 The ``data`` section in the configuration file accepts the following entries:
 
@@ -157,13 +157,13 @@ the same table will be created in the working directory.
 The columns have the explicit meanings as shown in the header.
 ``nsat`` is the number of saturated pixels of the whole image, and ``q95`` is
 the 95% quantile value of all pixels.
-The values of these two columns are extracted from the FITS images, and the
+The values of these two columns are extracted from the FITS images and the
 others are taken from the FITS headers or generated automatically (``frameid``
 and ``imgtype``).
 See :ref:`Observing Log <obslog>` for more details about this table.
 
 Since the target names of FOCES observations are not written into the headers of
-FITS files, user has to open the obslog file with a text editor, and make some
+FITS files, the user has to open the obslog file with a text editor and make some
 changes *manually*.
 
 The obslog files will *NOT* be overwritten by running ``gamse list``, but new
@@ -181,7 +181,7 @@ After preparation of the configuration file ``*.cfg`` and the observing log file
 
    gamse reduce
 
-The following entries are accepted in the ``[reduce]`` section in the
+The following entries are accepted in the ``[reduce]`` section of the
 configuration file:
 
 .. csv-table:: Accepted entries in ``reduce`` section
@@ -217,7 +217,7 @@ regions, each with a width of 20 columns.
 `GAMSE` computes the mean values of the pre-readout overscan regions as the
 overscan level of the whole image.
 Due to the incomplete cleaning of pixel charges, the values in the post-readout
-regions are in average a few ADUs higher than the pre-readout regions and therefore not used in the data reduction.
+regions are on average a few ADUs higher than the pre-readout regions and therefore not used in the data reduction.
 
 `GAMSE` does the overscan correction for every image throughout the data
 reduction processes.
@@ -257,13 +257,14 @@ The order detection and location of FOCES data follow :ref:`the standard method
 Orders are detected in combined flat field images.
 The example below shows the result of the order detection algorithm in a combination of 11 flat
 images.
-Totally 85 échelle orders are found, and numbered as 0, 1, 2 ... 84.
+Totally 85 échelle orders are found and numbered as 0, 1, 2 ... 84.
 All the images have exposure times of 1.5 seconds.
 
 
 The behaviors during the order tracing are controlled by the ``reduce.trace``
 section in the configuration file.
 It accepts the following entries:
+
 
 .. csv-table:: Accepted entries in ``reduce.trace`` section
    :header: Key, Type, Default Value, Description
@@ -282,7 +283,7 @@ Flat Fielding Correction
 ------------------------
 FOCES users usually take different groups of flat fielding frames with different
 exposure times, to optimize signal-to-noise in different regions of the CCD.
-`GASME` combines flat field images with the same exposure time, and assigns an
+`GAMSE` combines flat field images with the same exposure time, and assigns an
 independent name ``flat_XX`` for each combined flat image, where ``XX`` is the
 exposure time.
 For example, ``flat_1.5`` is the combination of all the flat field frames having the exposure
