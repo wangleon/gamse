@@ -169,7 +169,9 @@ changes *manually*.
 The obslog files will *NOT* be overwritten by running ``gamse list``, but new
 files named ``2018-07-18.1.oblog``, ``2018-07-18.2.oblog``... with extra numbers
 will be generated if there are existing obslog files in the working directory.
-`GAMSE` will us the first ``.oblog`` file it finds in the working directory, that is why the user is advised to verify that *ONLY* the ``.oblog`` file which should be used during data reduction remains in the working directory.
+If there are more than one ``.obslog`` files, `GAMSE` will use the first one.
+that is why the user is advised to verify that *ONLY* the ``.oblog`` file which
+should be used during data reduction remains in the working directory.
 
 
 Starting Data Reduction
@@ -217,7 +219,8 @@ regions, each with a width of 20 columns.
 `GAMSE` computes the mean values of the pre-readout overscan regions as the
 overscan level of the whole image.
 Due to the incomplete cleaning of pixel charges, the values in the post-readout
-regions are on average a few ADUs higher than the pre-readout regions and therefore not used in the data reduction.
+regions are on average a few ADUs higher than the pre-readout regions and
+therefore not used in the data reduction.
 
 `GAMSE` does the overscan correction for every image throughout the data
 reduction processes.
@@ -227,7 +230,8 @@ Bias Correction
 ---------------
 `GAMSE` finds images marked with ``Bias`` in the observing log, and combines
 them in a mean-stack with additional upper sigma-clipping.
-The resulting Master-Bias is saved as a FITS image as specified in the configuration file.
+The resulting Master-Bias is saved as a FITS image as specified in th
+e configuration file.
 
 There are usually some spatial patterns across the bias images.
 `GAMSE` is capable of smoothing this image with a Gaussian core.
@@ -255,8 +259,8 @@ Order Tracing
 The order detection and location of FOCES data follow :ref:`the standard method
 <order_tracing>` of `GAMSE`.
 Orders are detected in combined flat field images.
-The example below shows the result of the order detection algorithm in a combination of 11 flat
-images.
+The example below shows the result of the order detection algorithm in a
+combination of 11 flat images.
 Totally 85 échelle orders are found and numbered as 0, 1, 2 ... 84.
 All the images have exposure times of 1.5 seconds.
 
@@ -286,9 +290,11 @@ exposure times, to optimize signal-to-noise in different regions of the CCD.
 `GAMSE` combines flat field images with the same exposure time, and assigns an
 independent name ``flat_XX`` for each combined flat image, where ``XX`` is the
 exposure time.
-For example, ``flat_1.5`` is the combination of all the flat field frames having the exposure
-time of 1.5 seconds.
-These combined flat images are then stitched together in a mosaic way to optimize for signal-to-noise in different regions of the CCD generating the so-called master flat image, which is by default named ``flat``.
+For example, ``flat_1.5`` is the combination of all the flat field frames having
+the exposure times of 1.5 seconds.
+These combined flat images are then stitched together in a mosaic way to
+optimize for signal-to-noise in different regions of the CCD generating the
+so-called master flat image, which is by default named ``flat``.
 The stitching lines are some curves lying between échlle the orders and are
 determined automatically by the software.
 
