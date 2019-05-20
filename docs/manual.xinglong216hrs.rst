@@ -2,8 +2,8 @@
 
 .. _manual_xinglong216hrs:
 
-Reduction Manual for Xinglong 2.16m HRS
-=======================================
+Reduction Manual for Xinglong HRS
+=================================
 
 Introduction to Instrument
 --------------------------
@@ -25,10 +25,6 @@ For more information, see Fan et al. 2016 [#Fan2016]_.
    Fiber Diameter,            2".4/1".6
    CCD Detector,              "E2V 4k × 4k back illuminated, 12 μm/pixel"
    Radial Velocity Precision, ±6 m/s (with an I\ :sub:`2` cell)
-
-
-CCD Detector
-^^^^^^^^^^^^
 
 The CCD gain and readout noise of four gates at different readout speeds are
 summarized as below:
@@ -98,6 +94,36 @@ comparing to the 'ascii.fixed_width_two_line' format in `astropy.table` module,
 the second row contains the data types of table columns.
 
 
+Starting Data Reduction
+-----------------------
+After preparation of the configuration file ``*.cfg`` and the observing log file
+``*.obslog``, one can start the data reduction by running:
+
+.. code-block:: bash
+
+   gamse reduce
+
+The following entries are accepted in the ``[reduce]`` section in the
+configuration file:
+
+
+.. csv-table:: Accepted entries in ``reduce`` section
+   :header: Key, Type, Default Value, Description
+   :escape: '
+   :widths: 12, 8, 12, 50
+
+   **midproc**,     *str*, *midproc*,  Path to the mid-process folder.
+   **report**,      *str*, *report*,   Path to the 1d spectra folder.
+   **onedspec**,    *str*, *onedspec*, Path to the report folder.
+   **mode**,        *str*, *normal*,   "Reduction mode. Available modes are '"normal'", '"debug'" and '"fast'"."
+   **oned_suffix**, *str*, *str*,      Suffix of the 1d spectra files.
+   **fig_format**,  *str*, *png*,      Format of figures.
+
+
+
+
+
+
 Perpare the Configuration File
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -152,4 +178,4 @@ APIs
 
 References
 ----------
-.. [#Fan2016] Fan et al., 2016, *PASP*, 128, 115005 :ads:`2016PASP..128k5005F`
+.. [#Fan2016] `Fan et al., 2016, PASP, 128, 115005 <http://adsabs.harvard.edu/abs/2016PASP..128k5005F>`_
