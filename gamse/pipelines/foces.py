@@ -25,7 +25,8 @@ from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
-                               wl_reference_singlefiber, get_time_weight)
+                               wl_reference_singlefiber, get_time_weight,
+                               find_caliblamp_offset)
 from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
@@ -582,14 +583,14 @@ class FOCES(Reduction):
         plt.close(fig)
 
 all_columns = [
-        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',     'str',   '{:^30s}', '{0[fileid]:30s}'),
-        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
-        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',       'int',   '{:^7s}', '{0[nsat]:7d}'),
-        ('q95',        'int',   '{:^6s}', '{0[q95]:6d}'),
+        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',  'str',   '{:^40s}', '{0[fileid]:40s}'),
+        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
+        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
         ]
 
 def print_wrapper(string, item):
@@ -639,7 +640,7 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',  'S30'),  ('imgtype', 'S3'),
+        ('frameid', 'i2'),  ('fileid',  'S40'),  ('imgtype', 'S3'),
         ('object',  'S12'), ('exptime', 'f4'),
         ('obsdate', Time),  ('nsat',    'i4'),   ('q95',     'i4'),
         ])
@@ -1565,25 +1566,27 @@ def reduce():
                                 )
                         else:
                             # if success, run recalib
-                            aper_offset = ref_aperset.find_aper_offset(master_aperset)
-                            print('Aperture Offset = %d relative to refrence spectrum'%aper_offset)
+                            aper_offset, pixel_offset = find_caliblamp_offset(ref_spec, spec)
+                            print('aperture_offset = ', aper_offset)
+                            print('pixel_offset    = ', pixel_offset)
                             calib = recalib(spec,
-                                filename      = fileid+'.fits',
-                                figfilename   = wlcalib_fig,
-                                ref_spec      = ref_spec,
-                                channel       = None,
-                                linelist      = section.get('linelist'),
+                                filename        = fileid+'.fits',
+                                figfilename     = wlcalib_fig,
+                                ref_spec        = ref_spec,
+                                channel         = None,
+                                linelist        = section.get('linelist'),
                                 aperture_offset = aper_offset,
-                                coeff         = ref_calib['coeff'],
-                                npixel        = ref_calib['npixel'],
-                                window_size   = ref_calib['window_size'],
-                                xorder        = ref_calib['xorder'],
-                                yorder        = ref_calib['yorder'],
-                                maxiter       = ref_calib['maxiter'],
-                                clipping      = ref_calib['clipping'],
-                                snr_threshold = ref_calib['snr_threshold'],
-                                k             = ref_calib['k'],
-                                offset        = ref_calib['offset'],
+                                pixel_offset    = pixel_offset,
+                                coeff           = ref_calib['coeff'],
+                                npixel          = ref_calib['npixel'],
+                                window_size     = ref_calib['window_size'],
+                                xorder          = ref_calib['xorder'],
+                                yorder          = ref_calib['yorder'],
+                                maxiter         = ref_calib['maxiter'],
+                                clipping        = ref_calib['clipping'],
+                                snr_threshold   = ref_calib['snr_threshold'],
+                                k               = ref_calib['k'],
+                                offset          = ref_calib['offset'],
                                 )
                     else:
                         # do not search the database

@@ -1960,9 +1960,39 @@ def find_shift_ccf2(f1, f2, shift0=0.0):
     return res['x']
 
 
-def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
+def get_simple_ccf(flux1, flux2, shift_lst):
+    """Get cross-correlation function of two fluxes with the given relative
+    shift.
+
+    Args:
+        flux1 (:class:`numpy.ndarray`): Input flux array.
+        flux2 (:class:`numpy.ndarray`): Input flux array.
+        shift_lst (:class:`numpy.ndarray`): List of pixel shifts.
+
+    Returns:
+        :class:`numpy.ndarray`: Cross-correlation function
+
+    """
+
+    n = flux1.size
+    ccf_lst = []
+    for shift in shift_lst:
+        segment1 = flux1[max(0,shift):min(n,n+shift)]
+        segment2 = flux2[max(0,-shift):min(n,n-shift)]
+        c1 = math.sqrt((segment1**2).sum())
+        c2 = math.sqrt((segment2**2).sum())
+        corr = np.correlate(segment1, segment2)/c1/c2
+        ccf_lst.append(corr)
+    return np.array(ccf_lst)
+
+
+def find_drift(spec1, spec2, pixel_offset=0.0, aperture_offset=0):
     """Find the drift between two spectra. The apertures of the two spectra must
     be aligned.
+
+    The **aperture_offset** is defined as:
+
+        aperture1 + aperture_offset = aperture2
 
     Args:
         spec1 (:class:`numpy.dtype`): Spectra array.
@@ -1977,7 +2007,7 @@ def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
     shift_lst = []
     for item1 in spec1:
         aperture1 = item1['aperture']
-        aperture2 = aperture1 - aperture_offset
+        aperture2 = aperture1 + aperture_offset
         m = spec2['aperture'] == aperture2
         if m.sum()==1:
             item2 = spec2[m][0]
@@ -1986,7 +2016,7 @@ def find_drift(spec1, spec2, offset=0.0, aperture_offset=0):
 
             #shift = find_shift_ccf(flux1, flux2)
             #shift = find_shift_ccf_pixel(flux1, flux2, 100)
-            shift = find_shift_ccf(flux1, flux2)
+            shift = find_shift_ccf(flux1, flux2, shift0=pixel_offset)
 
             shift_lst.append(shift)
 
@@ -2240,7 +2270,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
 
 
 def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
-    npixel, k, offset, aperture_offset=0, window_size=13, xorder=3, yorder=3,
+    npixel, k, offset, aperture_offset=0, pixel_offset=0.0, window_size=13, xorder=3, yorder=3,
     maxiter=10, clipping=3, snr_threshold=10):
     """Re-calibrate the wavelength of an input spectra file using another spectra
     as reference.
@@ -2302,7 +2332,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
     """
 
     # find initial shift with cross-corelation functions
-    shift = find_drift(ref_spec, spec, aperture_offset=aperture_offset)
+    shift = find_drift(ref_spec, spec, aperture_offset=aperture_offset, pixel_offset=pixel_offset)
+    print('calculated shift = ', shift)
 
     string = '%s channel %s shift = %+8.6f pixel'
     print(string%(os.path.basename(filename), channel, shift))
@@ -2322,8 +2353,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
     for row in spec:
         aperture = row['aperture']
         flux     = row['flux']
-        order = k*(aperture + aperture_offset) + offset
-        wl = get_wavelength(coeff, npixel, x-shift, np.repeat(order, npixel))
+        order = k*(aperture - aperture_offset) + offset
+        wl = get_wavelength(coeff, npixel, x+shift, np.repeat(order, npixel))
         w1 = min(wl[0], wl[-1])
         w2 = max(wl[0], wl[-1])
         has_insert = False
@@ -2431,8 +2462,80 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
 
     return result
 
+def find_caliblamp_offset(spec1, spec2):
+    """Find the offset between two spectra. The aperture offset is defined as:
+    
+        aperture1 + aperture_offset = aperture2
+
+    Args:
+        spec1 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
+        spec2 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
+
+    Returns:
+        tuple: A tuple containing:
+            * **offset** (*int*): Aperture offset between the two spectra.
+            * **shift** (*float*): Pixel shift between the two spectra.
+
+    """
+
+    offset_lst = np.arange(-10, 10)
+    shift_lst = np.arange(-50, 50)
+    mean_lst    = []
+    scatter_lst = []
+
+    for offset in offset_lst:
+        result_shift_lst = []
+        fig2 = plt.figure(figsize=(10,8), dpi=150)
+        ax2 = fig2.gca()
+        for row1 in spec1:
+            aperture1 = row1['aperture']
+            aperture2 = aperture1 + offset
+            m = spec2['aperture'] == aperture2
+            if m.sum()==0:
+                continue
+            row2 = spec2[m][0]
+
+            '''
+            fig = plt.figure(figsize=(10,8), dpi=150)
+            ax1 = fig.gca()
+            ax1.plot(row1['flux'], '-')
+            ax1.plot(row2['flux'], '-')
+            fig.suptitle('Aper1 = %3d, Aper2 = %3d, offset=%d'%(aperture1, aperture2, offset))
+            fig.savefig('aper_%03d_%03d.png'%(aperture1, aperture2))
+            plt.close(fig)
+            '''
+
+            ccf_lst = get_simple_ccf(row1['flux'], row2['flux'], shift_lst)
+            shift = shift_lst[ccf_lst.argmax()]
+            result_shift_lst.append(shift)
+    
+            ax2.plot(shift_lst, ccf_lst, alpha=0.4)
+
+        fig2.savefig('ccf_%d.png'%offset)
+        plt.close(fig2)
+        result_shift_lst = np.array(result_shift_lst)
+
+        mean_lst.append(result_shift_lst.mean())
+        scatter_lst.append(result_shift_lst.std())
+
+    fig3 = plt.figure(dpi=150)
+    ax3 = fig3.gca()
+    ax3.plot(offset_lst, scatter_lst)
+    fig3.savefig('ccf_scatter.png')
+    imin = np.argmin(scatter_lst)
+    return offset_lst[imin], mean_lst[imin]
+
 
 def save_calibrated_thar(head, spec, calib, channel):
+    """Save the wavelength calibrated ThAr spectra.
+
+    Args:
+        head (:class:`astropy.io.fits.Header`):
+        spec (:class:`numpy.dtype`):
+        calib (tuple):
+        channel (str):
+
+    """
     k      = calib['k']
     offset = calib['offset']
     xorder = calib['xorder']
