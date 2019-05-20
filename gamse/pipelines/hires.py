@@ -7,7 +7,6 @@ import configparser
 import numpy as np
 from scipy.ndimage.filters import gaussian_filter
 import astropy.io.fits as fits
-from astropy.io import registry as io_registry
 from astropy.table import Table
 from astropy.time  import Time
 
@@ -312,7 +311,7 @@ def get_badpixel_mask(binning, ccd=0):
         ccd (int): CCD number.
 
     Returns:
-        mask (:class:`numpy.dtype`): Mask Image.
+        mask (:class:`numpy.ndarray`): Mask Image.
 
     """
     # for only 1 CCD
@@ -372,8 +371,7 @@ def reduce():
         pass
 
     # read obs log
-    io_registry.register_reader('obslog', Table, read_obslog)
-    logtable = Table.read(logname_lst[0], format='obslog')
+    logtable = read_obslog(logname_lst[0])
 
     # load config files
     config_file_lst = []
@@ -402,15 +400,16 @@ def reduce():
     exptime_key = section.get('exptime_key')
     section     = config['reduce']
     midproc     = section.get('midproc')
-    result      = section.get('result')
+    onedspec    = section.get('onedspec')
     report      = section.get('report')
     mode        = section.get('mode')
-    fig_format = section.get('fig_format')
+    fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):  os.mkdir(report)
-    if not os.path.exists(result):  os.mkdir(result)
-    if not os.path.exists(midproc): os.mkdir(midproc)
+    if not os.path.exists(report):   os.mkdir(report)
+    if not os.path.exists(onedspec): os.mkdir(onedspec)
+    if not os.path.exists(midproc):  os.mkdir(midproc)
 
     nccd = 3
 
@@ -569,7 +568,6 @@ def reduce():
         print(' '*2 + pinfo_flat.get_separator())
 
 
-
         flat_group_lst = {}
         for iccd in range(nccd):
 
@@ -725,9 +723,10 @@ def reduce():
     aperset.save_txt(trcfile)
     aperset.save_reg(regfile, transpose=True)
 
+    # save mosaiced flat image
     trace_hdu_lst = fits.HDUList(
                         [fits.PrimaryHDU(allimage.T),
-                         fits.ImageHDU(allmask.T),]
-                        )
+                         fits.ImageHDU(allmask.T),
+                        ])
     trace_hdu_lst.writeto(section.get('file'), overwrite=True)
 

@@ -6,12 +6,11 @@ import configparser
 import numpy as np
 import astropy.io.fits as fits
 from astropy.table import Table
+from astropy.time  import Time
 import scipy.signal as sg
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
-from ..utils import obslog
-from ..utils.config import read_config
 from ..echelle.imageproc import combine_images, table_to_array, array_to_table
 from ..echelle.trace import find_apertures, load_aperture_set
 from ..echelle.flat import get_slit_flat
@@ -20,6 +19,9 @@ from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
                                wl_reference_singlefiber, get_time_weight)
 from ..echelle.background import find_background
+from ..utils.config import read_config
+from ..utils.obslog import read_obslog
+from .common import FormattedInfo
 
 def correct_overscan(data, head):
     """Correct the overscan of CCD image.
@@ -54,11 +56,11 @@ def correct_overscan(data, head):
         overmean = overdata.mean()
 
         # update fits header
-        head['HIERARCH EDRS OVERSCAN']        = True
-        head['HIERARCH EDRS OVERSCAN METHOD'] = 'smooth'
-        head['HIERARCH EDRS OVERSCAN AXIS-1'] = '2049:2088'
-        head['HIERARCH EDRS OVERSCAN AXIS-2'] = '0:4608'
-        head['HIERARCH EDRS OVERSCAN MEAN']   = overmean
+        head['HIERARCH GAMSE OVERSCAN']        = True
+        head['HIERARCH GAMSE OVERSCAN METHOD'] = 'smooth'
+        head['HIERARCH GAMSE OVERSCAN AXIS-1'] = '2049:2088'
+        head['HIERARCH GAMSE OVERSCAN AXIS-2'] = '0:4608'
+        head['HIERARCH GAMSE OVERSCAN MEAN']   = overmean
 
         return corrdata, head, overmean
 
@@ -164,7 +166,7 @@ def reduce():
 
             # create new FITS Header for bias
             head = fits.Header()
-            head['HIERARCH EDRS BIAS NFILE'] = n_bias
+            head['HIERARCH GAMSE BIAS NFILE'] = n_bias
 
             ############## bias smooth ##################
             if section.getboolean('smooth'):
@@ -180,10 +182,10 @@ def reduce():
                                     sigma=smooth_sigma, mode=smooth_mode)
 
                     # write information to FITS header
-                    head['HIERARCH EDRS BIAS SMOOTH']        = True
-                    head['HIERARCH EDRS BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                    head['HIERARCH EDRS BIAS SMOOTH SIGMA']  = smooth_sigma
-                    head['HIERARCH EDRS BIAS SMOOTH MODE']   = smooth_mode
+                    head['HIERARCH GAMSE BIAS SMOOTH']        = True
+                    head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
+                    head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
+                    head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
                 else:
                     print('Unknown smooth method: ', smooth_method)
                     pass
@@ -191,7 +193,7 @@ def reduce():
                 bias = bias_smooth
             else:
                 # bias not smoothed
-                head['HIERARCH EDRS BIAS SMOOTH'] = False
+                head['HIERARCH GAMSE BIAS SMOOTH'] = False
 
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             logger.info('Bias image written to "%s"'%bias_file)
@@ -574,6 +576,16 @@ def reduce():
             hdu_lst = fits.HDUList([pri_hdu, tbl_hdu])
             hdu_lst.writeto('%s_wlc.fits'%item.fileid, overwrite=True)
 
+all_columns = [
+        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',  'str',   '{:^12s}', '{0[fileid]:12s}'),
+        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
+        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
+        ]
 
 def make_obslog(path):
     """Print the observing log.
@@ -586,27 +598,20 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S12'),  ('imagetype',  'S3'),
-        ('obstype', 'S8'),
-        ('object',  'S12'), ('i2',         'bool'), ('exptime',    'f4'),
-        ('obsdate', 'S23'), ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ('frameid', 'i2'),  ('fileid', 'S12'),  ('imgtype', 'S3'),
+        ('object',  'S12'), ('i2',     'bool'), ('exptime', 'f4'),
+        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
         ])
 
     # prepare infomation to print
-    columns = [
-            ('fileid',     '{:^12s}', '{:12s}'),
-            ('object',     '{:^12s}', '{:12s}'),
-            ('exptime',    '{:^7s}',  '{:7g}'),
-            ('obsdate',    '{:^25s}', '{:25s}'),
-            ('saturation', '{:^10s}', '{:10d}'),
-            ('quantile95', '{:^10s}', '{:10d}'),
-            ]
-    titles, fmt_title, fmt_item = zip(*columns)
-    fmt_title = ' '.join(fmt_title)
-    fmt_item  = ' '.join(fmt_item)
-    # print titles and a set of lines
-    print(fmt_title.format(*titles))
-    print(' '.join(['-'*len(fmt.format(title)) for title, fmt, _ in columns]))
+    pinfo = FormattedInfo(all_columns,
+            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
+             'nsat', 'q95'])
+
+    # print header of logtable
+    print(pinfo.get_separator())
+    print(pinfo.get_title())
+    print(pinfo.get_separator())
 
     # start scanning the raw files
     for fname in sorted(os.listdir(path)):
@@ -619,10 +624,10 @@ def make_obslog(path):
         obstype    = head['OBSTYPE']
         exptime    = head['EXPTIME']
         objectname = head['OBJECT']
-        obsdate    = head['DATE-OBS']
+        obsdate    = Time(head['DATE-OBS'])
         i2cell     = {'In': 1, 'Out': 0}[head['ICELNAM']]
 
-        imagetype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
+        imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # determine the total number of saturated pixels
         saturation = (data>=65535).sum()
@@ -630,12 +635,13 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        item = [0, fileid, imagetype, obstype, objectname, i2cell, exptime,
+        item = [0, fileid, imgtype, obstype, objectname, i2cell, exptime,
                 obsdate, saturation, quantile95]
         logtable.add_row(item)
 
-        print(fmt_item.format(fileid, objectname, exptime, obsdate,
-                saturation, quantile95))
+        item = logtable[-1]
+
+        # print log item with colors
 
     logtable.sort('obsdate')
 

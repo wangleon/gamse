@@ -11,7 +11,6 @@ from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import astropy.io.fits as fits
-from astropy.io import registry as io_registry
 from astropy.table import Table
 from astropy.time import Time
 import matplotlib.pyplot as plt
@@ -558,8 +557,7 @@ def reduce():
         pass
 
     # read obs log
-    io_registry.register_reader('obslog', Table, read_obslog)
-    logtable = Table.read(logname_lst[0], format='obslog')
+    logtable = read_obslog(logname_lst[0])
 
     # load config files
     config_file_lst = []
@@ -588,15 +586,16 @@ def reduce():
     exptime_key = section.get('exptime_key')
     section     = config['reduce']
     midproc     = section.get('midproc')
-    result      = section.get('result')
+    onedspec    = section.get('onedspec')
     report      = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):  os.mkdir(report)
-    if not os.path.exists(result):  os.mkdir(result)
-    if not os.path.exists(midproc): os.mkdir(midproc)
+    if not os.path.exists(report):   os.mkdir(report)
+    if not os.path.exists(onedspec): os.mkdir(onedspec)
+    if not os.path.exists(midproc):  os.mkdir(midproc)
 
     # initialize printing infomation
     pinfo1 = PrintInfo(print_columns)
@@ -1070,7 +1069,7 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(result, fileid+'_ods.fits')
+                filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
                 hdu_lst.writeto(filename, overwrite=True)
     
                 # add more infos in calib
@@ -1121,7 +1120,7 @@ def reduce():
                 fits.PrimaryHDU(header=head),
                 fits.BinTableHDU(spec),
                 ])
-    filename = os.path.join(result, 'flat_wlc.fits')
+    filename = os.path.join(onedspec, 'flat'+oned_suffix+'.fits')
     hdu_lst.writeto(filename, overwrite=True)
 
     #################### Extract Science Spectrum ##############################
@@ -1215,7 +1214,7 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(result, fileid+'_ods.fits')
+            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: {} - Spectra written to {}'.format(
                 fileid, filename))
