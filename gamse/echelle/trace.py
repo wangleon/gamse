@@ -578,7 +578,7 @@ class _ApertureSetIterator(object):
 
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         align_deg=2, filling=0.3, degree=3,
-        display=True, figtitle='', figfile=None):
+        display=True, figtitle='', figfile=None, fig=None):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -648,6 +648,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # rows
 
     # create a background image
+    '''
     fig = plt.figure(figsize=(20,10), dpi=150)
     ax1 = fig.add_axes([0.05,0.07,0.43,0.86])
     #ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
@@ -655,6 +656,14 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     ax3 = fig.add_axes([0.52,0.36,0.43,0.28])
     ax4 = fig.add_axes([0.52,0.07,0.43,0.28])
     #ax3 = ax2.twinx()
+    '''
+    ax1 = fig.ax1
+    ax2 = fig.ax2
+    ax3 = fig.ax3
+    ax4 = fig.ax4
+    #fig = plt.figure(figsize=(20,10), dpi=150)
+    #print(fig, dir(fig))
+
     ax1.imshow(logdata,cmap='gray',interpolation='none')
     # create a colormap for saturation mask
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
