@@ -20,7 +20,7 @@ import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 
 from ..echelle.imageproc import combine_images, array_to_table
-from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
@@ -1079,6 +1079,18 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     plt.close(fig1)
     plt.close(fig2)
 
+
+class TraceFigure(TraceFigureCommon):
+    """Figure to plot the order tracing.
+    """
+    def __init__(self):
+        TraceFigureCommon.__init__(self, figsize=(20,10), dpi=150)
+        self.ax1 = self.add_axes([0.05,0.07,0.43,0.86])
+        self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
+        self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
+        self.ax4 = self.ax3.twinx()
+
+
 def reduce():
     """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
     Observatory.
@@ -1350,8 +1362,10 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            fig_file = os.path.join(report, 'trace_{}.{}'.format(flatname, fig_format))
             section = config['reduce.trace']
+
+            # create the trace figure
+            tracefig = TraceFigure()
 
             # if debackground before detecting the orders, then we loose the 
             # ability to detect the weak blue orders.
@@ -1366,9 +1380,16 @@ def reduce():
                         filling    = section.getfloat('filling'),
                         degree     = section.getint('degree'),
                         display    = section.getboolean('display'),
-                        figtitle   = 'Trace for {}'.format(flat_filename),
-                        figfile    = fig_file,
+                        fig        = tracefig,
                         )
+
+            # save the trace figure
+            tracefig.adjust_positions()
+            tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+            figfile = os.path.join(report,
+                        'trace_{}.{}'.format(flatname, fig_format))
+            tracefig.savefig(figfile)
+
             aperset.save_txt(aperset_filename)
             aperset.save_reg(aperset_regname)
 

@@ -676,38 +676,23 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # now fsep is an numpy unfunc telling you the order separations at any given
     # rows
 
-    # create a background image
-    '''
-    fig = plt.figure(figsize=(20,10), dpi=150)
-    ax1 = fig.add_axes([0.05,0.07,0.43,0.86])
-    #ax2 = fig.add_axes([0.52,0.07,0.43,0.86])
-    ax2 = fig.add_axes([0.52,0.65,0.43,0.28])
-    ax3 = fig.add_axes([0.52,0.36,0.43,0.28])
-    ax4 = fig.add_axes([0.52,0.07,0.43,0.28])
-    #ax3 = ax2.twinx()
-    '''
-    ax1 = fig.ax1
-    ax2 = fig.ax2
-    ax3 = fig.ax3
-    ax4 = fig.ax4
-    #fig = plt.figure(figsize=(20,10), dpi=150)
-    #print(fig, dir(fig))
-
-    ax1.imshow(logdata,cmap='gray',interpolation='none')
-    # create a colormap for saturation mask
+    fig.ax1.imshow(logdata,cmap='gray',interpolation='none')
+    # fill saturation pixels with red
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
                [(1,0,0,0), (1,0,0,0.8)], N=2)
-    ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+    fig.ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+    # fill bad pixels with blue
     bad_cmap = mcolors.LinearSegmentedColormap.from_list('TransBlue',
                [(0,0,1,0), (0,0,1,0.8)], N=2)
-    ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
+    fig.ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
+    # filll CCD gaps with green
     gap_cmap = mcolors.LinearSegmentedColormap.from_list('TransGreen',
                [(0,1,0,0), (0,1,0,0.8)], N=2)
-    ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
-    ax1.set_xlim(0,w-1)
-    ax1.set_ylim(h-1,0)
-    ax1.set_xlabel('X', fontsize=12)
-    ax1.set_ylabel('Y', fontsize=12)
+    fig.ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
+    fig.ax1.set_xlim(0,w-1)
+    fig.ax1.set_ylim(h-1,0)
+    fig.ax1.set_xlabel('X', fontsize=12)
+    fig.ax1.set_ylabel('Y', fontsize=12)
 
     plot_paper_fig = False
 
@@ -733,17 +718,17 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # define a scroll function, which is used for mouse manipulation on pop-up
     # window
     def on_scroll(event):
-        if event.inaxes == ax1:
-            x1, x2 = ax1.get_xlim()
-            y1, y2 = ax1.get_ylim()
+        if event.inaxes == fig.ax1:
+            x1, x2 = fig.ax1.get_xlim()
+            y1, y2 = fig.ax1.get_ylim()
             x1 = event.xdata - (1-event.step*0.1)*(event.xdata - x1)
             x2 = event.xdata + (1-event.step*0.1)*(x2 - event.xdata)
             y1 = event.ydata - (1-event.step*0.1)*(event.ydata - y1)
             y2 = event.ydata + (1-event.step*0.1)*(y2 - event.ydata)
-            ax1.set_xlim(x1, x2)
-            ax1.set_ylim(y1, y2)
+            fig.ax1.set_xlim(x1, x2)
+            fig.ax1.set_ylim(y1, y2)
             fig.canvas.draw()
-    fig.canvas.mpl_connect('scroll_event',on_scroll)
+    fig.canvas.mpl_connect('scroll_event', on_scroll)
     fig.canvas.draw()
     if display:
         plt.show(block=False)
@@ -1000,12 +985,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         message.append(string)
     logger.debug((os.linesep+' '*3).join(message))
 
-    ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
+    fig.ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
             lw=0.8)
-    ax2.set_yscale('log')
-    ax2.set_xlabel('Y', fontsize=12)
-    ax2.set_ylabel('Count', fontsize=12)
-    ax2.set_ylim(0.5,)
+    fig.ax2.set_yscale('log')
+    fig.ax2.set_xlabel('Y', fontsize=12)
+    fig.ax2.set_ylabel('Count', fontsize=12)
+    afig.x2.set_ylim(0.5,)
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
@@ -1013,7 +998,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                 color='C0', lw=1)
 
     #for x1,y_lst in nodes_lst.items():
-    #    ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
+    #    fig.ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
 
     # parse peaks
     # cutx, cuty, cutn are the stacked peak list
@@ -1027,15 +1012,15 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         cutn[y-csec_i1] += 1
         cutf[y-csec_i1] += f
         # for debug purpose
-        #ax2.axvline(csec_ylst[y-csec_i1], color='y', ls='--', alpha=0.2)
+        #fig.ax2.axvline(csec_ylst[y-csec_i1], color='y', ls='--', alpha=0.2)
     # remove those element equal to one
     onemask = cutn == 1
     cutf[onemask] = 0
     cutn[onemask] = 0
     cuty = np.arange(cutn.size) + csec_i1
 
-    #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    ax3.fill_between(cuty[istart:iend], cutn[istart:iend],
+    #fig.ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
+    fig.ax3.fill_between(cuty[istart:iend], cutn[istart:iend],
                         step='mid', color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
@@ -1088,7 +1073,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             )
 
         # for debug purpose
-        #ax2.axvline(csec_ylst[y], color='k', ls='--')
+        #fig.ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
     logger.info((os.linesep+' '*4).join(message))
@@ -1116,10 +1101,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             break
 
     # plot the aperture positions
-    f1, f2 = ax2.get_ylim()
+    f1, f2 = fig.ax2.get_ylim()
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
-        ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', lw=0.6,
+        fig.ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', lw=0.6,
                 alpha=1)
         if plot_paper_fig:
             ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
@@ -1185,7 +1170,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
-        ax1.plot(xfit, yfit, 'ro',lw=0.5, alpha=0.8, ms=1, markeredgewidth=0)
+        fig.ax1.plot(xfit, yfit, 'ro',lw=0.5, alpha=0.8, ms=1, markeredgewidth=0)
 
         # fit chebyshev polynomial
         # determine the left and right domain
@@ -1205,7 +1190,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
         # generate a curve using for plot
         newx, newy = poly.linspace()
-        ax1.plot(newx, newy, '-',lw=0.8, alpha=1, color='C0')
+        fig.ax1.plot(newx, newy, '-',lw=0.8, alpha=1, color='C0')
 
         if plot_paper_fig:
             # plot the order in paper figure and the mini-figure
@@ -1244,21 +1229,21 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # plot the order separation information in ax4
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    ax4.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
+    fig.ax4.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
     newx = np.arange(h)
-    ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
-    ax4.set_xlim(0, h-1)
-    for tickline in ax4.yaxis.get_ticklines():
+    fig.ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
+    fig.ax4.set_xlim(0, h-1)
+    for tickline in fig.ax4.yaxis.get_ticklines():
         tickline.set_color('gray')
         tickline.set_alpha(0.8)
-    for tick in ax4.yaxis.get_major_ticks():
+    for tick in fig.ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    ax3.set_xlabel('Y', fontsize=12)
-    ax3.set_ylabel('Detected Peaks', fontsize=12)
-    ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
+    fig.ax3.set_xlabel('Y', fontsize=12)
+    fig.ax3.set_ylabel('Detected Peaks', fontsize=12)
+    fig.ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
                     fontsize=12)
-    for ax in [ax2, ax3, ax4]:
+    for ax in [fig.ax2, fig.ax3, fig.ax4]:
         ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
         # set tickers
         ax.xaxis.set_major_locator(tck.MultipleLocator(500))
@@ -1303,12 +1288,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         plt.close(fig2p)
 
     # for debug purpose
-    #ax2.set_xlim(3400, 3500)
-    #ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
-    #ax2.xaxis.set_minor_locator(tck.MultipleLocator(10))
+    #fig.ax2.set_xlim(3400, 3500)
+    #fig.ax2.xaxis.set_major_locator(tck.MultipleLocator(100))
+    #fig.ax2.xaxis.set_minor_locator(tck.MultipleLocator(10))
     #fig.savefig(figfile[0:-4]+'-debug.png')
-
-    plt.close(fig)
 
     return aperture_set
 
