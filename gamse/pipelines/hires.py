@@ -10,11 +10,8 @@ import astropy.io.fits as fits
 from astropy.table import Table
 from astropy.time  import Time
 
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
-
 from ..echelle.imageproc import combine_images
-from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.background import simple_debackground
 from ..utils.obslog import parse_num_seq, read_obslog
 from .common import FormattedInfo
@@ -356,14 +353,15 @@ def get_badpixel_mask(binning, ccd=0):
     return np.int16(mask)
 
 
-class TraceFigure(Figure):
+class TraceFigure(TraceFigureCommon):
+    """Figure to plot the order tracing.
+    """
     def __init__(self):
-        Figure.__init__(self, figsize=(20,10), dpi=150)
+        TraceFigureCommon.__init__(self, figsize=(20,10), dpi=150)
         self.ax1 = self.add_axes([0.05,0.07,0.50,0.86])
-        self.ax2 = self.add_axes([0.59,0.65,0.36,0.28])
-        self.ax3 = self.add_axes([0.59,0.36,0.36,0.28])
-        self.ax4 = self.add_axes([0.59,0.07,0.36,0.28])
-        self.canvas = FigureCanvasAgg(self)
+        self.ax2 = self.add_axes([0.59,0.55,0.36,0.34])
+        self.ax3 = self.add_axes([0.59,0.13,0.36,0.34])
+        self.ax4 = self.ax3.twinx()
 
 def reduce():
     """2D to 1D pipeline for Keck/HIRES.
@@ -721,6 +719,8 @@ def reduce():
     trcfile = os.path.join(midproc, 'trace.trc')
     regfile = os.path.join(midproc, 'trace.reg')
 
+    tracefig = TraceFigure()
+
     aperset = find_apertures(allimage, allmask,
                 scan_step  = section.getint('scan_step'),
                 minimum    = section.getfloat('minimum'),
@@ -729,10 +729,13 @@ def reduce():
                 filling    = section.getfloat('filling'),
                 degree     = section.getint('degree'),
                 display    = section.getboolean('display'),
-                figtitle   = 'Trace for all 3 CCDs',
-                figfile    = figfile,
-                fig        = TraceFigure(),
+                fig        = tracefig,
                 )
+    # decorate trace fig and save to file
+    tracefig.adjust_positions()
+    tracefig.suptitle('Trace for all 3 CCDs', fontsize=15)
+    tracefig.savefig(figfile)
+
     aperset.save_txt(trcfile)
     aperset.save_reg(regfile, transpose=True)
 

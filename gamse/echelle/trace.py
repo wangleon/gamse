@@ -14,6 +14,8 @@ import scipy.optimize    as opt
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.ticker as tck
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 from ..utils.onedarray import get_local_minima, pairwise, derivative
 
@@ -576,9 +578,38 @@ class _ApertureSetIterator(object):
         else:
             raise StopIteration()
 
+
+class TraceFigureCommon(Figure):
+    """Figure to plot the order tracing.
+    """
+    def __init__(self, *args, **kwargs):
+        Figure.__init__(self, *args, **kwargs)
+        self.canvas = FigureCanvasAgg(self)
+   
+    def adjust_positions(self):
+        """Adjust the positions of ax2, ax3, and ax4 relative to the ax1.
+        """
+
+        # get actual positions of ax1
+        bbox1 = self.ax1.get_position()
+        y0 = bbox1.y0
+        y1 = bbox1.y1
+
+        # align ax2
+        bbox2 = self.ax2.get_position()
+        self.ax2.set_position([
+            bbox2.x0, y1-bbox2.height, bbox2.width, bbox2.height
+            ])
+
+        # align ax3
+        bbox3 = self.ax3.get_position()
+        self.ax3.set_position([
+            bbox3.x0, y0, bbox3.width, bbox3.height
+            ])
+
 def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         align_deg=2, filling=0.3, degree=3,
-        display=True, figtitle='', figfile=None, fig=None):
+        display=True, fig=None):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -596,8 +627,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (int): Degree of polynomials to fit aperture locations.
         display (bool): If *True*, display a figure on the screen.
-        title (str): Title to be displayed in the figure.
-        figfile (str): Path to the output figure.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -714,7 +743,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             ax1.set_xlim(x1, x2)
             ax1.set_ylim(y1, y2)
             fig.canvas.draw()
-    fig.suptitle(figtitle, fontsize=15)
     fig.canvas.mpl_connect('scroll_event',on_scroll)
     fig.canvas.draw()
     if display:
@@ -1007,11 +1035,12 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     cuty = np.arange(cutn.size) + csec_i1
 
     #ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    ax3.fill_between(cuty[istart:iend], cutn[istart:iend],step='mid',color='C1')
+    ax3.fill_between(cuty[istart:iend], cutn[istart:iend],
+                        step='mid', color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
-        ax2p.fill_between(cuty[istart:iend], cutn[istart:iend], step='mid',
-                color='C1')
+        ax2p.fill_between(cuty[istart:iend], cutn[istart:iend],
+                            step='mid', color='C1')
 
     # find central positions along Y axis for all apertures
     message = []
@@ -1225,8 +1254,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     for tick in ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
+    ax3.set_xlabel('Y', fontsize=12)
+    ax3.set_ylabel('Detected Peaks', fontsize=12)
     ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
-        fontsize=12)
+                    fontsize=12)
     for ax in [ax2, ax3, ax4]:
         ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
         # set tickers
@@ -1234,8 +1265,6 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
     fig.canvas.draw()
-    if figfile is not None:
-        fig.savefig(figfile)
     
     if plot_paper_fig:
         # adjust figure 1 in paper
@@ -1255,6 +1284,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         ax1m.set_ylim(h-1, 1600)
         ax1m.set_xticks([])
         ax1m.set_yticks([])
+        figfile='testaaa'
         fig1p.savefig(figfile+'.pdf')
 
         # adjust figure 2 in paper
