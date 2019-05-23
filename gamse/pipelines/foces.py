@@ -62,7 +62,7 @@ def correct_overscan(data, head, mask=None):
     ovr_lst1 = overdata1.mean(dtype=np.float64, axis=1)
     ovr_lst2 = overdata2.mean(dtype=np.float64, axis=1)
     
-    # only used the upper ~1/2 regions for culculating mean of overscan
+    # only used the upper ~1/2 regions for calculating mean of overscan
     #vy1, vy2 = h//2, h
     vy1, vy2 = 0, h//2
     # find the mean and standard deviation for left & right overscan
@@ -594,7 +594,7 @@ all_columns = [
         ]
 
 def print_wrapper(string, item):
-    """A wrapper for log printing for HIRES pipeline.
+    """A wrapper for log printing for FOCES pipeline.
 
     Args:
         string (str): The output string for wrapping.
