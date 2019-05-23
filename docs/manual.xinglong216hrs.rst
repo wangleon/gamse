@@ -54,19 +54,27 @@ summarized as below:
 +---------------+-----------+---------------+---------------+---------------+---------------+-------------+-------------+--------------+-------------+
 
 
-Spectral Reduction
-------------------
+Preparing Data & Config File
+----------------------------
+The first step is to create a new working directory in a place where the user
+has full read/write permissions.
+All the steps performed by `GAMSE` will be done in this directory.
 
-Generation of Observing Log
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Then, a text file containing the necessary information is required to tell
+`GAMSE` which instrument the data is obtained with, and the path to raw data.
+The name of the text file is arbitrary, but the suffix must be ``.cfg``.
+The user must make sure there is only one ``.cfg`` file in the working
+directory.
 
+Generating the Observing Log
+----------------------------
 The following command scans the raw images and generate an observing log file
 with name of `YYYY-MM-DD.obslog`, where `YYYY-MM-DD` is the date of the *first*
 FITS image in the data folder.
 
 .. code-block:: bash
 
-   $ edrs2 list
+   $ gamse list
 
 If the file name already exists, `YYYY-MM-DD.1.obslog`, `YYYY-MM-DD.2.obslog`
 ... will be used as substituions.
@@ -120,6 +128,8 @@ configuration file:
    **fig_format**,  *str*, *png*,      Format of figures.
 
 
+Overscan Correction
+-------------------
 
 
 

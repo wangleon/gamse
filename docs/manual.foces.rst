@@ -24,35 +24,33 @@ of 390 - 900 nm.
 
 The characteristics of FOCES are summarised as below:
 
-
-
-+---------------------------+---------------------------------+---------------------------------------+
-| **Main-disperser**        | Spectral resovling power        | *R* = *λ*\ /Δ\ *λ* = 70,000           |
-|                           +---------------------------------+---------------------------------------+
-|                           | Groove density                  | 31.6 lines mm\ :sup:`−1`              |
-|                           +---------------------------------+---------------------------------------+
-|                           | Blazing angle                   |                                       |
-+---------------------------+---------------------------------+---------------------------------------+
-| **Corss-disperser**       | A pair of prisms                                                        |
-+---------------------------+---------------------------------+---------------------------------------+
-| **CCD Detector**          | Wavelength coverage             | 390 - 900 nm                          |
-|                           +---------------------------------+---------------------------------------+
-|                           | Number of pixels                | 2048 x 2048                           |
-|                           +---------------------------------+---------------------------------------+
-|                           | Pixel size                      | 13.5 μm                               |
-|                           +---------------------------------+---------------------------------------+
-|                           | Sampling per resolution element | ~2.3 pixels                           |
-+---------------------------+---------------------------------+---------------------------------------+
-| **Others**                | Link to the telescope           | A circular multi-mode fiber (100µm)  |
-|                           +---------------------------------+---------------------------------------+
-|                           | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
-+---------------------------+---------------------------------+---------------------------------------+
++---------------------+---------------------------------+---------------------------------------+
+| **Main-disperser**  | Spectral resovling power        | *R* = *λ*\ /Δ\ *λ* = 70,000           |
+|                     +---------------------------------+---------------------------------------+
+|                     | Groove density                  | 31.6 lines mm\ :sup:`−1`              |
+|                     +---------------------------------+---------------------------------------+
+|                     | Blazing angle                   |                                       |
++---------------------+---------------------------------+---------------------------------------+
+| **Corss-disperser** | A pair of prisms                                                        |
++---------------------+---------------------------------+---------------------------------------+
+| **CCD Detector**    | Wavelength coverage             | 390 - 900 nm                          |
+|                     +---------------------------------+---------------------------------------+
+|                     | Number of pixels                | 2048 x 2048                           |
+|                     +---------------------------------+---------------------------------------+
+|                     | Pixel size                      | 13.5 μm                               |
+|                     +---------------------------------+---------------------------------------+
+|                     | Sampling per resolution element | ~2.3 pixels                           |
++---------------------+---------------------------------+---------------------------------------+
+| **Others**          | Link to the telescope           | A circular multi-mode fiber (100µm)   |
+|                     +---------------------------------+---------------------------------------+
+|                     | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
++---------------------+---------------------------------+---------------------------------------+
 
 
 Preparing Data & Config File
 ----------------------------
-The first step is to create a new working directory in a place where the user has
-full read/write permissions.
+The first step is to create a new working directory in a place where the user
+has full read/write permissions.
 All the steps performed by `GAMSE` will be done in this directory.
 For example, the following commands create a new working directory called
 ``foces.2018-07-18``, where the FOCES data taken on July 18, 2018, will be
@@ -104,16 +102,34 @@ In this case, the soft link to the data path is not necessary anymore.
 
 The ``data`` section in the configuration file accepts the following entries:
 
-.. csv-table:: Accepted entries in ``data`` section
-   :header: Key, Type, Default Value, Description
-   :escape: '
+.. list-table:: Accepted entries in ``data`` section
    :widths: 18, 10, 18, 60
+   :header-rows: 1
 
-   **telescope**,   *str*, Fraunhofer, Name of the telescope (Fixed).
-   **instrument**,  *str*, FOCES,      Name of the instrument (Fixed).
-   **rawdata**,     *str*, rawdata,    Path to the rawdata.
-   **statime_key**, *str*, FRAME,      Key of starting time of exposure in FITS header.
-   **exptime_key**, *str*, EXPOSURE,   key of exposure time in FITS header.
+   * - Key
+     - Type
+     - Default Value
+     - Description
+   * - **telescope**
+     - *str*
+     - Fraunhofer
+     - Name of the telescope (Fixed).
+   * - **instrument**
+     - *str*
+     - FOCES
+     - Name of the instrument (Fixed).
+   * - **rawdata**
+     - *str*
+     - rawdata
+     - Path to the rawdata.
+   * - **statime_key**
+     - *str*
+     - FRAME
+     - Key of starting time of exposure in FITS header.
+   * - **exptime_key**
+     - *str*
+     - EXPOSURE
+     - key of exposure time in FITS header.
 
 
 Generating the Observing Log
@@ -129,7 +145,7 @@ in the configure file:
 observing log as a table in the terminal:
 ::
 
-    ------ ------------------------------ ------- ------------ ------- ----------------------- ------- ------
+    ------- ------------------------------ ------- ------------ ------- ----------------------- ------- ------
     frameid             fileid             imgtype    object    exptime         obsdate          nsat    q95  
     ------- ------------------------------ ------- ------------ ------- ----------------------- ------- ------
           0 20180718_0001_FOC1800_SCI0       sci   Unknown           20 2018-07-18T20:55:47.000       0  23228
@@ -163,8 +179,8 @@ and ``imgtype``).
 See :ref:`Observing Log <obslog>` for more details about this table.
 
 Since the target names of FOCES observations are not written into the headers of
-FITS files, the user has to open the obslog file with a text editor and make some
-changes *manually*.
+FITS files, the user has to open the obslog file with a text editor and make
+some changes *manually*.
 
 The obslog files will *NOT* be overwritten by running ``gamse list``, but new
 files named ``2018-07-18.1.oblog``, ``2018-07-18.2.oblog``... with extra numbers
@@ -186,17 +202,38 @@ After preparation of the configuration file ``*.cfg`` and the observing log file
 The following entries are accepted in the ``[reduce]`` section of the
 configuration file:
 
-.. csv-table:: Accepted entries in ``reduce`` section
-   :header: Key, Type, Default Value, Description
-   :escape: '
+.. list-table:: Accepted entries in ``reduce`` section
    :widths: 12, 8, 12, 50
+   :header-rows: 1
 
-   **midproc**,     *str*, *midproc*,  Path to the mid-process folder.
-   **report**,      *str*, *report*,   Path to the 1d spectra folder.
-   **onedspec**,    *str*, *onedspec*, Path to the report folder.
-   **mode**,        *str*, *normal*,   "Reduction mode. Available modes are '"normal'", '"debug'" and '"fast'"."
-   **oned_suffix**, *str*, *str*,      Suffix of the 1d spectra files.
-   **fig_format**,  *str*, *png*,      Format of figures.
+   * - Key
+     - Type
+     - Default Value
+     - Description
+   * - **midproc**
+     - *str*
+     - midproc
+     - Path to the mid-process folder.
+   * - **report**
+     - *str*
+     - report
+     - Path to the 1d spectra folder.
+   * - **onedspec**
+     - *str*
+     - onedspec
+     - Path to the report folder.
+   * - **mode**
+     - *str*
+     - normal
+     - Reduction mode. Available modes are "normal", "debug" and "fast".
+   * - **oned_suffix**
+     - *str*
+     - ods
+     - Suffix of the 1d spectra files.
+   * - **fig_format**
+     - *str*
+     - png
+     - Format of figures.
 
 Overscan Correction
 -------------------
@@ -240,18 +277,44 @@ The behaviors during the bias correction are controlled by the ``reduce.bias``
 section in the configuration file.
 It accepts the following entries:
 
-.. csv-table:: Accepted entries in ``reduce.bias`` section
-   :header: Key, Type, Default Value, Description
-   :escape: '
-   :widths: 12, 8, 18, 60
+.. list-table:: Accepted entries in ``reduce.bias`` section
+   :widths: 12, 8, 18, 50
+   :header-rows: 1
 
-   **bias_file**,     *str*,  ${reduce:midproc}/bias.fits, Full path to the bias image.
-   **cosmic_clip**,   *int*,  10,                          The upper clipping value in the bias combination.
-   **maxiter**,       *int*,  5,                           Maximum number of interation in the bias combination.
-   **smooth**,        *bool*, yes,                         Smooth the combined bias if *yes*.
-   **smooth_method**, *str*,  Gaussian,                    Method of bias smoothing. Only valid if **smooth** = yes.
-   **smooth_sigma**,  *int*,  3,                           Sigma of Gaussian core in bias smoothting. Only valid if **smooth_method** = Gaussian.
-   **smooth_mode**,   *str*,  nearest,                     Mode of smoothing at the edges. Only valid if **smooth_method** = Gaussian.
+   * - Key
+     - Type
+     - Default Value
+     - Description
+   * - **bias_file**
+     - *str*
+     - ${reduce:midproc}/bias.fits
+     - Full path to the bias image.
+   * - **cosmic_clip**
+     - *int*
+     - 10
+     - The upper clipping value in the bias combination.
+   * - **maxiter**
+     - *int*
+     - 5
+     - Maximum number of interation in the bias combination.
+   * - **smooth**
+     - *bool*
+     - yes
+     - Smooth the combined bias if *yes*.
+   * - **smooth_method**
+     - *str*
+     - Gaussian
+     - Method of bias smoothing. Only valid if **smooth** = yes.
+   * - **smooth_sigma**
+     - *int*
+     - 3
+     - Sigma of Gaussian core in bias smoothting. Only valid if
+       **smooth_method** = Gaussian.
+   * - **smooth_mode**
+     - *str*
+     - nearest
+     - Mode of smoothing at the edges. Only valid if
+       **smooth_method** = Gaussian.
 
 
 Order Tracing
