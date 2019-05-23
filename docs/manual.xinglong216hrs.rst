@@ -115,18 +115,38 @@ The following entries are accepted in the ``[reduce]`` section in the
 configuration file:
 
 
-.. csv-table:: Accepted entries in ``reduce`` section
-   :header: Key, Type, Default Value, Description
-   :escape: '
+.. list-table:: Accepted entries in ``reduce`` section
    :widths: 12, 8, 12, 50
+   :headr-rows: 1
 
-   **midproc**,     *str*, *midproc*,  Path to the mid-process folder.
-   **report**,      *str*, *report*,   Path to the 1d spectra folder.
-   **onedspec**,    *str*, *onedspec*, Path to the report folder.
-   **mode**,        *str*, *normal*,   "Reduction mode. Available modes are '"normal'", '"debug'" and '"fast'"."
-   **oned_suffix**, *str*, *str*,      Suffix of the 1d spectra files.
-   **fig_format**,  *str*, *png*,      Format of figures.
-
+   * - Key
+     - Type
+     - Default Value
+     - Description
+   * - **midproc**
+     - *str*
+     - midproc
+     - Path to the mid-process folder.
+   * - **report**
+     - *str*
+     - report
+     - Path to the 1d spectra folder.
+   * - **onedspec**
+     - *str*
+     - onedspec
+     - Path to the report folder.
+   * - **mode**
+     - *str*
+     - normal
+     - Reduction mode. Available modes are "normal", "debug" and "fast".
+   * - **oned_suffix**
+     - *str*
+     - ods
+     - Suffix of the 1d spectra files.
+   * - **fig_format**
+     - *str*
+     - png
+     - Format of figures.
 
 Overscan Correction
 -------------------
@@ -147,10 +167,6 @@ The pipeline accepts the following options in the config file:
    **data**,       **telescope**,     *str*,    Xinglong216,     Name of the telescope (Fixed).
    **data**,       **instrument**,    *str*,    HRS,             Name of the instrument (Fixed).
    **data**,       **rawdata**,       *str*,    rawdata,         Path to the rawdata.
-   **reduce**,     **midproc**,       *str*,    midproc,         Path to the mid-process folder. Will be created if not exist.
-   **reduce**,     **result**,        *str*,    result,          Path to the result 1-D spectra folder. Will be created if not exist.
-   **reduce**,     **report**,        *str*,    report,          Path to the report folder. Will be created if not exist.
-   **reduce**,     **mode**,          *str*,    normal,          "Reduction mode. Available modes include '"normal'", '"debug'" and '"fast'"."
    **bias**,       **cosmic_clip**,   *float*,  10,              Upper clipping value for removing the cosmic-rays.
    **bias**,       **maxiter**,       *int*,    5,               Maximum iteration numbers.
    **bias**,       **smooth_method**, *str*,    ,                Method of smoothing the bias data.
