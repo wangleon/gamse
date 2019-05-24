@@ -12,7 +12,7 @@ from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
 from ..echelle.imageproc import combine_images, table_to_array, array_to_table
-from ..echelle.trace import find_apertures, load_aperture_set
+from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_slit_flat
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
@@ -63,6 +63,16 @@ def correct_overscan(data, head):
         head['HIERARCH GAMSE OVERSCAN MEAN']   = overmean
 
         return corrdata, head, overmean
+
+class TraceFigure(TraceFigureCommon):
+    """Figure to plot the order tracing.
+    """
+    def __init__(self):
+        TraceFigureCommon.__init__(self, figsize=(20,10), dpi=150)
+        self.ax1 = self.add_axes([0.05,0.07,0.43,0.86])
+        self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
+        self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
+        self.ax4 = self.ax3.twinx()
 
 def reduce():
     """Reduce the APF/Levy spectra.
@@ -277,17 +287,26 @@ def reduce():
     else:
         mask = np.zeros_like(trace, dtype=np.int8)
 
+        # create the trace figure
+        tracefig = TraceFigure()
+
         aperset = find_apertures(trace, mask,
                     scan_step  = section.getint('scan_step'),
                     minimum    = section.getfloat('minimum'),
-                    separation = section.getfloat('separation'),
-                    sep_der    = section.getfloat('sep_der'),
+                    separation = section.get('separation'),
+                    align_deg  = section.getint('align_deg'),
                     filling    = section.getfloat('filling'),
                     degree     = section.getint('degree'),
                     display    = section.getboolean('display'),
-                    filename   = trace_file,
-                    fig_file   = fig_file,
+                    fig        = tracefig,
                     )
+        # save the trace figure
+        tracefig.adjust_positions()
+        tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+        figfile = os.path.join(report,
+                    'trace_{}.{}'.format(flatname, fig_format))
+        tracefig.savefig(figfile)
+
         aperset.save_txt(trc_file)
         aperset.save_reg(trc_reg)
 
