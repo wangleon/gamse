@@ -463,11 +463,12 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
     """Mosaic flat images automatically.
 
     Args:
-        aperture_set_lst (list): Dict of :class:`~edrs.echelle.trace.ApertureSet`.
+        aperture_set_lst (list): Dict of
+            :class:`~gamse.echelle.trace.ApertureSet`.
         max_count (float): Maximum count.
 
     Returns:
-        :class:`~edrs.echelle.trace.ApertureSet`: The mosaiced aperture set.
+        :class:`~gamse.echelle.trace.ApertureSet`: The mosaiced aperture set.
 
     See Also:
 
@@ -596,7 +597,7 @@ def mosaic_images(image_lst, mosaic_aperset):
         images_lst (dict): A dict containing {*names*: *images*}, where *names*
             are strings, and *images* are the corresponding 2d
             :class:`numpy.ndarray` objects.
-        mosaic_aperset (:class:`~edrs.echelle.trace.ApertureSet`): The mosaiced
+        mosaic_aperset (:class:`~gamse.echelle.trace.ApertureSet`): The mosaiced
             aperture set.
 
     Returns:
@@ -1073,7 +1074,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     Args:
         data (:class:`numpy.ndarray`): Image data of flat fielding.
         mask (:class:`numpy.ndarray`): Mask data of flat fielding.
-        apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Echelle
+        apertureset (:class:`~gamse.echelle.trace.ApertureSet`): Echelle
             apertures detected in the input file.
         nflat (int): Number of flat fielding frames combined.
         slit_step (int): Step of slit scanning.
@@ -1771,15 +1772,44 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     return flatdata
 
 
+def default_smooth_flux(x, y, w):
+    """
+
+    Args:
+        x ():
+        y ():
+
+    Returns:
+
+    """
+    deg = 7
+    mask = np.ones_like(y, dtype=np.bool)
+    while(True):
+        coeff = np.polyfit(x[mask], y[mask], deg=deg)
+        yfit = np.polyval(coeff, x/w)
+        yres = y - yfit
+        std = yres[fmask].std()
+        newmask = np.abs(yres) < 3*std
+        if newmask.sum() == mask.sum():
+            break
+        mask = newmask
+
+    newx = np.arange(w)
+    newy = np.polyval(coeff, newx/w)
+    return newy, mask
+
+
 def get_slit_flat(data, mask, apertureset, spectra1d,
         lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
+        smooth_flux_func=default_smooth_flux,
+        figfile=None
     ):
     """Get the flat fielding image for the slit-fed flat fielding image.
 
     Args:
         data (:class:`numpy.ndarray`): Image data of flat fielding.
         mask (:class:`numpy.ndarray`): Mask data of flat fielding.
-        apertureset (:class:`~edrs.echelle.trace.ApertureSet`): Echelle
+        apertureset (:class:`~gamse.echelle.trace.ApertureSet`): Echelle
             apertures detected in the input file.
     
     Returns:
@@ -1791,6 +1821,7 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
     # find saturation mask and bad pixel mask
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
+    gap_mask = (mask&1 > 0)
 
     newx = np.arange(w)
     flatmap = np.ones_like(data, dtype=np.float64)
@@ -1798,12 +1829,13 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
     yy, xx = np.mgrid[:h:,:w:]
 
     for aper, aper_loc in sorted(apertureset.items()):
+        spec = spectra1d[aper]
 
         domain = aper_loc.position.domain
         d1, d2 = int(domain[0]), int(domain[1])+1
         newx = np.arange(d1, d2)
 
-        fluxdata = spectra1d[aper]['flux_mean'][d1:d2]
+        fluxdata = spec['flux_mean'][d1:d2]
 
         position = aper_loc.position(newx)
         lower_line = position - lower_limit
@@ -1812,16 +1844,23 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
 
         # fit flux
-        fmask = np.ones_like(fluxdata, dtype=np.bool)
-        while(True):
-            coeff = np.polyfit(newx[fmask], fluxdata[fmask], deg=deg)
-            yfit = np.polyval(coeff, newx)
-            yres = fluxdata - yfit
-            std = yres[fmask].std()
-            new_fmask = np.abs(yres) < 3*std
-            if new_fmask.sum() == fmask.sum():
-                break
-            fmask = new_fmask
+        yfit, fmask = smooth_flux_func(newx, fluxdata, w)
+
+        if figfile is not None:
+            fig = plt.figure(dpi=150)
+            ax1 = fig.add_subplot(311)
+            ax2 = fig.add_subplot(312)
+            ax3 = fig.add_subplot(313)
+            ax1.plot(spec['flux_sum'],  ls='-',lw=0.5, color='C0')
+            ax2.plot(spec['flux_mean'], ls='-',lw=0.5, color='C0')
+            ax2.plot(newx, yfit, ls='-',lw=0.5, color='C1')
+            ax3.plot(spec['nsum'], ls='-',lw=0.5)
+            print(aper,spec['mask'], spec['mask'].sum())
+            xx = np.arange(spec['flux_sum'].size)[spec['mask']]
+            group_lst = np.split(xx, np.where(np.diff(xx) > 1)[0]+1)
+            fig.suptitle('Aperture %3d'%aper)
+            fig.savefig(figfile%aper)
+            plt.close(fig)
 
         # construct a 1-D mask marking the pixels with enough S/N
         fluxmask = yfit > q_threshold
@@ -1836,6 +1875,7 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         # remove the saturated pixels and bad pixels
         imgmask = imgmask*(~sat_mask)
         imgmask = imgmask*(~bad_mask)
+        imgmask = imgmask*(~gap_mask)
 
         # initialize the constructed pseudo flat
         fitimg = np.zeros_like(data, dtype=np.float64)
