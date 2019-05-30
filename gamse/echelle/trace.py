@@ -921,9 +921,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             csec_nlst[i1:i2] += 1
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
             # for debug purpose
-            #ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
+            #fig.ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
             if direction==-1:
-                ax2.plot(np.arange(ysta_int, yend_int+1), fnew, '-', lw=0.5, alpha=0.2)
+                fig.ax2.plot(np.arange(ysta_int, yend_int+1), fnew, '-',
+                             lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -990,7 +991,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     fig.ax2.set_yscale('log')
     fig.ax2.set_xlabel('Y', fontsize=12)
     fig.ax2.set_ylabel('Count', fontsize=12)
-    afig.x2.set_ylim(0.5,)
+    fig.ax2.set_ylim(0.5,)
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
