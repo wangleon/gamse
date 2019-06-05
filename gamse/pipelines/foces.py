@@ -1133,15 +1133,18 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    rawdata     = config['data'].get('rawdata')
-    statime_key = config['data'].get('statime_key')
-    exptime_key = config['data'].get('exptime_key')
-    midproc     = config['reduce'].get('midproc')
-    onedspec    = config['reduce'].get('onedspec')
-    report      = config['reduce'].get('report')
-    mode        = config['reduce'].get('mode')
-    fig_format  = config['reduce'].get('fig_format')
-    oned_suffix = config['reduce'].get('oned_suffix')
+    section = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
+    direction   = section.get('direction')
+    section = config['reduce']
+    midproc     = section.get('midproc')
+    onedspec    = section.get('onedspec')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
     if not os.path.exists(report):   os.mkdir(report)
@@ -1156,7 +1159,7 @@ def reduce():
     ################################ parse bias ################################
     bias_file = config['reduce.bias'].get('bias_file')
 
-    if os.path.exists(bias_file):
+    if mode=='debug' and os.path.exists(bias_file):
         has_bias = True
         # load bias data from existing file
         bias = fits.getdata(bias_file)
@@ -1164,6 +1167,7 @@ def reduce():
     else:
         # read each individual CCD
         bias_data_lst = []
+        bias_fileid_lst = []
 
         for logitem in logtable:
             if logitem['object'].strip().lower()=='bias':
@@ -1185,6 +1189,7 @@ def reduce():
                 print(' '*2 + print_wrapper(string, logitem))
 
                 bias_data_lst.append(data)
+                bias_fileid_lst.append(logitem['fileid'])
 
         n_bias = len(bias_data_lst)         # number of bias images
         has_bias = n_bias > 0
@@ -1196,16 +1201,19 @@ def reduce():
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)
 
+            section = config['reduce.bias']
             bias = combine_images(bias_data_lst,
                     mode       = 'mean',
-                    upper_clip = config['reduce.bias'].getfloat('cosmic_clip'),
-                    maxiter    = config['reduce.bias'].getint('maxiter'),
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
                     mask       = (None, 'max')[n_bias>=3],
                     )
 
             # create new FITS Header for bias
             head = fits.Header()
             head['HIERARCH GAMSE BIAS NFILE'] = n_bias
+            for ifileid, fileid in enumerate(bias_fileid_lst):
+                head['HIERARCH GAMSE BIAS FILEID %03d'%ifileid] = fileid
 
             ############## bias smooth ##################
             if config['reduce.bias'].getboolean('smooth'):
@@ -1214,8 +1222,9 @@ def reduce():
 
                 if smooth_method in ['gauss', 'gaussian']:
                     # perform 2D gaussian smoothing
-                    smooth_sigma = config['reduce.bias'].getint('smooth_sigma')
-                    smooth_mode  = config['reduce.bias'].get('smooth_mode')
+                    section = config['reduce.bias']
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section.get('smooth_mode')
 
                     bias_smooth = gaussian_filter(bias,
                                     sigma=smooth_sigma, mode=smooth_mode)
@@ -1277,12 +1286,15 @@ def reduce():
     # first combine the flats
     for flatname, item_lst in flat_groups.items():
         nflat = len(item_lst)       # number of flat fieldings
-        flat_filename    = os.path.join(midproc, '%s.fits'%flatname)
-        aperset_filename = os.path.join(midproc, 'trace_%s.trc'%flatname)
-        aperset_regname  = os.path.join(midproc, 'trace_%s.reg'%flatname)
+        flat_filename    = os.path.join(midproc, '{}.fits'.format(flatname))
+        aperset_filename = os.path.join(midproc,
+                            'trace_{}.trc'.format(flatname))
+        aperset_regname  = os.path.join(midproc,
+                            'trace_{}.reg'.format(flatname))
 
         # get flat_data and mask_array for each flat group
-        if os.path.exists(flat_filename) and os.path.exists(aperset_filename):
+        if mode=='debug' and os.path.exists(flat_filename) \
+            and os.path.exists(aperset_filename):
             hdu_lst = fits.open(flat_filename)
             flat_data  = hdu_lst[0].data
             exptime    = hdu_lst[0].header[exptime_key]
@@ -1300,7 +1312,8 @@ def reduce():
 
             for i_item, logitem in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                filename = os.path.join(rawdata,
+                                        '{}.fits'.format(logitem['fileid']))
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
@@ -1359,7 +1372,6 @@ def reduce():
 
             # now flt_data and mask_array are prepared
 
-            section = config['reduce.trace']
 
             # create the trace figure
             tracefig = TraceFigure()
@@ -1369,6 +1381,7 @@ def reduce():
             #xnodes = np.arange(0, flat_data.shape[1], 200)
             #flat_debkg = simple_debackground(flat_data, mask_array, xnodes, smooth=5)
             #aperset = find_apertures(flat_debkg, mask_array,
+            section = config['reduce.trace']
             aperset = find_apertures(flat_data, mask_array,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
@@ -1399,7 +1412,7 @@ def reduce():
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flat_filename = os.path.join(midproc, flatname+'.fits')
+        flat_filename = os.path.join(midproc, '{}.fits'.format(flatname))
         hdu_lst = fits.open(flat_filename, mode='update')
         if len(hdu_lst)>=3:
             # sensitivity map already exists in fits file
@@ -1455,7 +1468,7 @@ def reduce():
         flatname = list(flat_groups)[0]
         # in python3, dict keys does not support indexing.
 
-        shutil.copyfile(os.path.join(midproc, flatname+'.fits'),
+        shutil.copyfile(os.path.join(midproc, '{}.fits'.format(flatname)),
                         flat_file)
         shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
                         trac_file)
@@ -1535,10 +1548,11 @@ def reduce():
                 else:
                     logger.info('No bias. skipped bias correction')
 
+                section = config['reduce.extract']
                 spectra1d = extract_aperset(data, mask,
                             apertureset = master_aperset,
-                            lower_limit = config['reduce.extract'].getfloat('lower_limit'),
-                            upper_limit = config['reduce.extract'].getfloat('upper_limit'),
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
                             )
                 head = master_aperset.to_fitsheader(head, channel=None)
     
@@ -1552,16 +1566,20 @@ def reduce():
                 wlcalib_fig = os.path.join(report,
                         'wlcalib_{}.{}'.format(fileid, fig_format))
 
+                section = config['reduce.wlcalib']
+
                 if count_thar == 1:
                     # this is the first ThAr frame in this observing run
-                    if config['reduce.wlcalib'].getboolean('search_database'):
+                    if section.getboolean('search_database'):
                         # find previouse calibration results
-                        database_path = config['reduce.wlcalib'].get('database_path')
+                        database_path = section.get('database_path')
                         search_path = os.path.join(database_path,
                                                     'FOCES/wlcalib')
-                        ref_spec, ref_calib, ref_aperset = select_calib_from_database(
+
+                        result = select_calib_from_database(
                             search_path, statime_key, head[statime_key],
                             channel=None)
+                        ref_spec, ref_calib, ref_aperset = result
     
                         # if failed, pop up a calibration window and identify
                         # the wavelengths manually
@@ -1570,25 +1588,27 @@ def reduce():
                                 filename      = fileid+'.fits',
                                 figfilename   = wlcalib_fig,
                                 channel       = None,
-                                linelist      = config['reduce.wlcalib'].get('linelist'),
-                                window_size   = config['reduce.wlcalib'].getint('window_size'),
-                                xorder        = config['reduce.wlcalib'].getint('xorder'),
-                                yorder        = config['reduce.wlcalib'].getint('yorder'),
-                                maxiter       = config['reduce.wlcalib'].getint('maxiter'),
-                                clipping      = config['reduce.wlcalib'].getfloat('clipping'),
-                                snr_threshold = config['reduce.wlcalib'].getfloat('snr_threshold'),
+                                linelist      = section.get('linelist'),
+                                window_size   = section.getint('window_size'),
+                                xorder        = section.getint('xorder'),
+                                yorder        = section.getint('yorder'),
+                                maxiter       = section.getint('maxiter'),
+                                clipping      = section.getfloat('clipping'),
+                                snr_threshold = section.getfloat(
+                                                    'snr_threshold'),
                                 )
                         else:
                             # if success, run recalib
-                            aper_offset, pixel_offset = find_caliblamp_offset(ref_spec, spec)
+                            aper_offset, pixel_offset = find_caliblamp_offset(
+                                                        ref_spec, spec)
                             print('aperture_offset = ', aper_offset)
                             print('pixel_offset    = ', pixel_offset)
                             calib = recalib(spec,
-                                filename        = fileid+'.fits',
+                                filename        = '{}.fits'.format(fileid),
                                 figfilename     = wlcalib_fig,
                                 ref_spec        = ref_spec,
                                 channel         = None,
-                                linelist        = config['reduce.wlcalib'].get('linelist'),
+                                linelist        = section.get('linelist'),
                                 aperture_offset = aper_offset,
                                 pixel_offset    = pixel_offset,
                                 coeff           = ref_calib['coeff'],
@@ -1605,17 +1625,17 @@ def reduce():
                     else:
                         # do not search the database
                         calib = wlcalib(spec,
-                            filename      = fileid+'.fits',
+                            filename      = '{}.fits'.format(fileid),
                             figfilename   = wlcalib_fig,
                             channel       = None,
-                            identfilename = config['reduce.wlcalib'].get('ident_file', None),
-                            linelist      = config['reduce.wlcalib'].get('linelist'),
-                            window_size   = config['reduce.wlcalib'].getint('window_size'),
-                            xorder        = config['reduce.wlcalib'].getint('xorder'),
-                            yorder        = config['reduce.wlcalib'].getint('yorder'),
-                            maxiter       = config['reduce.wlcalib'].getint('maxiter'),
-                            clipping      = config['reduce.wlcalib'].getfloat('clipping'),
-                            snr_threshold = config['reduce.wlcalib'].getfloat('snr_threshold'),
+                            identfilename = section.get('ident_file', None),
+                            linelist      = section.get('linelist'),
+                            window_size   = section.getint('window_size'),
+                            xorder        = section.getint('xorder'),
+                            yorder        = section.getint('yorder'),
+                            maxiter       = section.getint('maxiter'),
+                            clipping      = section.getfloat('clipping'),
+                            snr_threshold = section.getfloat('snr_threshold'),
                             )
 
                     # then use this ThAr as the reference
@@ -1624,11 +1644,11 @@ def reduce():
                 else:
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
-                        filename      = fileid+'.fits',
+                        filename      = '{}.fits'.format(fileid),
                         figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
-                        linelist      = config['reduce.wlcalib'].get('linelist'),
+                        linelist      = section.get('linelist'),
                         aperture_offset = 0,
                         coeff         = ref_calib['coeff'],
                         npixel        = ref_calib['npixel'],
@@ -1643,7 +1663,8 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+                filename = os.path.join(onedspec,
+                            '{}{}.fits'.format(fileid, oned_suffix))
                 hdu_lst.writeto(filename, overwrite=True)
 
                 # add more infos in calib
@@ -1703,7 +1724,6 @@ def reduce():
                 data = data - bias
                 message = 'FileID: {} - bias corrected. mean value = {}'.format(
                             fileid, bias.mean())
-                            )
             else:
                 message = 'FileID: {} - no bias'.format(fileid)
 
@@ -1770,7 +1790,7 @@ def reduce():
             weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
             message = 'FileID: {} - wavelength calibration weights: {}'.format(
-                        fileid, ','.join(['%8.4f'%w for w in weight_lst])))
+                        fileid, ','.join(['%8.4f'%w for w in weight_lst]))
 
             logger.info(message)
             print(message)
