@@ -1162,16 +1162,19 @@ def reduce():
     if mode=='debug' and os.path.exists(bias_file):
         has_bias = True
         # load bias data from existing file
-        bias = fits.getdata(bias_file)
+        bias, head = fits.getdata(bias_file, header=True)
+        bias_card_lst = [card for card in head.cards
+                            if card.keyword[0:10]=='GAMSE BIAS']
         logger.info('Load bias from image: %s'%bias_file)
     else:
         # read each individual CCD
         bias_data_lst = []
+        bias_head_lst = []
         bias_fileid_lst = []
 
         for logitem in logtable:
             if logitem['object'].strip().lower()=='bias':
-                fname = '{}.fits'.format(logitem['fileid'])
+                fname = logitem['fileid']+'.fits'
                 filename = os.path.join(rawdata, fname)
                 data, head = fits.getdata(filename, header=True)
                 if data.ndim == 3:
@@ -1189,6 +1192,7 @@ def reduce():
                 print(' '*2 + print_wrapper(string, logitem))
 
                 bias_data_lst.append(data)
+                bias_head_lst.append(head)
                 bias_fileid_lst.append(logitem['fileid'])
 
         n_bias = len(bias_data_lst)         # number of bias images
@@ -1209,20 +1213,32 @@ def reduce():
                     mask       = (None, 'max')[n_bias>=3],
                     )
 
-            # create new FITS Header for bias
-            head = fits.Header()
-            head['HIERARCH GAMSE BIAS NFILE'] = n_bias
-            for ifileid, fileid in enumerate(bias_fileid_lst):
-                head['HIERARCH GAMSE BIAS FILEID %03d'%ifileid] = fileid
+            # initialize card list for bias header
+            bias_card_lst = []
+            bias_card_lst.append(('HIERARCH GAMSE BIAS NFILE', n_bias))
+
+            # move cards related to OVERSCAN corrections from individual headers
+            # to bias header
+            for ifile, (head, fileid) in enumerate(zip(bias_head_lst,
+                                                       bias_fileid_lst)):
+                key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile)
+                bias_card_lst.append((key_prefix+' FILEID', fileid))
+
+                for card in head.cards:
+                    mobj = re.match('^GAMSE (OVERSCAN[\s\S]*)', card.keyword)
+                    if mobj is not None:
+                        newkey = key_prefix + ' ' + mobj.group(1)
+                        bias_card_lst.append((newkey, card.value))
 
             ############## bias smooth ##################
-            if config['reduce.bias'].getboolean('smooth'):
+            key_prefix = 'HIERARCH GAMSE BIAS SMOOTH'
+            section = config['reduce.bias']
+            if section.getboolean('smooth'):
                 # bias needs to be smoothed
-                smooth_method = config['reduce.bias'].get('smooth_method')
+                smooth_method = section.get('smooth_method')
 
                 if smooth_method in ['gauss', 'gaussian']:
                     # perform 2D gaussian smoothing
-                    section = config['reduce.bias']
                     smooth_sigma = section.getint('smooth_sigma')
                     smooth_mode  = section.get('smooth_mode')
 
@@ -1230,10 +1246,10 @@ def reduce():
                                     sigma=smooth_sigma, mode=smooth_mode)
 
                     # write information to FITS header
-                    head['HIERARCH GAMSE BIAS SMOOTH']        = True
-                    head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                    head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
-                    head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
+                    bias_card_lst.append((key_prefix,           True))
+                    bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
+                    bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
+                    bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
                 else:
                     print('Unknown smooth method: ', smooth_method)
                     pass
@@ -1241,8 +1257,12 @@ def reduce():
                 bias = bias_smooth
             else:
                 # bias not smoothed
-                head['HIERARCH GAMSE BIAS SMOOTH'] = False
+                bias_card_lst.append((key_prefix, False))
 
+            # create new FITS Header for bias
+            head = fits.Header()
+            for card in bias_card_lst:
+                head.append(card)
             fits.writeto(bias_file, bias, header=head, overwrite=True)
             logger.info('Bias image written to "%s"'%bias_file)
 
@@ -1286,7 +1306,7 @@ def reduce():
     # first combine the flats
     for flatname, item_lst in flat_groups.items():
         nflat = len(item_lst)       # number of flat fieldings
-        flat_filename    = os.path.join(midproc, '{}.fits'.format(flatname))
+        flat_filename    = os.path.join(midproc, flatname+'.fits')
         aperset_filename = os.path.join(midproc,
                             'trace_{}.trc'.format(flatname))
         aperset_regname  = os.path.join(midproc,
@@ -1303,6 +1323,7 @@ def reduce():
             aperset = load_aperture_set(aperset_filename)
         else:
             data_lst = []
+            head_lst = []
             exptime_lst = []
 
             print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
@@ -1312,8 +1333,7 @@ def reduce():
 
             for i_item, logitem in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata,
-                                        '{}.fits'.format(logitem['fileid']))
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
@@ -1412,7 +1432,7 @@ def reduce():
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
     for flatname in sorted(flat_groups.keys()):
-        flat_filename = os.path.join(midproc, '{}.fits'.format(flatname))
+        flat_filename = os.path.join(midproc, flatname+'.fits')
         hdu_lst = fits.open(flat_filename, mode='update')
         if len(hdu_lst)>=3:
             # sensitivity map already exists in fits file
@@ -1468,8 +1488,7 @@ def reduce():
         flatname = list(flat_groups)[0]
         # in python3, dict keys does not support indexing.
 
-        shutil.copyfile(os.path.join(midproc, '{}.fits'.format(flatname)),
-                        flat_file)
+        shutil.copyfile(os.path.join(midproc, flatname+'.fits'), flat_file)
         shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
                         trac_file)
         shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
@@ -1604,7 +1623,7 @@ def reduce():
                             print('aperture_offset = ', aper_offset)
                             print('pixel_offset    = ', pixel_offset)
                             calib = recalib(spec,
-                                filename        = '{}.fits'.format(fileid),
+                                filename        = fileid+'.fits',
                                 figfilename     = wlcalib_fig,
                                 ref_spec        = ref_spec,
                                 channel         = None,
@@ -1625,7 +1644,7 @@ def reduce():
                     else:
                         # do not search the database
                         calib = wlcalib(spec,
-                            filename      = '{}.fits'.format(fileid),
+                            filename      = fileid+'.fits',
                             figfilename   = wlcalib_fig,
                             channel       = None,
                             identfilename = section.get('ident_file', None),
@@ -1644,7 +1663,7 @@ def reduce():
                 else:
                     # for other ThArs, no aperture offset
                     calib = recalib(spec,
-                        filename      = '{}.fits'.format(fileid),
+                        filename      = fileid+'.fits',
                         figfilename   = wlcalib_fig,
                         ref_spec      = ref_spec,
                         channel       = None,
@@ -1663,8 +1682,7 @@ def reduce():
                         )
                 
                 hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(onedspec,
-                            '{}{}.fits'.format(fileid, oned_suffix))
+                filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
                 hdu_lst.writeto(filename, overwrite=True)
 
                 # add more infos in calib
@@ -1699,7 +1717,7 @@ def reduce():
 
         if imgtype == 'sci':
 
-            filename = os.path.join(rawdata, '{}.fits'.format(fileid))
+            filename = os.path.join(rawdata, fileid+'.fits')
 
             logger.info(
                 'FileID: {} ({}) - start reduction: {}'.format(
@@ -1803,8 +1821,7 @@ def reduce():
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(onedspec,
-                        '{}{}.fits'.format(fileid,oned_suffix))
+            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
             hdu_lst.writeto(filename, overwrite=True)
 
             message = 'FileID: {} - Spectra written to {}'.format(
