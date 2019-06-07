@@ -2264,9 +2264,11 @@ def select_calib_from_database(path, time_key, current_time, channel):
     spec = f[1].data
 
     calib = get_calib_from_header(head, channel=channel)
-    aperset = load_aperture_set_from_header(head, channel=channel)
 
-    return spec, calib, aperset
+    # aperset seems unnecessary
+    #aperset = load_aperture_set_from_header(head, channel=channel)
+    #return spec, calib, aperset
+    return spec, calib
 
 
 def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
@@ -2462,7 +2464,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
 
     return result
 
-def find_caliblamp_offset(spec1, spec2):
+def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
     """Find the offset between two spectra. The aperture offset is defined as:
     
         aperture1 + aperture_offset = aperture2
@@ -2478,52 +2480,117 @@ def find_caliblamp_offset(spec1, spec2):
 
     """
 
-    offset_lst = np.arange(-10, 10)
-    shift_lst = np.arange(-50, 50)
-    mean_lst    = []
-    scatter_lst = []
+    pixel_shift_lst = np.arange(-50, 50)
+    mean_lst    = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
+    scatter_lst = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
+    all_scatter_lst = []
+    all_mean_lst    = []
+    scatter_id_lst = []
 
-    for offset in offset_lst:
-        result_shift_lst = []
-        fig2 = plt.figure(figsize=(10,8), dpi=150)
-        ax2 = fig2.gca()
-        for row1 in spec1:
-            aperture1 = row1['aperture']
-            aperture2 = aperture1 + offset
-            m = spec2['aperture'] == aperture2
-            if m.sum()==0:
-                continue
-            row2 = spec2[m][0]
+    aper1_lst = spec1['aperture']
+    aper2_lst = spec2['aperture']
+    min_aper1 = aper1_lst.min()
+    max_aper1 = aper1_lst.max()
+    min_aper2 = aper2_lst.min()
+    max_aper2 = aper2_lst.max()
 
-            '''
-            fig = plt.figure(figsize=(10,8), dpi=150)
-            ax1 = fig.gca()
-            ax1.plot(row1['flux'], '-')
-            ax1.plot(row2['flux'], '-')
-            fig.suptitle('Aper1 = %3d, Aper2 = %3d, offset=%d'%(aperture1, aperture2, offset))
-            fig.savefig('aper_%03d_%03d.png'%(aperture1, aperture2))
-            plt.close(fig)
-            '''
+    # determine the maxium absolute offsets between the orders of the two
+    # spectra
+    maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, 10)
+    order_offset_lst = np.arange(-maxoff, maxoff)
 
-            ccf_lst = get_simple_ccf(row1['flux'], row2['flux'], shift_lst)
-            shift = shift_lst[ccf_lst.argmax()]
-            result_shift_lst.append(shift)
-    
-            ax2.plot(shift_lst, ccf_lst, alpha=0.4)
-
-        fig2.savefig('ccf_%d.png'%offset)
-        plt.close(fig2)
-        result_shift_lst = np.array(result_shift_lst)
-
-        mean_lst.append(result_shift_lst.mean())
-        scatter_lst.append(result_shift_lst.std())
+    def get_aper2(aper1, k, offset):
+        if k == 1:
+            # (aper2 - min_aper2) = (aper1 - min_aper1) + offset
+            aper2 = (aper1 - min_aper1) + offset + min_aper2
+        elif k == -1:
+            # (aper2 - min_aper2) = -(aper1 - max_aper1) + offset
+            aper2 = -aper1 + max_aper1 + offset + min_aper2
+        else:
+            raise ValueError
+        return aper2
 
     fig3 = plt.figure(dpi=150)
     ax3 = fig3.gca()
-    ax3.plot(offset_lst, scatter_lst)
+
+
+    # order_k =  1: same cross-order direction;
+    #           -1: reverse cross-order direction.
+    if order_k is None:
+        search_order_k_lst = [1, -1]
+    elif order_k in [1, -1]:
+        search_order_k_lst = [order_k]
+    else:
+        print('Warning: Unknown order_k:', order_k)
+        raise ValueError
+
+
+    # pixel_k =  1: same main-dispersion direction;
+    #           -1: reverse main-dispersion direction.
+    if pixel_k is None:
+        search_pixel_k_lst = [1, -1]
+    elif pixel_k in [1, -1]:
+        search_pixel_k_lst = [pixel_k]
+    else:
+        print('Warning: Unknown order_k:', pixel_k)
+        raise ValueError
+
+
+    for order_k in search_order_k_lst:
+        for order_offset in order_offset_lst:
+            calc_pixel_shift_lst = {1: [], -1: []}
+            fig2 = plt.figure(figsize=(10,8), dpi=150)
+            axes2 = { 1: fig2.add_subplot(211),
+                     -1: fig2.add_subplot(212),}
+            for row1 in spec1:
+                aperture1 = row1['aperture']
+                aperture2 = get_aper2(aperture1, k, offset)
+                m = spec2['aperture'] == aperture2
+                if m.sum()==0:
+                    continue
+                row2 = spec2[m][0]
+                flux1 = row1['flux']
+                flux2 = row2['flux']
+                for pixel_k in search_pixel_k_lst:
+                    ccf_lst = get_simple_ccf(flux1[::pixel_k], flux2,
+                                             pixel_shift_lst)
+                    # find the pixel shift
+                    calc_shift = shift_lst[ccf_lst.argmax()]
+                    # pack the pixel shift into a list
+                    calc_pixel_shift_lst[pixel_k].append(calc_shift)
+            
+                    axes2[pixel_k].plot(pixel_shift_lst, ccf_lst, alpha=0.4)
+                    # pixel direction loop ends here
+                # order-by-order loop ends here
+            for ax in axes2.values():
+                ax.set_xlim(pixel_shift_lst[0], pixel_shift_lst[-1])
+
+            fig2.savefig('ccf_{:+2d}_{:+03d}.png'.format(order_k, order_offset))
+            plt.close(fig2)
+
+            # convert calc_pixel_shift_lst to numpy array
+            for pixel_k in search_pixel_k_lst:
+                calc_pixel_shift_lst[pixel_k] = np.array(
+                                                calc_pixel_shift_lst[pixel_k])
+
+            pixel_shift_mean = pix_shift_lst.mean()
+            pixel_shift_std  = pix_shift_lst.std()
+            mean_lst[k].append(pixel_shift_mean)
+            scatter_lst[k].append(pixel_shift_std)
+
+            all_mean_lst.append(pixel_shift_mean)
+            all_scatter_lst.append(pixel_shift_std)
+            scatter_id_lst.append((k, offset))
+        # offset loop ends here
+
+        ax3.plot(offset_lst, scatter_lst[k], color={1:'C0', -1:'C1'}[k])
+        print(offset_lst, scatter_lst[k])
+    # direction loop ends here
+
     fig3.savefig('ccf_scatter.png')
-    imin = np.argmin(scatter_lst)
-    return offset_lst[imin], mean_lst[imin]
+    imin = np.argmin(all_scatter_lst)
+    scatter_id = scatter_id_lst[imin]
+    return scatter_id[0], scatter_id[1], all_mean_lst[imin]
 
 
 def save_calibrated_thar(head, spec, calib, channel):
@@ -2681,8 +2748,6 @@ def get_calib_from_header(header, channel):
     else:
         prefix = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
 
-    k      = header[prefix+' K']
-    offset = header[prefix+' OFFSET']
     xorder = header[prefix+' XORDER']
     yorder = header[prefix+' YORDER']
 
@@ -2690,30 +2755,22 @@ def get_calib_from_header(header, channel):
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
         coeff[j,i] = header[prefix+' COEFF %d %d'%(j, i)]
     
-    npixel        = header[prefix+' NPIXEL']
-    window_size   = header[prefix+' WINDOW_SIZE']
-    maxiter       = header[prefix+' MAXITER']
-    clipping      = header[prefix+' CLIPPING']
-    snr_threshold = header[prefix+' SNR_THRESHOLD']
-    ntot          = header[prefix+' NTOT']
-    nuse          = header[prefix+' NUSE']
-    std           = header[prefix+' STDDEV']
-
     calib = {
               'coeff':         coeff,
-              'npixel':        npixel,
-              'k':             k,
-              'offset':        offset,
-              'std':           std,
-              'nuse':          nuse,
-              'ntot':          ntot,
+              'npixel':        header[prefix+' NPIXEL'],
+              'k':             header[prefix+' K'],
+              'offset':        header[prefix+' OFFSET'],
+              'std':           header[prefix+' STDDEV'],
+              'nuse':          header[prefix+' NUSE'],
+              'ntot':          header[prefix+' NTOT'],
 #             'identlist':     calibwindow.identlist,
-              'window_size':   window_size,
+              'window_size':   header[prefix+' WINDOW_SIZE'],
               'xorder':        xorder,
               'yorder':        yorder,
-              'maxiter':       maxiter,
-              'clipping':      clipping,
-              'snr_threshold': snr_threshold,
+              'maxiter':       header[prefix+' MAXITER'],
+              'clipping':      header[prefix+' CLIPPING'],
+              'snr_threshold': header[prefix+' SNR_THRESHOLD'],
+              'ccd_direction': haeder[prefix+' CCD_DIRECTION'],
             }
     return calib
 

@@ -1138,6 +1138,7 @@ def reduce():
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
+    multi_fiber = section.get('multi_fiber')
     section = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -1224,6 +1225,7 @@ def reduce():
                 key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile)
                 bias_card_lst.append((key_prefix+' FILEID', fileid))
 
+                # move OVERSCAN cards to bias header
                 for card in head.cards:
                     mobj = re.match('^GAMSE (OVERSCAN[\s\S]*)', card.keyword)
                     if mobj is not None:
@@ -1264,7 +1266,10 @@ def reduce():
             for card in bias_card_lst:
                 head.append(card)
             fits.writeto(bias_file, bias, header=head, overwrite=True)
-            logger.info('Bias image written to "%s"'%bias_file)
+
+            message = 'Bias image written to "{}"'.format(bias_file)
+            logger.info(message)
+            print(message)
 
         else:
             # no bias found
@@ -1284,13 +1289,13 @@ def reduce():
             # find a proper name for this flat
             if logitem['object'].lower().strip()=='flat':
                 # no special names given, use "flat_A_15"
-                flatname = 'flat_%g'%(logitem['exptime'])
+                flatname = 'flat_{:g}'.format(logitem['exptime'])
             else:
                 # flatname is given. replace space with "_"
                 # remove "flat" before the objectname. e.g.,
                 # "Flat Red" becomes "Red" 
                 char = logitem['object'][4:].strip()
-                flatname = 'flat_%s'%(char.replace(' ','_'))
+                flatname = 'flat_{}'.format(char.replace(' ','_'))
 
             # add flatname to flat_groups
             if flatname not in flat_groups:
@@ -1600,9 +1605,9 @@ def reduce():
                             channel=None)
                         ref_spec, ref_calib, ref_aperset = result
     
-                        # if failed, pop up a calibration window and identify
-                        # the wavelengths manually
                         if ref_spec is None or ref_calib is None:
+                            # if failed, pop up a calibration window and
+                            # identify the wavelengths manually
                             calib = wlcalib(spec,
                                 filename      = fileid+'.fits',
                                 figfilename   = wlcalib_fig,
@@ -1618,8 +1623,18 @@ def reduce():
                                 )
                         else:
                             # if success, run recalib
-                            aper_offset, pixel_offset = find_caliblamp_offset(
-                                                        ref_spec, spec)
+                            # determine the direction
+                            #if direction[1] != ref_calib['ccd_direction'][1]:
+                            print(direction)
+                            print(ref_calib['ccd_direction'])
+
+                            result = find_caliblamp_offset(ref_spec, spec)
+                            aper_direction = result[0]
+                            aper_offset    = result[1]
+                            pixel_offset   = result[2]
+                                                        
+                            print(aper_direction, aper_offset, pixel_offset)
+                            exit()
                             print('aperture_offset = ', aper_offset)
                             print('pixel_offset    = ', pixel_offset)
                             calib = recalib(spec,
