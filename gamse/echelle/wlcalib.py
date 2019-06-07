@@ -2480,7 +2480,7 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
 
     """
 
-    pixel_shift_lst = np.arange(-50, 50)
+    pixel_shift_lst = np.arange(-100, 100)
     mean_lst    = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
     scatter_lst = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
     all_scatter_lst = []
@@ -2510,8 +2510,6 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
             raise ValueError
         return aper2
 
-    fig3 = plt.figure(dpi=150)
-    ax3 = fig3.gca()
 
 
     # order_k =  1: same cross-order direction;
@@ -2544,7 +2542,7 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
                      -1: fig2.add_subplot(212),}
             for row1 in spec1:
                 aperture1 = row1['aperture']
-                aperture2 = get_aper2(aperture1, k, offset)
+                aperture2 = get_aper2(aperture1, order_k, order_offset)
                 m = spec2['aperture'] == aperture2
                 if m.sum()==0:
                     continue
@@ -2552,10 +2550,21 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
                 flux1 = row1['flux']
                 flux2 = row2['flux']
                 for pixel_k in search_pixel_k_lst:
+                    '''
+                    if order_k == -1 and pixel_k == -1:
+                        fig1 = plt.figure(dpi=150)
+                        ax1 = fig1.gca()
+                        ax1.plot(flux1[::pixel_k], 'C0')
+                        ax1.plot(flux2, 'C1')
+                        ax1.set_title('Aper1 = %d, Aper2 = %d (%d, %d, %d)'%(aperture1, aperture2, order_k, order_offset, pixel_k))
+                        fig1.savefig('check_%d_%d_%d_%02d_%02d_.png'%(order_k, order_offset, pixel_k, aperture1, aperture2, ))
+                        plt.close(fig1)
+                    '''
+
                     ccf_lst = get_simple_ccf(flux1[::pixel_k], flux2,
                                              pixel_shift_lst)
                     # find the pixel shift
-                    calc_shift = shift_lst[ccf_lst.argmax()]
+                    calc_shift = pixel_shift_lst[ccf_lst.argmax()]
                     # pack the pixel shift into a list
                     calc_pixel_shift_lst[pixel_k].append(calc_shift)
             
@@ -2569,28 +2578,46 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
             plt.close(fig2)
 
             # convert calc_pixel_shift_lst to numpy array
+            pixel_shift_mean = {1: None, -1: None}
+            pixel_shift_std  = {1: None, -1: None}
             for pixel_k in search_pixel_k_lst:
-                calc_pixel_shift_lst[pixel_k] = np.array(
-                                                calc_pixel_shift_lst[pixel_k])
+                tmp = np.array(calc_pixel_shift_lst[pixel_k])
 
-            pixel_shift_mean = pix_shift_lst.mean()
-            pixel_shift_std  = pix_shift_lst.std()
-            mean_lst[k].append(pixel_shift_mean)
-            scatter_lst[k].append(pixel_shift_std)
+                mean = tmp.mean()
+                std  = tmp.std()
 
-            all_mean_lst.append(pixel_shift_mean)
-            all_scatter_lst.append(pixel_shift_std)
-            scatter_id_lst.append((k, offset))
-        # offset loop ends here
+                mean_lst[(order_k, pixel_k)].append(mean)
+                scatter_lst[(order_k, pixel_k)].append(std)
 
-        ax3.plot(offset_lst, scatter_lst[k], color={1:'C0', -1:'C1'}[k])
-        print(offset_lst, scatter_lst[k])
+                all_mean_lst.append(mean)
+                all_scatter_lst.append(std)
+                scatter_id_lst.append((order_k, order_offset, pixel_k))
+
+
     # direction loop ends here
 
+    fig3 = plt.figure(dpi=150)
+    ax3 = fig3.gca()
+    for key, scatters in scatter_lst.items():
+        order_k, pixel_k = key
+        if len(scatters)==0:
+            continue
+        ax3.plot(order_offset_lst, scatters,
+                    color={1:'C0', -1:'C1'}[order_k],
+                    ls   ={1:'-',  -1:'--'}[pixel_k])
     fig3.savefig('ccf_scatter.png')
+
     imin = np.argmin(all_scatter_lst)
     scatter_id = scatter_id_lst[imin]
-    return scatter_id[0], scatter_id[1], all_mean_lst[imin]
+    result_order_k      = scatter_id[0]
+    result_order_offset = scatter_id[1]
+    result_pixel_k      = scatter_id[2]
+    result_pixel_offset = all_mean_lst[imin]
+    real_order_offset = {
+             1: result_order_offset - min_aper1 + min_aper2,
+            -1: result_order_offset + max_aper1 + max_aper2}[result_order_k]
+    return (result_order_k, real_order_offset,
+            result_pixel_k, result_pixel_offset)
 
 
 def save_calibrated_thar(head, spec, calib, channel):
@@ -2770,7 +2797,7 @@ def get_calib_from_header(header, channel):
               'maxiter':       header[prefix+' MAXITER'],
               'clipping':      header[prefix+' CLIPPING'],
               'snr_threshold': header[prefix+' SNR_THRESHOLD'],
-              'ccd_direction': haeder[prefix+' CCD_DIRECTION'],
+              'ccd_direction': header[prefix+' CCD_DIRECTION'],
             }
     return calib
 

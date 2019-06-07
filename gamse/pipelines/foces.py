@@ -1603,7 +1603,7 @@ def reduce():
                         result = select_calib_from_database(
                             search_path, statime_key, head[statime_key],
                             channel=None)
-                        ref_spec, ref_calib, ref_aperset = result
+                        ref_spec, ref_calib = result
     
                         if ref_spec is None or ref_calib is None:
                             # if failed, pop up a calibration window and
@@ -1624,11 +1624,19 @@ def reduce():
                         else:
                             # if success, run recalib
                             # determine the direction
-                            #if direction[1] != ref_calib['ccd_direction'][1]:
-                            print(direction)
-                            print(ref_calib['ccd_direction'])
+                            ref_direction = ref_calib['ccd_direction']
+                            order_k = (-1, 1)[direction[1] ==
+                                              ref_direction[1]]
+                            if direction[2]=='?':
+                                pixel_k = None
+                            else:
+                                pixel_k = (-1, 1)[direction[2] ==
+                                                  ref_direction[2]]
 
-                            result = find_caliblamp_offset(ref_spec, spec)
+                            result = find_caliblamp_offset(ref_spec, spec,
+                                        order_k = order_k,
+                                        pixel_k = pixel_k,
+                                        )
                             aper_direction = result[0]
                             aper_offset    = result[1]
                             pixel_offset   = result[2]
