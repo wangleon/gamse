@@ -65,7 +65,7 @@ def polyfit2d(x, y, z, xorder=3, yorder=3, linear=False):
         G[:,k] = x**i * y**j
         if linear & (i != 0) & (j != 0):
             G[:,k] = 0
-    coeff, residuals, _, _ = np.linalg.lstsq(G, z)
+    coeff, residuals, _, _ = np.linalg.lstsq(G, z, rcond=None)
     coeff = coeff.reshape(yorder+1, xorder+1)
     return coeff
 
