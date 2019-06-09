@@ -79,8 +79,20 @@ def reduce():
     """
 
     # read obs log
-    obslogfile = obslog.find_log(os.curdir)
-    log = obslog.read_log(obslogfile)
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-7:]=='.obslog']
+    if len(logname_lst)==0:
+        print('No observation log found')
+        exit()
+    elif len(logname_lst)>1:
+        print('Multiple observation log found:')
+        for logname in sorted(logname_lst):
+            print('  '+logname)
+    else:
+        pass
+
+    # read obs log
+    logtable = read_obslog(logname_lst[0])
 
     # load config files
     config_file_lst = []
@@ -103,16 +115,17 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    section     = config['data']
+    section = config['data']
     rawdata     = section.get('rawdata')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
-    section     = config['reduce']
+    section = config['reduce']
     midproc     = section.get('midproc')
     result      = section.get('result')
     report      = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
     if not os.path.exists(report):  os.mkdir(report)
@@ -120,14 +133,15 @@ def reduce():
     if not os.path.exists(midproc): os.mkdir(midproc)
 
     ################################ parse bias ################################
-    section = config['reduce.bias']
-    bias_file = section['bias_file']
+    bias_file = config['reduce.bias'].get('bias_file')
 
-    if os.path.exists(bias_file):
+    if mode=='debug' and os.path.exists(bias_file):
         has_bias = True
         # load bias data from existing file
         bias = fits.getdata(bias_file)
-        logger.info('Load bias from image: %s'%bias_file)
+        message = 'Load bias from file: {}'.format(bias_file)
+        logger.info(message)
+        print(message)
     else:
         bias_data_lst = []
 
@@ -143,16 +157,18 @@ def reduce():
         fmt_title = ' '.join(fmt_title)
         fmt_item  = ' '.join(fmt_item)
 
-        for item in log:
-            if item.objectname[0]=='Bias' and abs(item.exptime)<1e-3:
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+        for logitem in logtable:
+            if logitem['object'].strip()=='Bias' \
+                and abs(logitem['exptime'])<1e-3:
+                filename = os.path.join(rawdata,
+                            '{}.fits'.format(logitem['fileid']))
                 data, head = fits.getdata(filename, header=True)
                 # correct overscan here
                 data, head, overmean = correct_overscan(data, head)
 
                 # print info
                 if len(bias_data_lst) == 0:
-                    print('* Combine Bias Images: %s'%bias_file)
+                    print('* Combine Bias Images: {}'.format(bias_file))
                     print(' '*2 + fmt_title.format(*title))
                 print(' '*2 + fmt_item.format(item, overmean, data.mean()))
 
@@ -167,6 +183,7 @@ def reduce():
             # combine bias images
             bias_data_lst = np.array(bias_data_lst)
 
+            section = config['reduce.bias']
             bias = combine_images(bias_data_lst,
                     mode       = 'mean',
                     upper_clip = section.getfloat('cosmic_clip'),
@@ -212,11 +229,11 @@ def reduce():
             # no bias found
             pass
 
-    ############################# trace the orders ############################
+    ########################### find & trace the orders ######################
     section = config['reduce.trace']
     trace_file = section['trace_file']
 
-    if os.path.exists(trace_file):
+    if mode=='debug' and os.path.exists(trace_file):
         # load trace image from existing file
         has_trace = True
         trace = fits.getdata(trace_file)
@@ -236,9 +253,10 @@ def reduce():
         fmt_title = ' '.join(fmt_title)
         fmt_item  = ' '.join(fmt_item)
 
-        for item in log:
-            if item.objectname[0]=='NarrowFlat':
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+        for logitem in logtable:
+            if logitem['object'].strip()=='NarrowFlat':
+                filename = os.path.join(rawdata,
+                            '{}.fits'.format(item['fileid']))
                 data, head = fits.getdata(filename, header=True)
                 data, head, overmean = correct_overscan(data, head)
                 if has_bias:
@@ -279,7 +297,6 @@ def reduce():
     trc_reg  = '.'.join(trace_file.split('.')[:-1])+'.reg'
     trace_filename = os.path.basename(trace_file)
     trace_fileid = '.'.join(trace_filename.split('.')[:-1])
-    fig_file = os.path.join(report, '%s.%s'%(trace_fileid, fig_format))
 
     if os.path.exists(trc_file):
         # load apertures from existing file
@@ -313,21 +330,21 @@ def reduce():
     ######################### find flat groups #################################
     ########################### Combine flat images ############################
     flat_groups = {}
-    for item in log:
-        if item.objectname[0]=='WideFlat':
-            flatname = 'flat_%d'%item.exptime
+    for logitem in logtable:
+        if logitem['objectname']=='WideFlat':
+            flatname = 'flat_{%d}'.format(item['exptime'])
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(item.fileid)
+            flat_groups[flatname].append(logitem['fileid'])
     # print how many flats in each flat name
     for flatname in flat_groups:
         n = len(flat_groups[flatname])
-        print('%3d images in %s'%(n, flatname))
+        print('{} images in {}'.format(n, flatname))
 
     flat_data_lst = {}
     flat_mask_lst = {}
     for flatname, fileids in flat_groups.items():
-        flat_filename = '%s.fits'%flatname
+        flat_filename = '{}.fits'.format(flatname)
         mask_filename = '%s_msk.fits'%flatname
         if os.path.exists(flat_filename) and os.path.exists(mask_filename):
             flat_data = fits.getdata(flat_filename)

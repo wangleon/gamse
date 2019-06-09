@@ -10,10 +10,13 @@ import astropy.io.fits as fits
 from astropy.table import Table
 from astropy.time  import Time
 
+from ..utils.obslog import parse_num_seq, read_obslog
 from ..echelle.imageproc import combine_images
 from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.background import simple_debackground
-from ..utils.obslog import parse_num_seq, read_obslog
+from ..echelle.extract import extract_aperset
+from ..echelle.flat import get_slit_flat
+
 from .common import FormattedInfo
 
 all_columns = [
@@ -352,7 +355,6 @@ def get_badpixel_mask(binning, ccd=0):
             mask[:,         0:45] = True
     return np.int16(mask)
 
-
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
@@ -362,6 +364,42 @@ class TraceFigure(TraceFigureCommon):
         self.ax2 = self.add_axes([0.59,0.55,0.36,0.34])
         self.ax3 = self.add_axes([0.59,0.13,0.36,0.34])
         self.ax4 = self.ax3.twinx()
+
+def mosaic_3_images(data_lst, mask_lst):
+    """Mosaic three images.
+
+    Args:
+        data_lst (list): List of image data.
+        mask_lst (list): List of mask data.
+
+    Returns:
+        tuple:
+    """
+    data1, data2, data3 = data_lst
+    mask1, mask2, mask3 = mask_lst
+    gap_rg, gap_gb = 26, 20
+
+    # mosaic image: allimage and allmask
+    h3, w3 = data3.shape
+    h2, w2 = data2.shape
+    h1, w1 = data1.shape
+
+    hh = h3 + gap_rg + h2 + gap_gb + h1
+    allimage = np.ones((hh, w3), dtype=data1.dtype)
+    allmask = np.zeros((hh, w3), dtype=np.int16)
+    r1, g1, b1 = 0, h3+gap_rg, h3+gap_rg+h2+gap_gb
+    r2, g2, b2 = r1+h3, g1+h2, b1+h1
+    allimage[r1:r2] = data3
+    allimage[g1:g2] = data2
+    allimage[b1:b2] = data1
+    allmask[r1:r2] = mask3
+    allmask[g1:g2] = mask2
+    allmask[b1:b2] = mask1
+    # fill gap with gap pixels
+    allmask[r2:g1] = 1
+    allmask[g2:b1] = 1
+
+    return allimage, allmask
 
 def reduce():
     """2D to 1D pipeline for Keck/HIRES.
@@ -404,11 +442,11 @@ def reduce():
     config.read(config_file_lst)
 
     # extract keywords from config file
-    section     = config['data']
+    section = config['data']
     rawdata     = section.get('rawdata')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
-    section     = config['reduce']
+    section = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
     report      = section.get('report')
@@ -439,10 +477,9 @@ def reduce():
         sel_file.close()
 
     ################################ parse bias ################################
-    section = config['reduce.bias']
-    bias_file = section['bias_file']
+    bias_file = config['reduce.bias'].get('bias_file')
 
-    if os.path.exists(bias_file):
+    if mode=='debug' and os.path.exists(bias_file):
         has_bias = True
         # load bias data from existing file
         hdu_lst = fits.open(bias_file)
@@ -463,13 +500,15 @@ def reduce():
 
         for logitem in logtable:
             if logitem['object'].strip().lower()=='bias':
-                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                fname = '{}.fits'.format(logitem['fileid'])
+                filename = os.path.join(rawdata, fname)
                 hdu_lst = fits.open(filename)
                 data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                 hdu_lst.close()
 
                 # print info
                 if len(bias_data_lst[0]) == 0:
+                    print('* Combine Bias Images: {}'.format(bias_file))
                     print(' '*2 + pinfo1.get_separator())
                     print(' '*2 + pinfo1.get_title())
                     print(' '*2 + pinfo1.get_separator())
@@ -487,32 +526,38 @@ def reduce():
             print(' '*2 + pinfo1.get_separator())
 
             bias = []
-            bias_hdu_lst = fits.HDUList([fits.PrimaryHDU()])  # the final HDU list
+            # the final HDU list
+            bias_hdu_lst = fits.HDUList([fits.PrimaryHDU()])
 
             # scan for each ccd
             for iccd in range(nccd):
                 ### 3 CCDs loop begins here ###
                 bias_data_lst[iccd] = np.array(bias_data_lst[iccd])
 
+                section = config['reduce.bias']
                 sub_bias = combine_images(bias_data_lst[iccd],
-                           mode       = 'mean',
-                           upper_clip = section.getfloat('cosmic_clip'),
-                           maxiter    = section.getint('maxiter'),
-                           mask       = (None, 'max')[n_bias>=3],
-                           )
-                print('\033[{2}mCombined bias for CCD {0}: Mean = {1:6.2f}\033[0m'.format(
-                    iccd+1, sub_bias.mean(), (34, 32, 31)[iccd]))
+                            mode       = 'mean',
+                            upper_clip = section.getfloat('cosmic_clip'),
+                            maxiter    = section.getint('maxiter'),
+                            mask       = (None, 'max')[n_bias>=3],
+                            )
+
+                message = '\033[{2}mCombined bias for CCD {0}: Mean = {1:6.2f}\033[0m'.format(
+                    iccd+1, sub_bias.mean(), (34, 32, 31)[iccd])
+
+                print(message)
 
                 head = fits.Header()
                 head['HIERARCH GAMSE BIAS NFILE'] = n_bias
 
                 ############## bias smooth ##################
+                section = config['reduce.bias']
                 if section.getboolean('smooth'):
                     # bias needs to be smoothed
                     smooth_method = section.get('smooth_method')
 
                     h, w = sub_bias.shape
-                    if smooth_method in ['gauss','gaussian']:
+                    if smooth_method in ['gauss', 'gaussian']:
                         # perform 2D gaussian smoothing
                         smooth_sigma = section.getint('smooth_sigma')
                         smooth_mode  = section.get('smooth_mode')
@@ -546,22 +591,33 @@ def reduce():
             pass
 
     ########################## find flat groups #########################
-    section = config['reduce.flat']
-    flat_file = section['flat_file']
+    flat_file = config['reduce.flat'].get('flat_file')
 
-    flat_lst = [] # a list of 3 combined flat images. [Image1, Image2, Image3]
-                  # bias has been corrected already. but not rotated yet.
-    flatmask_lst = [] # a list of 3 flat masks
+    flatdata_lst = []
+    # a list of 3 combined flat images. [Image1, Image2, Image3]
+    # bias has been corrected already. but not rotated yet.
+    flatmask_lst = []
+    # a list of 3 flat masks
 
-    if os.path.exists(flat_file):
+    if mode=='debug' and os.path.exists(flat_file):
         # read flat data from existing file
         hdu_lst = fits.open(flat_file)
         for iccd in range(nccd):
-            flat_lst.append(hdu_lst[iccd*2+1].data)
+            flatdata_lst.append(hdu_lst[iccd*2+1].data)
             flatmask_lst.append(hdu_lst[iccd*2+2].data)
+        flatdata = hdu_lst[nccd*2+1].data.T
+        flatmask = hdu_lst[nccd*2+2].data.T
         hdu_lst.close()
         message = 'Loaded flat data from file: {}'.format(flat_file)
         print(message)
+
+        # alias of flat data and mask
+        flatdata1 = flatdata_lst[0].T
+        flatmask1 = flatmask_lst[0].T
+        flatdata2 = flatdata_lst[1].T
+        flatmask2 = flatmask_lst[1].T
+        flatdata3 = flatdata_lst[2].T
+        flatmask3 = flatmask_lst[2].T
 
     else:
         print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -657,7 +713,7 @@ def reduce():
                             )
                 #print('\033[{1}mCombined flat data for CCD {0}: \033[0m'.format(
                 #    iccd+1, (34, 32, 31)[iccd]))
-            flat_lst.append(flatdata)
+            flatdata_lst.append(flatdata)
             flatmask_lst.append(flatmask)
 
             # pack the combined flat data into flat_hdu_lst
@@ -667,60 +723,50 @@ def reduce():
             flat_hdu_lst.append(fits.ImageHDU(flatmask))
         # CCD loop ends here
 
+        # alias of flat data and mask
+        flatdata1 = flatdata_lst[0].T
+        flatmask1 = flatmask_lst[0].T
+        flatdata2 = flatdata_lst[1].T
+        flatmask2 = flatmask_lst[1].T
+        flatdata3 = flatdata_lst[2].T
+        flatmask3 = flatmask_lst[2].T
+
+        # mosaic flat data
+        flatdata, flatmask = mosaic_3_images(
+                                data_lst = (flatdata1, flatdata2, flatdata3),
+                                mask_lst = (flatmask1, flatmask2, flatmask3),
+                                )
+
+        flat_hdu_lst.append(fits.ImageHDU(flatdata.T))
+        flat_hdu_lst.append(fits.ImageHDU(flatmask.T))
         # write flat data to file
         flat_hdu_lst = fits.HDUList(flat_hdu_lst)
         flat_hdu_lst.writeto(flat_file, overwrite=True)
         print('Flat data writed to {}'.format(flat_file))
 
-    ######################### trace orders ##################################
+    ######################### find & trace orders ##########################
 
-    flatdata1 = flat_lst[0].T
-    flatmask1 = flatmask_lst[0].T
+    # simple debackground for all 3 CCDs
     xnodes = np.arange(0, flatdata1.shape[1], 200)
-    flat_debkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20,
+    flatdbkg1 = simple_debackground(flatdata1, flatmask1, xnodes, smooth=20,
                     deg=3, maxiter=10)
 
-    flatdata2 = flat_lst[1].T
-    flatmask2 = flatmask_lst[1].T
     xnodes = np.arange(0, flatdata2.shape[1], 200)
-    flat_debkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20,
+    flatdbkg2 = simple_debackground(flatdata2, flatmask2, xnodes, smooth=20,
                     deg=3, maxiter=10)
 
-    flatdata3 = flat_lst[2].T
-    flatmask3 = flatmask_lst[2].T
     xnodes = np.arange(0, flatdata3.shape[1], 200)
-    flat_debkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20,
+    flatdbkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20,
                     deg=3, maxiter=10)
 
-    gap_rg, gap_gb = 26, 20
-
-    # mosaic image: allimage and allmask
-    h3, w3 = flatdata3.shape
-    h2, w2 = flatdata2.shape
-    h1, w1 = flatdata1.shape
-
-    hh = h3 + gap_rg + h2 + gap_gb + h1
-    allimage = np.ones((hh, w3), dtype=flat_debkg1.dtype)
-    allmask = np.zeros((hh, w3), dtype=np.int16)
-    r1, g1, b1 = 0, h3+gap_rg, h3+gap_rg+h2+gap_gb
-    r2, g2, b2 = r1+h3, g1+h2, b1+h1
-    allimage[r1:r2] = flat_debkg3
-    allimage[g1:g2] = flat_debkg2
-    allimage[b1:b2] = flat_debkg1
-    allmask[r1:r2] = flatmask3
-    allmask[g1:g2] = flatmask2
-    allmask[b1:b2] = flatmask1
-    # fill gap with gap pixels
-    allmask[r2:g1] = 1
-    allmask[g2:b1] = 1
-
-    section = config['reduce.trace']
-    figfile = os.path.join(report, 'trace.png')
-    trcfile = os.path.join(midproc, 'trace.trc')
-    regfile = os.path.join(midproc, 'trace.reg')
+    allimage, allmask = mosaic_3_images(
+                        data_lst = (flatdbkg1, flatdbkg2, flatdbkg3),
+                        mask_lst = (flatmask1, flatmask2, flatmask3),
+                        )
 
     tracefig = TraceFigure()
 
+    section = config['reduce.trace']
     aperset = find_apertures(allimage, allmask,
                 scan_step  = section.getint('scan_step'),
                 minimum    = section.getfloat('minimum'),
@@ -734,9 +780,13 @@ def reduce():
     # decorate trace fig and save to file
     tracefig.adjust_positions()
     tracefig.suptitle('Trace for all 3 CCDs', fontsize=15)
+    figfile = os.path.join(report, 'trace.png')
     tracefig.savefig(figfile)
 
+    trcfile = os.path.join(midproc, 'trace.trc')
     aperset.save_txt(trcfile)
+
+    regfile = os.path.join(midproc, 'trace.reg')
     aperset.save_reg(regfile, transpose=True)
 
     # save mosaiced flat image
@@ -744,5 +794,23 @@ def reduce():
                         [fits.PrimaryHDU(allimage.T),
                          fits.ImageHDU(allmask.T),
                         ])
-    trace_hdu_lst.writeto(section.get('file'), overwrite=True)
+    trace_hdu_lst.writeto(config['reduce.trace'].get('file'), overwrite=True)
 
+    ######################### Extract flat spectrum ############################
+
+    spectra1d = extract_aperset(flatdata, flatmask,
+                    apertureset = aperset,
+                    lower_limit = 6,
+                    upper_limit = 6,
+                    )
+
+    flatmap = get_slit_flat(flatdata, flatmask,
+                apertureset = aperset,
+                spectra1d   = spectra1d,
+                lower_limit = 6,
+                upper_limit = 6,
+                deg         = 7,
+                q_threshold = 20**2,
+                figfile     = 'spec_%02d.png',
+                )
+    fits.writeto('flat_resp.fits', flatmap, overwrite=True)
