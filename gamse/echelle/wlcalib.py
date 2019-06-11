@@ -1986,7 +1986,9 @@ def get_simple_ccf(flux1, flux2, shift_lst):
     return np.array(ccf_lst)
 
 
-def find_drift(spec1, spec2, pixel_offset=0.0, aperture_offset=0):
+def find_pixel_drift(spec1, spec2,
+        apeture_koffset=(1, 0), pixel_koffset=(1, 0.0)
+    ):
     """Find the drift between two spectra. The apertures of the two spectra must
     be aligned.
 
@@ -2004,10 +2006,13 @@ def find_drift(spec1, spec2, pixel_offset=0.0, aperture_offset=0):
         float: Calculated relative shift between the two spectra arrays.
     """
 
+    aperture_k, aperture_offset = aperture_koffset
+    pixel_k, pixel_offset = pixel_koffset
+
     shift_lst = []
     for item1 in spec1:
         aperture1 = item1['aperture']
-        aperture2 = aperture1 + aperture_offset
+        aperture2 = aperture_k*aperture1 + aperture_offset
         m = spec2['aperture'] == aperture2
         if m.sum()==1:
             item2 = spec2[m][0]
@@ -2016,7 +2021,7 @@ def find_drift(spec1, spec2, pixel_offset=0.0, aperture_offset=0):
 
             #shift = find_shift_ccf(flux1, flux2)
             #shift = find_shift_ccf_pixel(flux1, flux2, 100)
-            shift = find_shift_ccf(flux1, flux2, shift0=pixel_offset)
+            shift = find_shift_ccf(flux1[::pixel_k], flux2, shift0=pixel_offset)
 
             shift_lst.append(shift)
 
@@ -2271,11 +2276,10 @@ def select_calib_from_database(path, time_key, current_time, channel):
     return spec, calib
 
 
-def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
-    npixel, k, offset, aperture_offset=0, pixel_offset=0.0, window_size=13, xorder=3, yorder=3,
-    maxiter=10, clipping=3, snr_threshold=10):
-    """Re-calibrate the wavelength of an input spectra file using another spectra
-    as reference.
+def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
+        aperture_koffset=(1, 0), pixel_koffset=(1, None)):
+    """Re-calibrate the wavelength of an input spectra file using another
+    spectra as the reference.
 
     Args:
         spec (:class:`numpy.dtype`): The spectral data array to be wavelength
@@ -2333,12 +2337,33 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
         
     """
 
-    # find initial shift with cross-corelation functions
-    shift = find_drift(ref_spec, spec, aperture_offset=aperture_offset, pixel_offset=pixel_offset)
-    print('calculated shift = ', shift)
+    aperture_k, aperture_offset = aperture_koffset
+    pixel_k, pixel_offset       = pixel_koffset
+    print(pixel_k, pixel_offset, aperture_k, aperture_offset)
 
-    string = '%s channel %s shift = %+8.6f pixel'
-    print(string%(os.path.basename(filename), channel, shift))
+    # unpack ref_calib
+    k             = ref_calib['k']
+    offset        = ref_calib['offset']
+    coeff         = ref_calib['coeff']
+    npixel        = ref_calib['npixel']
+    window_size   = ref_calib['window_size']
+    xorder        = ref_calib['xorder']
+    yorder        = ref_calib['yorder']
+    maxiter       = ref_calib['maxiter']
+    clipping      = ref_calib['clipping']
+    snr_threshold = ref_calib['snr_threshold']
+
+    if pixel_offset is None:
+        # find initial shift with cross-corelation functions
+        pixel_offset = find_pixel_drift(ref_spec, spec,
+                        aperture_koffet = aperture_koffset,
+                        pixel_koffset   = pixel_koffset)
+        print('calculated shift = ', shift)
+
+    #message = '{} channel {} shift = {:+8.6f} pixel'.format(
+    #            os.path.basename(filename), channel, shift
+    #            )
+    #print(message)
 
     # initialize the identlist
     identlist = {}
@@ -2350,13 +2375,17 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
         exit()
     line_list = load_linelist(linefilename)
 
-    x = np.arange(npixel)
+    x = np.arange(npixel)[::pixel_k] - pixel_offset
 
     for row in spec:
+        # variable alias
         aperture = row['aperture']
         flux     = row['flux']
-        order = k*(aperture - aperture_offset) + offset
-        wl = get_wavelength(coeff, npixel, x+shift, np.repeat(order, npixel))
+        # obtain a rough wavelength array according to the input
+        # aperture_koffset and pixel_koffset
+        order = k*((aperture - aperture_offset)/aperture_k) + offset
+        wl = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
+        print(aperture, (aperture - aperture_offset)/aperture_k, order, wl[0], wl[-1])
         w1 = min(wl[0], wl[-1])
         w2 = max(wl[0], wl[-1])
         has_insert = False
@@ -2464,7 +2493,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, coeff,
 
     return result
 
-def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
+def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
     """Find the offset between two spectra. The aperture offset is defined as:
     
         aperture1 + aperture_offset = aperture2
@@ -2497,31 +2526,30 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
     # determine the maxium absolute offsets between the orders of the two
     # spectra
     maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, 10)
-    order_offset_lst = np.arange(-maxoff, maxoff)
+    aperture_offset_lst = np.arange(-maxoff, maxoff)
 
     def get_aper2(aper1, k, offset):
         if k == 1:
             # (aper2 - min_aper2) = (aper1 - min_aper1) + offset
+            # in this case, real_offset = offset - min_aper1 + min_aper2
             aper2 = (aper1 - min_aper1) + offset + min_aper2
         elif k == -1:
             # (aper2 - min_aper2) = -(aper1 - max_aper1) + offset
+            # in this cose, real_offset = offset + max_aper1 + min_aper2
             aper2 = -aper1 + max_aper1 + offset + min_aper2
         else:
             raise ValueError
         return aper2
 
-
-
-    # order_k =  1: same cross-order direction;
-    #           -1: reverse cross-order direction.
-    if order_k is None:
-        search_order_k_lst = [1, -1]
-    elif order_k in [1, -1]:
-        search_order_k_lst = [order_k]
+    # aperture_k =  1: same cross-order direction;
+    #              -1: reverse cross-order direction.
+    if aperture_k is None:
+        search_aperture_k_lst = [1, -1]
+    elif aperture_k in [1, -1]:
+        search_aperture_k_lst = [aperture_k]
     else:
-        print('Warning: Unknown order_k:', order_k)
+        print('Warning: Unknown aperture_k:', aperture_k)
         raise ValueError
-
 
     # pixel_k =  1: same main-dispersion direction;
     #           -1: reverse main-dispersion direction.
@@ -2530,19 +2558,20 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
     elif pixel_k in [1, -1]:
         search_pixel_k_lst = [pixel_k]
     else:
-        print('Warning: Unknown order_k:', pixel_k)
+        print('Warning: Unknown pixel_k:', pixel_k)
         raise ValueError
 
 
-    for order_k in search_order_k_lst:
-        for order_offset in order_offset_lst:
+    for aperture_k in search_aperture_k_lst:
+        for aperture_offset in aperture_offset_lst:
             calc_pixel_shift_lst = {1: [], -1: []}
             fig2 = plt.figure(figsize=(10,8), dpi=150)
             axes2 = { 1: fig2.add_subplot(211),
-                     -1: fig2.add_subplot(212),}
+                     -1: fig2.add_subplot(212),
+                     }
             for row1 in spec1:
                 aperture1 = row1['aperture']
-                aperture2 = get_aper2(aperture1, order_k, order_offset)
+                aperture2 = get_aper2(aperture1, aperture_k, aperture_offset)
                 m = spec2['aperture'] == aperture2
                 if m.sum()==0:
                     continue
@@ -2551,13 +2580,17 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
                 flux2 = row2['flux']
                 for pixel_k in search_pixel_k_lst:
                     '''
-                    if order_k == -1 and pixel_k == -1:
+                    if aperture_k == -1 and pixel_k == -1:
                         fig1 = plt.figure(dpi=150)
                         ax1 = fig1.gca()
                         ax1.plot(flux1[::pixel_k], 'C0')
                         ax1.plot(flux2, 'C1')
-                        ax1.set_title('Aper1 = %d, Aper2 = %d (%d, %d, %d)'%(aperture1, aperture2, order_k, order_offset, pixel_k))
-                        fig1.savefig('check_%d_%d_%d_%02d_%02d_.png'%(order_k, order_offset, pixel_k, aperture1, aperture2, ))
+                        ax1.set_title('Aper1 = %d, Aper2 = %d (%d, %d, %d)'%(
+                            aperture1, aperture2, aperture_k, aperture_offset,
+                            pixel_k))
+                        fig1.savefig('check_%d_%d_%d_%02d_%02d_.png'%(
+                            aperture_k, aperture_offset, pixel_k, aperture1,
+                            aperture2))
                         plt.close(fig1)
                     '''
 
@@ -2574,7 +2607,8 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
             for ax in axes2.values():
                 ax.set_xlim(pixel_shift_lst[0], pixel_shift_lst[-1])
 
-            fig2.savefig('ccf_{:+2d}_{:+03d}.png'.format(order_k, order_offset))
+            figname = 'ccf_{:+2d}_{:+03d}.png'.format(aperture_k, aperture_offset)
+            fig2.savefig(figname)
             plt.close(fig2)
 
             # convert calc_pixel_shift_lst to numpy array
@@ -2586,12 +2620,14 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
                 mean = tmp.mean()
                 std  = tmp.std()
 
-                mean_lst[(order_k, pixel_k)].append(mean)
-                scatter_lst[(order_k, pixel_k)].append(std)
+                mean_lst[(aperture_k, pixel_k)].append(mean)
+                scatter_lst[(aperture_k, pixel_k)].append(std)
 
+                # used to search the global minimum shift scatter along all the
+                # (aperture_k, aperture_offset, pixel_k) space
                 all_mean_lst.append(mean)
                 all_scatter_lst.append(std)
-                scatter_id_lst.append((order_k, order_offset, pixel_k))
+                scatter_id_lst.append((aperture_k, aperture_offset, pixel_k))
 
 
     # direction loop ends here
@@ -2599,25 +2635,28 @@ def find_caliblamp_offset(spec1, spec2, order_k=None, pixel_k=None):
     fig3 = plt.figure(dpi=150)
     ax3 = fig3.gca()
     for key, scatters in scatter_lst.items():
-        order_k, pixel_k = key
+        aperture_k, pixel_k = key
         if len(scatters)==0:
             continue
-        ax3.plot(order_offset_lst, scatters,
-                    color={1:'C0', -1:'C1'}[order_k],
+        ax3.plot(aperture_offset_lst, scatters,
+                    color={1:'C0', -1:'C1'}[aperture_k],
                     ls   ={1:'-',  -1:'--'}[pixel_k])
     fig3.savefig('ccf_scatter.png')
 
     imin = np.argmin(all_scatter_lst)
     scatter_id = scatter_id_lst[imin]
-    result_order_k      = scatter_id[0]
-    result_order_offset = scatter_id[1]
-    result_pixel_k      = scatter_id[2]
-    result_pixel_offset = all_mean_lst[imin]
-    real_order_offset = {
-             1: result_order_offset - min_aper1 + min_aper2,
-            -1: result_order_offset + max_aper1 + max_aper2}[result_order_k]
-    return (result_order_k, real_order_offset,
-            result_pixel_k, result_pixel_offset)
+    result_aperture_k      = scatter_id[0]
+    result_aperture_offset = scatter_id[1]
+    result_pixel_k         = scatter_id[2]
+    result_pixel_offset    = all_mean_lst[imin]
+
+    # convert aperture_offset to real aperture_offset
+    real_aperture_offset = {
+             1: result_aperture_offset - min_aper1 + min_aper2,
+            -1: result_aperture_offset + max_aper1 + min_aper2,
+            }[result_aperture_k]
+    return (result_aperture_k, real_aperture_offset,
+            result_pixel_k,    result_pixel_offset)
 
 
 def save_calibrated_thar(head, spec, calib, channel):
