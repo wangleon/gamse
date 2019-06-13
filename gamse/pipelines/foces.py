@@ -1533,202 +1533,206 @@ def reduce():
 
     ############################## Extract ThAr ################################
 
-    if True:
-        # get the data shape
-        h, w = flat_map.shape
+    # get the data shape
+    h, w = flat_map.shape
 
-        # define dtype of 1-d spectra
-        types = [
-                ('aperture',   np.int16),
-                ('order',      np.int16),
-                ('points',     np.int16),
-                ('wavelength', (np.float64, w)),
-                ('flux',       (np.float32, w)),
-                ]
-        names, formats = list(zip(*types))
-        spectype = np.dtype({'names': names, 'formats': formats})
+    # define dtype of 1-d spectra
+    types = [
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux',       (np.float32, w)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
     
-        calib_lst = {}
-        count_thar = 0
-        for logitem in logtable:
+    calib_lst = {}
+    count_thar = 0
+    for logitem in logtable:
 
-            fileid = logitem['fileid']
+        if logitem['object'].strip().lower() != 'thar':
+            continue
 
-            if logitem['object'].strip().lower()=='thar':
-                count_thar += 1
-                filename = os.path.join(rawdata, fileid+'.fits')
-                data, head = fits.getdata(filename, header=True)
-                if data.ndim == 3:
-                    data = data[0,:,:]
-                mask = get_mask(data, head)
+        count_thar += 1
+        fileid = logitem['fileid']
 
-                # correct overscan for ThAr
-                data, head, overmean = correct_overscan(data, head, mask)
+        filename = os.path.join(rawdata, fileid+'.fits')
+        data, head = fits.getdata(filename, header=True)
+        if data.ndim == 3:
+            data = data[0,:,:]
+        mask = get_mask(data, head)
 
-                # correct bias for ThAr, if has bias
-                if has_bias:
-                    data = data - bias
-                    logger.info('Bias corrected')
-                else:
-                    logger.info('No bias. skipped bias correction')
+        # correct overscan for ThAr
+        data, head, overmean = correct_overscan(data, head, mask)
 
-                section = config['reduce.extract']
-                spectra1d = extract_aperset(data, mask,
-                            apertureset = master_aperset,
-                            lower_limit = section.getfloat('lower_limit'),
-                            upper_limit = section.getfloat('upper_limit'),
-                            )
-                head = master_aperset.to_fitsheader(head, channel=None)
+        # correct bias for ThAr, if has bias
+        if has_bias:
+            data = data - bias
+            logger.info('Bias corrected')
+        else:
+            logger.info('No bias. skipped bias correction')
+
+        section = config['reduce.extract']
+        spectra1d = extract_aperset(data, mask,
+                    apertureset = master_aperset,
+                    lower_limit = section.getfloat('lower_limit'),
+                    upper_limit = section.getfloat('upper_limit'),
+                    )
+        head = master_aperset.to_fitsheader(head, channel=None)
     
-                spec = []
-                for aper, item in sorted(spectra1d.items()):
-                    flux_sum = item['flux_sum']
-                    spec.append((aper, 0, flux_sum.size,
-                            np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
-                spec = np.array(spec, dtype=spectype)
+        spec = []
+        for aper, item in sorted(spectra1d.items()):
+            flux_sum = item['flux_sum']
+            spec.append((aper, 0, flux_sum.size,
+                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+        spec = np.array(spec, dtype=spectype)
     
-                wlcalib_fig = os.path.join(report,
-                        'wlcalib_{}.{}'.format(fileid, fig_format))
+        wlcalib_fig = os.path.join(report,
+                'wlcalib_{}.{}'.format(fileid, fig_format))
 
-                section = config['reduce.wlcalib']
+        section = config['reduce.wlcalib']
 
-                if count_thar == 1:
-                    # this is the first ThAr frame in this observing run
-                    if section.getboolean('search_database'):
-                        # find previouse calibration results
-                        database_path = section.get('database_path')
-                        search_path = os.path.join(database_path,
-                                                    'FOCES/wlcalib')
+        if count_thar == 1:
+            # this is the first ThAr frame in this observing run
+            if section.getboolean('search_database'):
+                # find previouse calibration results
+                database_path = section.get('database_path')
+                search_path = os.path.join(database_path,
+                                            'FOCES/wlcalib')
 
-                        result = select_calib_from_database(
-                            search_path, statime_key, head[statime_key],
-                            channel=None)
-                        ref_spec, ref_calib = result
+                result = select_calib_from_database(
+                    search_path, statime_key, head[statime_key],
+                    channel=None)
+                ref_spec, ref_calib = result
     
-                        if ref_spec is None or ref_calib is None:
-                            # if failed, pop up a calibration window and
-                            # identify the wavelengths manually
-                            calib = wlcalib(spec,
-                                filename      = fileid+'.fits',
-                                figfilename   = wlcalib_fig,
-                                channel       = None,
-                                linelist      = section.get('linelist'),
-                                window_size   = section.getint('window_size'),
-                                xorder        = section.getint('xorder'),
-                                yorder        = section.getint('yorder'),
-                                maxiter       = section.getint('maxiter'),
-                                clipping      = section.getfloat('clipping'),
-                                snr_threshold = section.getfloat(
-                                                    'snr_threshold'),
-                                )
-                        else:
-                            # if success, run recalib
-                            # determine the direction
-                            ref_direction = ref_calib['ccd_direction']
-                            order_k = (-1, 1)[direction[1] ==
-                                              ref_direction[1]]
-                            if direction[2]=='?':
-                                pixel_k = None
-                            else:
-                                pixel_k = (-1, 1)[direction[2] ==
-                                                  ref_direction[2]]
-
-                            result = find_caliblamp_offset(ref_spec, spec,
-                                        order_k = order_k,
-                                        pixel_k = pixel_k,
-                                        )
-                            aper_direction = result[0]
-                            aper_offset    = result[1]
-                            pixel_offset   = result[2]
-                                                        
-                            print(aper_direction, aper_offset, pixel_offset)
-                            exit()
-                            print('aperture_offset = ', aper_offset)
-                            print('pixel_offset    = ', pixel_offset)
-                            calib = recalib(spec,
-                                filename        = fileid+'.fits',
-                                figfilename     = wlcalib_fig,
-                                ref_spec        = ref_spec,
-                                channel         = None,
-                                linelist        = section.get('linelist'),
-                                aperture_offset = aper_offset,
-                                pixel_offset    = pixel_offset,
-                                coeff           = ref_calib['coeff'],
-                                npixel          = ref_calib['npixel'],
-                                window_size     = ref_calib['window_size'],
-                                xorder          = ref_calib['xorder'],
-                                yorder          = ref_calib['yorder'],
-                                maxiter         = ref_calib['maxiter'],
-                                clipping        = ref_calib['clipping'],
-                                snr_threshold   = ref_calib['snr_threshold'],
-                                k               = ref_calib['k'],
-                                offset          = ref_calib['offset'],
-                                )
-                    else:
-                        # do not search the database
-                        calib = wlcalib(spec,
-                            filename      = fileid+'.fits',
-                            figfilename   = wlcalib_fig,
-                            channel       = None,
-                            identfilename = section.get('ident_file', None),
-                            linelist      = section.get('linelist'),
-                            window_size   = section.getint('window_size'),
-                            xorder        = section.getint('xorder'),
-                            yorder        = section.getint('yorder'),
-                            maxiter       = section.getint('maxiter'),
-                            clipping      = section.getfloat('clipping'),
-                            snr_threshold = section.getfloat('snr_threshold'),
-                            )
-
-                    # then use this ThAr as the reference
-                    ref_calib = calib
-                    ref_spec  = spec
-                else:
-                    # for other ThArs, no aperture offset
-                    calib = recalib(spec,
+                if ref_spec is None or ref_calib is None:
+                    # if failed, pop up a calibration window and
+                    # identify the wavelengths manually
+                    calib = wlcalib(spec,
                         filename      = fileid+'.fits',
                         figfilename   = wlcalib_fig,
-                        ref_spec      = ref_spec,
                         channel       = None,
                         linelist      = section.get('linelist'),
-                        aperture_offset = 0,
-                        coeff         = ref_calib['coeff'],
-                        npixel        = ref_calib['npixel'],
-                        window_size   = ref_calib['window_size'],
-                        xorder        = ref_calib['xorder'],
-                        yorder        = ref_calib['yorder'],
-                        maxiter       = ref_calib['maxiter'],
-                        clipping      = ref_calib['clipping'],
-                        snr_threshold = ref_calib['snr_threshold'],
-                        k             = ref_calib['k'],
-                        offset        = ref_calib['offset'],
+                        window_size   = section.getint('window_size'),
+                        xorder        = section.getint('xorder'),
+                        yorder        = section.getint('yorder'),
+                        maxiter       = section.getint('maxiter'),
+                        clipping      = section.getfloat('clipping'),
+                        snr_threshold = section.getfloat(
+                                            'snr_threshold'),
                         )
-                
-                hdu_lst = self_reference_singlefiber(spec, head, calib)
-                filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
-                hdu_lst.writeto(filename, overwrite=True)
+                else:
+                    # if success, run recalib
+                    # determine the direction
+                    ref_direction = ref_calib['ccd_direction']
+                    aperture_k = ((-1, 1)
+                                    [direction[1]==ref_direction[1]],
+                                    None)[direction[1]=='?']
+                    pixel_k = ((-1, 1)
+                                [direction[2]==ref_direction[2]],
+                                None)[direction[2]=='?']
 
-                # add more infos in calib
-                calib['fileid']   = fileid
-                calib['date-obs'] = head[statime_key]
-                calib['exptime']  = head[exptime_key]
-                # pack to calib_lst
-                calib_lst[logitem['frameid']] = calib
+                    result = find_caliblamp_offset(ref_spec, spec,
+                                aperture_k = aperture_k,
+                                pixel_k    = pixel_k,
+                                )
+                    aperture_koffset = (result[0], result[1])
+                    pixel_koffset    = (result[2], result[3])
 
-        for frameid, calib in sorted(calib_lst.items()):
-            print(' [{:3d}] {} - {:4d}/{:4d} r.m.s. = {:7.5f}'.format(frameid,
-                    calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
+                    print('Aperture offset =', aperture_koffset)
+                    print('Pixel offset =', pixel_koffset)
+                    print(ref_calib['k'], ref_calib['offset'])
+
+                    use = section.getboolean('use_prev_fitpar')
+                    xorder      = (section.getint('xorder'), None)[use]
+                    yorder      = (section.getint('yorder'), None)[use]
+                    maxiter     = (section.getint('maxiter'), None)[use]
+                    clipping    = (section.getfloat('clipping'), None)[use]
+                    window_size = (section.getint('window_size'), None)[use]
+                    q_threshold = (section.getfloat('q_threshold'), None)[use]
+
+                    calib = recalib(spec,
+                        filename         = fileid+'.fits',
+                        figfilename      = wlcalib_fig,
+                        ref_spec         = ref_spec,
+                        channel          = None,
+                        linelist         = section.get('linelist'),
+                        aperture_koffset = aperture_koffset,
+                        pixel_koffset    = pixel_koffset,
+                        ref_calib        = ref_calib,
+                        xorder           = xorder,
+                        yorder           = yorder,
+                        maxiter          = maxiter,
+                        clipping         = clipping,
+                        window_size      = window_size,
+                        q_threshold      = q_threshold,
+                        )
+            else:
+                # do not search the database
+                calib = wlcalib(spec,
+                    filename      = fileid+'.fits',
+                    figfilename   = wlcalib_fig,
+                    channel       = None,
+                    identfilename = section.get('ident_file', None),
+                    linelist      = section.get('linelist'),
+                    window_size   = section.getint('window_size'),
+                    xorder        = section.getint('xorder'),
+                    yorder        = section.getint('yorder'),
+                    maxiter       = section.getint('maxiter'),
+                    clipping      = section.getfloat('clipping'),
+                    q_threshold   = section.getfloat('q_threshold'),
+                    )
+
+            # then use this ThAr as the reference
+            ref_calib = calib
+            ref_spec  = spec
+        else:
+            # for other ThArs, no aperture offset
+            calib = recalib(spec,
+                filename      = fileid+'.fits',
+                figfilename   = wlcalib_fig,
+                ref_spec      = ref_spec,
+                channel       = None,
+                linelist      = section.get('linelist'),
+                aperture_offset = 0,
+                coeff         = ref_calib['coeff'],
+                npixel        = ref_calib['npixel'],
+                window_size   = ref_calib['window_size'],
+                xorder        = ref_calib['xorder'],
+                yorder        = ref_calib['yorder'],
+                maxiter       = ref_calib['maxiter'],
+                clipping      = ref_calib['clipping'],
+                snr_threshold = ref_calib['snr_threshold'],
+                k             = ref_calib['k'],
+                offset        = ref_calib['offset'],
+                )
+        
+        hdu_lst = self_reference_singlefiber(spec, head, calib)
+        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        hdu_lst.writeto(filename, overwrite=True)
+
+        # add more infos in calib
+        calib['fileid']   = fileid
+        calib['date-obs'] = head[statime_key]
+        calib['exptime']  = head[exptime_key]
+        # pack to calib_lst
+        calib_lst[logitem['frameid']] = calib
+
+    for frameid, calib in sorted(calib_lst.items()):
+        print(' [{:3d}] {} - {:4d}/{:4d} r.m.s. = {:7.5f}'.format(frameid,
+                calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
     
-        # print promotion and read input frameid list
-        string = input('select references: ')
-        ref_frameid_lst = [int(s) for s in string.split(',')
-                                    if len(s.strip())>0 and
-                                    s.strip().isdigit() and
-                                    int(s) in calib_lst]
-        ref_calib_lst    = [calib_lst[frameid]
-                                for frameid in ref_frameid_lst]
-        ref_datetime_lst = [calib_lst[frameid]['date-obs']
-                                for frameid in ref_frameid_lst]
+    # print promotion and read input frameid list
+    string = input('select references: ')
+    ref_frameid_lst = [int(s) for s in string.split(',')
+                                if len(s.strip())>0 and
+                                s.strip().isdigit() and
+                                int(s) in calib_lst]
+    ref_calib_lst    = [calib_lst[frameid]
+                            for frameid in ref_frameid_lst]
+    ref_datetime_lst = [calib_lst[frameid]['date-obs']
+                            for frameid in ref_frameid_lst]
 
     #################### Extract Science Spectrum ##############################
 
