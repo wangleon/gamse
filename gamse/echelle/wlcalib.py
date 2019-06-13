@@ -35,7 +35,7 @@ from .trace import load_aperture_set_from_header
 
 # Identified line table with channel
 identlines_wch = np.dtype({
-    'names':  ['channel','aperture','order','pixel','wavelength','snr','mask',
+    'names':  ['channel','aperture','order','pixel','wavelength','q','mask',
                'residual','method'],
     'formats':['S1', np.int16, np.int16, np.float32, np.float64, np.float32,
                np.int16, np.float64, 'S1'],
@@ -43,7 +43,7 @@ identlines_wch = np.dtype({
 
 # Identified line table without channel
 identlines_woch = np.dtype({
-    'names':  ['aperture','order','pixel','wavelength','snr','mask',
+    'names':  ['aperture','order','pixel','wavelength','q','mask',
                'residual','method'],
     'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
                np.int16, np.float64, 'S1'],
@@ -1987,7 +1987,7 @@ def get_simple_ccf(flux1, flux2, shift_lst):
 
 
 def find_pixel_drift(spec1, spec2,
-        apeture_koffset=(1, 0), pixel_koffset=(1, 0.0)
+        aperture_koffset=(1, 0), pixel_koffset=(1, 0.0)
     ):
     """Find the drift between two spectra. The apertures of the two spectra must
     be aligned.
@@ -2277,7 +2277,10 @@ def select_calib_from_database(path, time_key, current_time, channel):
 
 
 def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
-        aperture_koffset=(1, 0), pixel_koffset=(1, None)):
+        aperture_koffset=(1, 0), pixel_koffset=(1, None),
+        xorder=None, yorder=None, maxiter=None, clipping=None, window_size=None,
+        q_threshold=None, direction=None,
+        ):
     """Re-calibrate the wavelength of an input spectra file using another
     spectra as the reference.
 
@@ -2339,26 +2342,26 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
 
     aperture_k, aperture_offset = aperture_koffset
     pixel_k, pixel_offset       = pixel_koffset
-    print(pixel_k, pixel_offset, aperture_k, aperture_offset)
 
     # unpack ref_calib
-    k             = ref_calib['k']
-    offset        = ref_calib['offset']
-    coeff         = ref_calib['coeff']
-    npixel        = ref_calib['npixel']
-    window_size   = ref_calib['window_size']
-    xorder        = ref_calib['xorder']
-    yorder        = ref_calib['yorder']
-    maxiter       = ref_calib['maxiter']
-    clipping      = ref_calib['clipping']
-    snr_threshold = ref_calib['snr_threshold']
+    k           = ref_calib['k']
+    offset      = ref_calib['offset']
+    coeff       = ref_calib['coeff']
+    npixel      = ref_calib['npixel']
+    xorder      = (xorder, ref_calib['xorder'])[xorder is None]
+    yorder      = (yorder, ref_calib['yorder'])[yorder is None]
+    maxiter     = (maxiter,  ref_calib['maxiter'])[maxiter is None]
+    clipping    = (clipping, ref_calib['clipping'])[clipping is None]
+    window_size = (window_size, ref_calib['window_size'])[window_size is None]
+    q_threshold = (q_threshold, ref_calib['q_threshold'])[q_threshold is None]
 
-    if pixel_offset is None:
+    #if pixel_offset is None:
+    if False:
         # find initial shift with cross-corelation functions
         pixel_offset = find_pixel_drift(ref_spec, spec,
-                        aperture_koffet = aperture_koffset,
+                        aperture_koffset = aperture_koffset,
                         pixel_koffset   = pixel_koffset)
-        print('calculated shift = ', shift)
+        print('calculated shift = ', pixel_offset)
 
     #message = '{} channel {} shift = {:+8.6f} pixel'.format(
     #            os.path.basename(filename), channel, shift
@@ -2383,11 +2386,14 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         flux     = row['flux']
         # obtain a rough wavelength array according to the input
         # aperture_koffset and pixel_koffset
-        order = k*((aperture - aperture_offset)/aperture_k) + offset
+        old_aperture = (aperture - aperture_offset)/aperture_k
+
+        # now conver the old aperture number to echelle order number (m)
+        order = k*old_aperture + offset
         wl = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
-        print(aperture, (aperture - aperture_offset)/aperture_k, order, wl[0], wl[-1])
         w1 = min(wl[0], wl[-1])
         w2 = max(wl[0], wl[-1])
+
         has_insert = False
         for line in line_list:
             if line[0] < w1:
@@ -2396,6 +2402,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
                 break
             else:
                 # wavelength in the range of this order
+                # find the nearest pixel to the calibration line
                 diff = np.abs(wl - line[0])
                 i = diff.argmin()
                 i1, i2, param, std = find_local_peak(flux, i, window_size)
@@ -2411,8 +2418,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
                     continue
                 if param[3] < -0.5*param[0]:
                     continue
-                snr = param[0]/std
-                if snr < snr_threshold:
+                q = param[0]/std
+                if q < q_threshold:
                     continue
 
                 if aperture not in identlist:
@@ -2421,11 +2428,14 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
                     else:
                         identlist[aperture] = np.array([], dtype=identlines_wch)
 
+                # pack the line data
                 if channel is None:
-                    item = np.array((aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                    item = np.array((aperture, order, peak_x, line[0],
+                                    q, True, 0.0, 'a'),
                                     dtype=identlines_woch)
                 else:
-                    item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
+                    item = np.array((channel, aperture, order, peak_x, line[0],
+                                    q, True, 0.0, 'a'),
                                     dtype=identlines_wch)
 
                 identlist[aperture] = np.append(identlist[aperture], item)
@@ -2434,11 +2444,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         if has_insert:
             identlist[aperture] = np.sort(identlist[aperture], order='pixel')
         
-    #for aperture, list1 in identlist.items():
-    #    for row in list1:
-    #        print(aperture, row['pixel'], row['wavelength'], row['snr'])
-
-    coeff, std, k, offset, nuse, ntot = fit_wavelength(
+    new_coeff, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
         identlist = identlist, 
         npixel    = npixel,
         xorder    = xorder,
@@ -2446,7 +2452,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         maxiter   = maxiter,
         clipping  = clipping,
         )
-
+    
     fig_width  = 2500
     fig_height = 1500
     fig_dpi    = 150
@@ -2462,36 +2468,47 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
     fig.plot_solution(identlist,
                       aperture_lst = spec['aperture'],
                       plot_ax1     = True,
-                      coeff        = coeff,
-                      k            = k,
-                      offset       = offset,
+                      coeff        = new_coeff,
+                      k            = new_k,
+                      offset       = new_offset,
                       npixel       = npixel,
-                      std          = std,
-                      nuse         = nuse,
-                      ntot         = ntot,
+                      std          = new_std,
+                      nuse         = new_nuse,
+                      ntot         = new_ntot,
                       )
     fig.savefig(figfilename)
     plt.close(fig)
 
-    # organize results
-    result = {
-              'coeff':         coeff,
-              'npixel':        npixel,
-              'k':             k,
-              'offset':        offset,
-              'std':           std,
-              'nuse':          nuse,
-              'ntot':          ntot,
-              'identlist':     identlist,
-              'window_size':   window_size,
-              'xorder':        xorder,
-              'yorder':        yorder,
-              'maxiter':       maxiter,
-              'clipping':      clipping,
-              'snr_threshold': snr_threshold,
-            }
+    # refresh the direction code
+    new_direction = direction[0] + {1:'r', -1:'b'}[new_k] + '-+'[wl[0] < wl[-1]]
+    # compare the new direction to the input direction. if not consistent,
+    # print a warning
+    if direction[1]!='?' and direction[1]!=new_direction[1]:
+        print('Warning: Direction code 1 refreshed:',
+                direction[1], new_direction[1])
+    if direction[2]!='?' and direction[2]!=new_direction[2]:
+        print('Warning: Direction code 2 refreshed:',
+                direction[2], new_direction[2])
 
-    return result
+
+    # pack calibration results
+    return {
+            'coeff':       new_coeff,
+            'npixel':      npixel,
+            'k':           new_k,
+            'offset':      new_offset,
+            'std':         new_std,
+            'nuse':        new_nuse,
+            'ntot':        new_ntot,
+            'identlist':   identlist,
+            'window_size': window_size,
+            'xorder':      xorder,
+            'yorder':      yorder,
+            'maxiter':     maxiter,
+            'clipping':    clipping,
+            'q_threshold': q_threshold,
+            'direction':   new_direction,
+            }
 
 def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
     """Find the offset between two spectra. The aperture offset is defined as:
@@ -2835,47 +2852,44 @@ def get_calib_from_header(header, channel):
               'yorder':        yorder,
               'maxiter':       header[prefix+' MAXITER'],
               'clipping':      header[prefix+' CLIPPING'],
-              'snr_threshold': header[prefix+' SNR_THRESHOLD'],
-              'ccd_direction': header[prefix+' CCD_DIRECTION'],
+              'q_threshold':   header[prefix+' Q_THRESHOLD'],
+              'direction':     header[prefix+' DIRECTION'],
             }
     return calib
 
 def self_reference_singlefiber(spec, header, calib):
-    k      = calib['k']
-    offset = calib['offset']
-    xorder = calib['xorder']
-    yorder = calib['yorder']
-    npixel = calib['npixel']
-    coeff  = calib['coeff']
 
     # calculate the wavelength for each aperture
     for row in spec:
-       aperture = row['aperture']
-       npixel   = row['points']
-       order = aperture*k + offset
-       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
-       row['order']      = order
-       row['wavelength'] = wavelength
+        aperture = row['aperture']
+        npixel   = row['points']
+        order = aperture*calib['k'] + calib['offset']
+        wavelength = get_wavelength(calib['coeff'], npixel,
+                    np.arange(npixel), np.repeat(order, npixel))
+        row['order']      = order
+        row['wavelength'] = wavelength
 
     prefix = 'HIERARCH GAMSE WLCALIB'
-    header[prefix+' K']      = k
-    header[prefix+' OFFSET'] = offset
-    header[prefix+' XORDER'] = xorder
-    header[prefix+' YORDER'] = yorder
-    header[prefix+' NPIXEL'] = npixel
+    header[prefix+' K']         = calib['k']
+    header[prefix+' OFFSET']    = calib['offset']
+    header[prefix+' XORDER']    = calib['xorder']
+    header[prefix+' YORDER']    = calib['yorder']
+    header[prefix+' NPIXEL']    = calib['npixel']
 
     # write the coefficients to fits header
-    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        header[prefix+' COEFF %d %d'%(j, i)] = coeff[j,i]
+    for j, i in itertools.product(range(calib['yorder']+1),
+                                  range(calib['xorder']+1)):
+        header[prefix+' COEFF %d %d'%(j, i)] = calib['coeff'][j,i]
 
     # write other information to fits header
-    header[prefix+' WINDOW_SIZE']   = calib['window_size']
-    header[prefix+' MAXITER']       = calib['maxiter']
-    header[prefix+' CLIPPING']      = calib['clipping']
-    header[prefix+' SNR_THRESHOLD'] = calib['snr_threshold']
-    header[prefix+' NTOT']          = calib['ntot']
-    header[prefix+' NUSE']          = calib['nuse']
-    header[prefix+' STDDEV']        = calib['std']
+    header[prefix+' WINDOW_SIZE'] = calib['window_size']
+    header[prefix+' MAXITER']     = calib['maxiter']
+    header[prefix+' CLIPPING']    = calib['clipping']
+    header[prefix+' Q_THRESHOLD'] = calib['q_threshold']
+    header[prefix+' NTOT']        = calib['ntot']
+    header[prefix+' NUSE']        = calib['nuse']
+    header[prefix+' STDDEV']      = calib['std']
+    header[prefix+' DIRECTION']   = calib['direction']
 
     # pack the identfied line list
     identlist = []
@@ -2906,12 +2920,13 @@ def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
 
     # calculate the wavelength for each aperture
     for row in spec:
-       aperture = row['aperture']
-       npixel   = row['points']
-       order = aperture*k + offset
-       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
-       row['order']      = order
-       row['wavelength'] = wavelength
+        aperture = row['aperture']
+        npixel   = row['points']
+        order = aperture*k + offset
+        wavelength = get_wavelength(coeff, npixel,
+                        np.arange(npixel), np.repeat(order, npixel))
+        row['order']      = order
+        row['wavelength'] = wavelength
 
     prefix = 'HIERARCH GAMSE WLCALIB'
     header[prefix+' K']      = k
@@ -2928,13 +2943,14 @@ def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
     c = 0
     for calib, w in zip(calib_lst, weight_lst):
         c += 1
-        header[prefix+' REFERENCE %d FILEID'%c]   = calib['fileid']
-        header[prefix+' REFERENCE %d DATE-OBS'%c] = calib['date-obs']
-        header[prefix+' REFERENCE %d EXPTIME'%c]  = calib['exptime']
-        header[prefix+' REFERENCE %d WEIGHT'%c]   = w
-        header[prefix+' REFERENCE %d NTOT'%c]     = calib['ntot']
-        header[prefix+' REFERENCE %d NUSE'%c]     = calib['nuse']
-        header[prefix+' REFERENCE %d STDDEV'%c]   = calib['std']
+        prefix2 = prefix + ' REFERENCE {:d}'.format(c)
+        header[prefix2+' FILEID'%c]   = calib['fileid']
+        header[prefix2+' DATE-OBS'%c] = calib['date-obs']
+        header[prefix2+' EXPTIME'%c]  = calib['exptime']
+        header[prefix2+' WEIGHT'%c]   = w
+        header[prefix2+' NTOT'%c]     = calib['ntot']
+        header[prefix2+' NUSE'%c]     = calib['nuse']
+        header[prefix2+' STDDEV'%c]   = calib['std']
 
     return spec, header
 
