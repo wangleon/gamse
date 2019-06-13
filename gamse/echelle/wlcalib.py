@@ -762,71 +762,69 @@ class CalibWindow(tk.Frame):
             for line in self.linelist:
                 if line[0] < w1:
                     continue
-                elif line[0] > w2:
+                if line[0] > w2:
                     break
-                else:
-                    # wavelength in the range of this order
-                    # check if this line has already been identified
-                    if is_identified(line[0], self.identlist, aperture):
-                        continue
 
-                    # now has not been identified. find peaks for this line
-                    diff = np.abs(wl - line[0])
-                    i = diff.argmin()
-                    i1, i2, param, std = find_local_peak(flux, i, self.param['window_size'])
-                    peak_x = param[1]
+                # wavelength in the range of this order
+                # check if this line has already been identified
+                if is_identified(line[0], self.identlist, aperture):
+                    continue
 
-                    if param[0] < 0.:
-                        continue
-                    if param[1] < i1 or param[1] > i2:
-                        continue
-                    if param[2] < 1.0:
-                        continue
-                    if param[2] > 50. or param[2] < 1.0:
-                        continue
-                    if param[3] < -0.5*param[0]:
-                        continue
-                    snr = param[0]/std
-                    if snr < self.param['snr_threshold']:
-                        continue
-                    
-                    if False:
-                        fig = plt.figure(figsize=(6,4),tight_layout=True)
-                        ax = fig.gca()
-                        ax.plot(np.arange(i1,i2), flux[i1:i2], 'ro')
-                        newx = np.arange(i1, i2, 0.1)
-                        ax.plot(newx, gaussian_bkg(param[0],param[1],param[2],param[3], newx), 'b-')
-                        ax.axvline(x=param[1], color='k',ls='--')
-                        y1,y2 = ax.get_ylim()
-                        ax.text(0.9*i1+0.1*i2, 0.1*y1+0.9*y2, 'A=%.1f'%param[0])
-                        ax.text(0.9*i1+0.1*i2, 0.2*y1+0.8*y2, 'BKG=%.1f'%param[3])
-                        ax.text(0.9*i1+0.1*i2, 0.3*y1+0.7*y2, 'FWHM=%.1f'%param[2])
-                        ax.text(0.9*i1+0.1*i2, 0.4*y1+0.6*y2, 'SNR=%.1f'%snr)
-                        ax.set_xlim(i1,i2)
-                        fig.savefig('tmp/%d-%d-%d.png'%(aperture, i1, i2))
-                        plt.close(fig)
+                # now has not been identified. find peaks for this line
+                diff = np.abs(wl - line[0])
+                i = diff.argmin()
+                i1, i2, param, std = find_local_peak(flux, i, self.param['window_size'])
+                keep = auto_line_fitting_filter(param, i1, i2)
+                if not keep:
+                    continue
 
-                    # initialize line table
-                    if aperture not in self.identlist:
-                        if channel is None:
-                            self.identlist[aperture] = np.array([], dtype=identlines_woch)
-                        else:
-                            self.identlist[aperture] = np.array([], dtype=identlines_wch)
+                q = param[0]/std
+                if q < self.param['q_threshold']:
+                    continue
+                peak_x = param[1]
+                
+                '''
+                fig = plt.figure(figsize=(6,4),tight_layout=True)
+                ax = fig.gca()
+                ax.plot(np.arange(i1,i2), flux[i1:i2], 'ro')
+                newx = np.arange(i1, i2, 0.1)
+                ax.plot(newx, gaussian_bkg(param[0], param[1], param[2],
+                            param[3], newx), 'b-')
+                ax.axvline(x=param[1], color='k',ls='--')
+                y1,y2 = ax.get_ylim()
+                ax.text(0.9*i1+0.1*i2, 0.1*y1+0.9*y2, 'A=%.1f'%param[0])
+                ax.text(0.9*i1+0.1*i2, 0.2*y1+0.8*y2, 'BKG=%.1f'%param[3])
+                ax.text(0.9*i1+0.1*i2, 0.3*y1+0.7*y2, 'FWHM=%.1f'%param[2])
+                ax.text(0.9*i1+0.1*i2, 0.4*y1+0.6*y2, 'SNR=%.1f'%snr)
+                ax.set_xlim(i1,i2)
+                fig.savefig('tmp/%d-%d-%d.png'%(aperture, i1, i2))
+                plt.close(fig)
+                '''
 
+                # initialize line table
+                if aperture not in self.identlist:
                     if channel is None:
-                        item = np.array((aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
-                                        dtype=identlines_woch)
+                        self.identlist[aperture] = np.array([],
+                                dtype=identlines_woch)
                     else:
-                        item = np.array((channel, aperture, order, peak_x, line[0], snr, True, 0.0, 'a'),
-                                        dtype=identlines_wch)
+                        self.identlist[aperture] = np.array([],
+                                dtype=identlines_wch)
 
-                    self.identlist[aperture] = np.append(self.identlist[aperture], item)
-                    has_insert = True
-                    #print('insert', aperture, line[0], peak_x, i)
+                if channel is None:
+                    item = np.array((aperture, order, peak_x, line[0],
+                                    q, True, 0.0, 'a'), dtype=identlines_woch)
+                else:
+                    item = np.array((channel, aperture, order, peak_x, line[0],
+                                    q, True, 0.0, 'a'), dtype=identlines_wch)
+
+                self.identlist[aperture] = np.append(self.identlist[aperture], item)
+                has_insert = True
+                #print('insert', aperture, line[0], peak_x, i)
 
             # resort this order if there's new line inserted
             if has_insert:
-                self.identlist[aperture] = np.sort(self.identlist[aperture], order='pixel')
+                self.identlist[aperture] = np.sort(self.identlist[aperture],
+                                                    order='pixel')
 
         self.fit()
 
@@ -2398,51 +2396,44 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         for line in line_list:
             if line[0] < w1:
                 continue
-            elif line[0] > w2:
+            if line[0] > w2:
                 break
-            else:
-                # wavelength in the range of this order
-                # find the nearest pixel to the calibration line
-                diff = np.abs(wl - line[0])
-                i = diff.argmin()
-                i1, i2, param, std = find_local_peak(flux, i, window_size)
-                peak_x = param[1]
 
-                if param[0] < 0.:
-                    continue
-                if param[1] < i1 or param[1] > i2:
-                    continue
-                if param[2] < 1.0:
-                    continue
-                if param[2] > 50. or param[2] < 1.0:
-                    continue
-                if param[3] < -0.5*param[0]:
-                    continue
-                q = param[0]/std
-                if q < q_threshold:
-                    continue
+            # wavelength in the range of this order
+            # find the nearest pixel to the calibration line
+            diff = np.abs(wl - line[0])
+            i = diff.argmin()
+            i1, i2, param, std = find_local_peak(flux, i, window_size)
 
-                if aperture not in identlist:
-                    if channel is None:
-                        identlist[aperture] = np.array([], dtype=identlines_woch)
-                    else:
-                        identlist[aperture] = np.array([], dtype=identlines_wch)
+            keep = auto_line_fitting_filter(param, i1, i2)
+            if not keep:
+                continue
 
-                # pack the line data
+            q = param[0]/std
+            if q < q_threshold:
+                continue
+            peak_x = param[1]
+
+            if aperture not in identlist:
                 if channel is None:
-                    item = np.array((aperture, order, peak_x, line[0],
-                                    q, True, 0.0, 'a'),
-                                    dtype=identlines_woch)
+                    identlist[aperture] = np.array([], dtype=identlines_woch)
                 else:
-                    item = np.array((channel, aperture, order, peak_x, line[0],
-                                    q, True, 0.0, 'a'),
-                                    dtype=identlines_wch)
+                    identlist[aperture] = np.array([], dtype=identlines_wch)
 
-                identlist[aperture] = np.append(identlist[aperture], item)
-                has_insert = True
+            # pack the line data
+            if channel is None:
+                item = np.array((aperture, order, peak_x, line[0],
+                                q, True, 0.0, 'a'), dtype=identlines_woch)
+            else:
+                item = np.array((channel, aperture, order, peak_x, line[0],
+                                q, True, 0.0, 'a'), dtype=identlines_wch)
+
+            identlist[aperture] = np.append(identlist[aperture], item)
+            has_insert = True
 
         if has_insert:
-            identlist[aperture] = np.sort(identlist[aperture], order='pixel')
+            identlist[aperture] = np.sort(identlist[aperture],
+                                            order='pixel')
         
     new_coeff, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
         identlist = identlist, 
@@ -2856,6 +2847,32 @@ def get_calib_from_header(header, channel):
               'direction':     header[prefix+' DIRECTION'],
             }
     return calib
+
+
+def auto_line_fitting_filter(param, i1, i2):
+    """A filter function for fitting of a single calibration line.
+    
+    Args:
+        param ():
+        i1 (int):
+        i2 (int):
+
+    Return:
+        bool:
+    """
+    if param[0] <= 0.:
+        # line amplitdue too small
+        return False
+    if param[1] < i1 or param[1] > i2:
+        # line center not in the fitting range (i1, i2)
+        return False
+    if param[2] > 50. or param[2] < 1.0:
+        # line too broad or too narrow
+        return False
+    if param[3] < -0.5*param[0]:
+        # background too low
+        return False
+    return True
 
 def self_reference_singlefiber(spec, header, calib):
 
