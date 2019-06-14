@@ -22,13 +22,22 @@ def _read_obslog(filename, delimiter=' '):
     count_row = 0
     for row in infile:
         if len(row.strip())==0 or row[0] in ['#']:
+            # skip this line if blank or start with '#'
             continue
         count_row += 1
+
         if count_row == 1:
+            # first row: column names
             name_row = row
-        elif count_row == 2:
+            continue
+
+        if count_row == 2:
+            # second row: column types
             dtype_row = row
-        elif count_row == 3:
+            continue
+
+        if count_row == 3:
+            # third row: horizontal lines
             row = row.strip()
             index_lst = []
             g = row.split(delimiter)
@@ -46,24 +55,29 @@ def _read_obslog(filename, delimiter=' '):
 
             # parse data type list
             dtypes = [dtype_row[i1:i2].strip() for (i1, i2) in index_lst]
+            continue
 
-        elif count_row > 3:
-            g = [row[i1:i2].strip() for (i1, i2) in index_lst]
-            if dtypes[0]=='int' and ('-' in g[0] or ',' in g[0]):
-                fid_lst = parse_num_seq(g[0])
-                for fid in fid_lst:
-                    data[0].append(fid)
-                    mask[0].append(False)
-                    for iv, v in enumerate(g[1:]):
-                        v = v.strip()
-                        data[iv+1].append(v)
-                        mask[iv+1].append(len(v)==0)
-            else:
-                for iv, v in enumerate(g):
+        # row_count > 3: parsing the data
+        g = [row[i1:i2].strip() for (i1, i2) in index_lst]
+        if dtypes[0]=='int' and ('-' in g[0] or ',' in g[0]):
+            # the first column is an abbreviation
+            fid_lst = parse_num_seq(g[0])
+            for fid in fid_lst:
+                data[0].append(fid)
+                mask[0].append(False)
+                for iv, v in enumerate(g[1:]):
                     v = v.strip()
-                    data[iv].append(v)
-                    mask[iv].append(len(v)==0)
+                    data[iv+1].append(v)
+                    mask[iv+1].append(len(v)==0)
+        else:
+            for iv, v in enumerate(g):
+                v = v.strip()
+                data[iv].append(v)
+                mask[iv].append(len(v)==0)
+
     infile.close()
+
+    # convert data to their corresponding types according to the header
     for icol, dtype in enumerate(dtypes):
         if dtype=='int':
             data[icol] = [(int(v), 0)[mask[icol][i]]
@@ -77,7 +91,11 @@ def _read_obslog(filename, delimiter=' '):
         elif dtype=='time':
             data[icol] = Time([(v, '1970-01-01T00:00:00')[mask[icol][i]]
                             for i, v in enumerate(data[icol])])
+        else:
+            pass
+            # default is string
 
+    # convert data to astropy table
     logtable = Table(masked=True)
     for icol, name in enumerate(names):
         column = MaskedColumn(data[icol], name=name, mask=mask[icol])
@@ -92,6 +110,7 @@ def read_obslog(filename, delimiter=' '):
     Args:
         filename (str): Filename of the obsereving log file.
         delimiter (str): Delimiter of the items.
+        multi_object (bool): Multi-object if True.
 
     Returns:
         :class:`astropy.table.Table`: An observing log object.
