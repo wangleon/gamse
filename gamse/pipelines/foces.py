@@ -1578,50 +1578,87 @@ def reduce():
     flat_file = os.path.join(midproc, 'flat.fits')
     trac_file = os.path.join(midproc, 'trace.trc')
     treg_file = os.path.join(midproc, 'trace.reg')
-    if len(flat_groups) == 1:
-        # there's only 1 kind of flat
-        # flatname = flat_groups.keys()[0]  # python 2.x style
-        flatname = list(flat_groups)[0]
-        # in python3, dict keys does not support indexing.
 
-        shutil.copyfile(os.path.join(midproc, flatname+'.fits'), flat_file)
-        shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
-                        trac_file)
-        shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
-                        treg_file)
-        flat_map = flatmap_lst[flatname]
+    master_aperset = {}
 
-        # no need to aperset mosaic
-        master_aperset = list(aperset_lst.values())[0]
-    else:
-        # mosaic apertures
-        section = config['reduce.flat']
-        master_aperset = mosaic_flat_auto(
-                aperture_set_lst = aperset_lst,
-                max_count        = section.getfloat('mosaic_maxcount'),
-                )
-        # mosaic original flat images
-        flat_data = mosaic_images(flat_data_lst, master_aperset)
-        # mosaic flat mask images
-        mask_data = mosaic_images(flat_mask_lst, master_aperset)
-        # mosaic sensitivity map
-        flat_map = mosaic_images(flatmap_lst, master_aperset)
-        # mosaic exptime-normalized flat images
-        flat_norm = mosaic_images(flat_norm_lst, master_aperset)
+    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
+        # determine the mosaiced flat filename
+        if multi_fiber:
+            flat_fiber_file = os.path.join(midproc,
+                                'flat_{}.fits'.format(fiber))
+            trac_fiber_file = os.path.join(midproc,
+                                'trace_{}.trc'.format(fiber))
+            treg_fiber_file = os.path.join(midproc,
+                                'trace_{}.reg'.format(fiber))
+        else:
+            flat_fiber_file = flat_file
+            trac_fiber_file = trac_file
+            treg_fiber_file = treg_file
 
-        # pack and save to fits file
-        hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(flat_data),
-                    fits.ImageHDU(mask_data),
-                    fits.ImageHDU(flat_map),
-                    fits.ImageHDU(flat_norm),
-                    ])
-        hdu_lst.writeto(flat_file, overwrite=True)
+        if len(fiber_flat_lst) == 1:
+            # there's only 1 kind of flat
+            flatname = list(fiber_flat_lst)[0]
 
-        master_aperset.save_txt(trac_file)
-        master_aperset.save_reg(treg_file)
+            # copy the flat fits
+            if multi_fiber:
+                oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
+            else:
+                oriname = 'flat_{}.fits'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
+
+            # copy the trc file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.trc'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
+
+            # copy the reg file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.reg'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
 
 
+            flat_map = flatmap_lst[fiber][flatname]
+    
+            # no need to mosaic aperset
+            master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
+        else:
+            # mosaic apertures
+            section = config['reduce.flat']
+            master_aperset[fiber] = mosaic_flat_auto(
+                    aperture_set_lst = aperset_lst[fiber],
+                    max_count        = section.getfloat('mosaic_maxcount'),
+                    )
+            # mosaic original flat images
+            flat_data = mosaic_images(flat_data_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic flat mask images
+            mask_data = mosaic_images(flat_mask_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic sensitivity map
+            flat_map = mosaic_images(flatmap_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic exptime-normalized flat images
+            flat_norm = mosaic_images(flat_norm_lst[fiber],
+                                        master_aperset[fiber])
+    
+            # pack and save to fits file
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data),
+                        fits.ImageHDU(mask_data),
+                        fits.ImageHDU(flat_map),
+                        fits.ImageHDU(flat_norm),
+                        ])
+            hdu_lst.writeto(flat_fiber_file, overwrite=True)
+    
+            master_aperset[fiber].save_txt(trac_fiber_file)
+            master_aperset[fiber].save_reg(treg_fiber_file)
+
+
+    exit()
     ############################## Extract ThAr ################################
 
     # get the data shape
