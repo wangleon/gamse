@@ -506,7 +506,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
                     # calculate the relative distances.
                     for _name, _aperloc in aperloc_lst.items():
                         distance = aper_loc.get_distance(_aperloc)
-                        if abs(distance)<0.3*loc_sep:
+                        if abs(distance) < 0.5*loc_sep:
                             # append this aperture to an existing aperture
                             all_aperloc_lst[iaperloc_lst][name] = aper_loc
                             insert = True
@@ -526,29 +526,30 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
 
     # prepare the information written to running log
     message = ['Aperture Information for Different Flat Files:']
-    _msg1 = ['%-20s'%name for name in name_lst]
-    _msg2 = ['center, N (sat), max' for name in name_lst]
-    message.append('| '+(' | '.join(_msg1))+' |')
-    message.append('| '+(' | '.join(_msg2))+' |')
+    subtitle = 'center, N (sat), max'
+    msg1 = [name.center(len(subtitle)) for name in name_lst]
+    msg2 = [subtitle for name in name_lst]
+    message.append('| '+(' | '.join(msg1))+' |')
+    message.append('| '+(' | '.join(msg2))+' |')
 
 
     mosaic_aperset = ApertureSet()
     for list1 in all_aperloc_lst:
         # add information to running log
-        _msg = []
+        msg = []
         for name in name_lst:
             if name in list1:
                 aper_loc = list1[name]
-                _msg.append('%4d %4d %10.1f'%(
+                msg.append('{:4f} {:4d} {:10.1f}'.format(
                     aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
             else:
-                _msg.append(' '*20)
-        message.append('| '+(' | '.join(_msg))+' |')
+                msg.append(' '*20)
+        message.append('| '+(' | '.join(msg))+' |')
 
         # pick up the best trace file for each aperture
         nosat_lst = {name: aper_loc
                         for name, aper_loc in list1.items()
-                        if aper_loc.nsat == 0 and aper_loc.max<max_count}
+                        if aper_loc.nsat == 0 and aper_loc.max < max_count}
 
         if len(nosat_lst)>0:
             # if there's aperture without saturated pixels, find the one
