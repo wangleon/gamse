@@ -298,7 +298,8 @@ class ApertureSet(object):
         outfile.write(str(self))
         outfile.close()
 
-    def save_reg(self, filename, color='green', channel=None, transpose=False):
+    def save_reg(self, filename, color='green', fiber=None, channel=None,
+            transpose=False):
         """Save the aperture set into a reg file that can be loaded in SAO-DS9.
 
         Args:
@@ -310,7 +311,7 @@ class ApertureSet(object):
         """
         outfile = open(filename, 'w')
         outfile.write('# Region file format: DS9 version 4.1'+os.linesep)
-        outfile.write('global color=%s dashlist=8 3 width=1 '%color)
+        outfile.write('global color={:s} dashlist=8 3 width=1 '.format(color))
         outfile.write('font="helvetica 10 normal roman" select=1 highlite=1 ')
         outfile.write('dash=0 fixed=0 edit=1 move=1 delete=1 include=1 ')
         outfile.write('source=1'+os.linesep)
@@ -332,8 +333,8 @@ class ApertureSet(object):
                     angle = 90
                 else:
                     angle = 0
-                text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '.format(
-                        x+1, y+1, angle, aper)
+                fmt = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '
+                text = fmt.format(x+1, y+1, angle, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the right edge
@@ -344,8 +345,8 @@ class ApertureSet(object):
                     angle = 90
                 else:
                     angle = 0
-                text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '.format(
-                        x+1, y+1, angle, aper)
+                fmt = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{{:3d}}} '
+                text = fmt.format(x+1, y+1, angle, aper)
                 outfile.write(text+os.linesep)
 
                 # write text in the center
@@ -356,12 +357,22 @@ class ApertureSet(object):
                     angle = 90
                 else:
                     angle = 0
-                if channel is None:
-                    text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{Aperture {:3d}}} '.format(
-                            x+1, y+1+5, angle, aper)
-                else:
-                    text = '# text({:7.2f}, {:7.2f}) textangle={:d} text={{Channel {:s}, Aperture {:3d}}} '.format(
-                            x+1, y+1+5, angle, channel, aper)
+
+                string1 = '# text({:7.2f}, {:7.2f}) textangle={:d} '.format(
+                        x+1, y+1+5, angle)
+
+                # pack text string
+                text_string = ''
+                if fiber is not None:
+                    text_string += 'Fiber {:s}, '.format(fiber)
+                if channel is not None:
+                    text_string += 'Channel {:s}, '.format(channel)
+                text_string += 'Aperture {:d}'.format(aper)
+                string2 = 'text={{{:s}}}'.format(text_string)
+
+                # pack the whole string
+                text = string1 + string2
+
                 outfile.write(text+os.linesep)
 
                 # draw lines
@@ -376,7 +387,7 @@ class ApertureSet(object):
 
         outfile.close()
 
-    def to_fitsheader(self, header, channel=None):
+    def to_fitsheader(self, header, fiber=None, channel=None):
         """Save aperture informtion to FITS header.
 
         Args:
@@ -393,21 +404,24 @@ class ApertureSet(object):
         
         """
         prefix = 'HIERARCH GAMSE TRACE'
+        if fiber is not None:
+            prefix += ' FIBER '+fiber
         if channel is not None:
-            prefix += ' CHANNLE %s'%channel
+            prefix += ' CHANNLE '+channel
 
         for aper, aper_loc in sorted(self._dict.items()):
-            header[prefix+' APERTURE %d DIRECT'%aper]  = aper_loc.direct
-            header[prefix+' APERTURE %d SHAPE0'%aper]  = aper_loc.shape[0]
-            header[prefix+' APERTURE %d SHAPE1'%aper]  = aper_loc.shape[1]
+            prefix2 = prefix+'{:s} APERTURE {:03d}'.format(prefix, aper)
+            header[prefix2 + ' DIRECT']  = aper_loc.direct
+            header[prefix2 + ' SHAPE0']  = aper_loc.shape[0]
+            header[prefix2 + ' SHAPE1']  = aper_loc.shape[1]
             for ic, c in enumerate(aper_loc.position.coef):
-                header[prefix+' APERTURE %d COEFF %d'%(aper, ic)] = c
-            header[prefix+' APERTURE %d DOMAIN0'%aper] = aper_loc.position.domain[0]
-            header[prefix+' APERTURE %d DOMAIN1'%aper] = aper_loc.position.domain[1]
-            header[prefix+' APERTURE %d NSAT'%aper]    = aper_loc.nsat
-            header[prefix+' APERTURE %d MEAN'%aper]    = aper_loc.mean
-            header[prefix+' APERTURE %d MEDIAN'%aper]  = aper_loc.median
-            header[prefix+' APERTURE %d MAX'%aper]     = aper_loc.max
+                header[prefix2 + ' COEFF %d'%ic] = c
+            header[prefix2 + ' DOMAIN0'] = aper_loc.position.domain[0]
+            header[prefix2 + ' DOMAIN1'] = aper_loc.position.domain[1]
+            header[prefix2 + ' NSAT']    = aper_loc.nsat
+            header[prefix2 + ' MEAN']    = aper_loc.mean
+            header[prefix2 + ' MEDIAN']  = aper_loc.median
+            header[prefix2 + ' MAX']     = aper_loc.max
 
         return header
 
@@ -1338,7 +1352,7 @@ def load_aperture_set(filename):
 
     return aperture_set
 
-def load_aperture_set_from_header(header, channel=None):
+def load_aperture_set_from_header(header, fiber=None, channel=None):
     """Load Aperture Set from FITS header.
 
     Args:
@@ -1353,8 +1367,10 @@ def load_aperture_set_from_header(header, channel=None):
         
     """
     prefix = 'GAMSE TRACE'
+    if fiber is not None:
+        prefix += ' FIBER '+fiber
     if channel is not None:
-        prefix += ' CHANNEL %s'%channel
+        prefix += ' CHANNEL '+channel
     
     aperture_set = ApertureSet()
     coeff = []
