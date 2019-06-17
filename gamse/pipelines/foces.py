@@ -1139,6 +1139,10 @@ def reduce():
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
     multi_fiber = section.get('multi_fiber')
+    if multi_fiber:
+        # if mulit-fiber, get fiber offset list from config file
+        fiber_offsets = [float(v) for v in
+                            section.get('fiber_offsets').split(',')]
     section = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -1489,7 +1493,11 @@ def reduce():
                 tracefig.savefig(trace_figname)
 
                 aperset.save_txt(aperset_filename)
-                aperset.save_reg(aperset_regname)
+                if multi_fiber:
+                    aperset.save_reg(aperset_regname, fiber=fiber,
+                            color={'A':'green','B':'yellow'}[fiber])
+                else:
+                    aperset.save_reg(aperset_regname)
 
             # append the flat data and mask
             flat_data_lst[fiber][flatname] = flat_data
@@ -1596,7 +1604,7 @@ def reduce():
             treg_fiber_file = treg_file
 
         if len(fiber_flat_lst) == 1:
-            # there's only 1 kind of flat
+            # there's only 1 "color" of flat
             flatname = list(fiber_flat_lst)[0]
 
             # copy the flat fits
@@ -1655,10 +1663,12 @@ def reduce():
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
     
             master_aperset[fiber].save_txt(trac_fiber_file)
-            master_aperset[fiber].save_reg(treg_fiber_file)
+            if multi_fiber:
+                master_aperset[fiber].save_reg(treg_fiber_file, fiber=fiber,
+                        color={'A':'green','B':'yellow'}[fiber])
+            else:
+                master_aperset[fiber].save_reg(treg_fiber_file)
 
-
-    exit()
     ############################## Extract ThAr ################################
 
     # get the data shape
