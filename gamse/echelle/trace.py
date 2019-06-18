@@ -449,49 +449,77 @@ class ApertureSet(object):
         return separation_lst[i]
 
 
-    def find_aper_offset(self, aperset):
+    def find_aper_offset(self, aperset, yshift=0,
+            min_offset=None, max_offset=None):
         """Find the aperture offset between this instance and the input
         :class:`ApertureSet` instance.
         
-        The offset means that the Aperture *n* aperture of this
-        :class:`ApertureSet` almost has the same position as the Aperture
+        The output aperture offset means that the Aperture *n* of this
+        :class:`ApertureSet` has almost the same position as the Aperture
         *n* + *offset* in the input :class:`ApertureSet`.
+
+        The input **yshift** means the positions of this :class:`ApertureSet`
+        is a few pixels higher than the input :class:`ApertureSet`.
 
         Args:
             aperset (:class:`ApertureSet`): Input :class:`ApertureSet` instance
                 to calculate the offset.
+            yshift (float): A position shift between the input
+                :class:`ApertureSet` and this instace.
+            min_offset (int): The minimum aperture offset value to search.
+            max_offset (int): The maximum aperture offset value to search.
 
         Returns:
             *int*: Offset between the two aperture sets.
         """
-        # fint the smalleset common aper number.
-        for aper in self:
+
+        # first step, search an aperture number that close to the center of all
+        # apertures, and apears in both ApertureSet.
+        # build the center list of all apertures of this instance
+        center_lst1 = {aper: aper_loc.get_center()
+                        for aper, aper_loc in self.items()}
+        # find the median of the centers
+        middle_center = np.median(list(center_lst1.values()))
+        # build the distance list to the center for all apertures
+        dist_to_center = {aper: abs(c-middle_center)
+                            for aper, c in center_lst1.items()}
+        # begin to scan the apertures from the aperture that has the least
+        # distance to the middle
+        for aper in sorted(dist_to_center, key=dist_to_center.get):
             if aper in aperset:
                 break
+
+        # now found. it is aper
+        # find the smallest common aperture number.
         # calculate the approximate distance between these two common apertures
-        diff_cen = self[aper].get_center() - aperset[aper].get_center()
-        # calculate the approximate aperture difference
+        diff_cen = self[aper].get_center() - yshift - aperset[aper].get_center()
+
+        # calculate the approximate aperture difference (offset0)
         sep1 = self.get_local_separation(aper)
         sep2 = aperset.get_local_separation(aper)
 
         sep = (sep1 + sep2)/2.
         offset0 = int(round(diff_cen/sep))
 
-        # find the offset list
-        o1 = -offset0
-        o2 = 3*offset0
+        # determine the aperture offset searching range
+        o1, o2 = offset0 - 3, offset0 + 3
         # in case o1 > o2, exchange o1 and o2
-        o1, o2 = min(o1,o2), max(o1, o2)
-        # the minimum search offset is -3, and the maximum search offset is 3
-        o1, o2 = min(o1, -3), max(o2, 3)
-        offset_lst = range(o1, o2)
+        o1, o2 = min(o1, o2), max(o1, o2)
+
+        # if min_offset or max_offset is given in the arguments of this
+        # function, use their values as minimum or maximum searching offset
+        if min_offset is not None:
+            o1 = min(o1, min_offset)
+        if max_offset is not None:
+            o2 = max(o2, max_offset)
+
+        offset_lst = range(o1, o2+1)
+        print(diff_cen, sep, offset0, offset_lst)
 
         # find the center dict for every aperture for both this aperset and the
         # input aperset
-        center_lst1 = {_aper: _aper_loc.get_center()
-                        for _aper, _aper_loc in self.items()}
-        center_lst2 = {_aper: _aper_loc.get_center()
-                        for _aper, _aper_loc in aperset.items()}
+        center_lst2 = {aper: aper_loc.get_center()
+                        for aper, aper_loc in aperset.items()}
 
         # search the offset
         median_diff_lst = []
@@ -499,7 +527,7 @@ class ApertureSet(object):
             diff_lst = []
             for aper in sorted(center_lst1):
                 if aper in center_lst1 and aper+offset in center_lst2:
-                    diff = center_lst1[aper] - center_lst2[aper+offset]
+                    diff = center_lst1[aper] - yshift - center_lst2[aper+offset]
                     diff_lst.append(diff)
             # use the median value of the diff_lst
             median_diff = np.median(diff_lst)
@@ -507,6 +535,9 @@ class ApertureSet(object):
 
         # find the offset with least absolute value of median diff
         i = np.abs(median_diff_lst).argmin()
+        print(offset_lst)
+        print(median_diff_lst)
+        print(center_lst1[31], center_lst2[30])
         return offset_lst[i]
 
     def shift_aperture(self, offset):
