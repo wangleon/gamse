@@ -1356,6 +1356,7 @@ def reduce():
     flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
     # first combine the flats
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
@@ -1504,6 +1505,7 @@ def reduce():
             flat_norm_lst[fiber][flatname] = flat_data/exptime
             flat_mask_lst[fiber][flatname] = mask_array
             aperset_lst[fiber][flatname]   = aperset
+            flat_info_lst[fiber][flatname] = {'exptime': exptime}
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
@@ -1589,7 +1591,10 @@ def reduce():
 
     master_aperset = {}
 
-    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        fiber_flat_lst = flat_groups[fiber]
+
         # determine the mosaiced flat filename
         if multi_fiber:
             flat_fiber_file = os.path.join(midproc,
@@ -1614,6 +1619,7 @@ def reduce():
                 oriname = 'flat_{}.fits'.format(flatname)
             shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
 
+            '''
             # copy the trc file
             if multi_fiber:
                 oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
@@ -1627,7 +1633,7 @@ def reduce():
             else:
                 oriname = 'trace_flat_{}.reg'.format(flatname)
             shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
-
+            '''
 
             flat_map = flatmap_lst[fiber][flatname]
     
@@ -1636,9 +1642,14 @@ def reduce():
         else:
             # mosaic apertures
             section = config['reduce.flat']
+            # determine the mosaic order
+            name_lst = sorted(flat_info_lst[fiber],
+                        key=lambda x: flat_info_lst[fiber].get(x)['exptime'])
+
             master_aperset[fiber] = mosaic_flat_auto(
                     aperture_set_lst = aperset_lst[fiber],
                     max_count        = section.getfloat('mosaic_maxcount'),
+                    name_lst         = name_lst,
                     )
             # mosaic original flat images
             flat_data = mosaic_images(flat_data_lst[fiber],
@@ -1661,13 +1672,27 @@ def reduce():
                         fits.ImageHDU(flat_norm),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
-    
-            master_aperset[fiber].save_txt(trac_fiber_file)
-            if multi_fiber:
-                master_aperset[fiber].save_reg(treg_fiber_file, fiber=fiber,
-                        color={'A':'green','B':'yellow'}[fiber])
-            else:
-                master_aperset[fiber].save_reg(treg_fiber_file)
+
+
+        # align different fibers
+        if ifiber == 0:
+            ref_aperset = master_aperset[fiber]
+        else:
+            # find the postion offset (yshift) relative to the first fiber ("A")
+            # the postion offsets are identified by users in the config file.
+            # the first one (index=0) is shift of fiber B. second one is C...
+            yshift = fiber_offsets[ifiber-1]
+            offset = master_aperset[fiber].find_aper_offset(
+                        ref_aperset, yshift=yshift)
+
+            # print and logging
+            message = 'fiber {}, aperture offset = {}'.format(fiber, offset)
+            print(message)
+            logger.info(message)
+
+            # correct the offset
+            master_aperset[fiber].shift_aperture(-offset)
+
 
     ############################## Extract ThAr ################################
 

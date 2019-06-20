@@ -459,13 +459,14 @@ def load_mosaic(filename):
     return coeff_lst, select_area
 
 
-def mosaic_flat_auto(aperture_set_lst, max_count):
+def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
     """Mosaic flat images automatically.
 
     Args:
         aperture_set_lst (list): Dict of
             :class:`~gamse.echelle.trace.ApertureSet`.
         max_count (float): Maximum count.
+        name_lst (list): The sorted name list.
 
     Returns:
         :class:`~gamse.echelle.trace.ApertureSet`: The mosaiced aperture set.
@@ -477,6 +478,22 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
 
     """
 
+    # find the brightness order of all aperture sets
+
+    '''
+    name_satcount_lst = {}
+    for name, aperset in aperture_set_lst.items():
+        sat_count = 0
+        for aper, aper_loc in aperset.items():
+            if aper_loc.nsat > 0:
+                sat_count += 1
+        name_satcount_lst[name] = sat_count
+
+    tmp_lst = sorted(name_satcount_lst, key=name_satcount_lst.get)
+    ref_name, ref_aperset = tmp_lst[0]
+    '''
+
+
     all_aperloc_lst = []
     # all_aperloc_lst  = [
     #  [name1: aper_loc, name2: aper_loc],
@@ -484,12 +501,12 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
     #  [name1: aper_loc, name2: aper_loc],
     # ]
 
-
-    for iaperset, (name, aperset) in enumerate(aperture_set_lst.items()):
+    for iaperset, name in enumerate(name_lst):
+        aperset = aperture_set_lst[name]
 
         for aper, aper_loc in aperset.items():
 
-            # get local separations
+            ## get local separations
             loc_sep = aperset.get_local_separation(aper)
 
             if iaperset == 0:
@@ -497,6 +514,10 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
                 # aperloc list
                 all_aperloc_lst.append({name: aper_loc})
             else:
+                poly = aper_loc.position
+                npoints = poly.domain[1] - poly.domain[0]
+                if aper_loc.nsat/npoints > 0.7:
+                    continue
                 insert = False
                 for iaperloc_lst, aperloc_lst in enumerate(all_aperloc_lst):
                     # one aperture should not contain more than 1 apertures
@@ -521,12 +542,10 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
                 if not insert:
                     all_aperloc_lst.append({name: aper_loc})
 
-    # the sorted name list
-    name_lst = sorted(aperture_set_lst.keys())
 
     # prepare the information written to running log
     message = ['Aperture Information for Different Flat Files:']
-    subtitle = 'center, N (sat), max'
+    subtitle = 'center,  N (sat),  max'
     msg1 = [name.center(len(subtitle)) for name in name_lst]
     msg2 = [subtitle for name in name_lst]
     message.append('| '+(' | '.join(msg1))+' |')
@@ -540,10 +559,10 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
         for name in name_lst:
             if name in list1:
                 aper_loc = list1[name]
-                msg.append('{:4f} {:4d} {:10.1f}'.format(
+                msg.append('{:6.1f} {:4d} {:10.1f}'.format(
                     aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
             else:
-                msg.append(' '*20)
+                msg.append(' '*22)
         message.append('| '+(' | '.join(msg))+' |')
 
         # pick up the best trace file for each aperture
@@ -552,7 +571,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
                         if aper_loc.nsat == 0 and aper_loc.max < max_count}
 
         if len(nosat_lst)>0:
-            # if there's aperture without saturated pixels, find the one
+            # if there are apertures without saturated pixels, find the one
             # with largest median values
             nosat_sort_lst = sorted(nosat_lst.items(),
                                 key=lambda item: item[1].median)
@@ -572,7 +591,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count):
     message = ['Flat Mosaic Information',
                 'aper, yposition, flatname, N (sat), Max (count)']
     for aper, aper_loc in sorted(mosaic_aperset.items()):
-        message.append('%4d %5d %-15s %4d %10.1f'%(
+        message.append('{:4d} {:7.2f} {:^15s} {:4d} {:10.1f}'.format(
             aper, aper_loc.get_center(), aper_loc.tracename, aper_loc.nsat,
             aper_loc.max))
     logger.info((os.linesep+' '*3).join(message))

@@ -453,11 +453,11 @@ class ApertureSet(object):
             min_offset=None, max_offset=None):
         """Find the aperture offset between this instance and the input
         :class:`ApertureSet` instance.
-        
-        The output aperture offset means that the Aperture *n* of this
-        :class:`ApertureSet` has almost the same position as the Aperture
-        *n* + *offset* in the input :class:`ApertureSet`.
 
+        The input :class:`ApertureSet` instance can be used as a reference.
+        The output aperture offset means that the Aperture *n* + *offset* of
+        this :class:`ApertureSet` has almost the same position as the Aperture
+        *n* in the input :class:`ApertureSet`.
         The input **yshift** means the positions of this :class:`ApertureSet`
         is a few pixels higher than the input :class:`ApertureSet`.
 
@@ -494,12 +494,15 @@ class ApertureSet(object):
         # calculate the approximate distance between these two common apertures
         diff_cen = self[aper].get_center() - yshift - aperset[aper].get_center()
 
+        message = 'Aper {}, Diff = {} pixels'.format(aper, diff_cen)
+        logger.debug(message)
+
         # calculate the approximate aperture difference (offset0)
+        # sep: local separation. calculted by averaging sep1 and sep2 
         sep1 = self.get_local_separation(aper)
         sep2 = aperset.get_local_separation(aper)
-
         sep = (sep1 + sep2)/2.
-        offset0 = int(round(diff_cen/sep))
+        offset0 = -int(round(diff_cen/sep))
 
         # determine the aperture offset searching range
         o1, o2 = offset0 - 3, offset0 + 3
@@ -514,7 +517,6 @@ class ApertureSet(object):
             o2 = max(o2, max_offset)
 
         offset_lst = range(o1, o2+1)
-        print(diff_cen, sep, offset0, offset_lst)
 
         # find the center dict for every aperture for both this aperset and the
         # input aperset
@@ -526,18 +528,22 @@ class ApertureSet(object):
         for offset in offset_lst:
             diff_lst = []
             for aper in sorted(center_lst1):
-                if aper in center_lst1 and aper+offset in center_lst2:
-                    diff = center_lst1[aper] - yshift - center_lst2[aper+offset]
+                if aper+offset in center_lst1 and aper in center_lst2:
+                    diff = center_lst1[aper+offset] - yshift - center_lst2[aper]
                     diff_lst.append(diff)
             # use the median value of the diff_lst
             median_diff = np.median(diff_lst)
             median_diff_lst.append(median_diff)
 
+        # logging
+        message_lst = []
+        for o, diff in zip(offset_lst, median_diff_lst):
+            msg = 'offset = {:2d}: diff = {:+7.2f}'.format(o, diff)
+            message_lst.append(msg)
+        logger.debug((os.linesep+'  ').join(message_lst))
+
         # find the offset with least absolute value of median diff
         i = np.abs(median_diff_lst).argmin()
-        print(offset_lst)
-        print(median_diff_lst)
-        print(center_lst1[31], center_lst2[30])
         return offset_lst[i]
 
     def shift_aperture(self, offset):
@@ -1113,10 +1119,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
                     'select': select,
                     'peak'  : csec_ylst[y],
                 }
+        fmt = ' '.join(['{y:5d}','{ymax:5d}','{i1:5d}','{i2:5d}','{n:4d}',
+                        '{n_xsec:4d}','{select:>5s}','{peak:5d}'])
 
-        message.append(
-            '{y:5d} {ymax:5d} {i1:5d} {i2:5d} {n:4d} {n_xsec:4d} {select:>5s} {peak:5d}'.format(**info)
-            )
+        message.append(fmt.format(**info))
 
         # for debug purpose
         #fig.ax2.axvline(csec_ylst[y], color='k', ls='--')
