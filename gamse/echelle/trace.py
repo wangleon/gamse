@@ -130,6 +130,17 @@ class ApertureLocation(object):
     def set_position(self, poly):
         setattr(self, 'position', poly)
 
+    def get_position(self):
+        """Get postions for all pixels in this echelle order.
+
+        Returns:
+            tuple: a tuple containing:
+        """
+        # echelle order along y axis
+        coords1 = np.arange(self.shape[self.direct])
+        coords2 = self.position(coords1)
+        return coords1, coords2
+
     def get_center(self):
         """Get coordinate of the center pixel.
 
@@ -159,8 +170,8 @@ class ApertureLocation(object):
             axis = 'x'
             centerpix = self.position(w/2.)
             coord = (w/2., centerpix)
-        return 'Echelle aperture centered at (%4d, %4d) along %s axis'%(
-                coord[0], coord[1], axis)
+        return 'Echelle aperture centered at ({:5.1f}, {:5.1f}) along {:s} axis. shape=({},{})'.format(
+                coord[0], coord[1], axis, h, w)
 
     def to_string(self):
         """Convert aperture information to string.
