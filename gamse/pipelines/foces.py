@@ -1589,6 +1589,8 @@ def reduce():
     trac_file = os.path.join(midproc, 'trace.trc')
     treg_file = os.path.join(midproc, 'trace.reg')
 
+    # master aperset is a dict of {fiber: aperset}. this is applicable for both
+    # single and multiple fiber cases.
     master_aperset = {}
 
     for ifiber in range(n_fiber):
@@ -1609,7 +1611,7 @@ def reduce():
             treg_fiber_file = treg_file
 
         if len(fiber_flat_lst) == 1:
-            # there's only 1 "color" of flat
+            # there's only ONE "color" of flat
             flatname = list(fiber_flat_lst)[0]
 
             # copy the flat fits
@@ -1663,6 +1665,12 @@ def reduce():
             # mosaic exptime-normalized flat images
             flat_norm = mosaic_images(flat_norm_lst[fiber],
                                         master_aperset[fiber])
+
+            # change contents of several lists
+            flat_data_lst[fiber] = flat_data
+            flat_mask_lst[fiber] = mask_data
+            flatmap_lst[fiber]   = flat_map
+            flat_norm_lst[fiber] = flat_norm
     
             # pack and save to fits file
             hdu_lst = fits.HDUList([
@@ -1690,9 +1698,74 @@ def reduce():
             print(message)
             logger.info(message)
 
-            # correct the offset
+            # correct the aperture offset
             master_aperset[fiber].shift_aperture(-offset)
 
+    # find all the aperture list for all fibers
+    allmax_aper = -99
+    allmin_aper = 999
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
+        allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
+
+
+    #fig = plt.figure(dpi=150)
+    #ax = fig.gca()
+    #test_data = {'A': np.ones((2048, 2048))+1,
+    #             'B': np.ones((2048, 2048))+2}
+
+    # pack all aperloc into a single list
+    all_aperloc_lst = []
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        aperset = master_aperset[fiber]
+        for aper, aperloc in aperset.items():
+            x, y = aperloc.get_position()
+            center = aperloc.get_center()
+            all_aperloc_lst.append([fiber, aper, aperloc, center])
+            #ax.plot(x, y, color='gy'[ifiber], lw=1)
+
+    # mosaic flat map
+    sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
+    h, w = flat_map.shape
+    master_flatdata = np.ones_like(flat_data)
+    master_flatmask = np.ones_like(mask_data)
+    master_flatmap  = np.ones_like(flat_map)
+    master_flatnorm = np.ones_like(flat_norm)
+    yy, xx = np.mgrid[:h, :w]
+    prev_line = np.zeros(w)
+    for i in np.arange(len(sorted_aperloc_lst)-1):
+        fiber, aper, aperloc, center = sorted_aperloc_lst[i]
+        x, y = aperloc.get_position()
+        next_fiber, _, next_aperloc, _ = sorted_aperloc_lst[i+1]
+        next_x, next_y = next_aperloc.get_position()
+        next_line = np.int32(np.round((y + next_y)/2.))
+        #print(fiber, aper, center, prev_line, next_line)
+        mask = (yy >= prev_line)*(yy < next_line)
+        master_flatdata[mask] = flat_data_lst[fiber][mask]
+        master_flatmask[mask] = flat_mask_lst[fiber][mask]
+        master_flatmap[mask]  = flatmap_lst[fiber][mask]
+        master_flatnorm[mask] = flat_norm_lst[fiber][mask]
+        prev_line = next_line
+    # parse the last order
+    mask = yy >= prev_line
+    master_flatdata[mask] = flat_data_lst[next_fiber][mask]
+    master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
+    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
+    master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
+
+    #ax.imshow(master_flatmap, alpha=0.6)
+    #plt.show()
+    #print(h, w)
+
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(master_flatdata),
+                fits.ImageHDU(master_flatmask),
+                fits.ImageHDU(master_flatmap),
+                fits.ImageHDU(master_flatnorm),
+                ])
+    hdu_lst.writeto(flat_file, overwrite=True)
 
     ############################## Extract ThAr ################################
 
@@ -1700,7 +1773,17 @@ def reduce():
     h, w = flat_map.shape
 
     # define dtype of 1-d spectra
-    types = [
+    if multi_fiber:
+        types = [
+            ('fiber',      'S1'),
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux',       (np.float32, w)),
+            ]
+    else:
+        types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
