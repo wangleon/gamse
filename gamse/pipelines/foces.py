@@ -1132,17 +1132,22 @@ def reduce():
                 )
     config.read(config_file_lst)
 
+    section = config['data']
+    multi_fiber = section.get('multi_fiber')
+    if multi_fiber:
+        reduce_singlefiber(logtable, config)
+    else:
+        reduce_multifiber(logtable, config)
+
+
+def reduce_singlefiber(logtable, config):
+
     # extract keywords from config file
     section = config['data']
     rawdata     = section.get('rawdata')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
-    multi_fiber = section.get('multi_fiber')
-    if multi_fiber:
-        # if mulit-fiber, get fiber offset list from config file
-        fiber_offsets = [float(v) for v in
-                            section.get('fiber_offsets').split(',')]
     section = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -1160,16 +1165,6 @@ def reduce():
     pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
-
-    # count the number of fibers
-    n_fiber = 1
-    if multi_fiber:
-        for logitem in logtable:
-            n = len(logitem['object'].split(';'))
-            n_fiber = max(n_fiber, n)
-        message = ', '.join(['multi_fiber = {}'.format(multi_fiber),
-                             'number of fiber = {}'.format(n_fiber)])
-        print(message)
 
     ################################ parse bias ################################
     bias_file = config['reduce.bias'].get('bias_file')
@@ -1293,479 +1288,289 @@ def reduce():
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
 
     # initialize flat_groups for both single fiber and multi-fibers
-    flat_groups = {chr(ifiber+65): {} for ifiber in range(n_fiber)}
-    # flat_groups = {'A':{'flat_M': [fileid1, fileid2, ...],
-    #                     'flat_N': [fileid1, fileid2, ...]}
-    #                'B':{'flat_M': [fileid1, fileid2, ...],
-    #                     'flat_N': [fileid1, fileid2, ...]}}
+    flat_groups = {}
+    # flat_groups = {'flat_M': [fileid1, fileid2, ...],
+    #                'flat_N': [fileid1, fileid2, ...]}
 
     for logitem in logtable:
-        if multi_fiber:
-            fiberobj_lst = [v.strip() for v in logitem['object'].split(';')]
-        else:
-            fiberobj_lst = [logitem['object']]
+        objname = logitem['object'].lower().strip()
 
-        if n_fiber > len(fiberobj_lst):
-            continue
-
-        for ifiber in range(n_fiber):
-            fiber = chr(ifiber+65)
-            objname = fiberobj_lst[ifiber].lower().strip()
-            mobj = re.match('^flat[\s\S]*', objname)
-            if mobj is not None:
-                # the object name of the channel matches "flat ???"
+        mobj = re.match('^flat[\s\S]*', objname)
+        if mobj is not None:
+            # the object name of the channel matches "flat ???"
             
-                # check the lengthes of names for other channels
-                # if this list has no elements (only one fiber) or has no
-                # names, this frame is a single-channel flat
-                other_lst = [v for i, name in enumerate(fiberobj_lst)
-                                    if i != ifiber and len(name)>0]
-                if len(other_lst)>0:
-                    # this frame is not a single chanel flat. Skip
-                    continue
-
-                # find a proper name (flatname) for this flat
-                if objname=='flat':
-                    # no special names given, use exptime
-                    flatname = '{:g}'.format(logitem['exptime'])
-                else:
-                    # flatname is given. replace space with "_"
-                    # remove "flat" before the objectname. e.g.,
-                    # "Flat Red" becomes "Red" 
-                    char = objname[4:].strip()
-                    flatname = char.replace(' ','_')
+            # find a proper name (flatname) for this flat
+            if objname=='flat':
+                # no special names given, use exptime
+                flatname = '{:g}'.format(logitem['exptime'])
+            else:
+                # flatname is given. replace space with "_"
+                # remove "flat" before the objectname. e.g.,
+                # "Flat Red" becomes "Red" 
+                char = objname[4:].strip()
+                flatname = char.replace(' ','_')
             
-                # add flatname to flat_groups
-                if flatname not in flat_groups[fiber]:
-                    flat_groups[fiber][flatname] = []
-                flat_groups[fiber][flatname].append(logitem)
-
-    '''
-    # print the flat_groups
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        print(fiber)
-        for flatname, item_lst in flat_groups[fiber].items():
-            print(flatname)
-            for item in item_lst:
-                print(fiber, flatname, item['fileid'], item['exptime'])
-    '''
+            # add flatname to flat_groups
+            if flatname not in flat_groups:
+                flat_groups[flatname] = []
+            flat_groups[flatname].append(logitem)
 
     ################# Combine the flats and trace the orders ###################
-    flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_data_lst = {}
+    flat_norm_lst = {}
+    flat_mask_lst = {}
+    aperset_lst   = {}
+    flat_info_lst = {}
 
     # first combine the flats
-    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
-        for flatname, item_lst in sorted(fiber_flat_lst.items()):
-            nflat = len(item_lst)       # number of flat fieldings
+    for flatname, item_lst in sorted(flat_groups.items()):
+        nflat = len(item_lst)       # number of flat fieldings
 
-            if multi_fiber:
-                # multi-fiber
-                flat_filename = os.path.join(midproc,
-                        'flat_{}_{}.fits'.format(fiber, flatname))
-                aperset_filename = os.path.join(midproc,
-                        'trace_flat_{}_{}.trc'.format(fiber, flatname))
-                aperset_regname = os.path.join(midproc,
-                        'trace_flat_{}_{}.reg'.format(fiber, flatname))
-                trace_figname = os.path.join(report,
-                        'trace_flat_{}_{}.{}'.format(fiber, flatname,
-                            fig_format))
-            else:
-                # single-fiber
-                flat_filename = os.path.join(midproc,
-                        'flat_{}.fits'.format(flatname))
-                aperset_filename = os.path.join(midproc,
-                        'trace_flat_{}.trc'.format(flatname))
-                aperset_regname = os.path.join(midproc,
-                        'trace_flat_{}.reg'.format(flatname))
-                trace_figname = os.path.join(report,
-                        'trace_flat_{}.{}'.format(flatname, fig_format))
+        # single-fiber
+        flat_filename = os.path.join(midproc,
+                'flat_{}.fits'.format(flatname))
+        aperset_filename = os.path.join(midproc,
+                'trace_flat_{}.trc'.format(flatname))
+        aperset_regname = os.path.join(midproc,
+                'trace_flat_{}.reg'.format(flatname))
+        trace_figname = os.path.join(report,
+                'trace_flat_{}.{}'.format(flatname, fig_format))
 
-            # get flat_data and mask_array for each flat group
-            if mode=='debug' and os.path.exists(flat_filename) \
-                and os.path.exists(aperset_filename):
-                # read flat data and mask array
-                hdu_lst = fits.open(flat_filename)
-                flat_data  = hdu_lst[0].data
-                exptime    = hdu_lst[0].header[exptime_key]
-                mask_array = hdu_lst[1].data
-                hdu_lst.close()
-                aperset = load_aperture_set(aperset_filename)
-            else:
-                # if the above conditions are not satisfied, comine each flat
-                data_lst = []
-                head_lst = []
-                exptime_lst = []
+        # get flat_data and mask_array for each flat group
+        if mode=='debug' and os.path.exists(flat_filename) \
+            and os.path.exists(aperset_filename):
+            # read flat data and mask array
+            hdu_lst = fits.open(flat_filename)
+            flat_data  = hdu_lst[0].data
+            exptime    = hdu_lst[0].header[exptime_key]
+            mask_array = hdu_lst[1].data
+            hdu_lst.close()
+            aperset = load_aperture_set(aperset_filename)
+        else:
+            # if the above conditions are not satisfied, comine each flat
+            data_lst = []
+            head_lst = []
+            exptime_lst = []
 
-                print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
-                print(' '*2 + pinfo2.get_separator())
-                print(' '*2 + pinfo2.get_title())
-                print(' '*2 + pinfo2.get_separator())
+            print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            print(' '*2 + pinfo2.get_separator())
+            print(' '*2 + pinfo2.get_title())
+            print(' '*2 + pinfo2.get_separator())
 
-                for i_item, logitem in enumerate(item_lst):
-                    # read each individual flat frame
-                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
-                    data, head = fits.getdata(filename, header=True)
-                    exptime_lst.append(head[exptime_key])
-                    if data.ndim == 3:
-                        data = data[0,:,:]
-                    mask = get_mask(data, head)
-                    sat_mask = (mask&4>0)
-                    bad_mask = (mask&2>0)
-                    if i_item == 0:
-                        allmask = np.zeros_like(mask, dtype=np.int16)
-                    allmask += sat_mask
+            for i_item, logitem in enumerate(item_lst):
+                # read each individual flat frame
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                data, head = fits.getdata(filename, header=True)
+                exptime_lst.append(head[exptime_key])
+                if data.ndim == 3:
+                    data = data[0,:,:]
+                mask = get_mask(data, head)
+                sat_mask = (mask&4>0)
+                bad_mask = (mask&2>0)
+                if i_item == 0:
+                    allmask = np.zeros_like(mask, dtype=np.int16)
+                allmask += sat_mask
 
-                    # correct overscan for flat
-                    data, head, overmean = correct_overscan(data, head, mask)
+                # correct overscan for flat
+                data, head, overmean = correct_overscan(data, head, mask)
 
-                    # correct bias for flat, if has bias
-                    if has_bias:
-                        data = data - bias
-                        logger.info('Bias corrected')
-                    else:
-                        logger.info('No bias. skipped bias correction')
-
-                    # print info
-                    string = pinfo2.get_format().format(logitem, overmean)
-                    print(' '*2 + print_wrapper(string, logitem))
-
-                    data_lst.append(data)
-
-                print(' '*2 + pinfo2.get_separator())
-
-                if nflat == 1:
-                    flat_data = data_lst[0]
+                # correct bias for flat, if has bias
+                if has_bias:
+                    data = data - bias
+                    logger.info('Bias corrected')
                 else:
-                    data_lst = np.array(data_lst)
-                    flat_data = combine_images(data_lst,
-                                    mode       = 'mean',
-                                    upper_clip = 10,
-                                    maxiter    = 5,
-                                    mask       = (None, 'max')[nflat>3],
-                                    )
+                    logger.info('No bias. skipped bias correction')
 
-                # get mean exposure time and write it to header
-                head = fits.Header()
-                exptime = np.array(exptime_lst).mean()
-                head[exptime_key] = exptime
+                # print info
+                string = pinfo2.get_format().format(logitem, overmean)
+                print(' '*2 + print_wrapper(string, logitem))
 
-                # find saturation mask
-                sat_mask = allmask > nflat/2.
-                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+                data_lst.append(data)
 
-                # pack results and save to fits
-                hdu_lst = fits.HDUList([
-                            fits.PrimaryHDU(flat_data, head),
-                            fits.ImageHDU(mask_array),
-                            ])
-                hdu_lst.writeto(flat_filename, overwrite=True)
+            print(' '*2 + pinfo2.get_separator())
 
-                # now flt_data and mask_array are prepared
+            if nflat == 1:
+                flat_data = data_lst[0]
+            else:
+                data_lst = np.array(data_lst)
+                flat_data = combine_images(data_lst,
+                                mode       = 'mean',
+                                upper_clip = 10,
+                                maxiter    = 5,
+                                mask       = (None, 'max')[nflat>3],
+                                )
 
-                # create the trace figure
-                tracefig = TraceFigure()
+            # get mean exposure time and write it to header
+            head = fits.Header()
+            exptime = np.array(exptime_lst).mean()
+            head[exptime_key] = exptime
 
-                # if debackground before detecting the orders, then we loose the 
-                # ability to detect the weak blue orders.
-                #xnodes = np.arange(0, flat_data.shape[1], 200)
-                #flat_debkg = simple_debackground(flat_data, mask_array, xnodes,
-                # smooth=5)
-                #aperset = find_apertures(flat_debkg, mask_array,
-                section = config['reduce.trace']
-                aperset = find_apertures(flat_data, mask_array,
-                            scan_step  = section.getint('scan_step'),
-                            minimum    = section.getfloat('minimum'),
-                            separation = section.get('separation'),
-                            align_deg  = section.getint('align_deg'),
-                            filling    = section.getfloat('filling'),
-                            degree     = section.getint('degree'),
-                            display    = section.getboolean('display'),
-                            fig        = tracefig,
-                            )
+            # find saturation mask
+            sat_mask = allmask > nflat/2.
+            mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
-                # save the trace figure
-                tracefig.adjust_positions()
-                tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
-                tracefig.savefig(trace_figname)
+            # pack results and save to fits
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data, head),
+                        fits.ImageHDU(mask_array),
+                        ])
+            hdu_lst.writeto(flat_filename, overwrite=True)
 
-                aperset.save_txt(aperset_filename)
-                if multi_fiber:
-                    aperset.save_reg(aperset_regname, fiber=fiber,
-                            color={'A':'green','B':'yellow'}[fiber])
-                else:
-                    aperset.save_reg(aperset_regname)
+            # now flt_data and mask_array are prepared
 
-            # append the flat data and mask
-            flat_data_lst[fiber][flatname] = flat_data
-            flat_norm_lst[fiber][flatname] = flat_data/exptime
-            flat_mask_lst[fiber][flatname] = mask_array
-            aperset_lst[fiber][flatname]   = aperset
-            flat_info_lst[fiber][flatname] = {'exptime': exptime}
+            # create the trace figure
+            tracefig = TraceFigure()
+
+            # if debackground before detecting the orders, then we lose the 
+            # ability to detect the weak blue orders.
+            #xnodes = np.arange(0, flat_data.shape[1], 200)
+            #flat_debkg = simple_debackground(flat_data, mask_array, xnodes,
+            # smooth=5)
+            #aperset = find_apertures(flat_debkg, mask_array,
+            section = config['reduce.trace']
+            aperset = find_apertures(flat_data, mask_array,
+                        scan_step  = section.getint('scan_step'),
+                        minimum    = section.getfloat('minimum'),
+                        separation = section.get('separation'),
+                        align_deg  = section.getint('align_deg'),
+                        filling    = section.getfloat('filling'),
+                        degree     = section.getint('degree'),
+                        display    = section.getboolean('display'),
+                        fig        = tracefig,
+                        )
+
+            # save the trace figure
+            tracefig.adjust_positions()
+            tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+            tracefig.savefig(trace_figname)
+
+            aperset.save_txt(aperset_filename)
+            aperset.save_reg(aperset_regname)
+
+        # append the flat data and mask
+        flat_data_lst[flatname] = flat_data
+        flat_norm_lst[flatname] = flat_data/exptime
+        flat_mask_lst[flatname] = mask_array
+        aperset_lst[flatname]   = aperset
+        flat_info_lst[flatname] = {'exptime': exptime}
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
 
-    for fiber, fiber_group in sorted(flat_groups.items()):
-        for flatname in sorted(fiber_group.keys()):
+    for flatname in sorted(flat_groups.keys()):
 
-            # get filename of flat
-            if multi_fiber:
-                flat_filename = os.path.join(midproc,
-                        'flat_{}_{}.fits'.format(fiber, flatname))
-            else:
-                flat_filename = os.path.join(midproc,
-                        'flat_{}.fits'.format(flatname))
+        # get filename of flat
+        flat_filename = os.path.join(midproc,
+                'flat_{}.fits'.format(flatname))
 
-            hdu_lst = fits.open(flat_filename, mode='update')
-            if len(hdu_lst)>=3:
-                # sensitivity map already exists in fits file
-                flatmap = hdu_lst[2].data
-                hdu_lst.close()
-            else:
-                # do flat fielding
-                print('*** Start parsing flat fielding: %s ***'%flat_filename)
-                if multi_fiber:
-                    fig_aperpar = {
-                        'debug': os.path.join(report,
-                                'flat_aperpar_{}_{}_%03d.{}'.format(
-                                    fiber, flatname, fig_format)),
-                        'normal': None,
-                        }[mode]
+        hdu_lst = fits.open(flat_filename, mode='update')
+        if len(hdu_lst)>=3:
+            # sensitivity map already exists in fits file
+            flatmap = hdu_lst[2].data
+            hdu_lst.close()
+        else:
+            # do flat fielding
+            print('*** Start parsing flat fielding: %s ***'%flat_filename)
+            fig_aperpar = {
+                'debug': os.path.join(report,
+                        'flat_aperpar_{}_%03d.{}'.format(flatname, fig_format)),
+                'normal': None,
+                }[mode]
 
-                    fig_slit = os.path.join(report,
-                                    'slit_flat_{}_{}.{}'.format(
-                                        fiber, flatname, fig_format))
-                else:
-                    fig_aperpar = {
-                        'debug': os.path.join(report,
-                                'flat_aperpar_{}_%03d.{}'.format(
-                                    flatname, fig_format)),
-                        'normal': None,
-                        }[mode]
-
-                    fig_slit = os.path.join(report,
-                                    'slit_flat_{}.{}'.format(
-                                        flatname, fig_format))
+            fig_slit = os.path.join(report,
+                            'slit_flat_{}.{}'.format(flatname, fig_format))
     
-                section = config['reduce.flat']
+            section = config['reduce.flat']
     
-                flatmap = get_fiber_flat(
-                            data            = flat_data_lst[fiber][flatname],
-                            mask            = flat_mask_lst[fiber][flatname],
-                            apertureset     = aperset_lst[fiber][flatname],
-                            slit_step       = section.getint('slit_step'),
-                            nflat           = len(flat_groups[fiber][flatname]),
-                            q_threshold     = section.getfloat('q_threshold'),
-                            smooth_A_func   = smooth_aperpar_A,
-                            smooth_k_func   = smooth_aperpar_k,
-                            smooth_c_func   = smooth_aperpar_c,
-                            smooth_bkg_func = smooth_aperpar_bkg,
-                            fig_aperpar     = fig_aperpar,
-                            fig_overlap     = None,
-                            fig_slit        = fig_slit,
-                            slit_file       = None,
-                            )
-                
-                # append the sensivity map to fits file
-                hdu_lst.append(fits.ImageHDU(flatmap))
-                # write back to the original file
-                hdu_lst.flush()
+            flatmap = get_fiber_flat(
+                        data            = flat_data_lst[flatname],
+                        mask            = flat_mask_lst[flatname],
+                        apertureset     = aperset_lst[flatname],
+                        slit_step       = section.getint('slit_step'),
+                        nflat           = len(flat_groups[flatname]),
+                        q_threshold     = section.getfloat('q_threshold'),
+                        smooth_A_func   = smooth_aperpar_A,
+                        smooth_k_func   = smooth_aperpar_k,
+                        smooth_c_func   = smooth_aperpar_c,
+                        smooth_bkg_func = smooth_aperpar_bkg,
+                        fig_aperpar     = fig_aperpar,
+                        fig_overlap     = None,
+                        fig_slit        = fig_slit,
+                        slit_file       = None,
+                        )
+            
+            # append the sensivity map to fits file
+            hdu_lst.append(fits.ImageHDU(flatmap))
+            # write back to the original file
+            hdu_lst.flush()
     
-            # append the flatmap
-            if fiber not in flatmap_lst:
-                flatmap_lst[fiber] = {}
-            flatmap_lst[fiber][flatname] = flatmap
+        # append the flatmap
+        flatmap_lst[flatname] = flatmap
     
-            # continue to the next colored flat
-        # continue to the next fiber
+        # continue to the next colored flat
 
     ############################# Mosaic Flats #################################
     flat_file = os.path.join(midproc, 'flat.fits')
     trac_file = os.path.join(midproc, 'trace.trc')
     treg_file = os.path.join(midproc, 'trace.reg')
 
-    # master aperset is a dict of {fiber: aperset}. this is applicable for both
-    # single and multiple fiber cases.
-    master_aperset = {}
+    if len(flat_groups) == 1:
+        # there's only ONE "color" of flat
+        flatname = list(flat_groups)[0]
 
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        fiber_flat_lst = flat_groups[fiber]
+        # copy the flat fits
+        oriname = 'flat_{}.fits'.format(flatname)
+        shutil.copyfile(os.path.join(midproc, oriname), flat_file)
 
-        # determine the mosaiced flat filename
-        if multi_fiber:
-            flat_fiber_file = os.path.join(midproc,
-                                'flat_{}.fits'.format(fiber))
-            trac_fiber_file = os.path.join(midproc,
-                                'trace_{}.trc'.format(fiber))
-            treg_fiber_file = os.path.join(midproc,
-                                'trace_{}.reg'.format(fiber))
-        else:
-            flat_fiber_file = flat_file
-            trac_fiber_file = trac_file
-            treg_fiber_file = treg_file
+        '''
+        # copy the trc file
+        oriname = 'trace_flat_{}.trc'.format(flatname)
+        shutil.copyfile(os.path.join(midproc, oriname), trac_file)
 
-        if len(fiber_flat_lst) == 1:
-            # there's only ONE "color" of flat
-            flatname = list(fiber_flat_lst)[0]
+        # copy the reg file
+        oriname = 'trace_flat_{}.reg'.format(flatname)
+        shutil.copyfile(os.path.join(midproc, oriname), treg_file)
+        '''
 
-            # copy the flat fits
-            if multi_fiber:
-                oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
-            else:
-                oriname = 'flat_{}.fits'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
-
-            '''
-            # copy the trc file
-            if multi_fiber:
-                oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
-            else:
-                oriname = 'trace_flat_{}.trc'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
-
-            # copy the reg file
-            if multi_fiber:
-                oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
-            else:
-                oriname = 'trace_flat_{}.reg'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
-            '''
-
-            flat_map = flatmap_lst[fiber][flatname]
+        flat_map = flatmap_lst[flatname]
     
-            # no need to mosaic aperset
-            master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
-        else:
-            # mosaic apertures
-            section = config['reduce.flat']
-            # determine the mosaic order
-            name_lst = sorted(flat_info_lst[fiber],
-                        key=lambda x: flat_info_lst[fiber].get(x)['exptime'])
+        # no need to mosaic aperset
+        master_aperset = list(aperset_lst.values())[0]
+    else:
+        # mosaic apertures
+        section = config['reduce.flat']
+        # determine the mosaic order
+        name_lst = sorted(flat_info_lst,
+                    key=lambda x: flat_info_lst.get(x)['exptime'])
 
-            master_aperset[fiber] = mosaic_flat_auto(
-                    aperture_set_lst = aperset_lst[fiber],
-                    max_count        = section.getfloat('mosaic_maxcount'),
-                    name_lst         = name_lst,
-                    )
-            # mosaic original flat images
-            flat_data = mosaic_images(flat_data_lst[fiber],
-                                        master_aperset[fiber])
-            # mosaic flat mask images
-            mask_data = mosaic_images(flat_mask_lst[fiber],
-                                        master_aperset[fiber])
-            # mosaic sensitivity map
-            flat_map = mosaic_images(flatmap_lst[fiber],
-                                        master_aperset[fiber])
-            # mosaic exptime-normalized flat images
-            flat_norm = mosaic_images(flat_norm_lst[fiber],
-                                        master_aperset[fiber])
+        master_aperset = mosaic_flat_auto(
+                aperture_set_lst = aperset_lst,
+                max_count        = section.getfloat('mosaic_maxcount'),
+                name_lst         = name_lst,
+                )
+        # mosaic original flat images
+        flat_data = mosaic_images(flat_data_lst, master_aperset)
+        # mosaic flat mask images
+        mask_data = mosaic_images(flat_mask_lst, master_aperset)
+        # mosaic sensitivity map
+        flat_map = mosaic_images(flatmap_lst, master_aperset)
+        # mosaic exptime-normalized flat images
+        flat_norm = mosaic_images(flat_norm_lst, master_aperset)
 
-            # change contents of several lists
-            flat_data_lst[fiber] = flat_data
-            flat_mask_lst[fiber] = mask_data
-            flatmap_lst[fiber]   = flat_map
-            flat_norm_lst[fiber] = flat_norm
+        # change contents of several lists
+        flat_data_lst[fiber] = flat_data
+        flat_mask_lst[fiber] = mask_data
+        flatmap_lst[fiber]   = flat_map
+        flat_norm_lst[fiber] = flat_norm
     
-            # pack and save to fits file
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(flat_data),
-                        fits.ImageHDU(mask_data),
-                        fits.ImageHDU(flat_map),
-                        fits.ImageHDU(flat_norm),
-                        ])
-            hdu_lst.writeto(flat_fiber_file, overwrite=True)
-
-
-        # align different fibers
-        if ifiber == 0:
-            ref_aperset = master_aperset[fiber]
-        else:
-            # find the postion offset (yshift) relative to the first fiber ("A")
-            # the postion offsets are identified by users in the config file.
-            # the first one (index=0) is shift of fiber B. second one is C...
-            yshift = fiber_offsets[ifiber-1]
-            offset = master_aperset[fiber].find_aper_offset(
-                        ref_aperset, yshift=yshift)
-
-            # print and logging
-            message = 'fiber {}, aperture offset = {}'.format(fiber, offset)
-            print(message)
-            logger.info(message)
-
-            # correct the aperture offset
-            master_aperset[fiber].shift_aperture(-offset)
-
-    # find all the aperture list for all fibers
-    allmax_aper = -99
-    allmin_aper = 999
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
-        allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
-
-
-    #fig = plt.figure(dpi=150)
-    #ax = fig.gca()
-    #test_data = {'A': np.ones((2048, 2048))+1,
-    #             'B': np.ones((2048, 2048))+2}
-
-    # pack all aperloc into a single list
-    all_aperloc_lst = []
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        aperset = master_aperset[fiber]
-        for aper, aperloc in aperset.items():
-            x, y = aperloc.get_position()
-            center = aperloc.get_center()
-            all_aperloc_lst.append([fiber, aper, aperloc, center])
-            #ax.plot(x, y, color='gy'[ifiber], lw=1)
-
-    # mosaic flat map
-    sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
-    h, w = flat_map.shape
-    master_flatdata = np.ones_like(flat_data)
-    master_flatmask = np.ones_like(mask_data)
-    master_flatmap  = np.ones_like(flat_map)
-    master_flatnorm = np.ones_like(flat_norm)
-    yy, xx = np.mgrid[:h, :w]
-    prev_line = np.zeros(w)
-    for i in np.arange(len(sorted_aperloc_lst)-1):
-        fiber, aper, aperloc, center = sorted_aperloc_lst[i]
-        x, y = aperloc.get_position()
-        next_fiber, _, next_aperloc, _ = sorted_aperloc_lst[i+1]
-        next_x, next_y = next_aperloc.get_position()
-        next_line = np.int32(np.round((y + next_y)/2.))
-        #print(fiber, aper, center, prev_line, next_line)
-        mask = (yy >= prev_line)*(yy < next_line)
-        master_flatdata[mask] = flat_data_lst[fiber][mask]
-        master_flatmask[mask] = flat_mask_lst[fiber][mask]
-        master_flatmap[mask]  = flatmap_lst[fiber][mask]
-        master_flatnorm[mask] = flat_norm_lst[fiber][mask]
-        prev_line = next_line
-    # parse the last order
-    mask = yy >= prev_line
-    master_flatdata[mask] = flat_data_lst[next_fiber][mask]
-    master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
-    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
-    master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
-
-    #ax.imshow(master_flatmap, alpha=0.6)
-    #plt.show()
-    #print(h, w)
-
-    hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(master_flatdata),
-                fits.ImageHDU(master_flatmask),
-                fits.ImageHDU(master_flatmap),
-                fits.ImageHDU(master_flatnorm),
-                ])
-    hdu_lst.writeto(flat_file, overwrite=True)
+        # pack and save to fits file
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(mask_data),
+                    fits.ImageHDU(flat_map),
+                    fits.ImageHDU(flat_norm),
+                    ])
+        hdu_lst.writeto(flat_file, overwrite=True)
 
     ############################## Extract ThAr ################################
 
@@ -1773,23 +1578,14 @@ def reduce():
     h, w = flat_map.shape
 
     # define dtype of 1-d spectra
-    if multi_fiber:
-        types = [
-            ('fiber',      'S1'),
+    types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
             ]
-    else:
-        types = [
-            ('aperture',   np.int16),
-            ('order',      np.int16),
-            ('points',     np.int16),
-            ('wavelength', (np.float64, w)),
-            ('flux',       (np.float32, w)),
-            ]
+
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
     
@@ -1797,8 +1593,24 @@ def reduce():
     count_thar = 0
     for logitem in logtable:
 
-        if logitem['object'].strip().lower() != 'thar':
+        if logitem['imgtype'] != 'cal':
             continue
+
+        if multi_fiber:
+            fiberobj_lst = [v.strip().lower()
+                            for v in logitem['object'].split(';')]
+        else:
+            fiberobj_lst = [logitem['object'].strip().lower()]
+
+        # check if there's any other objects
+        has_others = False
+        for fiberobj in fiberobj_lst:
+            if len(fiberobj)>0 and fiberobj != 'thar':
+                has_others = True
+        if has_others:
+            continue
+
+        # now all objects in fiberobj_lst must be thar
 
         count_thar += 1
         fileid = logitem['fileid']
@@ -2100,6 +1912,609 @@ def reduce():
             logger.info(message)
             print(message)
 
+
+
+def reduce_multifiber(logtable, config):
+
+    # extract keywords from config file
+    section = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    exptime_key = section.get('exptime_key')
+    direction   = section.get('direction')
+    # if mulit-fiber, get fiber offset list from config file
+    fiber_offsets = [float(v) for v in section.get('fiber_offsets').split(',')]
+    section = config['reduce']
+    midproc     = section.get('midproc')
+    onedspec    = section.get('onedspec')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
+
+    # create folders if not exist
+    if not os.path.exists(report):   os.mkdir(report)
+    if not os.path.exists(onedspec): os.mkdir(onedspec)
+    if not os.path.exists(midproc):  os.mkdir(midproc)
+
+    # initialize printing infomation
+    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
+    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
+
+    # count the number of fibers
+    n_fiber = 1
+    for logitem in logtable:
+        n = len(logitem['object'].split(';'))
+        n_fiber = max(n_fiber, n)
+    message = ', '.join(['multi_fiber = True',
+                         'number of fiber = {}'.format(n_fiber)])
+    print(message)
+
+    ################################ parse bias ################################
+    bias_file = config['reduce.bias'].get('bias_file')
+
+    if mode=='debug' and os.path.exists(bias_file):
+        has_bias = True
+        # load bias data from existing file
+        bias, head = fits.getdata(bias_file, header=True)
+        bias_card_lst = [card for card in head.cards
+                            if card.keyword[0:10]=='GAMSE BIAS']
+        logger.info('Load bias from image: %s'%bias_file)
+    else:
+        # read each individual CCD
+        bias_data_lst = []
+        bias_head_lst = []
+        bias_fileid_lst = []
+
+        for logitem in logtable:
+            if logitem['object'].strip().lower()=='bias':
+                fname = logitem['fileid']+'.fits'
+                filename = os.path.join(rawdata, fname)
+                data, head = fits.getdata(filename, header=True)
+                if data.ndim == 3:
+                    data = data[0,:,:]
+                mask = get_mask(data, head)
+                data, head, overmean = correct_overscan(data, head, mask)
+
+                # print info
+                if len(bias_data_lst) == 0:
+                    print('* Combine Bias Images: {}'.format(bias_file))
+                    print(' '*2 + pinfo2.get_separator())
+                    print(' '*2 + pinfo2.get_title())
+                    print(' '*2 + pinfo2.get_separator())
+                string = pinfo2.get_format().format(logitem, overmean)
+                print(' '*2 + print_wrapper(string, logitem))
+
+                bias_data_lst.append(data)
+                bias_head_lst.append(head)
+                bias_fileid_lst.append(logitem['fileid'])
+
+        n_bias = len(bias_data_lst)         # number of bias images
+        has_bias = n_bias > 0
+
+        if has_bias:
+            # there is bias frames
+            print(' '*2 + pinfo2.get_separator())
+
+            # combine bias images
+            bias_data_lst = np.array(bias_data_lst)
+
+            section = config['reduce.bias']
+            bias = combine_images(bias_data_lst,
+                    mode       = 'mean',
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
+                    mask       = (None, 'max')[n_bias>=3],
+                    )
+
+            # initialize card list for bias header
+            bias_card_lst = []
+            bias_card_lst.append(('HIERARCH GAMSE BIAS NFILE', n_bias))
+
+            # move cards related to OVERSCAN corrections from individual headers
+            # to bias header
+            for ifile, (head, fileid) in enumerate(zip(bias_head_lst,
+                                                       bias_fileid_lst)):
+                key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile)
+                bias_card_lst.append((key_prefix+' FILEID', fileid))
+
+                # move OVERSCAN cards to bias header
+                for card in head.cards:
+                    mobj = re.match('^GAMSE (OVERSCAN[\s\S]*)', card.keyword)
+                    if mobj is not None:
+                        newkey = key_prefix + ' ' + mobj.group(1)
+                        bias_card_lst.append((newkey, card.value))
+
+            ############## bias smooth ##################
+            key_prefix = 'HIERARCH GAMSE BIAS SMOOTH'
+            section = config['reduce.bias']
+            if section.getboolean('smooth'):
+                # bias needs to be smoothed
+                smooth_method = section.get('smooth_method')
+
+                if smooth_method in ['gauss', 'gaussian']:
+                    # perform 2D gaussian smoothing
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section.get('smooth_mode')
+
+                    bias_smooth = gaussian_filter(bias,
+                                    sigma=smooth_sigma, mode=smooth_mode)
+
+                    # write information to FITS header
+                    bias_card_lst.append((key_prefix,           True))
+                    bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
+                    bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
+                    bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
+                else:
+                    print('Unknown smooth method: ', smooth_method)
+                    pass
+
+                bias = bias_smooth
+            else:
+                # bias not smoothed
+                bias_card_lst.append((key_prefix, False))
+
+            # create new FITS Header for bias
+            head = fits.Header()
+            for card in bias_card_lst:
+                head.append(card)
+            fits.writeto(bias_file, bias, header=head, overwrite=True)
+
+            message = 'Bias image written to "{}"'.format(bias_file)
+            logger.info(message)
+            print(message)
+
+        else:
+            # no bias found
+            pass
+
+    ######################### find flat groups #################################
+    print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
+
+    # initialize flat_groups for multi-fibers
+    flat_groups = {chr(ifiber+65): {} for ifiber in range(n_fiber)}
+    # flat_groups = {'A':{'flat_M': [fileid1, fileid2, ...],
+    #                     'flat_N': [fileid1, fileid2, ...]}
+    #                'B':{'flat_M': [fileid1, fileid2, ...],
+    #                     'flat_N': [fileid1, fileid2, ...]}}
+
+    for logitem in logtable:
+        fiberobj_lst = [v.strip() for v in logitem['object'].split(';')]
+
+        if n_fiber > len(fiberobj_lst):
+            continue
+
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            objname = fiberobj_lst[ifiber].lower().strip()
+            mobj = re.match('^flat[\s\S]*', objname)
+            if mobj is not None:
+                # the object name of the channel matches "flat ???"
+            
+                # check the lengthes of names for other channels
+                # if this list has no elements (only one fiber) or has no
+                # names, this frame is a single-channel flat
+                other_lst = [v for i, name in enumerate(fiberobj_lst)
+                                    if i != ifiber and len(name)>0]
+                if len(other_lst)>0:
+                    # this frame is not a single chanel flat. Skip
+                    continue
+
+                # find a proper name (flatname) for this flat
+                if objname=='flat':
+                    # no special names given, use exptime
+                    flatname = '{:g}'.format(logitem['exptime'])
+                else:
+                    # flatname is given. replace space with "_"
+                    # remove "flat" before the objectname. e.g.,
+                    # "Flat Red" becomes "Red" 
+                    char = objname[4:].strip()
+                    flatname = char.replace(' ','_')
+            
+                # add flatname to flat_groups
+                if flatname not in flat_groups[fiber]:
+                    flat_groups[fiber][flatname] = []
+                flat_groups[fiber][flatname].append(logitem)
+
+    '''
+    # print the flat_groups
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        print(fiber)
+        for flatname, item_lst in flat_groups[fiber].items():
+            print(flatname)
+            for item in item_lst:
+                print(fiber, flatname, item['fileid'], item['exptime'])
+    '''
+    ################# Combine the flats and trace the orders ###################
+    flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+
+    # first combine the flats
+    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
+        for flatname, item_lst in sorted(fiber_flat_lst.items()):
+            nflat = len(item_lst)       # number of flat fieldings
+
+            flat_filename = os.path.join(midproc,
+                    'flat_{}_{}.fits'.format(fiber, flatname))
+            aperset_filename = os.path.join(midproc,
+                    'trace_flat_{}_{}.trc'.format(fiber, flatname))
+            aperset_regname = os.path.join(midproc,
+                    'trace_flat_{}_{}.reg'.format(fiber, flatname))
+            trace_figname = os.path.join(report,
+                    'trace_flat_{}_{}.{}'.format(fiber, flatname, fig_format))
+
+            # get flat_data and mask_array for each flat group
+            if mode=='debug' and os.path.exists(flat_filename) \
+                and os.path.exists(aperset_filename):
+                # read flat data and mask array
+                hdu_lst = fits.open(flat_filename)
+                flat_data  = hdu_lst[0].data
+                exptime    = hdu_lst[0].header[exptime_key]
+                mask_array = hdu_lst[1].data
+                hdu_lst.close()
+                aperset = load_aperture_set(aperset_filename)
+            else:
+                # if the above conditions are not satisfied, comine each flat
+                data_lst = []
+                head_lst = []
+                exptime_lst = []
+
+                print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+                print(' '*2 + pinfo2.get_separator())
+                print(' '*2 + pinfo2.get_title())
+                print(' '*2 + pinfo2.get_separator())
+
+                for i_item, logitem in enumerate(item_lst):
+                    # read each individual flat frame
+                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    data, head = fits.getdata(filename, header=True)
+                    exptime_lst.append(head[exptime_key])
+                    if data.ndim == 3:
+                        data = data[0,:,:]
+                    mask = get_mask(data, head)
+                    sat_mask = (mask&4>0)
+                    bad_mask = (mask&2>0)
+                    if i_item == 0:
+                        allmask = np.zeros_like(mask, dtype=np.int16)
+                    allmask += sat_mask
+
+                    # correct overscan for flat
+                    data, head, overmean = correct_overscan(data, head, mask)
+
+                    # correct bias for flat, if has bias
+                    if has_bias:
+                        data = data - bias
+                        logger.info('Bias corrected')
+                    else:
+                        logger.info('No bias. skipped bias correction')
+
+                    # print info
+                    string = pinfo2.get_format().format(logitem, overmean)
+                    print(' '*2 + print_wrapper(string, logitem))
+
+                    data_lst.append(data)
+
+                print(' '*2 + pinfo2.get_separator())
+
+                if nflat == 1:
+                    flat_data = data_lst[0]
+                else:
+                    data_lst = np.array(data_lst)
+                    flat_data = combine_images(data_lst,
+                                    mode       = 'mean',
+                                    upper_clip = 10,
+                                    maxiter    = 5,
+                                    mask       = (None, 'max')[nflat>3],
+                                    )
+
+                # get mean exposure time and write it to header
+                head = fits.Header()
+                exptime = np.array(exptime_lst).mean()
+                head[exptime_key] = exptime
+
+                # find saturation mask
+                sat_mask = allmask > nflat/2.
+                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+
+                # pack results and save to fits
+                hdu_lst = fits.HDUList([
+                            fits.PrimaryHDU(flat_data, head),
+                            fits.ImageHDU(mask_array),
+                            ])
+                hdu_lst.writeto(flat_filename, overwrite=True)
+
+                # now flt_data and mask_array are prepared
+
+                # create the trace figure
+                tracefig = TraceFigure()
+
+                # if debackground before detecting the orders, then we lose the 
+                # ability to detect the weak blue orders.
+                #xnodes = np.arange(0, flat_data.shape[1], 200)
+                #flat_debkg = simple_debackground(flat_data, mask_array, xnodes,
+                # smooth=5)
+                #aperset = find_apertures(flat_debkg, mask_array,
+                section = config['reduce.trace']
+                aperset = find_apertures(flat_data, mask_array,
+                            scan_step  = section.getint('scan_step'),
+                            minimum    = section.getfloat('minimum'),
+                            separation = section.get('separation'),
+                            align_deg  = section.getint('align_deg'),
+                            filling    = section.getfloat('filling'),
+                            degree     = section.getint('degree'),
+                            display    = section.getboolean('display'),
+                            fig        = tracefig,
+                            )
+
+                # save the trace figure
+                tracefig.adjust_positions()
+                tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+                tracefig.savefig(trace_figname)
+
+                aperset.save_txt(aperset_filename)
+                aperset.save_reg(aperset_regname, fiber=fiber,
+                                color={'A':'green','B':'yellow'}[fiber])
+
+            # append the flat data and mask
+            flat_data_lst[fiber][flatname] = flat_data
+            flat_norm_lst[fiber][flatname] = flat_data/exptime
+            flat_mask_lst[fiber][flatname] = mask_array
+            aperset_lst[fiber][flatname]   = aperset
+            flat_info_lst[fiber][flatname] = {'exptime': exptime}
+
+    ########################### Get flat fielding ##############################
+    flatmap_lst = {}
+
+    for fiber, fiber_group in sorted(flat_groups.items()):
+        for flatname in sorted(fiber_group.keys()):
+
+            # get filename of flat
+            flat_filename = os.path.join(midproc,
+                    'flat_{}_{}.fits'.format(fiber, flatname))
+
+            hdu_lst = fits.open(flat_filename, mode='update')
+            if len(hdu_lst)>=3:
+                # sensitivity map already exists in fits file
+                flatmap = hdu_lst[2].data
+                hdu_lst.close()
+            else:
+                # do flat fielding
+                print('*** Start parsing flat fielding: %s ***'%flat_filename)
+                fig_aperpar = {
+                    'debug': os.path.join(report,
+                            'flat_aperpar_{}_{}_%03d.{}'.format(
+                                fiber, flatname, fig_format)),
+                    'normal': None,
+                    }[mode]
+
+                fig_slit = os.path.join(report,
+                                'slit_flat_{}_{}.{}'.format(
+                                    fiber, flatname, fig_format))
+    
+                section = config['reduce.flat']
+    
+                flatmap = get_fiber_flat(
+                            data            = flat_data_lst[fiber][flatname],
+                            mask            = flat_mask_lst[fiber][flatname],
+                            apertureset     = aperset_lst[fiber][flatname],
+                            slit_step       = section.getint('slit_step'),
+                            nflat           = len(flat_groups[fiber][flatname]),
+                            q_threshold     = section.getfloat('q_threshold'),
+                            smooth_A_func   = smooth_aperpar_A,
+                            smooth_k_func   = smooth_aperpar_k,
+                            smooth_c_func   = smooth_aperpar_c,
+                            smooth_bkg_func = smooth_aperpar_bkg,
+                            fig_aperpar     = fig_aperpar,
+                            fig_overlap     = None,
+                            fig_slit        = fig_slit,
+                            slit_file       = None,
+                            )
+                
+                # append the sensivity map to fits file
+                hdu_lst.append(fits.ImageHDU(flatmap))
+                # write back to the original file
+                hdu_lst.flush()
+    
+            # append the flatmap
+            if fiber not in flatmap_lst:
+                flatmap_lst[fiber] = {}
+            flatmap_lst[fiber][flatname] = flatmap
+    
+            # continue to the next colored flat
+        # continue to the next fiber
+
+    ############################# Mosaic Flats #################################
+    flat_file = os.path.join(midproc, 'flat.fits')
+    trac_file = os.path.join(midproc, 'trace.trc')
+    treg_file = os.path.join(midproc, 'trace.reg')
+
+    # master aperset is a dict of {fiber: aperset}.
+    master_aperset = {}
+
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        fiber_flat_lst = flat_groups[fiber]
+
+        # determine the mosaiced flat filename
+        flat_fiber_file = os.path.join(midproc,
+                            'flat_{}.fits'.format(fiber))
+        trac_fiber_file = os.path.join(midproc,
+                            'trace_{}.trc'.format(fiber))
+        treg_fiber_file = os.path.join(midproc,
+                            'trace_{}.reg'.format(fiber))
+
+        if len(fiber_flat_lst) == 1:
+            # there's only ONE "color" of flat
+            flatname = list(fiber_flat_lst)[0]
+
+            # copy the flat fits
+            oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
+
+            '''
+            # copy the trc file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.trc'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
+
+            # copy the reg file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.reg'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
+            '''
+
+            flat_map = flatmap_lst[fiber][flatname]
+    
+            # no need to mosaic aperset
+            master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
+        else:
+            # mosaic apertures
+            section = config['reduce.flat']
+            # determine the mosaic order
+            name_lst = sorted(flat_info_lst[fiber],
+                        key=lambda x: flat_info_lst[fiber].get(x)['exptime'])
+
+            master_aperset[fiber] = mosaic_flat_auto(
+                    aperture_set_lst = aperset_lst[fiber],
+                    max_count        = section.getfloat('mosaic_maxcount'),
+                    name_lst         = name_lst,
+                    )
+            # mosaic original flat images
+            flat_data = mosaic_images(flat_data_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic flat mask images
+            mask_data = mosaic_images(flat_mask_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic sensitivity map
+            flat_map = mosaic_images(flatmap_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic exptime-normalized flat images
+            flat_norm = mosaic_images(flat_norm_lst[fiber],
+                                        master_aperset[fiber])
+
+            # change contents of several lists
+            flat_data_lst[fiber] = flat_data
+            flat_mask_lst[fiber] = mask_data
+            flatmap_lst[fiber]   = flat_map
+            flat_norm_lst[fiber] = flat_norm
+    
+            # pack and save to fits file
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data),
+                        fits.ImageHDU(mask_data),
+                        fits.ImageHDU(flat_map),
+                        fits.ImageHDU(flat_norm),
+                        ])
+            hdu_lst.writeto(flat_fiber_file, overwrite=True)
+
+
+        # align different fibers
+        if ifiber == 0:
+            ref_aperset = master_aperset[fiber]
+        else:
+            # find the postion offset (yshift) relative to the first fiber ("A")
+            # the postion offsets are identified by users in the config file.
+            # the first one (index=0) is shift of fiber B. second one is C...
+            yshift = fiber_offsets[ifiber-1]
+            offset = master_aperset[fiber].find_aper_offset(
+                        ref_aperset, yshift=yshift)
+
+            # print and logging
+            message = 'fiber {}, aperture offset = {}'.format(fiber, offset)
+            print(message)
+            logger.info(message)
+
+            # correct the aperture offset
+            master_aperset[fiber].shift_aperture(-offset)
+
+    # find all the aperture list for all fibers
+    allmax_aper = -99
+    allmin_aper = 999
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
+        allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
+
+    #fig = plt.figure(dpi=150)
+    #ax = fig.gca()
+    #test_data = {'A': np.ones((2048, 2048))+1,
+    #             'B': np.ones((2048, 2048))+2}
+
+    # pack all aperloc into a single list
+    all_aperloc_lst = []
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        aperset = master_aperset[fiber]
+        for aper, aperloc in aperset.items():
+            x, y = aperloc.get_position()
+            center = aperloc.get_center()
+            all_aperloc_lst.append([fiber, aper, aperloc, center])
+            #ax.plot(x, y, color='gy'[ifiber], lw=1)
+
+    # mosaic flat map
+    sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
+    h, w = flat_map.shape
+    master_flatdata = np.ones_like(flat_data)
+    master_flatmask = np.ones_like(mask_data)
+    master_flatmap  = np.ones_like(flat_map)
+    master_flatnorm = np.ones_like(flat_norm)
+    yy, xx = np.mgrid[:h, :w]
+    prev_line = np.zeros(w)
+    for i in np.arange(len(sorted_aperloc_lst)-1):
+        fiber, aper, aperloc, center = sorted_aperloc_lst[i]
+        x, y = aperloc.get_position()
+        next_fiber, _, next_aperloc, _ = sorted_aperloc_lst[i+1]
+        next_x, next_y = next_aperloc.get_position()
+        next_line = np.int32(np.round((y + next_y)/2.))
+        #print(fiber, aper, center, prev_line, next_line)
+        mask = (yy >= prev_line)*(yy < next_line)
+        master_flatdata[mask] = flat_data_lst[fiber][mask]
+        master_flatmask[mask] = flat_mask_lst[fiber][mask]
+        master_flatmap[mask]  = flatmap_lst[fiber][mask]
+        master_flatnorm[mask] = flat_norm_lst[fiber][mask]
+        prev_line = next_line
+    # parse the last order
+    mask = yy >= prev_line
+    master_flatdata[mask] = flat_data_lst[next_fiber][mask]
+    master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
+    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
+    master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
+
+    #ax.imshow(master_flatmap, alpha=0.6)
+    #plt.show()
+    #print(h, w)
+
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(master_flatdata),
+                fits.ImageHDU(master_flatmask),
+                fits.ImageHDU(master_flatmap),
+                fits.ImageHDU(master_flatnorm),
+                ])
+    hdu_lst.writeto(flat_file, overwrite=True)
+
+    ############################## Extract ThAr ################################
+
+    # get the data shape
+    h, w = flat_map.shape
+
+    # define dtype of 1-d spectra
+    types = [
+            ('fiber',      'S1'),
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux',       (np.float32, w)),
+            ]
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
