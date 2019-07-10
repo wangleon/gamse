@@ -421,7 +421,7 @@ class ApertureSet(object):
             prefix += ' CHANNLE '+channel
 
         for aper, aper_loc in sorted(self._dict.items()):
-            prefix2 = prefix+'{:s} APERTURE {:03d}'.format(prefix, aper)
+            prefix2 = '{:s} APERTURE {:03d}'.format(prefix, aper)
             header[prefix2 + ' DIRECT']  = aper_loc.direct
             header[prefix2 + ' SHAPE0']  = aper_loc.shape[0]
             header[prefix2 + ' SHAPE1']  = aper_loc.shape[1]

@@ -773,7 +773,8 @@ class CalibWindow(tk.Frame):
                 # now has not been identified. find peaks for this line
                 diff = np.abs(wl - line[0])
                 i = diff.argmin()
-                i1, i2, param, std = find_local_peak(flux, i, self.param['window_size'])
+                i1, i2, param, std = find_local_peak(flux, i,
+                                        self.param['window_size'])
                 keep = auto_line_fitting_filter(param, i1, i2)
                 if not keep:
                     continue
@@ -795,7 +796,7 @@ class CalibWindow(tk.Frame):
                 ax.text(0.9*i1+0.1*i2, 0.1*y1+0.9*y2, 'A=%.1f'%param[0])
                 ax.text(0.9*i1+0.1*i2, 0.2*y1+0.8*y2, 'BKG=%.1f'%param[3])
                 ax.text(0.9*i1+0.1*i2, 0.3*y1+0.7*y2, 'FWHM=%.1f'%param[2])
-                ax.text(0.9*i1+0.1*i2, 0.4*y1+0.6*y2, 'SNR=%.1f'%snr)
+                ax.text(0.9*i1+0.1*i2, 0.4*y1+0.6*y2, 'q=%.1f'%q)
                 ax.set_xlim(i1,i2)
                 fig.savefig('tmp/%d-%d-%d.png'%(aperture, i1, i2))
                 plt.close(fig)
@@ -2376,7 +2377,7 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         exit()
     line_list = load_linelist(linefilename)
 
-    x = np.arange(npixel)[::pixel_k] - pixel_offset
+    x = np.arange(npixel)[::pixel_k] + pixel_k*pixel_offset
 
     for row in spec:
         # variable alias
@@ -2502,10 +2503,13 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
             }
 
 def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
-    """Find the offset between two spectra. The aperture offset is defined as:
+    """Find the offset between two spectra.
     
-        aperture1 + aperture_offset = aperture2
+    The aperture offset is defined as:
 
+    of the same echelle order, `aperture1` in spec1 is marked as
+    `k*aperture1 + offset` in spec2.
+    
     Args:
         spec1 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
         spec2 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
