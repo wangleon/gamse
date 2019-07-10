@@ -1133,11 +1133,11 @@ def reduce():
     config.read(config_file_lst)
 
     section = config['data']
-    multi_fiber = section.get('multi_fiber')
+    multi_fiber = section.getboolean('multi_fiber')
     if multi_fiber:
-        reduce_singlefiber(logtable, config)
-    else:
         reduce_multifiber(logtable, config)
+    else:
+        reduce_singlefiber(logtable, config)
 
 
 def reduce_singlefiber(logtable, config):
@@ -1558,10 +1558,10 @@ def reduce_singlefiber(logtable, config):
         flat_norm = mosaic_images(flat_norm_lst, master_aperset)
 
         # change contents of several lists
-        flat_data_lst[fiber] = flat_data
-        flat_mask_lst[fiber] = mask_data
-        flatmap_lst[fiber]   = flat_map
-        flat_norm_lst[fiber] = flat_norm
+        #flat_data_lst[fiber] = flat_data
+        #flat_mask_lst[fiber] = mask_data
+        #flatmap_lst[fiber]   = flat_map
+        #flat_norm_lst[fiber] = flat_norm
     
         # pack and save to fits file
         hdu_lst = fits.HDUList([
@@ -1596,21 +1596,8 @@ def reduce_singlefiber(logtable, config):
         if logitem['imgtype'] != 'cal':
             continue
 
-        if multi_fiber:
-            fiberobj_lst = [v.strip().lower()
-                            for v in logitem['object'].split(';')]
-        else:
-            fiberobj_lst = [logitem['object'].strip().lower()]
-
-        # check if there's any other objects
-        has_others = False
-        for fiberobj in fiberobj_lst:
-            if len(fiberobj)>0 and fiberobj != 'thar':
-                has_others = True
-        if has_others:
+        if logitem['object'].strip().lower() != 'thar':
             continue
-
-        # now all objects in fiberobj_lst must be thar
 
         count_thar += 1
         fileid = logitem['fileid']
@@ -1746,22 +1733,21 @@ def reduce_singlefiber(logtable, config):
         else:
             # for other ThArs, no aperture offset
             calib = recalib(spec,
-                filename      = fileid+'.fits',
-                figfilename   = wlcalib_fig,
-                ref_spec      = ref_spec,
-                channel       = None,
-                linelist      = section.get('linelist'),
-                aperture_offset = 0,
-                coeff         = ref_calib['coeff'],
-                npixel        = ref_calib['npixel'],
-                window_size   = ref_calib['window_size'],
-                xorder        = ref_calib['xorder'],
-                yorder        = ref_calib['yorder'],
-                maxiter       = ref_calib['maxiter'],
-                clipping      = ref_calib['clipping'],
-                snr_threshold = ref_calib['snr_threshold'],
-                k             = ref_calib['k'],
-                offset        = ref_calib['offset'],
+                filename         = fileid+'.fits',
+                figfilename      = wlcalib_fig,
+                ref_spec         = ref_spec,
+                linelist         = section.get('linelist'),
+                channel          = None,
+                ref_calib        = ref_calib,
+                aperture_koffset = (1, 0),
+                pixel_koffset    = (1, 0),
+                xorder           = ref_calib['xorder'],
+                yorder           = ref_calib['yorder'],
+                maxiter          = ref_calib['maxiter'],
+                clipping         = ref_calib['clipping'],
+                window_size      = ref_calib['window_size'],
+                q_threshold      = ref_calib['q_threshold'],
+                direction        = direction,
                 )
         
         hdu_lst = self_reference_singlefiber(spec, head, calib)
@@ -1775,9 +1761,13 @@ def reduce_singlefiber(logtable, config):
         # pack to calib_lst
         calib_lst[logitem['frameid']] = calib
 
+    # print fitting summary
+    fmt_string = (' [{:3d}] {}'
+                    ' - ({:4g} sec)'
+                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
     for frameid, calib in sorted(calib_lst.items()):
-        print(' [{:3d}] {} - {:4d}/{:4d} r.m.s. = {:7.5f}'.format(frameid,
-                calib['fileid'], calib['nuse'], calib['ntot'], calib['std']))
+        print(fmt_string.format(frameid, calib['fileid'], logitem['exptime'],
+            calib['nuse'], calib['ntot'], calib['std']))
     
     # print promotion and read input frameid list
     string = input('select references: ')
@@ -2515,6 +2505,234 @@ def reduce_multifiber(logtable, config):
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
             ]
+
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+
+    calib_lst = {}
+    # calib_lst is a hierarchical dict of calibration results
+    # calib_lst = {
+    #       'frameid1': {'A': calib_dict1, 'B': calib_dict2, ...},
+    #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
+    #       ... ...
+    #       }
+    count_thar = 0
+    for logitem in logtable:
+
+        if logitem['imgtype'] != 'cal':
+            continue
+
+        fiberobj_lst = [v.strip().lower()
+                        for v in logitem['object'].split(';')]
+
+        # check if there's any other objects
+        has_others = False
+        for fiberobj in fiberobj_lst:
+            if len(fiberobj)>0 and fiberobj != 'thar':
+                has_others = True
+        if has_others:
+            continue
+
+        # now all objects in fiberobj_lst must be thar
+
+        count_thar += 1
+        fileid = logitem['fileid']
+        print('Wavelength Calibration for {}'.format(fileid))
+
+        filename = os.path.join(rawdata, fileid+'.fits')
+        data, head = fits.getdata(filename, header=True)
+        if data.ndim == 3:
+            data = data[0,:,:]
+        mask = get_mask(data, head)
+
+        # correct overscan for ThAr
+        data, head, overmean = correct_overscan(data, head, mask)
+
+        # correct bias for ThAr, if has bias
+        if has_bias:
+            data = data - bias
+            logger.info('Bias corrected')
+        else:
+            logger.info('No bias. skipped bias correction')
+
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            if fiberobj_lst[ifiber] != 'thar':
+                continue
+
+            section = config['reduce.extract']
+            spectra1d = extract_aperset(data, mask,
+                        apertureset = master_aperset[fiber],
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+            head = master_aperset[fiber].to_fitsheader(head, fiber=fiber)
+
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                spec.append((fiber, aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            spec = np.array(spec, dtype=spectype)
+
+            wlcalib_fig = os.path.join(report,
+                    'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
+
+            section = config['reduce.wlcalib']
+
+            if count_thar == 1:
+                # this is the first ThAr frame in this observing run
+                if section.getboolean('search_database'):
+                    # find previouse calibration results
+                    database_path = section.get('database_path')
+                    search_path = os.path.join(database_path,
+                                                'FOCES/wlcalib')
+
+                    result = select_calib_from_database(
+                        search_path, statime_key, head[statime_key],
+                        channel=None)
+                    ref_spec, ref_calib = result
+
+                    if ref_spec is None or ref_calib is None:
+                        # if failed, pop up a calibration window and
+                        # identify the wavelengths manually
+                        calib = wlcalib(spec,
+                            filename      = fileid+'.fits',
+                            figfilename   = wlcalib_fig,
+                            channel       = None,
+                            linelist      = section.get('linelist'),
+                            window_size   = section.getint('window_size'),
+                            xorder        = section.getint('xorder'),
+                            yorder        = section.getint('yorder'),
+                            maxiter       = section.getint('maxiter'),
+                            clipping      = section.getfloat('clipping'),
+                            snr_threshold = section.getfloat(
+                                                'snr_threshold'),
+                            )
+                    else:
+                        # if success, run recalib
+                        # determine the direction
+                        ref_direction = ref_calib['direction']
+                        aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
+                                        None)[direction[1]=='?']
+                        pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
+                                    None)[direction[2]=='?']
+
+                        result = find_caliblamp_offset(ref_spec, spec,
+                                    aperture_k = aperture_k,
+                                    pixel_k    = pixel_k,
+                                    )
+                        aperture_koffset = (result[0], result[1])
+                        pixel_koffset    = (result[2], result[3])
+
+                        fig = plt.figure()
+                        ax = fig.gca()
+                        m1 = spec['aperture']==10
+                        ax.plot(spec[m1][0]['flux'])
+                        m2 = ref_spec['aperture']==9
+                        ax.plot(ref_spec[m2][0]['flux'])
+                        plt.show()
+
+                        print('Aperture offset =', aperture_koffset)
+                        print('Pixel offset =', pixel_koffset)
+
+                        use = section.getboolean('use_prev_fitpar')
+                        xorder      = (section.getint('xorder'), None)[use]
+                        yorder      = (section.getint('yorder'), None)[use]
+                        maxiter     = (section.getint('maxiter'), None)[use]
+                        clipping    = (section.getfloat('clipping'), None)[use]
+                        window_size = (section.getint('window_size'), None)[use]
+                        q_threshold = (section.getfloat('q_threshold'), None)[use]
+
+                        calib = recalib(spec,
+                            filename         = fileid+'.fits',
+                            figfilename      = wlcalib_fig,
+                            ref_spec         = ref_spec,
+                            channel          = None,
+                            linelist         = section.get('linelist'),
+                            aperture_koffset = aperture_koffset,
+                            pixel_koffset    = pixel_koffset,
+                            ref_calib        = ref_calib,
+                            xorder           = xorder,
+                            yorder           = yorder,
+                            maxiter          = maxiter,
+                            clipping         = clipping,
+                            window_size      = window_size,
+                            q_threshold      = q_threshold,
+                            direction        = direction,
+                            )
+                else:
+                    # do not search the database
+                    calib = wlcalib(spec,
+                        filename      = fileid+'.fits',
+                        figfilename   = wlcalib_fig,
+                        channel       = None,
+                        identfilename = section.get('ident_file', None),
+                        linelist      = section.get('linelist'),
+                        window_size   = section.getint('window_size'),
+                        xorder        = section.getint('xorder'),
+                        yorder        = section.getint('yorder'),
+                        maxiter       = section.getint('maxiter'),
+                        clipping      = section.getfloat('clipping'),
+                        q_threshold   = section.getfloat('q_threshold'),
+                        )
+
+                # then use this ThAr as the reference
+                ref_calib = calib
+                ref_spec  = spec
+            else:
+                # for other ThArs, no aperture offset
+                calib = recalib(spec,
+                    filename         = fileid+'.fits',
+                    figfilename      = wlcalib_fig,
+                    ref_spec         = ref_spec,
+                    linelist         = section.get('linelist'),
+                    channel          = None,
+                    ref_calib        = ref_calib,
+                    aperture_koffset = (1, 0),
+                    pixel_koffset    = (1, 0),
+                    xorder           = ref_calib['xorder'],
+                    yorder           = ref_calib['yorder'],
+                    maxiter          = ref_calib['maxiter'],
+                    clipping         = ref_calib['clipping'],
+                    window_size      = ref_calib['window_size'],
+                    q_threshold      = ref_calib['q_threshold'],
+                    direction        = direction,
+                    )
+        
+            hdu_lst = self_reference_singlefiber(spec, head, calib)
+            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+            hdu_lst.writeto(filename, overwrite=True)
+
+            # add more infos in calib
+            calib['fileid']   = fileid
+            calib['date-obs'] = head[statime_key]
+            calib['exptime']  = head[exptime_key]
+            # pack to calib_lst
+            calib_lst[logitem['frameid']] = calib
+
+    # print fitting summary
+    fmt_string = (' [{:3d}] {}'
+                    ' - fiber {:1s} ({:4g} sec)'
+                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
+    for frameid, calib in sorted(calib_lst.items()):
+        print(fmt_string.format(frameid, calib['fileid'], fiber,
+            logitem['exptime'], calib['nuse'], calib['ntot'], calib['std']))
+
+    # print promotion and read input frameid list
+    string = input('select references: ')
+    ref_frameid_lst = [int(s) for s in string.split(',')
+                                if len(s.strip())>0 and
+                                s.strip().isdigit() and
+                                int(s) in calib_lst]
+    ref_calib_lst    = [calib_lst[frameid]
+                            for frameid in ref_frameid_lst]
+    ref_datetime_lst = [calib_lst[frameid]['date-obs']
+                            for frameid in ref_frameid_lst]
+
+    #################### Extract Science Spectrum ##############################
+
+
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
