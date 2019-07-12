@@ -2926,7 +2926,7 @@ def self_reference_singlefiber(spec, header, calib):
 
     return fits.HDUList(hdu_lst)
 
-def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
+def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
     k      = calib_lst[0]['k']
     offset = calib_lst[0]['offset']
     xorder = calib_lst[0]['xorder']
@@ -2950,6 +2950,8 @@ def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
         row['wavelength'] = wavelength
 
     prefix = 'HIERARCH GAMSE WLCALIB'
+    if fiber is not None:
+        prefix = prefix + ' FIBER {}'.format(fiber)
     header[prefix+' K']      = k
     header[prefix+' OFFSET'] = offset
     header[prefix+' XORDER'] = xorder
@@ -2965,13 +2967,13 @@ def wl_reference_singlefiber(spec, header, calib_lst, weight_lst):
     for calib, w in zip(calib_lst, weight_lst):
         c += 1
         prefix2 = prefix + ' REFERENCE {:d}'.format(c)
-        header[prefix2+' FILEID'%c]   = calib['fileid']
-        header[prefix2+' DATE-OBS'%c] = calib['date-obs']
-        header[prefix2+' EXPTIME'%c]  = calib['exptime']
-        header[prefix2+' WEIGHT'%c]   = w
-        header[prefix2+' NTOT'%c]     = calib['ntot']
-        header[prefix2+' NUSE'%c]     = calib['nuse']
-        header[prefix2+' STDDEV'%c]   = calib['std']
+        header[prefix2+' FILEID']   = calib['fileid']
+        header[prefix2+' DATE-OBS'] = calib['date-obs']
+        header[prefix2+' EXPTIME']  = calib['exptime']
+        header[prefix2+' WEIGHT']   = w
+        header[prefix2+' NTOT']     = calib['ntot']
+        header[prefix2+' NUSE']     = calib['nuse']
+        header[prefix2+' STDDEV']   = calib['std']
 
     return spec, header
 
