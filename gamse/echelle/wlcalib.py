@@ -2654,6 +2654,7 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
                     color={1:'C0', -1:'C1'}[aperture_k],
                     ls   ={1:'-',  -1:'--'}[pixel_k])
     fig3.savefig('ccf_scatter.png')
+    plt.close(fig3)
 
     imin = np.argmin(all_scatter_lst)
     scatter_id = scatter_id_lst[imin]

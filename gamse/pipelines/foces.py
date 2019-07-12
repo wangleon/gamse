@@ -2629,13 +2629,13 @@ def reduce_multifiber(logtable, config):
                         aperture_koffset = (result[0], result[1])
                         pixel_koffset    = (result[2], result[3])
 
-                        fig = plt.figure()
-                        ax = fig.gca()
-                        m1 = spec['aperture']==10
-                        ax.plot(spec[m1][0]['flux'])
-                        m2 = ref_spec['aperture']==9
-                        ax.plot(ref_spec[m2][0]['flux'])
-                        plt.show()
+                        #fig = plt.figure()
+                        #ax = fig.gca()
+                        #m1 = spec['aperture']==10
+                        #ax.plot(spec[m1][0]['flux'])
+                        #m2 = ref_spec['aperture']==9
+                        #ax.plot(ref_spec[m2][0]['flux'])
+                        #plt.show()
 
                         print('Aperture offset =', aperture_koffset)
                         print('Pixel offset =', pixel_koffset)
@@ -2846,10 +2846,13 @@ def reduce_multifiber(logtable, config):
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
             spec = []
+            if fiberobj_lst[ifiber]=='':
+                # nothing in this fiber
+                continue
             spectra1d = extract_aperset(data, mask,
                             apertureset = master_aperset[fiber],
-                            lower_limit = section.getfloat('lower_limit'),
-                            upper_limit = section.getfloat('upper_limit'),
+                            lower_limit = {'A':section.getfloat('lower_limit'), 'B':4}[fiber],
+                            upper_limit = {'A':section.getfloat('upper_limit'), 'B':4}[fiber],
                         )
 
             fmt_string = ('FileID: {}'
