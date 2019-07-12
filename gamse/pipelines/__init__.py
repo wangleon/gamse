@@ -124,13 +124,28 @@ def show_spectra1d(filename_lst):
     spec_lst = []
     for filename in filename_lst:
         data = fits.getdata(filename)
-        spec = {}
-        for row in data:
-            order = row['order']
-            wave  = row['wavelength']
-            flux  = row['flux']
-            spec[order] = (wave, flux)
-        spec_lst.append(spec)
+        if 'fiber' in data.dtype.names:
+            # multi fiber
+            for fiber in np.unique(data['fiber']):
+                spec = {}
+                mask = data['fiber']==fiber
+                for row in data[mask]:
+                    order = row['order']
+                    wave  = row['wavelength']
+                    flux  = row['flux']
+                    spec[order] = (wave, flux)
+                label = os.path.basename(filename) + ' Fiber {}'.format(fiber)
+                spec_lst.append((spec, label))
+        else:
+            spec = {}
+            for row in data:
+                order = row['order']
+                wave  = row['wavelength']
+                flux  = row['flux']
+                spec[order] = (wave, flux)
+            label = os.path.basename(filename)
+            spec_lst.append((spec, label))
+    ################################################
 
     fig = plt.figure(figsize=(15, 8), dpi=150)
     ax = fig.add_axes([0.07, 0.1, 0.88, 0.8])
@@ -140,12 +155,11 @@ def show_spectra1d(filename_lst):
         ax.currentorder = order
         wave_min, wave_max = 1e9, 0
         flux_min = 1e9
-        for i, spec in enumerate(spec_lst):
+        for i, (spec, label) in enumerate(spec_lst):
             if order in spec:
                 wave = spec[order][0]
                 flux = spec[order][1]
-                ax.plot(wave, flux, '-', alpha=0.8, lw=0.8,
-                        label=os.path.basename(filename_lst[i]))
+                ax.plot(wave, flux, '-', alpha=0.8, lw=0.8, label=label)
                 wave_min = min(wave_min, wave.min())
                 wave_max = max(wave_max, wave.max())
                 flux_min = min(flux_min, flux.min())
@@ -165,7 +179,7 @@ def show_spectra1d(filename_lst):
     def on_key(event):
         if event.key == 'up':
             can_plot = False
-            for spec in spec_lst:
+            for spec, label in spec_lst:
                 if ax.currentorder + 1 in spec:
                     can_plot=True
                     break
@@ -173,7 +187,7 @@ def show_spectra1d(filename_lst):
                 plot_order(ax.currentorder + 1)
         elif event.key == 'down':
             can_plot = False
-            for spec in spec_lst:
+            for spec, label in spec_lst:
                 if ax.currentorder - 1 in spec:
                     can_plot=True
                     break
@@ -182,7 +196,7 @@ def show_spectra1d(filename_lst):
         else:
             pass
 
-    order0 = list(spec_lst[0].keys())[0]
+    order0 = list(spec_lst[0][0].keys())[0]
     plot_order(order0)
 
     fig.canvas.mpl_connect('key_press_event', on_key)

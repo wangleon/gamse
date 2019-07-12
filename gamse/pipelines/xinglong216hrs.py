@@ -24,7 +24,7 @@ from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
-                               wl_reference_singlefiber, get_time_weight)
+                               wl_reference, get_time_weight)
 from ..echelle.background import find_background
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
