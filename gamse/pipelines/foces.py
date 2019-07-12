@@ -25,8 +25,8 @@ from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                self_reference_singlefiber,
-                               wl_reference_singlefiber, get_time_weight,
-                               find_caliblamp_offset)
+                               wl_reference,
+                               get_time_weight, find_caliblamp_offset)
 from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
@@ -1887,8 +1887,7 @@ def reduce_singlefiber(logtable, config):
         logger.info(message)
         print(message)
 
-        spec, head = wl_reference_singlefiber(spec, head,
-                        ref_calib_lst, weight_lst)
+        spec, head = wl_reference(spec, head, ref_calib_lst, weight_lst)
 
         # pack and save wavelength referenced spectra
         hdu_lst = fits.HDUList([
@@ -2520,7 +2519,11 @@ def reduce_multifiber(logtable, config):
     count_thar = 0
     for logitem in logtable:
 
-        if logitem['imgtype'] != 'cal':
+        frameid = logitem['frameid']
+        imgtype = logitem['imgtype']
+        exptime = logitem['exptime']
+
+        if imgtype != 'cal':
             continue
 
         fiberobj_lst = [v.strip().lower()
@@ -2710,26 +2713,45 @@ def reduce_multifiber(logtable, config):
             calib['date-obs'] = head[statime_key]
             calib['exptime']  = head[exptime_key]
             # pack to calib_lst
-            calib_lst[logitem['frameid']] = calib
+            if frameid not in calib_lst:
+                calib_lst[frameid] = {}
+            calib_lst[frameid][fiber] = calib
 
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
                     ' - fiber {:1s} ({:4g} sec)'
                     ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
-    for frameid, calib in sorted(calib_lst.items()):
-        print(fmt_string.format(frameid, calib['fileid'], fiber,
-            logitem['exptime'], calib['nuse'], calib['ntot'], calib['std']))
+    for frameid, calib_fiber_lst in sorted(calib_lst.items()):
+        for fiber, calib in sorted(calib_fiber_lst.items()):
+            print(fmt_string.format(frameid, calib['fileid'], fiber,
+                calib['exptime'], calib['nuse'], calib['ntot'], calib['std']))
 
     # print promotion and read input frameid list
-    string = input('select references: ')
-    ref_frameid_lst = [int(s) for s in string.split(',')
-                                if len(s.strip())>0 and
-                                s.strip().isdigit() and
-                                int(s) in calib_lst]
-    ref_calib_lst    = [calib_lst[frameid]
-                            for frameid in ref_frameid_lst]
-    ref_datetime_lst = [calib_lst[frameid]['date-obs']
-                            for frameid in ref_frameid_lst]
+    ref_frameid_lst  = {}
+    ref_calib_lst    = {}
+    ref_datetime_lst = {}
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        string = input('Select References for fiber {}: '.format(fiber))
+        ref_frameid_lst[fiber] = [int(s) for s in string.split(',')
+                                    if len(s.strip())>0 and
+                                    s.strip().isdigit() and
+                                    int(s) in calib_lst]
+
+        if fiber not in ref_calib_lst:
+            ref_calib_lst[fiber] = []
+            ref_datetime_lst[fiber] = []
+
+        for frameid in ref_frameid_lst[fiber]:
+            if fiber in calib_lst[frameid]:
+                usefiber = fiber
+            else:
+                usefiber = list(calib_lst[frameid].keys())[0]
+                print(('Warning: no ThAr for fiber {}. '
+                        'Use fiber {} instead').format(fiber, usefiber))
+            use_calib = calib_lst[frameid][usefiber]
+            ref_calib_lst[fiber].append(use_calib)
+            ref_datetime_lst[fiber].append(use_calib['date-obs'])
 
     #################### Extract Science Spectrum ##############################
 
@@ -2813,15 +2835,17 @@ def reduce_multifiber(logtable, config):
         #    os.path.join(report, 'bkg_%s_stray1.%s'%(fileid, fig_format)),
         #    os.path.join(report, 'bkg_%s_stray2.%s'%(fileid, fig_format)))
 
-        message = 'FileID: {} - background corrected'.format(fileid)
+        message = 'FileID: {} - background corrected. max value = {}'.format(
+                fileid, stray.max())
         logger.info(message)
         print(message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
-        spec = []   # use to pack final 1d spectrum
+        allspec = []   # use to pack final 1d spectrum
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
+            spec = []
             spectra1d = extract_aperset(data, mask,
                             apertureset = master_aperset[fiber],
                             lower_limit = section.getfloat('lower_limit'),
@@ -2840,24 +2864,32 @@ def reduce_multifiber(logtable, config):
                 flux_sum = item['flux_sum']
                 spec.append((fiber, aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
-        spec = np.array(spec, dtype=spectype)
+            spec = np.array(spec, dtype=spectype)
 
-        # wavelength calibration
-        weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
+            # wavelength calibration
+            weight_lst = get_time_weight(ref_datetime_lst[fiber],
+                                        head[statime_key])
 
-        message = 'FileID: {} - wavelength calibration weights: {}'.format(
-                    fileid, ','.join(['%8.4f'%w for w in weight_lst]))
+            message = ('FileID: {} - fiber {}'
+                        ' - wavelength calibration weights: {}').format(
+                        fileid, fiber,
+                        ','.join(['%8.4f'%w for w in weight_lst])
+                        )
+            logger.info(message)
+            print(message)
 
-        logger.info(message)
-        print(message)
+            spec, head = wl_reference(spec, head, ref_calib_lst[fiber],
+                                        weight_lst, fiber=fiber)
 
-        spec, head = wl_reference_singlefiber(spec, head,
-                        ref_calib_lst, weight_lst)
+            for row in spec:
+                allspec.append(row)
+
+        allspec = np.array(allspec, dtype=spectype)
 
         # pack and save wavelength referenced spectra
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
-                    fits.BinTableHDU(spec),
+                    fits.BinTableHDU(allspec),
                     ])
         filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
         hdu_lst.writeto(filename, overwrite=True)
