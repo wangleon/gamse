@@ -582,9 +582,20 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-all_columns = [
+all_columns1 = [
         ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
         ('fileid',  'str',   '{:^40s}', '{0[fileid]:40s}'),
+        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
+        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
+        ]
+
+all_columns2 = [
+        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',  'str',   '{:^18s}', '{0[fileid]:18s}'),
         ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
         ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
@@ -638,17 +649,30 @@ def make_obslog(path):
 
     fname_lst = sorted(os.listdir(path))
 
+    # find the maximum length of fileid
+    maxlen_fileid = 0
+    for fname in fname_lst:
+        if fname[-5:] == '.fits':
+            fileid = fname[0:-5]
+            maxlen_fileid = max(maxlen_fileid, len(fileid))
+    # now the maxlen_fileid is the maximum length of fileid
+
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',  'S40'),  ('imgtype', 'S3'),
-        ('object',  'S12'), ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',    'i4'),   ('q95',     'i4'),
+        ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
+        ('imgtype', 'S3'),  ('object', 'S12'),  ('exptime', 'f4'),
+        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
         ])
 
     # prepare infomation to print
+    if maxlen_fileid <= 18:
+        all_columns = all_columns2
+    else:
+        all_columns = all_columns1
+
     pinfo = FormattedInfo(all_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
-             'nsat', 'q95'])
+                    ['frameid', 'fileid', 'imgtype', 'object', 'exptime',
+                        'obsdate', 'nsat', 'q95'])
 
     # print header of logtable
     print(pinfo.get_separator())
@@ -1161,7 +1185,19 @@ def reduce_singlefiber(logtable, config):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
+    # find the maximum length of fileid
+    maxlen_fileid = 0
+    for fname in fname_lst:
+        if fname[-5:] == '.fits':
+            fileid = fname[0:-5]
+            maxlen_fileid = max(maxlen_fileid, len(fileid))
+    # now the maxlen_fileid is the maximum length of fileid
+
     # initialize printing infomation
+    if maxlen_fileid <= 18:
+        all_columns = all_columns2
+    else:
+        all_columns = all_columns1
     pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
@@ -1927,7 +1963,19 @@ def reduce_multifiber(logtable, config):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
+    # find the maximum length of fileid
+    maxlen_fileid = 0
+    for fname in fname_lst:
+        if fname[-5:] == '.fits':
+            fileid = fname[0:-5]
+            maxlen_fileid = max(maxlen_fileid, len(fileid))
+    # now the maxlen_fileid is the maximum length of fileid
+
     # initialize printing infomation
+    if maxlen_fileid <= 18:
+        all_columns = all_columns2
+    else:
+        all_columns = all_columns1
     pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])

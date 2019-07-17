@@ -185,8 +185,12 @@ class PrintInfo(object):
 class FormattedInfo(object):
     def __init__(self, all_columns, selected_columns=None):
         if selected_columns is None:
+            # if selected_columns is not given, pick up all columns in
+            # all_columns
             self.columns = all_columns
         else:
+            # selected_columns is given. only pick up columns in
+            # selected_columns
             column_lst = []
             for columns in selected_columns:
                 for item in all_columns:
