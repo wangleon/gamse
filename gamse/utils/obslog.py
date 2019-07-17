@@ -117,7 +117,9 @@ def read_obslog(filename, delimiter=' '):
     
     """
     io_registry.register_reader('obslog', Table, _read_obslog)
-    return Table.read(filename, format='obslog', delimiter=delimiter)
+    table = Table.read(filename, format='obslog', delimiter=delimiter)
+    io_registry.unregister_reader('obslog', Table)
+    return table
 
 class LogItem(object):
     """Class for observing log items
