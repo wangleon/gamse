@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 logger = logging.getLogger(__name__)
 import configparser
@@ -8,7 +9,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils.obslog import read_log, find_log
+from ..utils.obslog import read_obslog, find_log
 from ..utils.misc   import write_system_info
 
 from . import common
@@ -115,12 +116,57 @@ def make_obslog():
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
-def show_spectra1d(filename_lst):
+def show_onedspec():
     """Show 1-D spectra in a pop-up window.
 
     Args:
         filename_lst (list): List of filenames of 1-D spectra.
     """
+
+    # try to load obslog
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-7:]=='.obslog']
+    if len(logname_lst)==0:
+        logtable = None
+    else:
+        logtable = read_obslog(logname_lst[0])
+
+    # try to load config file
+    # find local config file
+    config_file_lst = []
+    for fname in os.listdir(os.curdir):
+        if fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
+    # load both built-in and local config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
+    filename_lst = []
+    for arg in sys.argv[2:]:
+        if arg.isdigit():
+            # if arg is a number, find the corresponding filename in obslog
+            arg = int(arg)
+            for logitem in logtable:
+                if arg == logitem['frameid']:
+                    rawdata     = config['reduce'].get('onedspec', 'onedspec')
+                    oned_suffix = config['reduce'].get('oned_suffix', 'ods')
+                    fname = '{}_{}.fits'.format(logitem['fileid'], oned_suffix)
+                    filename = os.path.join(rawdata, fname)
+                    if os.path.exists(filename):
+                        filename_lst.append(filename)
+                    break
+        elif os.path.exists(arg):
+            filename_lst.append(filename)
+        else:
+            continue
+
+    if len(filename_lst)==0:
+        exit()
+
     spec_lst = []
     for filename in filename_lst:
         data = fits.getdata(filename)
