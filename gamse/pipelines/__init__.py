@@ -147,7 +147,7 @@ def show_onedspec():
 
     filename_lst = []
     for arg in sys.argv[2:]:
-        if arg.isdigit():
+        if arg.isdigit() and logtable is not None:
             # if arg is a number, find the corresponding filename in obslog
             arg = int(arg)
             for logitem in logtable:
