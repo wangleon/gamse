@@ -2502,7 +2502,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
             'direction':   new_direction,
             }
 
-def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
+def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
+        fig_ccf=None, fig_scatter=None):
     """Find the offset between two spectra.
     
     The aperture offset is defined as:
@@ -2513,6 +2514,12 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
     Args:
         spec1 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
         spec2 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
+        aperture_k (int): Aperture direction code (1 or -1) between **spec1**
+            and **spec2**.
+        pixel_k (int): Pixel direction code (1 or -1) between **spec1** and
+            **spec2**.
+        fig_ccf (string): Name of figure for cross-correlation functions (CCFs).
+        fig_scatter (string): Name of figure for peak scatters.
 
     Returns:
         tuple: A tuple containing:
@@ -2577,10 +2584,11 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
     for aperture_k in search_aperture_k_lst:
         for aperture_offset in aperture_offset_lst:
             calc_pixel_shift_lst = {1: [], -1: []}
-            fig2 = plt.figure(figsize=(10,8), dpi=150)
-            axes2 = { 1: fig2.add_subplot(211),
-                     -1: fig2.add_subplot(212),
-                     }
+            if fig_ccf is not None:
+                fig2 = plt.figure(figsize=(10,8), dpi=150)
+                axes2 = { 1: fig2.add_subplot(211),
+                         -1: fig2.add_subplot(212),
+                         }
             for row1 in spec1:
                 aperture1 = row1['aperture']
                 aperture2 = get_aper2(aperture1, aperture_k, aperture_offset)
@@ -2612,16 +2620,18 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
                     calc_shift = pixel_shift_lst[ccf_lst.argmax()]
                     # pack the pixel shift into a list
                     calc_pixel_shift_lst[pixel_k].append(calc_shift)
-            
-                    axes2[pixel_k].plot(pixel_shift_lst, ccf_lst, alpha=0.4)
+
+                    if fig_ccf is not None:
+                        axes2[pixel_k].plot(pixel_shift_lst, ccf_lst, alpha=0.4)
                     # pixel direction loop ends here
                 # order-by-order loop ends here
-            for ax in axes2.values():
-                ax.set_xlim(pixel_shift_lst[0], pixel_shift_lst[-1])
 
-            figname = 'ccf_{:+2d}_{:+03d}.png'.format(aperture_k, aperture_offset)
-            fig2.savefig(figname)
-            plt.close(fig2)
+            # adjust the ccf figure and save
+            if fig_ccf is not None:
+                for ax in axes2.values():
+                    ax.set_xlim(pixel_shift_lst[0], pixel_shift_lst[-1])
+                fig2.savefig(fig_ccf.format(aperture_k, aperture_offset))
+                plt.close(fig2)
 
             # convert calc_pixel_shift_lst to numpy array
             pixel_shift_mean = {1: None, -1: None}
@@ -2644,17 +2654,24 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None):
 
     # direction loop ends here
 
-    fig3 = plt.figure(dpi=150)
-    ax3 = fig3.gca()
-    for key, scatters in scatter_lst.items():
-        aperture_k, pixel_k = key
-        if len(scatters)==0:
-            continue
-        ax3.plot(aperture_offset_lst, scatters,
-                    color={1:'C0', -1:'C1'}[aperture_k],
-                    ls   ={1:'-',  -1:'--'}[pixel_k])
-    fig3.savefig('ccf_scatter.png')
-    plt.close(fig3)
+    # plot the scatters of peaks and save it as a figure file
+    if fig_scatter is not None:
+        fig3 = plt.figure(dpi=150, figsize=(8,6))
+        ax3 = fig3.gca()
+        for key, scatters in scatter_lst.items():
+            aperture_k, pixel_k = key
+            if len(scatters)==0:
+                continue
+            ax3.plot(aperture_offset_lst, scatters,
+                        color = {1:'C0', -1:'C1'}[aperture_k],
+                        ls    = {1:'-',  -1:'--'}[pixel_k],
+                        label = 'Aperture k = {}, Pixel k = {}'.format(
+                            aperture_k, pixel_k))
+        ax3.set_xlabel('Aperture Offset')
+        ax3.set_ylabel('Scatter (pixel)')
+        ax3.legend(loc='lower right')
+        fig3.savefig(fig_scatter)
+        plt.close(fig3)
 
     imin = np.argmin(all_scatter_lst)
     scatter_id = scatter_id_lst[imin]

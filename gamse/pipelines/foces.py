@@ -1664,17 +1664,16 @@ def reduce_singlefiber(logtable, config):
                     # if failed, pop up a calibration window and
                     # identify the wavelengths manually
                     calib = wlcalib(spec,
-                        filename      = fileid+'.fits',
-                        figfilename   = wlcalib_fig,
-                        channel       = None,
-                        linelist      = section.get('linelist'),
-                        window_size   = section.getint('window_size'),
-                        xorder        = section.getint('xorder'),
-                        yorder        = section.getint('yorder'),
-                        maxiter       = section.getint('maxiter'),
-                        clipping      = section.getfloat('clipping'),
-                        snr_threshold = section.getfloat(
-                                            'snr_threshold'),
+                        filename    = fileid+'.fits',
+                        figfilename = wlcalib_fig,
+                        channel     = None,
+                        linelist    = section.get('linelist'),
+                        window_size = section.getint('window_size'),
+                        xorder      = section.getint('xorder'),
+                        yorder      = section.getint('yorder'),
+                        maxiter     = section.getint('maxiter'),
+                        clipping    = section.getfloat('clipping'),
+                        q_threshold = section.getfloat('q_threshold'),
                         )
                 else:
                     # if success, run recalib
@@ -1684,10 +1683,20 @@ def reduce_singlefiber(logtable, config):
                                     None)[direction[1]=='?']
                     pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
                                 None)[direction[2]=='?']
+                    # determine the name of the output figure during lamp shift
+                    # finding.
+                    fig_ccf = {'normal': None,
+                                'debug': os.path.join(report,
+                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
+                    fig_scatter = {'normal': None,
+                                    'debug': os.path.join(report,
+                                        'lamp_ccf_scatter.png'}[mode]
 
                     result = find_caliblamp_offset(ref_spec, spec,
-                                aperture_k = aperture_k,
-                                pixel_k    = pixel_k,
+                                aperture_k  = aperture_k,
+                                pixel_k     = pixel_k,
+                                fig_ccf     = fig_ccf,
+                                fig_scatter = fig_scatter,
                                 )
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
@@ -2638,10 +2647,20 @@ def reduce_multifiber(logtable, config):
                                         None)[direction[1]=='?']
                         pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
                                     None)[direction[2]=='?']
+                        # determine the name of the output figure during lamp
+                        # shift finding.
+                        fig_ccf = {'normal': None,
+                                    'debug': os.path.join(report,
+                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
+                        fig_scatter = {'normal': None,
+                                        'debug': os.path.join(report,
+                                            'lamp_ccf_scatter.png'}[mode]
 
                         result = find_caliblamp_offset(ref_spec, spec,
-                                    aperture_k = aperture_k,
-                                    pixel_k    = pixel_k,
+                                    aperture_k  = aperture_k,
+                                    pixel_k     = pixel_k,
+                                    fig_ccf     = fig_ccf,
+                                    fig_scatter = fig_scatter,
                                     )
                         aperture_koffset = (result[0], result[1])
                         pixel_koffset    = (result[2], result[3])
