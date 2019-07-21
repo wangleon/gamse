@@ -1690,7 +1690,7 @@ def reduce_singlefiber(logtable, config):
                                         'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
                     fig_scatter = {'normal': None,
                                     'debug': os.path.join(report,
-                                        'lamp_ccf_scatter.png'}[mode]
+                                        'lamp_ccf_scatter.png')}[mode]
 
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
@@ -2654,7 +2654,7 @@ def reduce_multifiber(logtable, config):
                                         'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
                         fig_scatter = {'normal': None,
                                         'debug': os.path.join(report,
-                                            'lamp_ccf_scatter.png'}[mode]
+                                            'lamp_ccf_scatter.png')}[mode]
 
                         result = find_caliblamp_offset(ref_spec, spec,
                                     aperture_k  = aperture_k,
