@@ -20,7 +20,7 @@ Bavaria, Germany.
 FOCES is connected to a Nasmyth focus of the telescope via an octagonal
 multi-mode optical fiber.
 FOCES has a resolving power (*R*) of ~ 70,000, and covers the wavelength range
-of 390 - 900 nm.
+of 390–900 nm.
 
 The characteristics of FOCES are summarised as below:
 
@@ -29,7 +29,7 @@ The characteristics of FOCES are summarised as below:
 |                     +---------------------------------+---------------------------------------+
 |                     | Groove density                  | 31.6 lines mm\ :sup:`−1`              |
 |                     +---------------------------------+---------------------------------------+
-|                     | Blazing angle                   |                                       |
+|                     | Blazing angle                   | 65°                                   |
 +---------------------+---------------------------------+---------------------------------------+
 | **Corss-disperser** | A pair of prisms                                                        |
 +---------------------+---------------------------------+---------------------------------------+
@@ -41,7 +41,7 @@ The characteristics of FOCES are summarised as below:
 |                     +---------------------------------+---------------------------------------+
 |                     | Sampling per resolution element | ~2.3 pixels                           |
 +---------------------+---------------------------------+---------------------------------------+
-| **Others**          | Link to the telescope           | A circular multi-mode fiber (100µm)   |
+| **Others**          | Link to the telescope           | A circular multi-mode fiber (100 µm)  |
 |                     +---------------------------------+---------------------------------------+
 |                     | Wavelength calibration          | ThAr/astrocomb simultaneous reference |
 +---------------------+---------------------------------+---------------------------------------+

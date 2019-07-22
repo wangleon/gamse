@@ -16,6 +16,7 @@ for example:
     rawdata     = rawdata   # path to raw data
     statime_key = FRAME     # key of starting time of exposure in FITS header
     exptime_key = EXPOSURE  # key of exposure time in FITS header
+    direction   = xb+
 
     [reduce]
     midproc     = midproc   # path to mid process files
@@ -63,3 +64,33 @@ For example, a user-created ``.cfg`` file with:
 will only override the value of ``fig_format`` in the ``reduce`` section in the
 built-in configuration files.
 
+General Descriptors
+-------------------
+`Gamse` uses a set of general keywords in the config file to descrip the data
+formats.
+They are in the ``[data]`` section of the config files.
+
+* **telescope**: Name of the telescope.
+
+* **instrument**: Name of the instrument used to obtain the data.
+
+* **rawdata**: Path to the folder that is used to put the raw data.
+
+* **statime_key**: Key of the starting time in the FITS header.
+
+* **exptime_key**: Key of the exposure time inf the FITS header.
+
+* **direction**: Direction of the Echelle spectrum on the CCD.
+  A typical direction string is composed of three letters, like ``xb+`` or
+  ``yr-``, where
+ 
+  * The first letter indicates the axes of main-dispersion direction (either
+    ``x`` or ``y``).
+  * The second letter, either ``b`` or ``r`` is the direction of red/blue
+    orders. 
+    ``b`` means the blue orders locates in the smaller row (if the first letter
+    is ``x``) or column (if the first letter is ``y``) numbers in the CCD.
+    And ``r`` means the red orders vice-versa.
+  * The last letter indicates whehter the wavelength is increasing (in this
+    case, ``+``) or descreasing (in this case, ``-``) along the increasing pixel
+    number within an échelle order.
