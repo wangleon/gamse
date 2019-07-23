@@ -1114,30 +1114,37 @@ def reduce():
     logtable = read_obslog(logname_lst[0])
 
     # load config files
-    config_file_lst = []
-    # find built-in config file
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-    config_file = os.path.join(config_path, 'FOCES.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.append(config_file)
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
-
     # load both built-in and local config files
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
+
+    # first load local config files starting with "FOCES"
+    config_file_lst = []
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[0:5]=='FOCES' and fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+
     config.read(config_file_lst)
 
     section = config['data']
-    multi_fiber = section.getboolean('multi_fiber')
+    multi_fiber = section.getboolean('multi_fiber', True)
+
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+
     if multi_fiber:
+        config_file = os.path.join(config_path, 'FOCES.doublefiber.cfg')
+        if os.path.exists(config_file):
+            config_file_lst.insert(0, config_file)
+
         reduce_multifiber(logtable, config)
     else:
+        config_file = os.path.join(config_path, 'FOCES.singlefiber.cfg')
+        if os.path.exists(config_file):
+            config_file_lst.insert(0, config_file)
+
         reduce_singlefiber(logtable, config)
 
 
