@@ -1134,16 +1134,23 @@ def reduce():
 
     config_path = os.path.join(os.path.dirname(__file__), '../data/config')
 
+    # load general config file
+    config_file = os.path.join(config_path, 'FOCES.cfg')
+    if os.path.exists(config_file):
+        config_file_lst.insert(0, config_file)
+
     if multi_fiber:
         config_file = os.path.join(config_path, 'FOCES.doublefiber.cfg')
         if os.path.exists(config_file):
             config_file_lst.insert(0, config_file)
+        config.read(config_file_lst)
 
         reduce_multifiber(logtable, config)
     else:
         config_file = os.path.join(config_path, 'FOCES.singlefiber.cfg')
         if os.path.exists(config_file):
             config_file_lst.insert(0, config_file)
+        config.read(config_file_lst)
 
         reduce_singlefiber(logtable, config)
 
@@ -1795,15 +1802,28 @@ def reduce_singlefiber(logtable, config):
             calib['nuse'], calib['ntot'], calib['std']))
     
     # print promotion and read input frameid list
-    string = input('select references: ')
-    ref_frameid_lst = [int(s) for s in string.split(',')
-                                if len(s.strip())>0 and
-                                s.strip().isdigit() and
-                                int(s) in calib_lst]
-    ref_calib_lst    = [calib_lst[frameid]
-                            for frameid in ref_frameid_lst]
-    ref_datetime_lst = [calib_lst[frameid]['date-obs']
-                            for frameid in ref_frameid_lst]
+    while(True):
+        string = input('Select References: ')
+        ref_frameid_lst  = []
+        ref_calib_lst    = []
+        ref_datetime_lst = []
+        succ = True
+        for s in string.split(','):
+            s = s.strip()
+            if len(s)>0 and s.isdigit() and int(s) in calib_lst:
+                frameid = int(s)
+                calib   = calib_lst[frameid]
+                ref_frameid_lst.append(frameid)
+                ref_calib_lst.append(calib)
+                ref_datetime_lst.append(calib['date-obs'])
+            else:
+                print('Warning: "{}" is an invalid calib frame'.format(s))
+                succ = False
+                break
+        if succ:
+            break
+        else:
+            continue
 
     #################### Extract Science Spectrum ##############################
 
@@ -2634,17 +2654,16 @@ def reduce_multifiber(logtable, config):
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
                         calib = wlcalib(spec,
-                            filename      = fileid+'.fits',
-                            figfilename   = wlcalib_fig,
-                            channel       = None,
-                            linelist      = section.get('linelist'),
-                            window_size   = section.getint('window_size'),
-                            xorder        = section.getint('xorder'),
-                            yorder        = section.getint('yorder'),
-                            maxiter       = section.getint('maxiter'),
-                            clipping      = section.getfloat('clipping'),
-                            snr_threshold = section.getfloat(
-                                                'snr_threshold'),
+                            filename    = fileid+'.fits',
+                            figfilename = wlcalib_fig,
+                            channel     = None,
+                            linelist    = section.get('linelist'),
+                            window_size = section.getint('window_size'),
+                            xorder      = section.getint('xorder'),
+                            yorder      = section.getint('yorder'),
+                            maxiter     = section.getint('maxiter'),
+                            clipping    = section.getfloat('clipping'),
+                            q_threshold = section.getfloat('q_threshold'),
                             )
                     else:
                         # if success, run recalib
@@ -2775,26 +2794,35 @@ def reduce_multifiber(logtable, config):
     ref_datetime_lst = {}
     for ifiber in range(n_fiber):
         fiber = chr(ifiber+65)
-        string = input('Select References for fiber {}: '.format(fiber))
-        ref_frameid_lst[fiber] = [int(s) for s in string.split(',')
-                                    if len(s.strip())>0 and
-                                    s.strip().isdigit() and
-                                    int(s) in calib_lst]
-
-        if fiber not in ref_calib_lst:
-            ref_calib_lst[fiber] = []
+        while(True):
+            string = input('Select References for fiber {}: '.format(fiber))
+            ref_frameid_lst[fiber]  = []
+            ref_calib_lst[fiber]    = []
             ref_datetime_lst[fiber] = []
-
-        for frameid in ref_frameid_lst[fiber]:
-            if fiber in calib_lst[frameid]:
-                usefiber = fiber
+            succ = True
+            for s in string.split(','):
+                s = s.strip()
+                if len(s)>0 and s.isdigit() and int(s) in calib_lst:
+                    frameid = int(s)
+                    calib   = calib_lst[frameid]
+                    ref_frameid_lst[fiber].append(frameid)
+                    if fiber in calib:
+                        usefiber = fiber
+                    else:
+                        usefiber = list(calib.keys())[0]
+                        print(('Warning: no ThAr for fiber {}. '
+                                'Use fiber {} instead').format(fiber, usefiber))
+                    use_calib = calib[usefiber]
+                    ref_calib_lst[fiber].append(use_calib)
+                    ref_datetime_lst[fiber].append(use_calib['date-obs'])
+                else:
+                    print('Warning: "{}" is an invalid calib frame'.format(s))
+                    succ = False
+                    break
+            if succ:
+                break
             else:
-                usefiber = list(calib_lst[frameid].keys())[0]
-                print(('Warning: no ThAr for fiber {}. '
-                        'Use fiber {} instead').format(fiber, usefiber))
-            use_calib = calib_lst[frameid][usefiber]
-            ref_calib_lst[fiber].append(use_calib)
-            ref_datetime_lst[fiber].append(use_calib['date-obs'])
+                continue
 
     #################### Extract Science Spectrum ##############################
 
