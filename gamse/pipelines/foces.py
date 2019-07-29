@@ -2549,7 +2549,7 @@ def reduce_multifiber(logtable, config):
     # get the data shape
     h, w = flat_map.shape
 
-    # define dtype of 1-d spectra
+    # define dtype of 1-d spectra for all fibers
     types = [
             ('fiber',      'S1'),
             ('aperture',   np.int16),
@@ -2558,9 +2558,12 @@ def reduce_multifiber(logtable, config):
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
             ]
-
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
+    # spectype for a single fiber
+    spectype_singlefiber = np.dtype({'names':   names[1:],
+                                     'formats': formats[1:],
+                                     })
 
     calib_lst = {}
     # calib_lst is a hierarchical dict of calibration results
@@ -2612,6 +2615,7 @@ def reduce_multifiber(logtable, config):
         else:
             logger.info('No bias. skipped bias correction')
 
+        spec_allfibers = {}
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
             if fiberobj_lst[ifiber] != 'thar':
@@ -2625,12 +2629,18 @@ def reduce_multifiber(logtable, config):
                         )
             head = master_aperset[fiber].to_fitsheader(head, fiber=fiber)
 
+            # pack to a structured array
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
-                spec.append((fiber, aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
-            spec = np.array(spec, dtype=spectype)
+                spec.append((
+                    aper,          # aperture
+                    0,             # order (not determined yet)
+                    flux_sum.size, # number of points
+                    np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
+                    flux_sum,      # fluxes
+                    ))
+            spec = np.array(spec, dtype=spectype_singlefiber)
 
             wlcalib_fig = os.path.join(report,
                     'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
