@@ -2777,6 +2777,12 @@ def reduce_multifiber(logtable, config):
                     direction        = direction,
                     )
 
+            # add more infos in calib
+            calib['fileid']   = fileid
+            calib['date-obs'] = head[statime_key]
+            calib['exptime']  = head[exptime_key]
+
+            # reference the ThAr spectra
             spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
             # append all spec, card list and ident lists
@@ -2787,7 +2793,9 @@ def reduce_multifiber(logtable, config):
             # save calib results and the oned spec for this fiber
             head_fiber = head.copy()
             for card in card_lst:
-                head_fiber.append(card)
+                key, value = card
+                key = 'HIERARCH GAMSE WLCALIB '+key
+                head_fiber.append((key, value))
             pri_hdu  = fits.PrimaryHDU(header=head_fiber)
             tbl_hdu1 = fits.BinTableHDU(spec)
             tbl_hdu2 = fits.BinTableHDU(identlist)
@@ -2796,10 +2804,6 @@ def reduce_multifiber(logtable, config):
                                                 fileid, fiber))
             hdu_lst.writeto(filename, overwrite=True)
 
-            # add more infos in calib
-            calib['fileid']   = fileid
-            calib['date-obs'] = head[statime_key]
-            calib['exptime']  = head[exptime_key]
             # pack to calib_lst
             if frameid not in calib_lst:
                 calib_lst[frameid] = {}
@@ -2807,10 +2811,22 @@ def reduce_multifiber(logtable, config):
 
         # fiber loop ends here
         # combine different fibers
+        # combine cards for FITS header
+        newcards = echelle.wlcalib.combine_fiber_cards(all_cards)
+        # combine spectra
         newspec = echelle.wlcalib.combine_fiber_spec(all_spec)
+        # combine ident line list
+        newidentlist = echelle.wlcalib.combine_fiber_identlist(all_identlist)
+        # append cards to fits header
+        for card in newcards:
+            key, value = card
+            key = 'HIERARCH GAMSE WLCALIB '+key
+            head.append((key, value))
+        # pack and save to fits
         pri_hdu = fits.PrimaryHDU(header=head)
         tbl_hdu1 = fits.BinTableHDU(newspec)
-        hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1])
+        tbl_hdu2 = fits.BinTableHDU(newidentlist)
+        hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1, tbl_hdu2])
         filename = os.path.join(onedspec, '{}{}.fits'.format(
                                             fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)

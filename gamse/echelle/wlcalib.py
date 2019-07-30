@@ -2919,30 +2919,29 @@ def reference_self_wavelength(spec, calib):
         row['order']      = order
         row['wavelength'] = wavelength
 
-    prefix = 'HIERARCH GAMSE WLCALIB'
     card_lst = []
-    card_lst.append((prefix+' K',      calib['k']))
-    card_lst.append((prefix+' OFFSET', calib['offset']))
-    card_lst.append((prefix+' XORDER', calib['xorder']))
-    card_lst.append((prefix+' YORDER', calib['yorder']))
-    card_lst.append((prefix+' NPIXEL', calib['npixel']))
+    card_lst.append(('K',      calib['k']))
+    card_lst.append(('OFFSET', calib['offset']))
+    card_lst.append(('XORDER', calib['xorder']))
+    card_lst.append(('YORDER', calib['yorder']))
+    card_lst.append(('NPIXEL', calib['npixel']))
 
     # write the coefficients to fits header
     for j, i in itertools.product(range(calib['yorder']+1),
                                   range(calib['xorder']+1)):
-        key   = '{:s} COEFF {:d} {:d}'.format(prefix, j, i)
+        key   = 'COEFF {:d} {:d}'.format(j, i)
         value = calib['coeff'][j,i]
         card_lst.append((key, value))
 
     # write other information to fits header
-    card_lst.append((prefix+' WINDOW_SIZE', calib['window_size']))
-    card_lst.append((prefix+' MAXITER',     calib['maxiter']))
-    card_lst.append((prefix+' CLIPPING',    calib['clipping']))
-    card_lst.append((prefix+' Q_THRESHOLD', calib['q_threshold']))
-    card_lst.append((prefix+' NTOT',        calib['ntot']))
-    card_lst.append((prefix+' NUSE',        calib['nuse']))
-    card_lst.append((prefix+' STDDEV',      calib['std']))
-    card_lst.append((prefix+' DIRECTION' ,  calib['direction']))
+    card_lst.append(('WINDOW_SIZE', calib['window_size']))
+    card_lst.append(('MAXITER',     calib['maxiter']))
+    card_lst.append(('CLIPPING',    calib['clipping']))
+    card_lst.append(('Q_THRESHOLD', calib['q_threshold']))
+    card_lst.append(('NTOT',        calib['ntot']))
+    card_lst.append(('NUSE',        calib['nuse']))
+    card_lst.append(('STDDEV',      calib['std']))
+    card_lst.append(('DIRECTION' ,  calib['direction']))
 
     # pack the identfied line list
     identlist = []
@@ -2962,11 +2961,11 @@ def combine_fiber_spec(spec_lst):
             fibers.
 
     Returns:
-        numpy.ndtype: The combined one-dimensional spectra
+        numpy.dtype: The combined one-dimensional spectra
     """
     spec1 = list(spec_lst.values())[0]
     newdescr = [descr for descr in spec1.dtype.descr]
-    # add new column
+    # add a new column
     newdescr.insert(0, ('fiber', 'S1'))
 
     newspec = []
@@ -2979,11 +2978,47 @@ def combine_fiber_spec(spec_lst):
 
     return newspec
 
-def combine_fiber_cards():
-    pass
+def combine_fiber_cards(card_lst):
+    """Combine header cards of different fibers.
 
-def combine_fiber_identlist():
-    pass
+    Args:
+        card_lst (dict): FITS header cards of different fibers.
+
+    Returns:
+        list: List of header cards.
+    """
+    newcard_lst = []
+    for fiber, cards in sorted(card_lst):
+        for card in cards:
+            key = 'FIBER {} {}'.format(fiber, card[0])
+            value = card[1]
+            newcard_lst.append((key, value))
+    return newcard_lst
+
+def combine_fiber_identlist(identlist_lst):
+    """Combine the identified line list of different fibers.
+
+    Args:
+        identlist_lst (dict): Identified line lists of different fibers.
+
+    Returns:
+        numpy.dtype
+
+    """
+    identlist1 = list(identlist_lst.values())[0]
+    newdescr = [descr for descr in identlist1.dtype.descr]
+    # add a new column
+    newdescr.insert(0, ('fiber', 'S1'))
+
+    newidentlist = []
+    for fiber, identlist in sorted(identlist_lst.items()):
+        for row in identlist:
+            item = list(row)
+            item.insert(0, fiber)
+            newidentlist.append(tuple(item))
+    newidentlist = np.array(newidentlist, dtype=newdescr)
+
+    return newidentlist
 
 def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
     k      = calib_lst[0]['k']
