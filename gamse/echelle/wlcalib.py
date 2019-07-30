@@ -2246,7 +2246,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
-        if fname[-9:]=='_ods.fits':
+        if fname[0:8]=='wlcalib.' and fname[-5:]=='.fits':
             filename = os.path.join(path, fname)
             head = fits.getheader(filename)
             dt = dateutil.parser.parse(head[time_key])
@@ -2988,7 +2988,7 @@ def combine_fiber_cards(card_lst):
         list: List of header cards.
     """
     newcard_lst = []
-    for fiber, cards in sorted(card_lst):
+    for fiber, cards in sorted(card_lst.items()):
         for card in cards:
             key = 'FIBER {} {}'.format(fiber, card[0])
             value = card[1]
@@ -3020,7 +3020,9 @@ def combine_fiber_identlist(identlist_lst):
 
     return newidentlist
 
-def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
+def reference_wavelength(spec, calib_lst, weight_lst):
+    """
+    """
     k      = calib_lst[0]['k']
     offset = calib_lst[0]['offset']
     xorder = calib_lst[0]['xorder']
@@ -3030,8 +3032,8 @@ def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
     # calculate the weighted average coefficients
     coeff = np.zeros_like(calib_lst[0]['coeff'], dtype=np.float64)
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        for calib, w in zip(calib_lst, weight_lst):
-            coeff[j, i] += calib['coeff'][j, i]*w
+        for calib, weight in zip(calib_lst, weight_lst):
+            coeff[j, i] += calib['coeff'][j, i]*weight
 
     # calculate the wavelength for each aperture
     for row in spec:
@@ -3043,33 +3045,34 @@ def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
         row['order']      = order
         row['wavelength'] = wavelength
 
-    prefix = 'HIERARCH GAMSE WLCALIB'
-    if fiber is not None:
-        prefix = prefix + ' FIBER {}'.format(fiber)
-    header[prefix+' K']      = k
-    header[prefix+' OFFSET'] = offset
-    header[prefix+' XORDER'] = xorder
-    header[prefix+' YORDER'] = yorder
-    header[prefix+' NPIXEL'] = npixel
+    card_lst = []
+    #prefix = 'HIERARCH GAMSE WLCALIB'
+    #if fiber is not None:
+    #    prefix = prefix + ' FIBER {}'.format(fiber)
+    card_lst.append(('K', k))
+    card_lst.append(('OFFSET', offset))
+    card_lst.append(('XORDER', xorder))
+    card_lst.append(('YORDER', yorder))
+    card_lst.append(('NPIXEL', npixel))
 
     # write the coefficients to fits header
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        header[prefix+' COEFF %d %d'%(j, i)] = coeff[j,i]
+        key   = 'COEFF {:d} {:d}'.format(j, i)
+        value = coeff[j,i]
+        card_lst.append((key, value))
 
     # write information for every reference
-    c = 0
-    for calib, w in zip(calib_lst, weight_lst):
-        c += 1
-        prefix2 = prefix + ' REFERENCE {:d}'.format(c)
-        header[prefix2+' FILEID']   = calib['fileid']
-        header[prefix2+' DATE-OBS'] = calib['date-obs']
-        header[prefix2+' EXPTIME']  = calib['exptime']
-        header[prefix2+' WEIGHT']   = w
-        header[prefix2+' NTOT']     = calib['ntot']
-        header[prefix2+' NUSE']     = calib['nuse']
-        header[prefix2+' STDDEV']   = calib['std']
+    for icalib, (calib, weight) in enumerate(zip(calib_lst, weight_lst)):
+        prefix = 'REFERENCE {:d}'.format(icalib+1)
+        card_lst.append((prefix+' FILEID',   calib['fileid']))
+        card_lst.append((prefix+' DATE-OBS', calib['date-obs']))
+        card_lst.append((prefix+' EXPTIME',  calib['exptime']))
+        card_lst.append((prefix+' WEIGHT',   weight))
+        card_lst.append((prefix+' NTOT',     calib['ntot']))
+        card_lst.append((prefix+' NUSE',     calib['nuse']))
+        card_lst.append((prefix+' STDDEV',   calib['std']))
 
-    return spec, header
+    return spec, card_lst
 
 def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
     """Reference the wavelength and write the wavelength solution to the FITS

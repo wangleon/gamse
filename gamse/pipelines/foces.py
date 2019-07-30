@@ -26,8 +26,6 @@ from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                               reference_self_wavelength,
-                               wl_reference,
                                get_time_weight, find_caliblamp_offset)
 from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
@@ -2783,7 +2781,7 @@ def reduce_multifiber(logtable, config):
             calib['exptime']  = head[exptime_key]
 
             # reference the ThAr spectra
-            spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+            spec, card_lst, identlist = echelle.wlcalib.reference_self_wavelength(spec, calib)
 
             # append all spec, card list and ident lists
             all_spec[fiber]      = spec
@@ -2823,15 +2821,14 @@ def reduce_multifiber(logtable, config):
             key = 'HIERARCH GAMSE WLCALIB '+key
             head.append((key, value))
         # pack and save to fits
-        pri_hdu = fits.PrimaryHDU(header=head)
-        tbl_hdu1 = fits.BinTableHDU(newspec)
-        tbl_hdu2 = fits.BinTableHDU(newidentlist)
-        hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1, tbl_hdu2])
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(newspec),
+                    fits.BinTableHDU(newidentlist),
+                    ])
         filename = os.path.join(onedspec, '{}{}.fits'.format(
                                             fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
-
-        exit()
 
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
@@ -2967,10 +2964,10 @@ def reduce_multifiber(logtable, config):
 
         # extract 1d spectrum
         section = config['reduce.extract']
-        allspec = []   # use to pack final 1d spectrum
+        all_spec  = {}   # use to pack final 1d spectrum
+        all_cards = {}
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
-            spec = []
             if fiberobj_lst[ifiber]=='':
                 # nothing in this fiber
                 continue
@@ -2988,10 +2985,17 @@ def reduce_multifiber(logtable, config):
             logger.info(message)
             print(message)
 
+            spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
-                spec.append((fiber, aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+                item = (
+                        aper,
+                        0,
+                        flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64),
+                        flux_sum
+                        )
+                spec.append(item)
             spec = np.array(spec, dtype=spectype)
 
             # wavelength calibration
@@ -3006,20 +3010,27 @@ def reduce_multifiber(logtable, config):
             logger.info(message)
             print(message)
 
-            spec, head = wl_reference(spec, head, ref_calib_lst[fiber],
-                                        weight_lst, fiber=fiber)
+            spec, card_lst = echelle.wlcalib.reference_wavelength(
+                                spec,
+                                ref_calib_lst[fiber],
+                                weight_lst,
+                                )
+            all_spec[fiber] = spec
+            all_cards[fiber] = card_lst
 
-            for row in spec:
-                allspec.append(row)
-
-        allspec = np.array(allspec, dtype=spectype)
-
-        # pack and save wavelength referenced spectra
+        newcards = echelle.wlcalib.combine_fiber_cards(all_cards)
+        newspec = echelle.wlcalib.combine_fiber_spec(all_spec)
+        for card in newcards:
+            key, value = card
+            key = 'HIERARCH GAMSE WLCALIB '+key
+            head.append((key, value))
+        # pack and save to fits
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
-                    fits.BinTableHDU(allspec),
+                    fits.BinTableHDU(newspec),
                     ])
-        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        filename = os.path.join(onedspec, '{}{}.fits'.format(
+                                            fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
 
         message = 'FileID: {} - Spectra written to {}'.format(
