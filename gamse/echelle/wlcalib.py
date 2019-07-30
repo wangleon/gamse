@@ -2896,7 +2896,18 @@ def auto_line_fitting_filter(param, i1, i2):
         return False
     return True
 
-def self_reference_singlefiber(spec, header, calib):
+def reference_self_wavelength(spec, calib):
+    """Calculate the wavelengths for an one dimensional spectra.
+
+    Args:
+        spec ():
+        calib ():
+
+    Returns:
+        tuple: A tuple containing:
+
+
+    """
 
     # calculate the wavelength for each aperture
     for row in spec:
@@ -2909,26 +2920,29 @@ def self_reference_singlefiber(spec, header, calib):
         row['wavelength'] = wavelength
 
     prefix = 'HIERARCH GAMSE WLCALIB'
-    header[prefix+' K']         = calib['k']
-    header[prefix+' OFFSET']    = calib['offset']
-    header[prefix+' XORDER']    = calib['xorder']
-    header[prefix+' YORDER']    = calib['yorder']
-    header[prefix+' NPIXEL']    = calib['npixel']
+    card_lst = []
+    card_lst.append((prefix+' K',      calib['k']))
+    card_lst.append((prefix+' OFFSET', calib['offset']))
+    card_lst.append((prefix+' XORDER', calib['xorder']))
+    card_lst.append((prefix+' YORDER', calib['yorder']))
+    card_lst.append((prefix+' NPIXEL', calib['npixel']))
 
     # write the coefficients to fits header
     for j, i in itertools.product(range(calib['yorder']+1),
                                   range(calib['xorder']+1)):
-        header[prefix+' COEFF %d %d'%(j, i)] = calib['coeff'][j,i]
+        key   = '{:s} COEFF {:d} {:d}'.format(prefix, j, i)
+        value = calib['coeff'][j,i]
+        card_lst.append((key, value))
 
     # write other information to fits header
-    header[prefix+' WINDOW_SIZE'] = calib['window_size']
-    header[prefix+' MAXITER']     = calib['maxiter']
-    header[prefix+' CLIPPING']    = calib['clipping']
-    header[prefix+' Q_THRESHOLD'] = calib['q_threshold']
-    header[prefix+' NTOT']        = calib['ntot']
-    header[prefix+' NUSE']        = calib['nuse']
-    header[prefix+' STDDEV']      = calib['std']
-    header[prefix+' DIRECTION']   = calib['direction']
+    card_lst.append((prefix+' WINDOW_SIZE', calib['window_size']))
+    card_lst.append((prefix+' MAXITER',     calib['maxiter']))
+    card_lst.append((prefix+' CLIPPING',    calib['clipping']))
+    card_lst.append((prefix+' Q_THRESHOLD', calib['q_threshold']))
+    card_lst.append((prefix+' NTOT',        calib['ntot']))
+    card_lst.append((prefix+' NUSE',        calib['nuse']))
+    card_lst.append((prefix+' STDDEV',      calib['std']))
+    card_lst.append((prefix+' DIRECTION' ,  calib['direction']))
 
     # pack the identfied line list
     identlist = []
@@ -2937,12 +2951,39 @@ def self_reference_singlefiber(spec, header, calib):
             identlist.append(row)
     identlist = np.array(identlist, dtype=list1.dtype)
 
-    pri_hdu  = fits.PrimaryHDU(header=header)
-    tbl_hdu1 = fits.BinTableHDU(spec)
-    tbl_hdu2 = fits.BinTableHDU(identlist)
-    hdu_lst = [pri_hdu, tbl_hdu1, tbl_hdu2]
+    return spec, card_lst, identlist
 
-    return fits.HDUList(hdu_lst)
+
+def combine_fiber_spec(spec_lst):
+    """Combine one-dimensional spectra of different fibers.
+
+    Args:
+        spec_lst (dict): A dict containing the one-dimensional spectra for all
+            fibers.
+
+    Returns:
+        numpy.ndtype: The combined one-dimensional spectra
+    """
+    spec1 = list(spec_lst.values())[0]
+    newdescr = [descr for descr in spec1.dtype.descr]
+    # add new column
+    newdescr.insert(0, ('fiber', 'S1'))
+
+    newspec = []
+    for fiber, spec in sorted(spec_lst.items()):
+        for row in spec:
+            item = list(row)
+            item.insert(0, fiber)
+            newspec.append(tuple(item))
+    newspec = np.array(newspec, dtype=newdescr)
+
+    return newspec
+
+def combine_fiber_cards():
+    pass
+
+def combine_fiber_identlist():
+    pass
 
 def wl_reference(spec, header, calib_lst, weight_lst, fiber=None):
     k      = calib_lst[0]['k']

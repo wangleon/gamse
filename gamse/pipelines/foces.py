@@ -19,12 +19,14 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 
+from .. import echelle
+
 from ..echelle.imageproc import combine_images, array_to_table
 from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                               self_reference_singlefiber,
+                               reference_self_wavelength,
                                wl_reference,
                                get_time_weight, find_caliblamp_offset)
 from ..echelle.background import find_background, simple_debackground
@@ -2551,7 +2553,6 @@ def reduce_multifiber(logtable, config):
 
     # define dtype of 1-d spectra for all fibers
     types = [
-            ('fiber',      'S1'),
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
@@ -2560,10 +2561,6 @@ def reduce_multifiber(logtable, config):
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
-    # spectype for a single fiber
-    spectype_singlefiber = np.dtype({'names':   names[1:],
-                                     'formats': formats[1:],
-                                     })
 
     calib_lst = {}
     # calib_lst is a hierarchical dict of calibration results
@@ -2615,7 +2612,11 @@ def reduce_multifiber(logtable, config):
         else:
             logger.info('No bias. skipped bias correction')
 
-        spec_allfibers = {}
+        # initialize data for all fibers
+        all_spec      = {}
+        all_cards     = {}
+        all_identlist = {}
+
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
             if fiberobj_lst[ifiber] != 'thar':
@@ -2640,7 +2641,7 @@ def reduce_multifiber(logtable, config):
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
                     flux_sum,      # fluxes
                     ))
-            spec = np.array(spec, dtype=spectype_singlefiber)
+            spec = np.array(spec, dtype=spectype)
 
             wlcalib_fig = os.path.join(report,
                     'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
@@ -2775,9 +2776,24 @@ def reduce_multifiber(logtable, config):
                     q_threshold      = ref_calib['q_threshold'],
                     direction        = direction,
                     )
-        
-            hdu_lst = self_reference_singlefiber(spec, head, calib)
-            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+
+            spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+
+            # append all spec, card list and ident lists
+            all_spec[fiber]      = spec
+            all_cards[fiber]     = card_lst
+            all_identlist[fiber] = identlist
+
+            # save calib results and the oned spec for this fiber
+            head_fiber = head.copy()
+            for card in card_lst:
+                head_fiber.append(card)
+            pri_hdu  = fits.PrimaryHDU(header=head_fiber)
+            tbl_hdu1 = fits.BinTableHDU(spec)
+            tbl_hdu2 = fits.BinTableHDU(identlist)
+            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1, tbl_hdu2])
+            filename = os.path.join(midproc, 'wlcalib.{}.{}.fits'.format(
+                                                fileid, fiber))
             hdu_lst.writeto(filename, overwrite=True)
 
             # add more infos in calib
@@ -2788,6 +2804,18 @@ def reduce_multifiber(logtable, config):
             if frameid not in calib_lst:
                 calib_lst[frameid] = {}
             calib_lst[frameid][fiber] = calib
+
+        # fiber loop ends here
+        # combine different fibers
+        newspec = echelle.wlcalib.combine_fiber_spec(all_spec)
+        pri_hdu = fits.PrimaryHDU(header=head)
+        tbl_hdu1 = fits.BinTableHDU(newspec)
+        hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1])
+        filename = os.path.join(onedspec, '{}{}.fits'.format(
+                                            fileid, oned_suffix))
+        hdu_lst.writeto(filename, overwrite=True)
+
+        exit()
 
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
