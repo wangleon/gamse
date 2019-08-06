@@ -160,7 +160,7 @@ def show_onedspec():
                         filename_lst.append(filename)
                     break
         elif os.path.exists(arg):
-            filename_lst.append(filename)
+            filename_lst.append(arg)
         else:
             continue
 
