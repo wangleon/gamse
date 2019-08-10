@@ -83,12 +83,11 @@ def correct_overscan(data, mask=None):
 
     return new_data, card_lst, ovrmean1
 
-def get_mask(data, head):
+def get_mask(data):
     """Get the mask of input image.
 
     Args:
         data (:class:`numpy.ndarray`): Input image data.
-        head (:class:`astropy.io.fits.Header`): Input FITS header.
 
     Returns:
         :class:`numpy.ndarray`: Image mask.
@@ -1214,7 +1213,7 @@ def reduce_singlefiber(logtable, config):
                 data, head = fits.getdata(filename, header=True)
                 if data.ndim == 3:
                     data = data[0,:,:]
-                mask = get_mask(data, head)
+                mask = get_mask(data)
                 data, card_lst, overmean = correct_overscan(data, mask)
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
@@ -1396,7 +1395,7 @@ def reduce_singlefiber(logtable, config):
                 exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
                     data = data[0,:,:]
-                mask = get_mask(data, head)
+                mask = get_mask(data)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
                 if i_item == 0:
@@ -1645,7 +1644,7 @@ def reduce_singlefiber(logtable, config):
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
-        mask = get_mask(data, head)
+        mask = get_mask(data)
 
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, mask)
@@ -1870,7 +1869,7 @@ def reduce_singlefiber(logtable, config):
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
-        mask = get_mask(data, head)
+        mask = get_mask(data)
 
         # correct overscan
         data, card_lst, overmean = correct_overscan(data, mask)
@@ -2055,7 +2054,7 @@ def reduce_multifiber(logtable, config):
                 data, head = fits.getdata(filename, header=True)
                 if data.ndim == 3:
                     data = data[0,:,:]
-                mask = get_mask(data, head)
+                mask = get_mask(data)
                 data, card_lst, overmean = correct_overscan(data, mask)
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
@@ -2264,7 +2263,7 @@ def reduce_multifiber(logtable, config):
                     exptime_lst.append(head[exptime_key])
                     if data.ndim == 3:
                         data = data[0,:,:]
-                    mask = get_mask(data, head)
+                    mask = get_mask(data)
 
                     # generate the mask for all images
                     sat_mask = (mask&4>0)
@@ -2652,7 +2651,7 @@ def reduce_multifiber(logtable, config):
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
-        mask = get_mask(data, head)
+        mask = get_mask(data)
 
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, mask)
@@ -2958,7 +2957,7 @@ def reduce_multifiber(logtable, config):
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
-        mask = get_mask(data, head)
+        mask = get_mask(data)
 
         # correct overscan
         data, card_lst, overmean = correct_overscan(data, mask)
