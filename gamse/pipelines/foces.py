@@ -34,13 +34,12 @@ from ..utils.obslog import read_obslog
 from .common import plot_background_aspect1, FormattedInfo
 from .reduction          import Reduction
 
-def correct_overscan(data, head, mask=None):
+def correct_overscan(data, mask=None):
     """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
         data (:class:`numpy.ndarray`): Input image data.
-        head (:class:`astropy.io.fits.Header`): Input FITS header.
         mask (:class:`numpy.ndarray`): Input image mask.
     
     Returns:
@@ -48,7 +47,7 @@ def correct_overscan(data, head, mask=None):
 
             * **data** (:class:`numpy.ndarray`) – Output image with overscan
               corrected.
-            * **head** (:class:`astropy.io.fits.Header`) – Updated FITS header.
+            * **card_lst** (*list*) – A new card list for FITS header.
             * **overmean** (*float*) – Mean value of overscan pixels.
     """
     h, w = data.shape
@@ -74,19 +73,15 @@ def correct_overscan(data, head, mask=None):
     # subtract overscan
     new_data = data[:,20:2068] - ovrmean1
     
-    # update fits header
-    # head['BLANK'] is only valid for integer arrays.
-    if 'BLANK' in head:
-        del head['BLANK']
+    card_lst = []
+    card_lst.append(('OVERSCAN',        True))
+    card_lst.append(('OVERSCAN METHOD', 'mean'))
+    card_lst.append(('OVERSCAN AXIS-1', '1:20'))
+    card_lst.append(('OVERSCAN AXIS-2', '%d:%d'%(vy1,vy2)))
+    card_lst.append(('OVERSCAN MEAN',   ovrmean1))
+    card_lst.append(('OVERSCAN STDEV',  ovrstd1))
 
-    head['HIERARCH GAMSE OVERSCAN']        = True
-    head['HIERARCH GAMSE OVERSCAN METHOD'] = 'mean'
-    head['HIERARCH GAMSE OVERSCAN AXIS-1'] = '1:20'
-    head['HIERARCH GAMSE OVERSCAN AXIS-2'] = '%d:%d'%(vy1,vy2)
-    head['HIERARCH GAMSE OVERSCAN MEAN']   = ovrmean1
-    head['HIERARCH GAMSE OVERSCAN STDEV']  = ovrstd1
-
-    return new_data, head, ovrmean1
+    return new_data, card_lst, ovrmean1
 
 def get_mask(data, head):
     """Get the mask of input image.
@@ -1156,6 +1151,13 @@ def reduce():
 
 
 def reduce_singlefiber(logtable, config):
+    """Data reduction for single-fiber configuration.
+
+    Args:
+        logtable ():
+        config ():
+
+    """
 
     # extract keywords from config file
     section = config['data']
@@ -1213,7 +1215,14 @@ def reduce_singlefiber(logtable, config):
                 if data.ndim == 3:
                     data = data[0,:,:]
                 mask = get_mask(data, head)
-                data, head, overmean = correct_overscan(data, head, mask)
+                data, card_lst, overmean = correct_overscan(data, mask)
+                # head['BLANK'] is only valid for integer arrays.
+                if 'BLANK' in head:
+                    del head['BLANK']
+                for card in card_lst:
+                    key, value = card
+                    key = 'HIERARCH GAMSE '+key
+                    head.append((key, value))
 
                 # print info
                 if len(bias_data_lst) == 0:
@@ -1395,7 +1404,14 @@ def reduce_singlefiber(logtable, config):
                 allmask += sat_mask
 
                 # correct overscan for flat
-                data, head, overmean = correct_overscan(data, head, mask)
+                data, card_lst, overmean = correct_overscan(data, mask)
+                # head['BLANK'] is only valid for integer arrays.
+                if 'BLANK' in head:
+                    del head['BLANK']
+                for card in card_lst:
+                    key, value = card
+                    key = 'HIERARCH GAMSE '+key
+                    head.append((key, value))
 
                 # correct bias for flat, if has bias
                 if has_bias:
@@ -1632,7 +1648,14 @@ def reduce_singlefiber(logtable, config):
         mask = get_mask(data, head)
 
         # correct overscan for ThAr
-        data, head, overmean = correct_overscan(data, head, mask)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+        for card in card_lst:
+            key, value = card
+            key = 'HIERARCH GAMSE '+key
+            head.append((key, value))
 
         # correct bias for ThAr, if has bias
         if has_bias:
@@ -1850,7 +1873,15 @@ def reduce_singlefiber(logtable, config):
         mask = get_mask(data, head)
 
         # correct overscan
-        data, head, overmean = correct_overscan(data, head, mask)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+        for card in card_lst:
+            key, value = card
+            key = 'HIERARCH GAMSE '+key
+            head.append((key, value))
+
         message = 'FileID: {} - overscan corrected'.format(fileid)
 
         logger.info(message)
@@ -1950,6 +1981,13 @@ def reduce_singlefiber(logtable, config):
 
 
 def reduce_multifiber(logtable, config):
+    """Data reduction for multiple-fiber configuration.
+
+    Args:
+        logtable ():
+        config ():
+
+    """
 
     # extract keywords from config file
     section = config['data']
@@ -2018,7 +2056,14 @@ def reduce_multifiber(logtable, config):
                 if data.ndim == 3:
                     data = data[0,:,:]
                 mask = get_mask(data, head)
-                data, head, overmean = correct_overscan(data, head, mask)
+                data, card_lst, overmean = correct_overscan(data, mask)
+                # head['BLANK'] is only valid for integer arrays.
+                if 'BLANK' in head:
+                    del head['BLANK']
+                for card in card_lst:
+                    key, value = card
+                    key = 'HIERARCH GAMSE '+key
+                    head.append((key, value))
 
                 # print info
                 if len(bias_data_lst) == 0:
@@ -2220,6 +2265,8 @@ def reduce_multifiber(logtable, config):
                     if data.ndim == 3:
                         data = data[0,:,:]
                     mask = get_mask(data, head)
+
+                    # generate the mask for all images
                     sat_mask = (mask&4>0)
                     bad_mask = (mask&2>0)
                     if i_item == 0:
@@ -2227,7 +2274,14 @@ def reduce_multifiber(logtable, config):
                     allmask += sat_mask
 
                     # correct overscan for flat
-                    data, head, overmean = correct_overscan(data, head, mask)
+                    data, card_lst, overmean = correct_overscan(data, mask)
+                    # head['BLANK'] is only valid for integer arrays.
+                    if 'BLANK' in head:
+                        del head['BLANK']
+                    for card in card_lst:
+                        key, value = card
+                        key = 'HIERARCH GAMSE '+key
+                        head.append((key, value))
 
                     # correct bias for flat, if has bias
                     if has_bias:
@@ -2601,7 +2655,14 @@ def reduce_multifiber(logtable, config):
         mask = get_mask(data, head)
 
         # correct overscan for ThAr
-        data, head, overmean = correct_overscan(data, head, mask)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+        for card in card_lst:
+            key, value = card
+            key = 'HIERARCH GAMSE '+key
+            head.append((key, value))
 
         # correct bias for ThAr, if has bias
         if has_bias:
@@ -2900,7 +2961,15 @@ def reduce_multifiber(logtable, config):
         mask = get_mask(data, head)
 
         # correct overscan
-        data, head, overmean = correct_overscan(data, head, mask)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+        for card in card_lst:
+            key, value = card
+            key = 'HIERARCH GAMSE '+key
+            head.append((key, value))
+
         message = 'FileID: {} - overscan corrected'.format(fileid)
 
         logger.info(message)
