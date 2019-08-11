@@ -81,7 +81,7 @@ def correct_overscan(data, mask=None):
     card_lst.append(('OVERSCAN',        True))
     card_lst.append(('OVERSCAN METHOD', 'mean'))
     card_lst.append(('OVERSCAN AXIS-1', '1:20'))
-    card_lst.append(('OVERSCAN AXIS-2', '%d:%d'%(vy1,vy2)))
+    card_lst.append(('OVERSCAN AXIS-2', '{}:{}'.format(vy1,vy2)))
     card_lst.append(('OVERSCAN MEAN',   ovrmean1))
     card_lst.append(('OVERSCAN STDEV',  ovrstd1))
 
@@ -1686,6 +1686,8 @@ def reduce_singlefiber(logtable, config):
                 'wlcalib_{}.{}'.format(fileid, fig_format))
 
         section = config['reduce.wlcalib']
+        
+        title = fileid+'.fits'
 
         if count_thar == 1:
             # this is the first ThAr frame in this observing run
@@ -1696,17 +1698,15 @@ def reduce_singlefiber(logtable, config):
                                             'FOCES/wlcalib')
 
                 result = select_calib_from_database(
-                    search_path, statime_key, head[statime_key],
-                    channel=None)
+                    search_path, statime_key, head[statime_key])
                 ref_spec, ref_calib = result
     
                 if ref_spec is None or ref_calib is None:
                     # if failed, pop up a calibration window and
                     # identify the wavelengths manually
                     calib = wlcalib(spec,
-                        filename    = fileid+'.fits',
                         figfilename = wlcalib_fig,
-                        channel     = None,
+                        title       = title,
                         linelist    = section.get('linelist'),
                         window_size = section.getint('window_size'),
                         xorder      = section.getint('xorder'),
@@ -1753,10 +1753,9 @@ def reduce_singlefiber(logtable, config):
                     q_threshold = (section.getfloat('q_threshold'), None)[use]
 
                     calib = recalib(spec,
-                        filename         = fileid+'.fits',
                         figfilename      = wlcalib_fig,
+                        title            = title,
                         ref_spec         = ref_spec,
-                        channel          = None,
                         linelist         = section.get('linelist'),
                         aperture_koffset = aperture_koffset,
                         pixel_koffset    = pixel_koffset,
@@ -1772,9 +1771,8 @@ def reduce_singlefiber(logtable, config):
             else:
                 # do not search the database
                 calib = wlcalib(spec,
-                    filename      = fileid+'.fits',
                     figfilename   = wlcalib_fig,
-                    channel       = None,
+                    title         = title,
                     identfilename = section.get('ident_file', None),
                     linelist      = section.get('linelist'),
                     window_size   = section.getint('window_size'),
@@ -1791,11 +1789,10 @@ def reduce_singlefiber(logtable, config):
         else:
             # for other ThArs, no aperture offset
             calib = recalib(spec,
-                filename         = fileid+'.fits',
                 figfilename      = wlcalib_fig,
+                title            = title,
                 ref_spec         = ref_spec,
                 linelist         = section.get('linelist'),
-                channel          = None,
                 ref_calib        = ref_calib,
                 aperture_koffset = (1, 0),
                 pixel_koffset    = (1, 0),
@@ -2710,6 +2707,8 @@ def reduce_multifiber(logtable, config):
 
             section = config['reduce.wlcalib']
 
+            title = '{}.fits - Fiber {}'.format(fileid, fiber)
+
             if count_thar == 1:
                 # this is the first ThAr frame in this observing run
                 if section.getboolean('search_database'):
@@ -2719,17 +2718,16 @@ def reduce_multifiber(logtable, config):
                                                 'FOCES/wlcalib')
 
                     result = select_calib_from_database(
-                        search_path, statime_key, head[statime_key],
-                        channel=None)
+                        search_path, statime_key, head[statime_key])
                     ref_spec, ref_calib = result
+
 
                     if ref_spec is None or ref_calib is None:
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
                         calib = wlcalib(spec,
-                            filename    = fileid+'.fits',
                             figfilename = wlcalib_fig,
-                            channel     = None,
+                            title       = title,
                             linelist    = section.get('linelist'),
                             window_size = section.getint('window_size'),
                             xorder      = section.getint('xorder'),
@@ -2784,10 +2782,9 @@ def reduce_multifiber(logtable, config):
                         q_threshold = (section.getfloat('q_threshold'), None)[use]
 
                         calib = recalib(spec,
-                            filename         = fileid+'.fits',
                             figfilename      = wlcalib_fig,
+                            title            = title,
                             ref_spec         = ref_spec,
-                            channel          = None,
                             linelist         = section.get('linelist'),
                             aperture_koffset = aperture_koffset,
                             pixel_koffset    = pixel_koffset,
@@ -2803,9 +2800,8 @@ def reduce_multifiber(logtable, config):
                 else:
                     # do not search the database
                     calib = wlcalib(spec,
-                        filename      = fileid+'.fits',
                         figfilename   = wlcalib_fig,
-                        channel       = None,
+                        title         = title,
                         identfilename = section.get('ident_file', None),
                         linelist      = section.get('linelist'),
                         window_size   = section.getint('window_size'),
@@ -2822,11 +2818,10 @@ def reduce_multifiber(logtable, config):
             else:
                 # for other ThArs, no aperture offset
                 calib = recalib(spec,
-                    filename         = fileid+'.fits',
                     figfilename      = wlcalib_fig,
+                    title            = title,
                     ref_spec         = ref_spec,
                     linelist         = section.get('linelist'),
-                    channel          = None,
                     ref_calib        = ref_calib,
                     aperture_koffset = (1, 0),
                     pixel_koffset    = (1, 0),
@@ -3090,8 +3085,8 @@ def reduce_multifiber(logtable, config):
             all_spec[fiber] = spec
             all_cards[fiber] = card_lst
 
-        newcards = wlcalib.combine_fiber_cards(all_cards)
-        newspec = wlcalib.combine_fiber_spec(all_spec)
+        newcards = combine_fiber_cards(all_cards)
+        newspec = combine_fiber_spec(all_spec)
         for card in newcards:
             key, value = card
             key = 'HIERARCH GAMSE WLCALIB '+key
