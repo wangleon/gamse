@@ -19,14 +19,18 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 
-from .. import echelle
-
 from ..echelle.imageproc import combine_images, array_to_table
 from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                               get_time_weight, find_caliblamp_offset)
+                               get_time_weight, find_caliblamp_offset,
+                               reference_wavelength,
+                               reference_self_wavelength,
+                               combine_fiber_cards,
+                               combine_fiber_spec,
+                               combine_fiber_identlist,
+                               )
 from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
@@ -2841,7 +2845,7 @@ def reduce_multifiber(logtable, config):
             calib['exptime']  = head[exptime_key]
 
             # reference the ThAr spectra
-            spec, card_lst, identlist = echelle.wlcalib.reference_self_wavelength(spec, calib)
+            spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
             # append all spec, card list and ident lists
             all_spec[fiber]      = spec
@@ -2870,11 +2874,11 @@ def reduce_multifiber(logtable, config):
         # fiber loop ends here
         # combine different fibers
         # combine cards for FITS header
-        newcards = echelle.wlcalib.combine_fiber_cards(all_cards)
+        newcards = combine_fiber_cards(all_cards)
         # combine spectra
-        newspec = echelle.wlcalib.combine_fiber_spec(all_spec)
+        newspec = combine_fiber_spec(all_spec)
         # combine ident line list
-        newidentlist = echelle.wlcalib.combine_fiber_identlist(all_identlist)
+        newidentlist = combine_fiber_identlist(all_identlist)
         # append cards to fits header
         for card in newcards:
             key, value = card
@@ -3078,7 +3082,7 @@ def reduce_multifiber(logtable, config):
             logger.info(message)
             print(message)
 
-            spec, card_lst = echelle.wlcalib.reference_wavelength(
+            spec, card_lst = reference_wavelength(
                                 spec,
                                 ref_calib_lst[fiber],
                                 weight_lst,
@@ -3086,8 +3090,8 @@ def reduce_multifiber(logtable, config):
             all_spec[fiber] = spec
             all_cards[fiber] = card_lst
 
-        newcards = echelle.wlcalib.combine_fiber_cards(all_cards)
-        newspec = echelle.wlcalib.combine_fiber_spec(all_spec)
+        newcards = wlcalib.combine_fiber_cards(all_cards)
+        newspec = wlcalib.combine_fiber_spec(all_spec)
         for card in newcards:
             key, value = card
             key = 'HIERARCH GAMSE WLCALIB '+key
