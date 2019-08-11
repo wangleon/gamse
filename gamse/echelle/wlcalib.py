@@ -33,16 +33,8 @@ from ..utils.regression2d import polyfit2d, polyval2d
 from ..utils.onedarray    import pairwise
 from .trace import load_aperture_set_from_header
 
-# Identified line table with channel
-identlines_wch = np.dtype({
-    'names':  ['channel','aperture','order','pixel','wavelength','q','mask',
-               'residual','method'],
-    'formats':['S1', np.int16, np.int16, np.float32, np.float64, np.float32,
-               np.int16, np.float64, 'S1'],
-    })
-
-# Identified line table without channel
-identlines_woch = np.dtype({
+# Data format for identified line table
+identlinetype = np.dtype({
     'names':  ['aperture','order','pixel','wavelength','q','mask',
                'residual','method'],
     'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
@@ -94,11 +86,10 @@ class PlotFrame(tk.Frame):
 
         tk.Frame.__init__(self, master, width=width, height=height)
 
-        self.fig = CalibFigure(width    = width,
-                               height   = height,
-                               dpi      = dpi,
-                               filename = os.path.basename(master.param['filename']),
-                               channel  = master.param['channel'],
+        self.fig = CalibFigure(width  = width,
+                               height = height,
+                               dpi    = dpi,
+                               title  = master.param['title'],
                                )
         self.ax1 = self.fig._ax1
         self.ax2 = self.fig._ax2
@@ -138,15 +129,14 @@ class InfoFrame(tk.Frame):
 
         self.master = master
 
-        filename = os.path.basename(master.param['filename'])
-        channel  = master.param['channel']
+        title = master.param['title']
 
         tk.Frame.__init__(self, master, width=width, height=height)
 
         self.fname_label = tk.Label(master = self,
                                     width  = width,
                                     font   = ('Arial', 14),
-                                    text   = filename,
+                                    title  = title,
                                     )
         self.order_label = tk.Label(master = self,
                                     width  = width,
@@ -569,13 +559,11 @@ class CalibWindow(tk.Frame):
         height (int): Height of window.
         dpi (int): DPI of figure.
         spec (:class:`numpy.dtype`): Spectra data.
-        filename (str): Filename of the spectra data. Only to display in the
-            window.
         figfilename (str): Filename of the output wavelength calibration
             figure.
+        title (str): A string to display as the title of calib figure.
         identlist (dict): Identification line list.
         linelist (list): List of wavelength standards (wavelength, species).
-        channel (str): Name of channel in the input spectra.
         window_size (int): Size of the window in pixel to search for line
             peaks.
         xorder (int): Degree of polynomial along X direction.
@@ -585,9 +573,9 @@ class CalibWindow(tk.Frame):
         snr_threshold (float): Minimum S/N of the spectral lines to be accepted
             in the wavelength fitting.
     """
-    def __init__(self, master, width, height, dpi, spec, filename, figfilename,
-            identlist, linelist, channel, window_size, xorder, yorder, maxiter,
-            clipping, snr_threshold):
+    def __init__(self, master, width, height, dpi, spec, figfilename, title,
+            identlist, linelist, window_size, xorder, yorder, maxiter, clipping,
+            q_threshold):
         """Constructor of :class:`CalibWindow`.
         """
         
@@ -601,9 +589,8 @@ class CalibWindow(tk.Frame):
         self.param = {
             'mode':          'ident',
             'aperture':      self.spec['aperture'].min(),
-            'filename':      filename,
             'figfilename':   figfilename,
-            'channel':       channel,
+            'title':         title,
             'aperture_min':  self.spec['aperture'].min(),
             'aperture_max':  self.spec['aperture'].max(),
             'npixel':        self.spec['points'].max(),
@@ -804,19 +791,10 @@ class CalibWindow(tk.Frame):
 
                 # initialize line table
                 if aperture not in self.identlist:
-                    if channel is None:
-                        self.identlist[aperture] = np.array([],
-                                dtype=identlines_woch)
-                    else:
-                        self.identlist[aperture] = np.array([],
-                                dtype=identlines_wch)
+                    self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                if channel is None:
-                    item = np.array((aperture, order, peak_x, line[0],
-                                    q, True, 0.0, 'a'), dtype=identlines_woch)
-                else:
-                    item = np.array((channel, aperture, order, peak_x, line[0],
-                                    q, True, 0.0, 'a'), dtype=identlines_wch)
+                item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
+                                'a'), dtype=identlinetype)
 
                 self.identlist[aperture] = np.append(self.identlist[aperture], item)
                 has_insert = True
@@ -958,7 +936,8 @@ class CalibWindow(tk.Frame):
         else:
             plot_ax1 = False
 
-        self.plot_frame.fig.plot_solution(self.identlist, aperture_lst, plot_ax1, **kwargs)
+        self.plot_frame.fig.plot_solution(self.identlist, aperture_lst,
+                                            plot_ax1, **kwargs)
 
         self.plot_frame.canvas.draw()
         self.plot_frame.fig.savefig(self.param['figfilename'])
@@ -1122,10 +1101,7 @@ class CalibWindow(tk.Frame):
         line_frame = self.info_frame.line_frame
         
         if aperture not in self.identlist:
-            if channel is None:
-                self.identlist[aperture] = np.array([], dtype=identlines_woch)
-            else:
-                self.identlist[aperture] = np.array([], dtype=identlines_wch)
+            self.identlist[aperture] = np.array([], dtype=identlinetype)
 
         list1 = self.identlist[aperture]
 
@@ -1143,12 +1119,8 @@ class CalibWindow(tk.Frame):
         else:
             order = k*aperture + offset
 
-        if channel is None:
-            item = np.array((aperture, order, pixel, wavelength, -1., True, 0.0, 'm'),
-                            dtype=identlines_woch)
-        else:
-            item = np.array((channel, aperture, order, pixel, wavelength, -1., True, 0.0, 'm'),
-                            dtype=identlines_wch)
+        item = np.array((aperture, order, pixel, wavelength, -1., True, 0.0,
+                        'm'), dtype=identlinetype)
 
         # insert into identified line list
         self.identlist[aperture] = np.insert(self.identlist[aperture],
@@ -1255,19 +1227,17 @@ class CalibWindow(tk.Frame):
             info_frame.clearall_button.config(state=tk.DISABLED)
 
 
-def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None, 
+def wlcalib(spec, figfilename, title, linelist, identfilename=None, 
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
-    snr_threshold=10):
+    q_threshold=10):
     """Identify the wavelengths of emission lines in the spectrum of a
     hollow-cathode lamp.
 
     Args:
         spec (:class:`numpy.dtype`): 1-D spectra.
-        filename (str): A filename to be displayed on the top of the calibration
-            window and output figure.
         figfilename (str): Name of the output wavelength figure to be saved.
+        title (str): A string to display as the title of calib figure.
         linelist (str): Name of wavelength standard file.
-        channel (str): Name of the input channel.
         identfilename (str): Name of an ASCII formatted wavelength identification
             file.
         window_size (int): Size of the window in pixel to search for the
@@ -1276,8 +1246,8 @@ def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
         yorder (int): Degree of polynomial along Y direction.
         maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
-        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting.
+        q_threshold (float): Minimum *Q*-factor of the spectral lines to be
+            accepted in the wavelength fitting.
 
     Returns:
         dict: A dict containing:
@@ -1304,8 +1274,8 @@ def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
             * **maxiter** (*int*) – Maximum number of iteration in the
               wavelength fitting.
             * **clipping** (*float*) – Clipping value of the wavelength fitting.
-            * **snr_threshold** (*float*) – Minimum S/N of the spectral lines to
-              be accepted in the wavelength fitting.
+            * **q_threshold** (*float*) – Minimum *Q*-factor of the spectral
+              lines to be accepted in the wavelength fitting.
 
     Notes:
         If **identfilename** is given and exist, load the identified wavelengths
@@ -1319,7 +1289,7 @@ def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
 
     # initialize fitting list
     if identfilename is not None and os.path.exists(identfilename):
-        identlist, _ = load_ident(identfilename, channel=channel)
+        identlist, _ = load_ident(identfilename)
     else:
         identlist = {}
 
@@ -1360,21 +1330,20 @@ def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
 
     # display window
     calibwindow = CalibWindow(master,
-                              width         = window_width,
-                              height        = window_height-34,
-                              dpi           = fig_dpi,
-                              spec          = spec,
-                              filename      = filename,
-                              figfilename   = figfilename,
-                              channel       = channel,
-                              identlist     = identlist,
-                              linelist      = line_list,
-                              window_size   = window_size,
-                              xorder        = xorder,
-                              yorder        = yorder,
-                              maxiter       = maxiter,
-                              clipping      = clipping,
-                              snr_threshold = snr_threshold,
+                              width       = window_width,
+                              height      = window_height-34,
+                              dpi         = fig_dpi,
+                              spec        = spec,
+                              figfilename = figfilename,
+                              title       = title,
+                              identlist   = identlist,
+                              linelist    = line_list,
+                              window_size = window_size,
+                              xorder      = xorder,
+                              yorder      = yorder,
+                              maxiter     = maxiter,
+                              clipping    = clipping,
+                              q_threshold = q_threshold,
                               )
 
     master.mainloop()
@@ -1401,7 +1370,7 @@ def wlcalib(spec, filename, figfilename, linelist, channel, identfilename=None,
     if len(calibwindow.identlist)>0 and \
         identfilename is not None and not os.path.exists(identfilename):
         save_ident(calibwindow.identlist, calibwindow.param['coeff'],
-                    identfilename, channel)
+                    identfilename)
 
     return result
 
@@ -1698,12 +1667,11 @@ def save_ident(identlist, coeff, filename, channel):
     outfile.close()
 
 
-def load_ident(filename, channel):
+def load_ident(filename):
     """Load identified line list from an ASCII file.
 
     Args:
         filename (str): Name of the identification file.
-        channel (str): Name of channel.
     Returns:
         tuple: A tuple containing:
 
@@ -1724,60 +1692,32 @@ def load_ident(filename, channel):
             continue
         g = row.split()
 
-        if channel is None:
-            key = g[0]
-            if key == 'LINE':
-                aperture    = int(g[1])
-                pixel       = float(g[2])
-                wavelength  = float(g[3])
-                mask        = bool(g[4])
-                residual    = float(g[5])
-                method      = g[6].strip()
+        key = g[0]
+        if key == 'LINE':
+            aperture    = int(g[1])
+            pixel       = float(g[2])
+            wavelength  = float(g[3])
+            mask        = bool(g[4])
+            residual    = float(g[5])
+            method      = g[6].strip()
 
-                item = np.array((aperture,0,pixel,wavelength,0.,mask,
-                                 residual,method),dtype=identlines_woch)
-                if aperture not in identlist:
-                    identlist[aperture] = []
-                identlist[aperture].append(item)
+            item = np.array((aperture,0,pixel,wavelength,0.,mask,residual,
+                                method),dtype=identlinetype)
+            if aperture not in identlist:
+                identlist[aperture] = []
+            identlist[aperture].append(item)
 
-            elif key == 'COEFF':
-                coeff.append([float(v) for v in g[2:]])
-
-            else:
-                pass
+        elif key == 'COEFF':
+            coeff.append([float(v) for v in g[2:]])
 
         else:
-            if g[0] != channel:
-                continue
-            key = g[1]
-            if key == 'LINE':
-                aperture    = int(g[2])
-                pixel       = float(g[3])
-                wavelength  = float(g[4])
-                mask        = bool(g[5])
-                residual    = float(g[6])
-                method      = g[7].strip()
-
-                item = np.array((channel,aperture,0,pixel,wavelength,0.,mask,
-                                 residual,method),dtype=identlines_wch)
-                if aperture not in identlist:
-                    identlist[aperture] = []
-                identlist[aperture].append(item)
-
-            elif key == 'COEFF':
-                coeff.append([float(v) for v in g[2:]])
-
-            else:
-                pass
+            pass
 
     infile.close()
 
     # convert list of every order to numpy structured array
     for aperture, list1 in identlist.items():
-        if channel is None:
-            identlist[aperture] = np.array(list1, dtype=identlines_woch)
-        else:
-            identlist[aperture] = np.array(list1, dtype=identlines_wch)
+        identlist[aperture] = np.array(list1, dtype=identlinetype)
 
     # convert coeff to numpy array
     coeff = np.array(coeff)
@@ -2038,7 +1978,7 @@ class CalibFigure(Figure):
         channel (str): Channel name of input spectra.
     """
 
-    def __init__(self, width, height, dpi, filename, channel):
+    def __init__(self, width, height, dpi, title):
         """Constuctor of :class:`CalibFigure`.
         """
         super(CalibFigure, self).__init__(figsize=(width/dpi, height/dpi), dpi=dpi)
@@ -2050,10 +1990,6 @@ class CalibFigure(Figure):
         self._ax3 = self.add_axes([0.655,0.54,0.32,0.40])
 
         # add title
-        if channel is None:
-            title = '%s'%filename
-        else:
-            title = '%s - channel %s'%(filename, channel)
         self.suptitle(title, fontsize=15)
 
         #draw the aperture number to the corner of ax1
@@ -2184,7 +2120,7 @@ class CalibFigure(Figure):
                 self._ax1.set_yticklabels(newticklabel_lst)
                 self._ax1.set_ylim(_y22, _y11)
             self._ax1.set_xlabel('Pixel', fontsize=label_size)
-            self._ax1.set_ylabel(u'$\lambda$ (\xc5)', fontsize=label_size)
+            self._ax1.set_ylabel(u'\u03bb (\xc5)', fontsize=label_size)
             self._ax1.grid(True, ls=':', color='gray', alpha=1, lw=0.5)
             self._ax1.set_axisbelow(True)
             self._ax1._aperture_text.set_text('')
@@ -2203,7 +2139,7 @@ class CalibFigure(Figure):
         self._ax2.set_xlim(x1, x2)
         self._ax2.set_ylim(-6*std, 6*std)
         self._ax2.set_xlabel('Aperture', fontsize=label_size)
-        self._ax2.set_ylabel(u'Residual on $\lambda$ (\xc5)', fontsize=label_size)
+        self._ax2.set_ylabel(u'Residual on \u03bb (\xc5)', fontsize=label_size)
         for tick in self._ax2.xaxis.get_major_ticks():
             tick.label1.set_fontsize(tick_size)
         for tick in self._ax2.yaxis.get_major_ticks():
@@ -2216,21 +2152,20 @@ class CalibFigure(Figure):
         self._ax3.set_xlim(0, npixel-1)
         self._ax3.set_ylim(-6*std, 6*std)
         self._ax3.set_xlabel('Pixel', fontsize=label_size)
-        self._ax3.set_ylabel(u'Residual on $\lambda$ (\xc5)', fontsize=label_size)
+        self._ax3.set_ylabel(u'Residual on \u03bb (\xc5)', fontsize=label_size)
         for tick in self._ax3.xaxis.get_major_ticks():
             tick.label1.set_fontsize(tick_size)
         for tick in self._ax3.yaxis.get_major_ticks():
             tick.label1.set_fontsize(tick_size)
 
 
-def select_calib_from_database(path, time_key, current_time, channel):
+def select_calib_from_database(path, time_key, current_time):
     """Select a previous calibration result in database.
 
     Args:
         path (str): Path to search for the calibration files.
         time_key (str): Name of the key in the FITS header.
         current_time (str): Time string of the file to be calibrated.
-        channel (str): Name of channel.
 
     Returns:
         tuple: A tuple containing:
@@ -2242,7 +2177,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
         
     """
     if not os.path.exists(path):
-        return None, None, None
+        return None, None
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
@@ -2253,7 +2188,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
             filename_lst.append(filename)
             datetime_lst.append(dt)
     if len(filename_lst)==0:
-        return None, None, None
+        return None, None
 
     # select the FITS file with the shortest interval in time.
     input_datetime = dateutil.parser.parse(current_time)
@@ -2267,7 +2202,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
     head = f[0].header
     spec = f[1].data
 
-    calib = get_calib_from_header(head, channel=channel)
+    calib = get_calib_from_header(head)
 
     # aperset seems unnecessary
     #aperset = load_aperture_set_from_header(head, channel=channel)
@@ -2275,7 +2210,7 @@ def select_calib_from_database(path, time_key, current_time, channel):
     return spec, calib
 
 
-def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
+def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         aperture_koffset=(1, 0), pixel_koffset=(1, None),
         xorder=None, yorder=None, maxiter=None, clipping=None, window_size=None,
         q_threshold=None, direction=None,
@@ -2286,11 +2221,10 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
     Args:
         spec (:class:`numpy.dtype`): The spectral data array to be wavelength
             calibrated.
-        filename (str): Filename of the 1-D spectra.
         figfilename (str): Filename of the output wavelength figure.
+        title (str): A title to display in the calib figure.
         ref_spec (:class:`numpy.dtype`): Reference spectra.
         linelist (str): Name of wavelength standard file.
-        channel (str): Name of the input channel.
         coeff (:class:`numpy.ndarray`): Coefficients of the reference wavelength.
         npixel (int): Number of pixels along the main-dispersion direction.
         k (int): -1 or 1, depending on the relationship `order = k*aperture
@@ -2303,8 +2237,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
         yorder (int): Order of polynomial along Y axis.
         maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
-        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting.
+        q_threshold (float): Minimum *Q*-factor of the spectral lines to be
+            accepted in the wavelength fitting.
 
     Returns:
         dict: A dict containing:
@@ -2331,8 +2265,8 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
             * **maxiter** (*int*) – Maximum number of iteration in the
               wavelength fitting.
             * **clipping** (*float*) – Clipping value of the wavelength fitting.
-            * **snr_threshold** (*float*) – Minimum S/N of the spectral lines to
-              be accepted in the wavelength fitting.
+            * **q_threshold** (*float*) – Minimum *Q*-factor of the spectral
+              lines to be accepted in the wavelength fitting.
 
     See also:
         :func:`wlcalib`
@@ -2416,25 +2350,17 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
             peak_x = param[1]
 
             if aperture not in identlist:
-                if channel is None:
-                    identlist[aperture] = np.array([], dtype=identlines_woch)
-                else:
-                    identlist[aperture] = np.array([], dtype=identlines_wch)
+                identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            if channel is None:
-                item = np.array((aperture, order, peak_x, line[0],
-                                q, True, 0.0, 'a'), dtype=identlines_woch)
-            else:
-                item = np.array((channel, aperture, order, peak_x, line[0],
-                                q, True, 0.0, 'a'), dtype=identlines_wch)
+            item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
+                            'a'), dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
             has_insert = True
 
         if has_insert:
-            identlist[aperture] = np.sort(identlist[aperture],
-                                            order='pixel')
+            identlist[aperture] = np.sort(identlist[aperture], order='pixel')
         
     new_coeff, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
         identlist = identlist, 
@@ -2449,11 +2375,10 @@ def recalib(spec, filename, figfilename, ref_spec, linelist, channel, ref_calib,
     fig_height = 1500
     fig_dpi    = 150
 
-    fig = CalibFigure(width    = fig_width,
-                      height   = fig_height,
-                      dpi      = fig_dpi,
-                      filename = os.path.basename(filename),
-                      channel  = channel,
+    fig = CalibFigure(width  = fig_width,
+                      height = fig_height,
+                      dpi    = fig_dpi,
+                      title  = title,
                       )
     canvas = FigureCanvasAgg(fig)
 
@@ -2755,7 +2680,9 @@ def reference_wl_new(spec, calib, head, channel, include_identlist):
        aperture = row['aperture']
        npixel   = row['points']
        order = aperture*k + offset
-       wavelength = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+       wavelength = get_wavelength(coeff, npixel,
+                        np.arange(npixel),
+                        np.repeat(order, npixel))
        row['order']      = order
        row['wavelength'] = wavelength
 
@@ -2827,22 +2754,18 @@ def get_time_weight(datetime_lst, datetime):
 
     return weight_lst
 
-def get_calib_from_header(header, channel):
+def get_calib_from_header(header):
     """Get calib from FITS header.
 
     Args:
         header (:class:`astropy.io.fits.Header`): FITS header.
-        channel (str): Channel name.
 
     Returns:
         tuple: A tuple containing calib results.
 
     """
 
-    if channel is None:
-        prefix = 'HIERARCH GAMSE WLCALIB'
-    else:
-        prefix = 'HIERARCH GAMSE WLCALIB CHANNEL %s'%channel
+    prefix = 'HIERARCH GAMSE WLCALIB'
 
     xorder = header[prefix+' XORDER']
     yorder = header[prefix+' YORDER']
