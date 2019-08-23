@@ -23,13 +23,14 @@ from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                               self_reference_singlefiber,
-                               wl_reference, get_time_weight)
+                               #self_reference_singlefiber,
+                               #wl_reference,
+                               get_time_weight)
 from ..echelle.background import find_background
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from ..utils.obslog import parse_num_seq, read_obslog
-from .common import plot_background_aspect1, PrintInfo
+from .common import plot_background_aspect1, FormattedInfo
 from .reduction          import Reduction
 
 def get_badpixel_mask(shape, bins):
@@ -1608,17 +1609,45 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
-print_columns = [
-        ('frameid',    'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',     'str',   '{:^12s}', '{0[fileid]:12s}'),
-        ('imgtype',    'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',     'str',   '{:^12s}', '{0[object]:12s}'),
-        ('i2cell',     'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
-        ('exptime',    'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate',    'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('saturation', 'int',   '{:^10s}', '{0[saturation]:10d}'),
-        ('quantile95', 'int',   '{:^10s}', '{0[quantile95]:10d}'),
+all_columns = [
+        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+        ('fileid',  'str',   '{:^12s}', '{0[fileid]:12s}'),
+        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
+        ('i2cell',  'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
+        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+        ('nsat',    'int',   '{:^10s}', '{0[nsat]:10d}'),
+        ('q95',     'int',   '{:^10s}', '{0[q95]:10d}'),
         ]
+
+def print_wrapper(string, item):
+    """A wrapper for log printing for Xinglong216HRS pipeline.
+
+    Args:
+        string (str): The output string for wrapping.
+        item (:class:`astropy.table.Row`): The log item.
+
+    Returns:
+        str: The color-coded string.
+
+    """
+    imgtype = item['imgtype']
+    obj     = item['object']
+
+    if len(obj)>=4 and obj[0:4].lower()=='bias':
+        # bias images, use dim (2)
+        return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif imgtype=='sci':
+        # sci images, use highlights (1)
+        return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif len(obj)>=4 and obj[0:4].lower()=='thar':
+        # arc lamp, use light yellow (93)
+        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    else:
+        return string
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
@@ -1642,8 +1671,9 @@ def make_obslog(path):
     obsinfo_file = 'obsinfo.txt'
     has_obsinfo = os.path.exists(obsinfo_file)
     if has_obsinfo:
-        io_registry.register_reader('obslog', Table, read_obslog)
-        addinfo_table = Table.read(obsinfo_file, format='obslog')
+        #io_registry.register_reader('obslog', Table, read_obslog)
+        #addinfo_table = Table.read(obsinfo_file, format='obslog')
+        addinfo_table = read_obslog(obsinfo_file)
         addinfo_lst = {row['frameid']:row for row in addinfo_table}
         # prepare the difference list between real observation time and FITS
         # time
@@ -1655,16 +1685,20 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid',     'S12'),  ('imgtype',    'S3'),
-        ('object',  'S12'), ('i2cell',     'bool'), ('exptime',    'f4'),
-        ('obsdate', Time),  ('saturation', 'i4'),   ('quantile95', 'i4'),
+        ('frameid', 'i2'),  ('fileid', 'S12'),  ('imgtype', 'S3'),
+        ('object',  'S12'), ('i2cell', 'bool'), ('exptime', 'f4'),
+        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
         ])
 
     # prepare infomation to print
-    pinfo = PrintInfo(print_columns)
+    pinfo = FormattedInfo(all_columns,
+            ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
+            'obsdate', 'nsat', 'q95'])
 
+    # print header of logtable
+    print(pinfo.get_separator())
     print(pinfo.get_title())
-    print(pinfo.get_dtype())
+    #print(pinfo.get_dtype())
     print(pinfo.get_separator())
 
     prev_frameid = -1
@@ -1734,7 +1768,12 @@ def make_obslog(path):
         # get table Row object. (not elegant!)
         item = logtable[-1]
 
-        print(pinfo.get_format().format(item))
+        # print log item with colors
+        string = pinfo.get_format(has_esc=False).format(item)
+        print(print_wrapper(string, item))
+
+        prev_frameid = frameid
+
     print(pinfo.get_separator())
     
     # sort by obsdate
@@ -1745,26 +1784,38 @@ def make_obslog(path):
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
         # plot time offset
-        fig = plt.figure(figsize=(8, 4), dpi=150)
-        ax = fig.add_axes([0.1,0.2,0.85,0.75])
+        fig = plt.figure(figsize=(9, 6), dpi=100)
+        ax = fig.add_axes([0.12,0.16,0.83,0.77])
         xdates = mdates.date2num(real_obsdate_lst)
-        ax.plot_date(xdates, delta_t_lst, 'o-')
+        ax.plot_date(xdates, delta_t_lst, 'o-', ms=6)
         ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
-        ax.set_xlabel('Real Time', fontsize=9)
-        ax.set_ylabel('Real Time - FTIS Time (sec)', fontsize=9)
+        ax.set_xlabel('Log Time', fontsize=12)
+        ax.set_ylabel('Log Time - FTIS Time (sec)', fontsize=12)
         x1, x2 = ax.get_xlim()
         y1, y2 = ax.get_ylim()
         ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2,
-                'Time offset = %d seconds'%time_offset)
+                'Time offset = %d seconds'%time_offset, fontsize=14)
         ax.set_xlim(x1, x2)
         ax.set_ylim(y1, y2)
+        ax.grid(True, ls='-', color='w')
+        ax.set_facecolor('#eaeaf6')
+        ax.set_axisbelow(True)
+        ax.spines['bottom'].set_color('none')
+        ax.spines['left'].set_color('none')
+        ax.spines['top'].set_color('none')
+        ax.spines['right'].set_color('none')
+        for t in ax.xaxis.get_ticklines():
+            t.set_color('none')
+        for t in ax.yaxis.get_ticklines():
+            t.set_color('none')
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
         #plt.setp(ax.get_xticklabels(), rotation=30)i
         fig.autofmt_xdate()
         for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(9)
+            tick.label1.set_fontsize(10)
         for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(9)
+            tick.label1.set_fontsize(10)
+        fig.suptitle('Time Offsets Between Log and FITS', fontsize=15)
         fig.savefig('obsdate_offset.png')
         plt.close(fig)
 
