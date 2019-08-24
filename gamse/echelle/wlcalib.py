@@ -136,7 +136,7 @@ class InfoFrame(tk.Frame):
         self.fname_label = tk.Label(master = self,
                                     width  = width,
                                     font   = ('Arial', 14),
-                                    title  = title,
+                                    text   = title,
                                     )
         self.order_label = tk.Label(master = self,
                                     width  = width,
@@ -607,7 +607,7 @@ class CalibWindow(tk.Frame):
             'yorder':        yorder,
             'maxiter':       maxiter,
             'clipping':      clipping,
-            'snr_threshold': snr_threshold,
+            'q_threshold':   q_threshold,
             # wavelength fitting results
             'std':           0,
             'coeff':         np.array([]),
@@ -1350,20 +1350,20 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
 
     # organize results
     result = {
-              'coeff':         calibwindow.param['coeff'],
-              'npixel':        calibwindow.param['npixel'],
-              'k':             calibwindow.param['k'],
-              'offset':        calibwindow.param['offset'],
-              'std':           calibwindow.param['std'],
-              'nuse':          calibwindow.param['nuse'],
-              'ntot':          calibwindow.param['ntot'],
-              'identlist':     calibwindow.identlist,
-              'window_size':   calibwindow.param['window_size'],
-              'xorder':        calibwindow.param['xorder'],
-              'yorder':        calibwindow.param['yorder'],
-              'maxiter':       calibwindow.param['maxiter'],
-              'clipping':      calibwindow.param['clipping'],
-              'snr_threshold': calibwindow.param['snr_threshold'],
+              'coeff':       calibwindow.param['coeff'],
+              'npixel':      calibwindow.param['npixel'],
+              'k':           calibwindow.param['k'],
+              'offset':      calibwindow.param['offset'],
+              'std':         calibwindow.param['std'],
+              'nuse':        calibwindow.param['nuse'],
+              'ntot':        calibwindow.param['ntot'],
+              'identlist':   calibwindow.identlist,
+              'window_size': calibwindow.param['window_size'],
+              'xorder':      calibwindow.param['xorder'],
+              'yorder':      calibwindow.param['yorder'],
+              'maxiter':     calibwindow.param['maxiter'],
+              'clipping':    calibwindow.param['clipping'],
+              'q_threshold': calibwindow.param['q_threshold'],
             }
 
     # save ident list
@@ -2765,7 +2765,8 @@ def get_calib_from_header(header):
 
     """
 
-    prefix = 'HIERARCH GAMSE WLCALIB'
+    #prefix = 'HIERARCH GAMSE WLCALIB'
+    prefix = 'HIERARCH EDRS WVCALIB'
 
     xorder = header[prefix+' XORDER']
     yorder = header[prefix+' YORDER']
@@ -2788,8 +2789,10 @@ def get_calib_from_header(header):
               'yorder':        yorder,
               'maxiter':       header[prefix+' MAXITER'],
               'clipping':      header[prefix+' CLIPPING'],
-              'q_threshold':   header[prefix+' Q_THRESHOLD'],
-              'direction':     header[prefix+' DIRECTION'],
+              #'q_threshold':   header[prefix+' Q_THRESHOLD'],
+              'q_threshold':   header[prefix+' SNR_THRESHOLD'],
+              #'direction':     header[prefix+' DIRECTION'],
+              'direction':     'xr-',
             }
     return calib
 
