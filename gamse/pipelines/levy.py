@@ -16,8 +16,9 @@ from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat import get_slit_flat
 from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
-                               self_reference_singlefiber,
-                               wl_reference, get_time_weight)
+                               #self_reference_singlefiber,
+                               #wl_reference,
+                               get_time_weight)
 from ..echelle.background import find_background
 from ..utils.config import read_config
 from ..utils.obslog import read_obslog

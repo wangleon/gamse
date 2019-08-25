@@ -24,7 +24,7 @@ def combine_images(data,
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
         maxiter (int): Maximum number of iterations.
-        mask (str or :class:`numpy.ndarray`): Initila mask.
+        mask (str or :class:`numpy.ndarray`): Initial mask.
 
     Returns:
         :class:`numpy.ndarray`: Combined image array.
