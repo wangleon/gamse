@@ -78,12 +78,12 @@ def correct_overscan(data, mask=None):
     new_data = data[:,20:2068] - ovrmean1
     
     card_lst = []
-    card_lst.append(('OVERSCAN',        True))
-    card_lst.append(('OVERSCAN METHOD', 'mean'))
-    card_lst.append(('OVERSCAN AXIS-1', '1:20'))
-    card_lst.append(('OVERSCAN AXIS-2', '{}:{}'.format(vy1,vy2)))
-    card_lst.append(('OVERSCAN MEAN',   ovrmean1))
-    card_lst.append(('OVERSCAN STDEV',  ovrstd1))
+    card_lst.append(('OVERSCAN CORRECTED', True))
+    card_lst.append(('OVERSCAN METHOD',    'mean'))
+    card_lst.append(('OVERSCAN AXIS-1',    '1:20'))
+    card_lst.append(('OVERSCAN AXIS-2',    '{}:{}'.format(vy1,vy2)))
+    card_lst.append(('OVERSCAN MEAN',      ovrmean1))
+    card_lst.append(('OVERSCAN STDEV',     ovrstd1))
 
     return new_data, card_lst, ovrmean1
 
@@ -632,7 +632,8 @@ def make_obslog(path):
     """
     
     # standard naming convenction for fileid
-    name_pattern = '^\d{8}_\d{4}_FOC\d{4}_[A-Za-z0-9]{4}$'
+    name_pattern1 = '^\d{8}_\d{4}_FOC\d{4}_[A-Za-z0-9]{4}$'
+    name_pattern2 = '^fcs_\d{14}$'
 
     fname_lst = sorted(os.listdir(path))
 
@@ -653,8 +654,8 @@ def make_obslog(path):
 
     # prepare infomation to print
     pinfo = FormattedInfo(all_columns,
-                    ['frameid', 'fileid', 'imgtype', 'object', 'exptime',
-                        'obsdate', 'nsat', 'q95'])
+            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
+            'nsat', 'q95'])
 
     # print header of logtable
     print(pinfo.get_separator())
@@ -663,6 +664,7 @@ def make_obslog(path):
     print(pinfo.get_separator())
 
     # start scanning the raw files
+    prev_frameid = 0
     for fname in fname_lst:
         if fname[-5:] != '.fits':
             continue
@@ -677,7 +679,7 @@ def make_obslog(path):
         obsdate = Time(head['FRAME'])
         exptime = head['EXPOSURE']
 
-        if re.match(name_pattern, fileid) is not None:
+        if re.match(name_pattern1, fileid) is not None:
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
                 imgtype, objectname = 'cal', 'Bias'
@@ -689,6 +691,10 @@ def make_obslog(path):
                 objectname = 'Unknown'
                 imgtype = ('cal', 'sci')[fileid[22:24]=='SC']
             frameid = int(fileid[9:13])
+            has_frameid = True
+        elif re.match(name_pattern2, fileid) is not None:
+            frameid = prev_frameid + 1
+            imgtype, objectname = 'cal', ''
             has_frameid = True
         else:
             # fileid does not follow the naming convetion
@@ -702,8 +708,8 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
 
-        item = [frameid, fileid, imgtype, objectname, exptime, obsdate, saturation,
-                quantile95]
+        item = [frameid, fileid, imgtype, objectname, exptime, obsdate,
+                saturation, quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
@@ -711,6 +717,9 @@ def make_obslog(path):
         # print log item with colors
         string = pinfo.get_format(has_esc=False).format(item)
         print(print_wrapper(string, item))
+
+        prev_frameid = frameid
+
     print(pinfo.get_separator())
 
     logtable.sort('obsdate')
@@ -1089,7 +1098,6 @@ class TraceFigure(TraceFigureCommon):
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
 
-
 def reduce():
     """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
     Observatory.
@@ -1222,8 +1230,7 @@ def reduce_singlefiber(logtable, config):
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
                     del head['BLANK']
-                for card in card_lst:
-                    key, value = card
+                for key, value in card_lst:
                     key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
@@ -1292,7 +1299,7 @@ def reduce_singlefiber(logtable, config):
                                     sigma=smooth_sigma, mode=smooth_mode)
 
                     # write information to FITS header
-                    bias_card_lst.append((key_prefix,           True))
+                    bias_card_lst.append((key_prefix+' CORRECTED', True))
                     bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
                     bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
                     bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
@@ -1303,7 +1310,7 @@ def reduce_singlefiber(logtable, config):
                 bias = bias_smooth
             else:
                 # bias not smoothed
-                bias_card_lst.append((key_prefix, False))
+                bias_card_lst.append((key_prefix+' CORRECTED', False))
 
             # create new FITS Header for bias
             head = fits.Header()
@@ -1363,13 +1370,13 @@ def reduce_singlefiber(logtable, config):
 
         # single-fiber
         flat_filename = os.path.join(midproc,
-                'flat_{}.fits'.format(flatname))
+                        'flat_{}.fits'.format(flatname))
         aperset_filename = os.path.join(midproc,
-                'trace_flat_{}.trc'.format(flatname))
+                        'trace_flat_{}.trc'.format(flatname))
         aperset_regname = os.path.join(midproc,
-                'trace_flat_{}.reg'.format(flatname))
+                        'trace_flat_{}.reg'.format(flatname))
         trace_figname = os.path.join(report,
-                'trace_flat_{}.{}'.format(flatname, fig_format))
+                        'trace_flat_{}.{}'.format(flatname, fig_format))
 
         # get flat_data and mask_array for each flat group
         if mode=='debug' and os.path.exists(flat_filename) \
@@ -1411,8 +1418,7 @@ def reduce_singlefiber(logtable, config):
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
                     del head['BLANK']
-                for card in card_lst:
-                    key, value = card
+                for key, value in card_lst:
                     key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
@@ -1655,8 +1661,7 @@ def reduce_singlefiber(logtable, config):
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
-        for card in card_lst:
-            key, value = card
+        for key, value in card_lst:
             key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
@@ -1673,7 +1678,7 @@ def reduce_singlefiber(logtable, config):
                     lower_limit = section.getfloat('lower_limit'),
                     upper_limit = section.getfloat('upper_limit'),
                     )
-        head = master_aperset.to_fitsheader(head, channel=None)
+        head = master_aperset.to_fitsheader(head)
     
         spec = []
         for aper, item in sorted(spectra1d.items()):
@@ -1698,7 +1703,7 @@ def reduce_singlefiber(logtable, config):
                                             'FOCES/wlcalib')
 
                 result = select_calib_from_database(
-                    search_path, statime_key, head[statime_key])
+                        search_path, statime_key, head[statime_key])
                 ref_spec, ref_calib = result
     
                 if ref_spec is None or ref_calib is None:
@@ -2849,14 +2854,14 @@ def reduce_multifiber(logtable, config):
 
             # save calib results and the oned spec for this fiber
             head_fiber = head.copy()
-            for card in card_lst:
-                key, value = card
+            for key,value in card_lst:
                 key = 'HIERARCH GAMSE WLCALIB '+key
                 head_fiber.append((key, value))
-            pri_hdu  = fits.PrimaryHDU(header=head_fiber)
-            tbl_hdu1 = fits.BinTableHDU(spec)
-            tbl_hdu2 = fits.BinTableHDU(identlist)
-            hdu_lst = fits.HDUList([pri_hdu, tbl_hdu1, tbl_hdu2])
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(header=head_fiber),
+                        fits.BinTableHDU(spec),
+                        fits.BinTableHDU(identlist),
+                        ])
             filename = os.path.join(midproc, 'wlcalib.{}.{}.fits'.format(
                                                 fileid, fiber))
             hdu_lst.writeto(filename, overwrite=True)
@@ -2875,8 +2880,7 @@ def reduce_multifiber(logtable, config):
         # combine ident line list
         newidentlist = combine_fiber_identlist(all_identlist)
         # append cards to fits header
-        for card in newcards:
-            key, value = card
+        for key, value in newcards:
             key = 'HIERARCH GAMSE WLCALIB '+key
             head.append((key, value))
         # pack and save to fits
