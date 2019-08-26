@@ -2765,8 +2765,8 @@ def get_calib_from_header(header):
 
     """
 
-    #prefix = 'HIERARCH GAMSE WLCALIB'
-    prefix = 'HIERARCH EDRS WVCALIB'
+    prefix = 'HIERARCH GAMSE WLCALIB'
+    #prefix = 'HIERARCH EDRS WVCALIB'
 
     xorder = header[prefix+' XORDER']
     yorder = header[prefix+' YORDER']
@@ -2789,10 +2789,10 @@ def get_calib_from_header(header):
               'yorder':        yorder,
               'maxiter':       header[prefix+' MAXITER'],
               'clipping':      header[prefix+' CLIPPING'],
-              #'q_threshold':   header[prefix+' Q_THRESHOLD'],
-              'q_threshold':   header[prefix+' SNR_THRESHOLD'],
-              #'direction':     header[prefix+' DIRECTION'],
-              'direction':     'xr-',
+              'q_threshold':   header[prefix+' Q_THRESHOLD'],
+              #'q_threshold':   header[prefix+' SNR_THRESHOLD'],
+              'direction':     header[prefix+' DIRECTION'],
+              #'direction':     'xr-',
             }
     return calib
 
