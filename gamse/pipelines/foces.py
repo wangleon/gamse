@@ -1882,8 +1882,7 @@ def reduce_singlefiber(logtable, config):
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
-        for card in card_lst:
-            key, value = card
+        for key, value in card_lst:
             key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
@@ -2065,8 +2064,7 @@ def reduce_multifiber(logtable, config):
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
                     del head['BLANK']
-                for card in card_lst:
-                    key, value = card
+                for key, value in card_lst:
                     key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
@@ -2664,8 +2662,7 @@ def reduce_multifiber(logtable, config):
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
-        for card in card_lst:
-            key, value = card
+        for key, value in card_lst:
             key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
