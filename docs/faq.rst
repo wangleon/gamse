@@ -31,3 +31,14 @@ Then, you have to reinstall matplotlib by running:
    pip --no-cache-dir install -U --force-reinstall matplotlib
 
 You may need `sudo` in front of the above commands to get the authentication.
+
+**Observing log file cannot be loaded correctly**
+
+An error message like:
+::
+    ValueError: Input values did not match any of the formats where the format keyword is optional ['datetime', 'iso', 'isot', 'yday', 'datetime64', 'fits', 'byear_str', 'jyear_str']
+
+is probably caused by unexpected strings and/or alignment problem in the
+`.obslog` file.
+For example, aligments with tab characters instead of space can result in this
+problem.
