@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 import os
 import time
 import math
+import copy
 import numpy as np
 from numpy.polynomial import Polynomial, Chebyshev
 import astropy.io.fits   as fits
@@ -268,6 +269,9 @@ class ApertureSet(object):
 
     def values(self):
         return self._dict.values()
+
+    def copy(self):
+        return copy.deepcopy(self)
 
     def __str__(self):
         string = ''
@@ -569,6 +573,15 @@ class ApertureSet(object):
         for _aper, _aper_loc in self.items():
             new_dict[_aper+offset] = _aper_loc
         self._dict = new_dict
+
+    def add_offset(self, offset):
+        """Add an offset to each aperture.
+
+        Args:
+            offset (float): Offset to add.
+        """
+        for aper in self:
+            self[aper].set_position(self[aper].position + offset)
 
     def get_positions(self, x):
         """Get central positions of all chelle orders.
