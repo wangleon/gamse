@@ -63,7 +63,8 @@ def get_local_minima(x, window=None):
             window = np.repeat(window, len(x))
         elif isinstance(window, np.ndarray):
             # window is a numpy array
-            if np.issubdtype(window.dtype, int):
+            #if np.issubdtype(window.dtype, int):
+            if window.dtype.type in [np.int16, np.int32, np.int64]:
                 pass
             else:
                 # window are not integers
