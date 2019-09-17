@@ -613,6 +613,7 @@ class CalibWindow(tk.Frame):
             'coeff':         np.array([]),
             'nuse':          0,
             'ntot':          0,
+            'direction':     '',
             }
 
         for row in self.spec:
@@ -730,7 +731,6 @@ class CalibWindow(tk.Frame):
         offset  = self.param['offset']
         coeff   = self.param['coeff']
         npixel  = self.param['npixel']
-        channel = self.param['channel']
         for aperture in sorted(self.spec['aperture']):
             mask = self.spec['aperture'] == aperture
             flux = self.spec[mask][0]['flux']
@@ -1094,7 +1094,6 @@ class CalibWindow(tk.Frame):
         """Response function of identifying a new line.
         """
         aperture = self.param['aperture']
-        channel  = self.param['channel']
         k        = self.param['k']
         offset   = self.param['offset']
 
@@ -1348,12 +1347,24 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
 
     master.mainloop()
 
+    coeff  = calibwindow.param['coeff']
+    npixel = calibwindow.param['npixel']
+    k      = calibwindow.param['k']
+    offset = calibwindow.param['offset']
+
+    # find the direction code
+    aper = spec['aperture'][0]
+    order = k*aper + offset
+    wl = get_wavelength(coeff, npixel, np.arange(npixel), order)
+    # refresh the direction code
+    new_direction = 'x' + {1:'r', -1:'b'}[k] + '-+'[wl[0] < wl[-1]]
+
     # organize results
     result = {
-              'coeff':       calibwindow.param['coeff'],
-              'npixel':      calibwindow.param['npixel'],
-              'k':           calibwindow.param['k'],
-              'offset':      calibwindow.param['offset'],
+              'coeff':       coeff,
+              'npixel':      npixel,
+              'k':           k,
+              'offset':      offset,
               'std':         calibwindow.param['std'],
               'nuse':        calibwindow.param['nuse'],
               'ntot':        calibwindow.param['ntot'],
@@ -1364,6 +1375,7 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
               'maxiter':     calibwindow.param['maxiter'],
               'clipping':    calibwindow.param['clipping'],
               'q_threshold': calibwindow.param['q_threshold'],
+              'direction':   new_direction,
             }
 
     # save ident list
@@ -1536,6 +1548,9 @@ def is_identified(wavelength, identlist, aperture):
     """
     if aperture in identlist:
         list1 = identlist[aperture]
+        if list1.size==0:
+            # has no line in this aperture
+            return False
         diff = np.abs(list1['wavelength'] - wavelength)
         if diff.min()<1e-3:
             return True
@@ -1567,12 +1582,14 @@ def find_order(identlist, npixel):
     for aperture, list1 in sorted(identlist.items()):
         if list1.size<3:
             continue
-        less_half, more_half = False, False
-        for pix, wav in zip(list1['pixel'], list1['wavelength']):
-            if pix < npixel/2.:
-                less_half = True
-            elif pix >= npixel/2.:
-                more_half = True
+        less_half = (list1['pixel'] < npixel/2).sum()>0
+        more_half = (list1['pixel'] > npixel/2).sum()>0
+        #less_half, more_half = False, False
+        #for pix, wav in zip(list1['pixel'], list1['wavelength']):
+        #    if pix < npixel/2.:
+        #        less_half = True
+        #    elif pix >= npixel/2.:
+        #        more_half = True
         if less_half and more_half:
             if list1['pixel'].size>2:
                 deg = 2
@@ -2321,7 +2338,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         # aperture_koffset and pixel_koffset
         old_aperture = (aperture - aperture_offset)/aperture_k
 
-        # now conver the old aperture number to echelle order number (m)
+        # now convert the old aperture number to echelle order number (m)
         order = k*old_aperture + offset
         wl = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
         w1 = min(wl[0], wl[-1])
