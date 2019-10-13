@@ -2,7 +2,8 @@
 import os
 import sys
 
-from gamse.pipelines import make_obslog, reduce_echelle, show_onedspec
+from gamse.pipelines import (make_config, make_obslog, reduce_echelle,
+                                show_onedspec)
 
 def print_help():
     pass
@@ -12,6 +13,8 @@ def main():
     if len(sys.argv)==1:
         print_help()
         exit()
+    elif sys.argv[1] == 'config':
+        make_config()
     elif sys.argv[1] == 'list':
         # list the observing log of raw data
         make_obslog()

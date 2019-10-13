@@ -116,6 +116,10 @@ def make_obslog():
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
+def make_config():
+    """Make config file"""
+    pass
+
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
 
