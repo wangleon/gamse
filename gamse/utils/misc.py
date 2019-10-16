@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 import getpass
@@ -64,3 +65,29 @@ def write_system_info():
             ]
     separator = os.linesep + '  '
     logger.info(separator.join(info))
+
+def extract_date(string):
+    """Extract datetime from a string.
+
+    Args:
+        string (str): Input string.
+
+    Returns:
+        string (str):
+        
+    """
+    date_exp = re.compile('(\d{4})[-]?(\d{2})[-]?(\d{2})')
+    mobj = date_exp.match(string)
+    if mobj is None:
+        return None
+    year  = int(mobj.group(1))
+    month = int(mobj.group(2))
+    day   = int(mobj.group(3))
+
+    # validate the date
+    datestr = '{:04d}-{:02d}-{:02d}'.format(year, month, day)
+    try:
+        day = datetime.datetime.strptime(datestr, '%Y-%m-%d')
+        return None
+    except:
+        return datestr
