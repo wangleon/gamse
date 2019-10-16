@@ -2186,7 +2186,7 @@ def reduce_multifiber(logtable, config):
                 # check the lengthes of names for other channels
                 # if this list has no elements (only one fiber) or has no
                 # names, this frame is a single-channel flat
-                other_lst = [v for i, name in enumerate(fiberobj_lst)
+                other_lst = [name for i, name in enumerate(fiberobj_lst)
                                     if i != ifiber and len(name)>0]
                 if len(other_lst)>0:
                     # this frame is not a single chanel flat. Skip
@@ -2719,10 +2719,8 @@ def reduce_multifiber(logtable, config):
                     search_path = os.path.join(database_path,
                                                 'FOCES/wlcalib')
 
-                    result = select_calib_from_database(
+                    ref_spec, ref_calib = select_calib_from_database(
                         search_path, statime_key, head[statime_key])
-                    ref_spec, ref_calib = result
-
 
                     if ref_spec is None or ref_calib is None:
                         # if failed, pop up a calibration window and
@@ -2859,8 +2857,8 @@ def reduce_multifiber(logtable, config):
                         fits.BinTableHDU(spec),
                         fits.BinTableHDU(identlist),
                         ])
-            filename = os.path.join(midproc, 'wlcalib.{}.{}.fits'.format(
-                                                fileid, fiber))
+            filename = os.path.join(midproc,
+                                    'wlcalib.{}.{}.fits'.format(fileid, fiber))
             hdu_lst.writeto(filename, overwrite=True)
 
             # pack to calib_lst
