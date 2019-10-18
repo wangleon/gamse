@@ -608,33 +608,12 @@ def reduce():
     config.read(config_file_lst)
 
     section = config['data']
-    multi_fiber = section.getboolean('multi_fiber', True)
+    fibermode = section.get('fibermode')
 
-    # find built-in config file
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-
-    # load general config file
-    config_file = os.path.join(config_path, 'Xinglong216HRS.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.insert(0, config_file)
-
-    if multi_fiber:
-        config_file = os.path.join(config_path,
-                                    'Xinglong216HRS.doublefiber.cfg')
-        if os.path.exists(config_file):
-            config_file_lst.insert(0, config_file)
-        config.read(config_file_lst)
-
-        reduce_multifiber(logtable, config)
-    else:
-        config_file = os.path.join(config_path,
-                                    'Xinglong216HRS.singlefiber.cfg')
-        if os.path.exists(config_file):
-            config_file_lst.insert(0, config_file)
-        config.read(config_file_lst)
-
+    if fibermode == 'single':
         reduce_singlefiber(logtable, config)
-
+    elif fibermode == 'double':
+        reduce_multifiber(logtable, config)
 
 def reduce_singlefiber(logtable, config):
 
@@ -1431,12 +1410,10 @@ def reduce_multifiber(logtable, config):
     section     = config['data']
     rawdata     = section.get('rawdata')
     statime_key = section.get('statime_key')
-    statime_key = 'DATE-OBS'
     exptime_key = section.get('exptime_key')
-    exptime_key = 'EXPOSURE'
     direction   = section.get('direction')
     # if mulit-fiber, get fiber offset list from config file
-    fiber_offsets = [float(v) for v in section.get('fiber_offsets').split(',')]
+    fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
     section     = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -2767,15 +2744,20 @@ def make_config():
     config = configparser.ConfigParser()
 
     config.add_section('data')
-    # since 2019 there's another type of FITS header
+
+    # determine the time-dependent keywords
     if input_datetime > datetime.datetime.strptime('2019-01-01', '%Y-%m-%d'):
+        # since 2019 there's another type of FITS header
+        statime_key = 'DATE-STA'
         exptime_key = 'EXPOSURE'
     else:
+        statime_key = 'DATE-OBS'
         exptime_key = 'EXPTIME'
+
     config.set('data', 'telescope',   'Xinglong216')
     config.set('data', 'instrument',  'HRS')
     config.set('data', 'rawdata',     'rawdata')
-    config.set('data', 'statime_key', 'DATE-STA')
+    config.set('data', 'statime_key', statime_key)
     config.set('data', 'exptime_key', exptime_key)
     config.set('data', 'direction',   'xr-')
     config.set('data', 'fibermode',   fibermode)
