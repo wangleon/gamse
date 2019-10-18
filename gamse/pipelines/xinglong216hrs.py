@@ -34,6 +34,7 @@ from ..echelle.background import find_background
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from ..utils.obslog import parse_num_seq, read_obslog
+from ..utils.misc import extract_date
 from .common import plot_background_aspect1, FormattedInfo
 from .reduction          import Reduction
 
@@ -103,16 +104,20 @@ def get_mask(data, head):
     saturation_adu = 65535
 
     # determine shape of output image (also the shape of science region)
-    y1 = head['CRVAL2']
-    y2 = y1 + head['NAXIS2'] - head['ROVER']
-    x1 = head['CRVAL1']
-    x2 = x1 + head['NAXIS1'] - head['COVER']
+    y1 = head.get('CRVAL2', 0)
+    rover = head.get('ROVER', 0)
+    y2 = y1 + head['NAXIS2'] - rover
+    x1 = head.get('CRVAL1', 0)
+    cover = head.get('COVER', 64)
+    x2 = x1 + head['NAXIS1'] - cover
     newshape = (y2-y1, x2-x1)
 
     # find the saturation mask
     mask_sat = (data[y1:y2, x1:x2] >= saturation_adu)
     # get bad pixel mask
-    bins = (head['RBIN'], head['CBIN'])
+    rbin = head.get('RBIN', 1)
+    cbin = head.get('CBIN', 1)
+    bins = (rbin, cbin)
     mask_bad = get_badpixel_mask(newshape, bins=bins)
 
     mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
@@ -150,7 +155,8 @@ def correct_overscan(data, head, mask=None):
             return data
 
     h, w = data.shape
-    x1, x2 = w-head['COVER'], w
+    cover = head.get('COVER', 64)
+    x1, x2 = w-cover, w
 
     # find the overscan level along the y-axis
     ovr_lst1 = data[0:h//2,x1+2:x2].mean(dtype=np.float64, axis=1)
@@ -168,11 +174,13 @@ def correct_overscan(data, head, mask=None):
                     window_length=winlength, polyorder=polyorder)
 
     # determine shape of output image (also the shape of science region)
-    y1 = head['CRVAL2']
-    y2 = y1 + head['NAXIS2'] - head['ROVER']
+    y1 = head.get('CRVAL2', 0)
+    rover = head.get('ROVER', 0)
+    y2 = y1 + head['NAXIS2'] - rover
     ymid = (y1 + y2)//2
-    x1 = head['CRVAL1']
-    x2 = x1 + head['NAXIS1'] - head['COVER']
+    x1 = head.get('CRVAL1', 0)
+    cover = head.get('COVER', 64)
+    x2 = x1 + head['NAXIS1'] - cover
     newshape = (y2-y1, x2-x1)
 
     # subtract overscan
@@ -582,25 +590,53 @@ def reduce():
     # read obs log
     logtable = read_obslog(logname_lst[0])
 
-    # load config files
-    config_file_lst = []
-    # find built-in config file
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-    config_file = os.path.join(config_path, 'Xinglong216HRS.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.append(config_file)
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
-
     # load both built-in and local config files
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
+
+
+    # load config files
+    config_file_lst = []
+
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if fname[0:14]=='Xinglong216HRS' and fname[-4:]=='.cfg':
+            config_file_lst.append(fname)
+    
     config.read(config_file_lst)
+
+    section = config['data']
+    multi_fiber = section.getboolean('multi_fiber', True)
+
+    # find built-in config file
+    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
+
+    # load general config file
+    config_file = os.path.join(config_path, 'Xinglong216HRS.cfg')
+    if os.path.exists(config_file):
+        config_file_lst.insert(0, config_file)
+
+    if multi_fiber:
+        config_file = os.path.join(config_path,
+                                    'Xinglong216HRS.doublefiber.cfg')
+        if os.path.exists(config_file):
+            config_file_lst.insert(0, config_file)
+        config.read(config_file_lst)
+
+        reduce_multifiber(logtable, config)
+    else:
+        config_file = os.path.join(config_path,
+                                    'Xinglong216HRS.singlefiber.cfg')
+        if os.path.exists(config_file):
+            config_file_lst.insert(0, config_file)
+        config.read(config_file_lst)
+
+        reduce_singlefiber(logtable, config)
+
+
+def reduce_singlefiber(logtable, config):
 
     # extract keywords from config file
     section     = config['data']
@@ -658,7 +694,7 @@ def reduce():
                 print(' '*2 + pinfo2.get_format().format(logitem, overmean))
 
                 bias_data_lst.append(data)
-                bias_fileid_lst.apend(logitem['fileid'])
+                bias_fileid_lst.append(logitem['fileid'])
 
         n_bias = len(bias_data_lst)         # number of bias images
         has_bias = n_bias > 0
@@ -1062,6 +1098,7 @@ def reduce():
                     )
         head = master_aperset.to_fitsheader(head)
     
+        # pack to a structured array
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
@@ -1069,7 +1106,6 @@ def reduce():
                     np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
         spec = np.array(spec, dtype=spectype)
     
-
         wlcalib_fig = os.path.join(report,
                 'wlcalib_{}.{}'.format(fileid, fig_format))
 
@@ -1388,6 +1424,892 @@ def reduce():
             hdu_lst.writeto(filename, overwrite=True)
             logger.info('FileID: {} - Spectra written to {}'.format(
                 fileid, filename))
+
+def reduce_multifiber(logtable, config):
+
+    # extract keywords from config file
+    section     = config['data']
+    rawdata     = section.get('rawdata')
+    statime_key = section.get('statime_key')
+    statime_key = 'DATE-OBS'
+    exptime_key = section.get('exptime_key')
+    exptime_key = 'EXPOSURE'
+    direction   = section.get('direction')
+    # if mulit-fiber, get fiber offset list from config file
+    fiber_offsets = [float(v) for v in section.get('fiber_offsets').split(',')]
+    section     = config['reduce']
+    midproc     = section.get('midproc')
+    onedspec    = section.get('onedspec')
+    report      = section.get('report')
+    mode        = section.get('mode')
+    fig_format  = section.get('fig_format')
+    oned_suffix = section.get('oned_suffix')
+
+    # create folders if not exist
+    if not os.path.exists(report):   os.mkdir(report)
+    if not os.path.exists(onedspec): os.mkdir(onedspec)
+    if not os.path.exists(midproc):  os.mkdir(midproc)
+
+    # initialize printing infomation
+    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
+    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
+
+    # count the number of fibers
+    n_fiber = 1
+    for logitem in logtable:
+        n = len(logitem['object'].split(';'))
+        n_fiber = max(n_fiber, n)
+    message = ', '.join(['multi_fiber = True',
+                         'number of fiber = {}'.format(n_fiber)])
+    print(message)
+
+    ############################# parse bias ###################################
+    section = config['reduce.bias']
+    bias_file = section['bias_file']
+
+    if os.path.exists(bias_file):
+        has_bias = True
+        # load bias data from existing file
+        bias, head = fits.getdata(bias_file, header=True)
+        logger.info('Load bias from image: %s'%bias_file)
+    else:
+        bias_data_lst = []
+        bias_fileid_lst = []
+
+        for logitem in logtable:
+            if logitem['object'].strip().lower()=='bias':
+                filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                data, head = fits.getdata(filename, header=True)
+                mask = get_mask(data, head)
+                data, card_lst, overmean = correct_overscan(data, head, mask)
+
+                for key, value in card_lst:
+                    key = 'HIERARCH GAMSE '+key
+                    head.append((key, value))
+
+                # print info
+                if len(bias_data_lst) == 0:
+                    print('* Combine Bias Images: {}'.format(bias_file))
+                    print(' '*2 + pinfo2.get_title())
+                    print(' '*2 + pinfo2.get_separator())
+                print(' '*2 + pinfo2.get_format().format(logitem, overmean))
+
+                bias_data_lst.append(data)
+                bias_fileid_lst.append(logitem['fileid'])
+
+        n_bias = len(bias_data_lst)         # number of bias images
+        has_bias = n_bias > 0
+
+        if has_bias:
+            # there is bias frames
+            print(' '*2 + pinfo2.get_separator())
+
+            # combine bias images
+            bias_data_lst = np.array(bias_data_lst)
+
+            section = config['reduce.bias']
+            bias = combine_images(bias_data_lst,
+                    mode       = 'mean',
+                    upper_clip = section.getfloat('cosmic_clip'),
+                    maxiter    = section.getint('maxiter'),
+                    mask       = (None, 'max')[n_bias>=3],
+                    )
+
+            # create new FITS Header for bias
+            bias_card_lst = []
+            bias_card_lst.append(('HIERARCH GAMSE BIAS NFILE', n_bias))
+
+            ############## bias smooth ##################
+            key_prefix = 'HIERARCH GAMSE BIAS SMOOTH'
+            if section.getboolean('smooth'):
+                # bias needs to be smoothed
+                smooth_method = section.get('smooth_method')
+
+                h, w = bias.shape
+                if smooth_method in ['gauss','gaussian']:
+                    # perform 2D gaussian smoothing
+                    smooth_sigma = section.getint('smooth_sigma')
+                    smooth_mode  = section.get('smooth_mode')
+                    bias_smooth = np.zeros_like(bias, dtype=np.float64)
+                    bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
+                                                sigma = smooth_sigma,
+                                                mode  = smooth_mode)
+                    bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
+                                                sigma = smooth_sigma,
+                                                mode  = smooth_mode)
+
+                    # write information to FITS header
+                    bias_card_lst.append((key_prefix+' CORRECTED',  True))
+                    bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
+                    bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
+                    bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
+                else:
+                    print('Unknown smooth method: ', smooth_method)
+                    pass
+
+                bias = bias_smooth
+            else:
+                # bias not smoothed
+                bias_card_lst.append((key_prefix+' CORRECTED', False))
+
+            # create new FITS Header for bias
+            head = fits.Header()
+            for card in bias_card_lst:
+                head.append(card)
+            fits.writeto(bias_file, bias, header=head, overwrite=True)
+
+            message = 'Bias image written to "{}"'.format(bias_file)
+            logger.info(message)
+            print(message)
+
+        else:
+            # no bias found
+            pass
+
+    ######################### find flat groups #################################
+    print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
+
+    # initialize flat_groups for multi-fibers
+    flat_groups = {chr(ifiber+65): {} for ifiber in range(n_fiber)}
+    # flat_groups = {'A':{'flat_M': [fileid1, fileid2, ...],
+    #                     'flat_N': [fileid1, fileid2, ...]}
+    #                'B':{'flat_M': [fileid1, fileid2, ...],
+    #                     'flat_N': [fileid1, fileid2, ...]}}
+
+    for logitem in logtable:
+        fiberobj_lst = [v.strip() for v in logitem['object'].split(';')]
+
+        if n_fiber > len(fiberobj_lst):
+            continue
+
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            objname = fiberobj_lst[ifiber].lower().strip()
+            mobj = re.match('^flat[\s\S]*', objname)
+            if mobj is not None:
+                # the object name of the channel matches "flat ???"
+            
+                # check the lengthes of names for other channels
+                # if this list has no elements (only one fiber) or has no
+                # names, this frame is a single-channel flat
+                other_lst = [name for i, name in enumerate(fiberobj_lst)
+                                    if i != ifiber and len(name)>0]
+                if len(other_lst)>0:
+                    # this frame is not a single chanel flat. Skip
+                    continue
+
+                # find a proper name (flatname) for this flat
+                if objname=='flat':
+                    # no special names given, use exptime
+                    flatname = '{:g}'.format(logitem['exptime'])
+                else:
+                    # flatname is given. replace space with "_"
+                    # remove "flat" before the objectname. e.g.,
+                    # "Flat Red" becomes "Red" 
+                    char = objname[4:].strip()
+                    flatname = char.replace(' ','_')
+            
+                # add flatname to flat_groups
+                if flatname not in flat_groups[fiber]:
+                    flat_groups[fiber][flatname] = []
+                flat_groups[fiber][flatname].append(logitem)
+
+    '''
+    # print the flat_groups
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        print(fiber)
+        for flatname, item_lst in flat_groups[fiber].items():
+            print(flatname)
+            for item in item_lst:
+                print(fiber, flatname, item['fileid'], item['exptime'])
+    '''
+    ################# Combine the flats and trace the orders ###################
+    flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+
+    # first combine the flats
+    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
+        for flatname, item_lst in sorted(fiber_flat_lst.items()):
+            nflat = len(item_lst)       # number of flat fieldings
+
+            flat_filename = os.path.join(midproc,
+                    'flat_{}_{}.fits'.format(fiber, flatname))
+            aperset_filename = os.path.join(midproc,
+                    'trace_flat_{}_{}.trc'.format(fiber, flatname))
+            aperset_regname = os.path.join(midproc,
+                    'trace_flat_{}_{}.reg'.format(fiber, flatname))
+            trace_figname = os.path.join(report,
+                    'trace_flat_{}_{}.{}'.format(fiber, flatname, fig_format))
+
+            # get flat_data and mask_array for each flat group
+            if mode=='debug' and os.path.exists(flat_filename) \
+                and os.path.exists(aperset_filename):
+                # read flat data and mask array
+                hdu_lst = fits.open(flat_filename)
+                flat_data  = hdu_lst[0].data
+                exptime    = hdu_lst[0].header[exptime_key]
+                mask_array = hdu_lst[1].data
+                hdu_lst.close()
+                aperset = load_aperture_set(aperset_filename)
+            else:
+                # if the above conditions are not satisfied, comine each flat
+                data_lst = []
+                head_lst = []
+                exptime_lst = []
+
+                print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+                print(' '*2 + pinfo2.get_separator())
+                print(' '*2 + pinfo2.get_title())
+                print(' '*2 + pinfo2.get_separator())
+
+                for i_item, logitem in enumerate(item_lst):
+                    # read each individual flat frame
+                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    data, head = fits.getdata(filename, header=True)
+                    exptime_lst.append(head[exptime_key])
+                    mask = get_mask(data, head)
+
+                    # generate the mask for all images
+                    sat_mask = (mask&4>0)
+                    bad_mask = (mask&2>0)
+                    if i_item == 0:
+                        allmask = np.zeros_like(mask, dtype=np.int16)
+                    allmask += sat_mask
+
+                    # correct overscan for flat
+                    data, card_lst, overmean = correct_overscan(data, head, mask)
+                    # head['BLANK'] is only valid for integer arrays.
+                    if 'BLANK' in head:
+                        del head['BLANK']
+                    for card in card_lst:
+                        key, value = card
+                        key = 'HIERARCH GAMSE '+key
+                        head.append((key, value))
+
+                    # correct bias for flat, if has bias
+                    if has_bias:
+                        data = data - bias
+                        logger.info('Bias corrected')
+                    else:
+                        logger.info('No bias. skipped bias correction')
+
+                    # print info
+                    string = pinfo2.get_format().format(logitem, overmean)
+                    print(' '*2 + print_wrapper(string, logitem))
+
+                    data_lst.append(data)
+
+                print(' '*2 + pinfo2.get_separator())
+
+                if nflat == 1:
+                    flat_data = data_lst[0]
+                else:
+                    data_lst = np.array(data_lst)
+                    flat_data = combine_images(data_lst,
+                                    mode       = 'mean',
+                                    upper_clip = 10,
+                                    maxiter    = 5,
+                                    mask       = (None, 'max')[nflat>3],
+                                    )
+
+                # get mean exposure time and write it to header
+                head = fits.Header()
+                exptime = np.array(exptime_lst).mean()
+                head[exptime_key] = exptime
+
+                # find saturation mask
+                sat_mask = allmask > nflat/2.
+                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+
+                # pack results and save to fits
+                hdu_lst = fits.HDUList([
+                            fits.PrimaryHDU(flat_data, head),
+                            fits.ImageHDU(mask_array),
+                            ])
+                hdu_lst.writeto(flat_filename, overwrite=True)
+
+                # now flt_data and mask_array are prepared
+
+                # create the trace figure
+                tracefig = TraceFigure()
+
+                # if debackground before detecting the orders, then we lose the 
+                # ability to detect the weak blue orders.
+                #xnodes = np.arange(0, flat_data.shape[1], 200)
+                #flat_debkg = simple_debackground(flat_data, mask_array, xnodes,
+                # smooth=5)
+                #aperset = find_apertures(flat_debkg, mask_array,
+                section = config['reduce.trace']
+                aperset = find_apertures(flat_data, mask_array,
+                            scan_step  = section.getint('scan_step'),
+                            minimum    = section.getfloat('minimum'),
+                            separation = section.get('separation'),
+                            align_deg  = section.getint('align_deg'),
+                            filling    = section.getfloat('filling'),
+                            degree     = section.getint('degree'),
+                            display    = section.getboolean('display'),
+                            fig        = tracefig,
+                            )
+
+                # save the trace figure
+                tracefig.adjust_positions()
+                tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+                tracefig.savefig(trace_figname)
+
+                aperset.save_txt(aperset_filename)
+                aperset.save_reg(aperset_regname, fiber=fiber,
+                                color={'A':'green','B':'yellow'}[fiber])
+
+            # append the flat data and mask
+            flat_data_lst[fiber][flatname] = flat_data
+            flat_norm_lst[fiber][flatname] = flat_data/exptime
+            flat_mask_lst[fiber][flatname] = mask_array
+            aperset_lst[fiber][flatname]   = aperset
+            flat_info_lst[fiber][flatname] = {'exptime': exptime}
+
+    ########################### Get flat fielding ##############################
+    flatmap_lst = {}
+
+    for fiber, fiber_group in sorted(flat_groups.items()):
+        for flatname in sorted(fiber_group.keys()):
+
+            # get filename of flat
+            flat_filename = os.path.join(midproc,
+                    'flat_{}_{}.fits'.format(fiber, flatname))
+
+            hdu_lst = fits.open(flat_filename, mode='update')
+            if len(hdu_lst)>=3:
+                # sensitivity map already exists in fits file
+                flatmap = hdu_lst[2].data
+                hdu_lst.close()
+            else:
+                # do flat fielding
+                print('*** Start parsing flat fielding: %s ***'%flat_filename)
+                fig_aperpar = {
+                    'debug': os.path.join(report,
+                            'flat_aperpar_{}_{}_%03d.{}'.format(
+                                fiber, flatname, fig_format)),
+                    'normal': None,
+                    }[mode]
+
+                fig_slit = os.path.join(report,
+                                'slit_flat_{}_{}.{}'.format(
+                                    fiber, flatname, fig_format))
+    
+                section = config['reduce.flat']
+    
+                flatmap = get_fiber_flat(
+                            data            = flat_data_lst[fiber][flatname],
+                            mask            = flat_mask_lst[fiber][flatname],
+                            apertureset     = aperset_lst[fiber][flatname],
+                            slit_step       = section.getint('slit_step'),
+                            nflat           = len(flat_groups[fiber][flatname]),
+                            q_threshold     = section.getfloat('q_threshold'),
+                            smooth_A_func   = smooth_aperpar_A,
+                            smooth_k_func   = smooth_aperpar_k,
+                            smooth_c_func   = smooth_aperpar_c,
+                            smooth_bkg_func = smooth_aperpar_bkg,
+                            fig_aperpar     = fig_aperpar,
+                            fig_overlap     = None,
+                            fig_slit        = fig_slit,
+                            slit_file       = None,
+                            )
+
+                # append the sensivity map to fits file
+                hdu_lst.append(fits.ImageHDU(flatmap))
+                # write back to the original file
+                hdu_lst.flush()
+    
+            # append the flatmap
+            if fiber not in flatmap_lst:
+                flatmap_lst[fiber] = {}
+            flatmap_lst[fiber][flatname] = flatmap
+    
+            # continue to the next colored flat
+        # continue to the next fiber
+
+    ############################# Mosaic Flats #################################
+    flat_file = os.path.join(midproc, 'flat.fits')
+    trac_file = os.path.join(midproc, 'trace.trc')
+    treg_file = os.path.join(midproc, 'trace.reg')
+
+    master_aperset = {}
+
+    flat_fiber_lst = []
+
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        fiber_flat_lst = flat_groups[fiber]
+
+        # determine the mosaiced flat filename
+        flat_fiber_file = os.path.join(midproc,
+                            'flat_{}.fits'.format(fiber))
+        trac_fiber_file = os.path.join(midproc,
+                            'trace_{}.trc'.format(fiber))
+        treg_fiber_file = os.path.join(midproc,
+                            'trace_{}.reg'.format(fiber))
+
+        if len(fiber_flat_lst) == 1:
+            # there's only ONE "color" of flat
+            flatname = list(fiber_flat_lst)[0]
+
+            # copy the flat fits
+            oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
+
+            '''
+            # copy the trc file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.trc'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
+
+            # copy the reg file
+            if multi_fiber:
+                oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
+            else:
+                oriname = 'trace_flat_{}.reg'.format(flatname)
+            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
+            '''
+
+            flat_map = flatmap_lst[fiber][flatname]
+    
+            # no need to mosaic aperset
+            master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
+        else:
+            # mosaic apertures
+            section = config['reduce.flat']
+            # determine the mosaic order
+            name_lst = sorted(flat_info_lst[fiber],
+                        key=lambda x: flat_info_lst[fiber].get(x)['exptime'])
+
+            # if there is no flat data in this fiber. continue
+            if len(aperset_lst[fiber])==0:
+                continue
+
+            master_aperset[fiber] = mosaic_flat_auto(
+                    aperture_set_lst = aperset_lst[fiber],
+                    max_count        = section.getfloat('mosaic_maxcount'),
+                    name_lst         = name_lst,
+                    )
+            # mosaic original flat images
+            flat_data = mosaic_images(flat_data_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic flat mask images
+            mask_data = mosaic_images(flat_mask_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic sensitivity map
+            flat_map = mosaic_images(flatmap_lst[fiber],
+                                        master_aperset[fiber])
+            # mosaic exptime-normalized flat images
+            flat_norm = mosaic_images(flat_norm_lst[fiber],
+                                        master_aperset[fiber])
+
+            # change contents of several lists
+            flat_data_lst[fiber] = flat_data
+            flat_mask_lst[fiber] = mask_data
+            flatmap_lst[fiber]   = flat_map
+            flat_norm_lst[fiber] = flat_norm
+
+            flat_fiber_lst.append(fiber)
+    
+            # pack and save to fits file
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data),
+                        fits.ImageHDU(mask_data),
+                        fits.ImageHDU(flat_map),
+                        fits.ImageHDU(flat_norm),
+                        ])
+            hdu_lst.writeto(flat_fiber_file, overwrite=True)
+
+    # fill blank fibers
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        if fiber not in master_aperset:
+            master_aperset[fiber] = master_aperset['A'].copy()
+            offset = fiber_offsets[ifiber-1]
+            master_aperset[fiber].add_offset(offset)
+
+    # align different fibers
+
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+
+        # align different fibers
+        if ifiber == 0:
+            ref_aperset = master_aperset[fiber]
+        else:
+            # find the postion offset (yshift) relative to the first fiber ("A")
+            # the postion offsets are identified by users in the config file.
+            # the first one (index=0) is shift of fiber B. second one is C...
+            yshift = fiber_offsets[ifiber-1]
+            offset = master_aperset[fiber].find_aper_offset(
+                        ref_aperset, yshift=yshift)
+
+            # print and logging
+            message = 'fiber {}, aperture offset = {}'.format(fiber, offset)
+            print(message)
+            logger.info(message)
+
+            # correct the aperture offset
+            master_aperset[fiber].shift_aperture(-offset)
+
+    # find all the aperture list for all fibers
+    allmax_aper = -99
+    allmin_aper = 999
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
+        allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
+
+    #fig = plt.figure(dpi=150)
+    #ax = fig.gca()
+    #test_data = {'A': np.ones((2048, 2048))+1,
+    #             'B': np.ones((2048, 2048))+2}
+
+    # pack all aperloc into a single list
+    all_aperloc_lst = []
+    for fiber in flat_fiber_lst:
+        aperset = master_aperset[fiber]
+        for aper, aperloc in aperset.items():
+            x, y = aperloc.get_position()
+            center = aperloc.get_center()
+            all_aperloc_lst.append([fiber, aper, aperloc, center])
+            #ax.plot(x, y, color='gy'[ifiber], lw=1)
+
+    # mosaic flat map
+    sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
+    h, w = flat_map.shape
+    master_flatdata = np.ones_like(flat_data)
+    master_flatmask = np.ones_like(mask_data)
+    master_flatmap  = np.ones_like(flat_map)
+    master_flatnorm = np.ones_like(flat_norm)
+    yy, xx = np.mgrid[:h, :w]
+    prev_line = np.zeros(w)
+    for i in np.arange(len(sorted_aperloc_lst)-1):
+        fiber, aper, aperloc, center = sorted_aperloc_lst[i]
+        x, y = aperloc.get_position()
+        next_fiber, _, next_aperloc, _ = sorted_aperloc_lst[i+1]
+        next_x, next_y = next_aperloc.get_position()
+        next_line = np.int32(np.round((y + next_y)/2.))
+        #print(fiber, aper, center, prev_line, next_line)
+        mask = (yy >= prev_line)*(yy < next_line)
+        master_flatdata[mask] = flat_data_lst[fiber][mask]
+        master_flatmask[mask] = flat_mask_lst[fiber][mask]
+        master_flatmap[mask]  = flatmap_lst[fiber][mask]
+        master_flatnorm[mask] = flat_norm_lst[fiber][mask]
+        prev_line = next_line
+    # parse the last order
+    mask = yy >= prev_line
+    master_flatdata[mask] = flat_data_lst[next_fiber][mask]
+    master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
+    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
+    master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
+
+    #ax.imshow(master_flatmap, alpha=0.6)
+    #plt.show()
+    #print(h, w)
+
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(master_flatdata),
+                fits.ImageHDU(master_flatmask),
+                fits.ImageHDU(master_flatmap),
+                fits.ImageHDU(master_flatnorm),
+                ])
+    hdu_lst.writeto(flat_file, overwrite=True)
+
+    ############################## Extract ThAr ################################
+
+    # get the data shape
+    h, w = flat_map.shape
+
+    # define dtype of 1-d spectra for all fibers
+    types = [
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, w)),
+            ('flux',       (np.float32, w)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+
+    calib_lst = {}
+    # calib_lst is a hierarchical dict of calibration results
+    # calib_lst = {
+    #       'frameid1': {'A': calib_dict1, 'B': calib_dict2, ...},
+    #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
+    #       ... ...
+    #       }
+    count_thar = 0
+    for logitem in logtable:
+
+        frameid = logitem['frameid']
+        imgtype = logitem['imgtype']
+        fileid  = logitem['fileid']
+        exptime = logitem['exptime']
+
+        if imgtype != 'cal':
+            continue
+
+        fiberobj_lst = [v.strip().lower()
+                        for v in logitem['object'].split(';')]
+
+        # check if there's any other objects
+        has_others = False
+        for fiberobj in fiberobj_lst:
+            if len(fiberobj)>0 and fiberobj != 'thar':
+                has_others = True
+        if has_others:
+            continue
+
+        # now all objects in fiberobj_lst must be thar
+
+        count_thar += 1
+        print('Wavelength Calibration for {}'.format(fileid))
+
+        filename = os.path.join(rawdata, fileid+'.fits')
+        data, head = fits.getdata(filename, header=True)
+        mask = get_mask(data, head)
+
+        # correct overscan for ThAr
+        data, card_lst, overmean = correct_overscan(data, head, mask)
+
+        for key, value in card_lst:
+            key = 'HIERARCH GAMSE '+key
+            head.append((key, value))
+
+        # correct bias for ThAr, if has bias
+        if has_bias:
+            data = data - bias
+            logger.info('Bias corrected')
+        else:
+            logger.info('No bias. skipped bias correction')
+
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            if fiberobj_lst[ifiber] != 'thar':
+                continue
+
+            section = config['reduce.extract']
+            spectra1d = extract_aperset(data, mask,
+                        apertureset = master_aperset[fiber],
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+
+            # pack to a structured array
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                spec.append((aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            spec = np.array(spec, dtype=spectype)
+
+            wlcalib_fig = os.path.join(report,
+                    'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
+
+            section = config['reduce.wlcalib']
+
+            title = '{}.fits - Fiber {}'.format(fileid, fiber)
+
+            if count_thar == 1:
+                # this is the first ThAr frame in this observing run
+                if section.getboolean('search_database'):
+                    # find previouse calibration results
+                    database_path = section.get('database_path')
+                    search_path = os.path.join(database_path,
+                                                'Xinglong216.HRS/wlcalib')
+
+                    ref_spec, ref_calib = select_calib_from_database(
+                        search_path, statime_key, head[statime_key])
+
+                    if ref_spec is None or ref_calib is None:
+                        # if failed, pop up a calibration window and
+                        # identify the wavelengths manually
+                        calib = wlcalib(spec,
+                            figfilename = wlcalib_fig,
+                            title       = title,
+                            linelist    = section.get('linelist'),
+                            window_size = section.getint('window_size'),
+                            xorder      = section.getint('xorder'),
+                            yorder      = section.getint('yorder'),
+                            maxiter     = section.getint('maxiter'),
+                            clipping    = section.getfloat('clipping'),
+                            q_threshold = section.getfloat('q_threshold'),
+                            )
+                    else:
+                        # if success, run recalib
+                        # determine the direction
+                        ref_direction = ref_calib['direction']
+                        aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
+                                        None)[direction[1]=='?']
+                        pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
+                                    None)[direction[2]=='?']
+                        # determine the name of the output figure during lamp
+                        # shift finding.
+                        fig_ccf = {'normal': None,
+                                    'debug': os.path.join(report,
+                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
+                        fig_scatter = {'normal': None,
+                                        'debug': os.path.join(report,
+                                            'lamp_ccf_scatter.png')}[mode]
+
+                        result = find_caliblamp_offset(ref_spec, spec,
+                                    aperture_k  = aperture_k,
+                                    pixel_k     = pixel_k,
+                                    fig_ccf     = fig_ccf,
+                                    fig_scatter = fig_scatter,
+                                    )
+                        aperture_koffset = (result[0], result[1])
+                        pixel_koffset    = (result[2], result[3])
+
+                        print('Aperture offset =', aperture_koffset)
+                        print('Pixel offset =', pixel_koffset)
+
+                        use = section.getboolean('use_prev_fitpar')
+                        xorder      = (section.getint('xorder'), None)[use]
+                        yorder      = (section.getint('yorder'), None)[use]
+                        maxiter     = (section.getint('maxiter'), None)[use]
+                        clipping    = (section.getfloat('clipping'), None)[use]
+                        window_size = (section.getint('window_size'), None)[use]
+                        q_threshold = (section.getfloat('q_threshold'), None)[use]
+
+                        calib = recalib(spec,
+                            figfilename      = wlcalib_fig,
+                            title            = title,
+                            ref_spec         = ref_spec,
+                            linelist         = section.get('linelist'),
+                            aperture_koffset = aperture_koffset,
+                            pixel_koffset    = pixel_koffset,
+                            ref_calib        = ref_calib,
+                            xorder           = xorder,
+                            yorder           = yorder,
+                            maxiter          = maxiter,
+                            clipping         = clipping,
+                            window_size      = window_size,
+                            q_threshold      = q_threshold,
+                            direction        = direction,
+                            )
+                else:
+                    # do not search the database
+                    calib = wlcalib(spec,
+                        figfilename   = wlcalib_fig,
+                        title         = title,
+                        identfilename = section.get('ident_file', None),
+                        linelist      = section.get('linelist'),
+                        window_size   = section.getint('window_size'),
+                        xorder        = section.getint('xorder'),
+                        yorder        = section.getint('yorder'),
+                        maxiter       = section.getint('maxiter'),
+                        clipping      = section.getfloat('clipping'),
+                        q_threshold   = section.getfloat('q_threshold'),
+                        )
+
+                # then use this ThAr as the reference
+                ref_calib = calib
+                ref_spec  = spec
+            else:
+                # for other ThArs, no aperture offset
+                calib = recalib(spec,
+                    figfilename      = wlcalib_fig,
+                    title            = title,
+                    ref_spec         = ref_spec,
+                    linelist         = section.get('linelist'),
+                    ref_calib        = ref_calib,
+                    aperture_koffset = (1, 0),
+                    pixel_koffset    = (1, 0),
+                    xorder           = ref_calib['xorder'],
+                    yorder           = ref_calib['yorder'],
+                    maxiter          = ref_calib['maxiter'],
+                    clipping         = ref_calib['clipping'],
+                    window_size      = ref_calib['window_size'],
+                    q_threshold      = ref_calib['q_threshold'],
+                    direction        = direction,
+                    )
+
+            # add more infos in calib
+            calib['fileid']   = fileid
+            calib['date-obs'] = head[statime_key]
+            calib['exptime']  = head[exptime_key]
+
+            # reference the ThAr spectra
+            spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+
+            # save calib results into fits header
+            for key, value in card_lst:
+                key = 'HIERARCH GAMSE WLCALIB '+key
+                head.append((key, value))
+
+            # save onedspec into FITS
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(header=head),
+                        fits.BinTableHDU(spec),
+                        fits.BinTableHDU(identlist),
+                        ])
+            filename = os.path.join(midproc,
+                                    'wlcalib.{}.{}.fits'.format(fileid, fiber))
+            hdu_lst.writeto(filename, overwrite=True)
+
+            # pack to calib_lst
+            if frameid not in calib_lst:
+                calib_lst[frameid] = {}
+            calib_lst[frameid][fiber] = calib
+            
+        # fiber loop ends here
+
+    # print fitting summary
+    fmt_string = (' [{:3d}] {}'
+                    ' - fiber {:1s} ({:4g} sec)'
+                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
+    for frameid, calib_fiber_lst in sorted(calib_lst.items()):
+        for fiber, calib in sorted(calib_fiber_lst.items()):
+            print(fmt_string.format(frameid, calib['fileid'], fiber,
+                calib['exptime'], calib['nuse'], calib['ntot'], calib['std']))
+
+    # print promotion and read input frameid list
+    ref_frameid_lst  = {}
+    ref_calib_lst    = {}
+    ref_datetime_lst = {}
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        while(True):
+            string = input('Select References for fiber {}: '.format(fiber))
+            ref_frameid_lst[fiber]  = []
+            ref_calib_lst[fiber]    = []
+            ref_datetime_lst[fiber] = []
+            succ = True
+            for s in string.split(','):
+                s = s.strip()
+                if len(s)>0 and s.isdigit() and int(s) in calib_lst:
+                    frameid = int(s)
+                    calib   = calib_lst[frameid]
+                    ref_frameid_lst[fiber].append(frameid)
+                    if fiber in calib:
+                        usefiber = fiber
+                    else:
+                        usefiber = list(calib.keys())[0]
+                        print(('Warning: no ThAr for fiber {}. '
+                                'Use fiber {} instead').format(fiber, usefiber))
+                    use_calib = calib[usefiber]
+                    ref_calib_lst[fiber].append(use_calib)
+                    ref_datetime_lst[fiber].append(use_calib['date-obs'])
+                else:
+                    print('Warning: "{}" is an invalid calib frame'.format(s))
+                    succ = False
+                    break
+            if succ:
+                break
+            else:
+                continue
+
+    #################### Extract Science Spectrum ##############################
 
 class Xinglong216HRS(Reduction):
 
@@ -1799,6 +2721,134 @@ def print_wrapper(string, item):
     else:
         return string
 
+def make_config():
+    """Make config file for data from Xinglong 2.16m HRS
+
+    """
+
+    # find date of data obtained
+    current_pathname = os.path.basename(os.getcwd())
+    guess_date = extract_date(current_pathname)
+
+    while(True):
+        if guess_date is None:
+            prompt = 'YYYYMMDD'
+        else:
+            prompt = guess_date
+
+        string = input('Date of observation [{}]: '.format(prompt))
+        input_date = extract_date(string)
+        if input_date is None:
+            if guess_date is None:
+                continue
+            else:
+                input_date = guess_date
+                break
+        else:
+            break
+   
+    input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
+
+    # determine the fiber mode
+    while(True):
+        string = input(
+            'The data was obatined with Single fiber or Double fibers? [s/d]:')
+        if string == 's':
+            fibermode = 'single'
+            break
+        elif string == 'd':
+            fibermode = 'double'
+            break
+        else:
+            print('Invalid input: {}'.format(string))
+            continue
+
+    # create config object
+    config = configparser.ConfigParser()
+
+    config.add_section('data')
+    # since 2019 there's another type of FITS header
+    if input_datetime > datetime.datetime.strptime('2019-01-01', '%Y-%m-%d'):
+        exptime_key = 'EXPOSURE'
+    else:
+        exptime_key = 'EXPTIME'
+    config.set('data', 'telescope',   'Xinglong216')
+    config.set('data', 'instrument',  'HRS')
+    config.set('data', 'rawdata',     'rawdata')
+    config.set('data', 'statime_key', 'DATE-STA')
+    config.set('data', 'exptime_key', exptime_key)
+    config.set('data', 'direction',   'xr-')
+    config.set('data', 'fibermode',   fibermode)
+    if fibermode == 'double':
+        config.set('data', 'fiberoffset', str(-12))
+
+    config.add_section('reduce')
+    config.set('reduce', 'midproc',     'midproc')
+    config.set('reduce', 'report',      'report')
+    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'mode',        'normal')
+    config.set('reduce', 'oned_suffix', '_ods')
+    config.set('reduce', 'fig_format',  'png')
+    
+    config.add_section('reduce.bias')
+    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set('reduce.bias', 'cosmic_clip',   str(10))
+    config.set('reduce.bias', 'maxiter',       str(5))
+    config.set('reduce.bias', 'smooth',        'yes')
+    config.set('reduce.bias', 'smooth_method', 'gaussian')
+    config.set('reduce.bias', 'smooth_sigma',  str(3))
+    config.set('reduce.bias', 'smooth_mode',   'nearest')
+
+    config.add_section('reduce.trace')
+    config.set('reduce.trace', 'minimum',    str(8))
+    config.set('reduce.trace', 'scan_step',  str(100))
+    config.set('reduce.trace', 'separation', '500:21, 3500:52')
+    config.set('reduce.trace', 'filling',    str(0.3))
+    config.set('reduce.trace', 'align_deg',  str(2))
+    config.set('reduce.trace', 'display',    'no')
+    config.set('reduce.trace', 'degree',     str(3))
+
+    config.add_section('reduce.flat')
+    config.set('reduce.flat', 'slit_step',       str(256))
+    config.set('reduce.flat', 'q_threshold',     str(50))
+    config.set('reduce.flat', 'mosaic_maxcount', str(50000))
+
+    config.add_section('reduce.wlcalib')
+    config.set('reduce.wlcalib', 'search_database', 'yes')
+    config.set('reduce.wlcalib', 'database_path',   '/opt/gamse')
+    config.set('reduce.wlcalib', 'linelist',        'thar.dat')
+    config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
+    config.set('reduce.wlcalib', 'window_size',     str(13))
+    config.set('reduce.wlcalib', 'xorder',          str(3))
+    config.set('reduce.wlcalib', 'yorder',          str(3))
+    config.set('reduce.wlcalib', 'maxiter',         str(5))
+    config.set('reduce.wlcalib', 'clipping',        str(3))
+    config.set('reduce.wlcalib', 'q_threshold',     str(10))
+
+    config.add_section('reduce.background')
+    config.set('reduce.background', 'ncols',    str(9))
+    config.set('reduce.background', 'distance', str(7))
+    config.set('reduce.background', 'yorder',   str(7))
+
+    config.add_section('reduce.extract')
+    config.set('reduce.extract', 'upper_limit', str(7))
+    config.set('reduce.extract', 'lower_limit', str(7))
+
+    # write to config file
+    filename = 'Xinglong216HRS.{}.cfg'.format(input_date)
+    outfile = open(filename, 'w')
+    for section in config.sections():
+        maxkeylen = max([len(key) for key in config[section].keys()])
+        outfile.write('[{}]'.format(section)+os.linesep)
+        fmt = '{{:{}s}} = {{}}'.format(maxkeylen)
+        for key, value in config[section].items():
+            outfile.write(fmt.format(key, value)+os.linesep)
+        outfile.write(os.linesep)
+    outfile.close()
+
+    print('Config file written to {}'.format(filename))
+    
+
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
@@ -1862,11 +2912,23 @@ def make_obslog(path):
 
         # determine the science and overscan regions
         naxis1 = head['NAXIS1']
-        cover  = head['COVER']
-        y1 = head['CRVAL2']
-        y2 = y1 + head['NAXIS2'] - head['ROVER']
-        x1 = head['CRVAL1']
-        x2 = x1 + head['NAXIS1'] - head['COVER']
+        naxis2 = head['NAXIS2']
+        x1 = head.get('CRVAL1', 0)
+        y1 = head.get('CRVAL2', 0)
+        # get science region along x axis
+        cover = head.get('COVER')
+        if cover is None:
+            if naxis1 >= 4096:
+                cover = naxis1 - 4096
+        # get science region along y axis
+        rover = head.get('ROVER')
+        if rover is None:
+            if naxis2 >= 4136:
+                rover = naxis2 - 4136
+
+        # get start and end indices of science region
+        y2 = y1 + naxis2 - rover
+        x2 = x1 + naxis1 - cover
         data = data[y1:y2,x1:x2]
 
         # find frame-id
@@ -1876,7 +2938,10 @@ def make_obslog(path):
                     frameid, prev_frameid))
 
         # parse obsdate
-        obsdate = Time(head['DATE-STA'])
+        if 'DATE-STA' in head:
+            obsdate = Time(head['DATE-STA'])
+        else:
+            obsdate = Time(head['DATE-OBS'])
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
             real_obsdate = addinfo_lst[frameid]['obsdate'].datetime
@@ -1885,10 +2950,16 @@ def make_obslog(path):
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
 
-        exptime = head['EXPTIME']
+        if 'EXPTIME' in head:
+            exptime = head['EXPTIME']
+        else:
+            exptime = head['EXPOSURE']
 
         # parse object name
-        objectname = head['OBJECT'].strip()
+        if 'OBJECT' in head:
+            objectname = head['OBJECT'].strip()
+        else:
+            objectname = ''
         if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
             and addinfo_lst[frameid]['object'] is not np.ma.masked):
             objectname = addinfo_lst[frameid]['object']
