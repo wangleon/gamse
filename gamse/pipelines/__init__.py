@@ -117,8 +117,35 @@ def make_obslog():
         exit()
 
 def make_config():
-    """Make config file"""
-    pass
+    """Make config file
+    
+    """
+
+    instrument_lst = [
+            #'Keck/HIRES',
+            ('foces',          'Fraunhofer/FOCES'),
+            ('xinglong216hrs', 'Xinglong 2.16m/HRS'),
+            ]
+
+    # display a list of supported instruments
+    print('List of supported instruments:')
+    for i, row in enumerate(instrument_lst):
+        instrument = row[1]
+        print('[{}] {}'.format(i+1, instrument))
+
+    # select instrument
+    while(True):
+        string = input('Select the instrument: ')
+        if string.isdigit():
+            select = int(string)
+            break
+        else:
+            print('Error: invalid input')
+            continue
+
+    # use individual functions in each pipeline
+    modulename = instrument_lst[select-1][0]
+    globals()[modulename].make_config()
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
