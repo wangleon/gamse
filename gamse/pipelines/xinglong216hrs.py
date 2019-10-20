@@ -596,16 +596,12 @@ def reduce():
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
 
-
-    # load config files
-    config_file_lst = []
-
     # find local config file
     for fname in os.listdir(os.curdir):
         if fname[0:14]=='Xinglong216HRS' and fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
-    
-    config.read(config_file_lst)
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
 
     section = config['data']
     fibermode = section.get('fibermode')
@@ -1333,7 +1329,8 @@ def reduce_singlefiber(logtable, config):
             # correct bias
             if has_bias:
                 data = data - bias
-                logger.info('FileID: {} - bias corrected. mean value = {}'.format(
+                logger.info(
+                    'FileID: {} - bias corrected. mean value = {}'.format(
                     fileid, bias.mean()))
             else:
                 logger.info('FileID: {} - no bias'%(fileid))
@@ -2748,10 +2745,10 @@ def make_config():
     # determine the time-dependent keywords
     if input_datetime > datetime.datetime.strptime('2019-01-01', '%Y-%m-%d'):
         # since 2019 there's another type of FITS header
-        statime_key = 'DATE-STA'
+        statime_key = 'DATE-OBS'
         exptime_key = 'EXPOSURE'
     else:
-        statime_key = 'DATE-OBS'
+        statime_key = 'DATE-STA'
         exptime_key = 'EXPTIME'
 
     config.set('data', 'telescope',   'Xinglong216')
