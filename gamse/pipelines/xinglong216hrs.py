@@ -1487,7 +1487,9 @@ def reduce_singlefiber(logtable, config):
 
             # correct flat
             data = data/flat_map
-            logger.info('FileID: {} - flat corrected'.format(fileid))
+            message = 'FileID: {} - flat corrected'.format(fileid)
+            logger.info(message)
+            print(message)
 
             # correct background
             section = config['reduce.background']
@@ -2342,6 +2344,145 @@ def reduce_multifiber(logtable, config):
                 continue
 
     #################### Extract Science Spectrum ##############################
+
+    for logitem in logtable:
+
+        # logitem alias
+        fileid  = logitem['fileid']
+        imgtype = logitem['imgtype']
+
+        if imgtype != 'sci':
+            continue
+
+        filename = os.path.join(rawdata, fileid+'.fits')
+
+        logger.info('FileID: {} ({}) - start reduction: {}'.format(
+            fileid, imgtype, filename))
+
+        # read raw data
+        data, head = fits.getdata(filename, header=True)
+        mask = get_mask(data, head)
+
+        # correct overscan
+        data, head, overmean = correct_overscan(data, head, mask)
+        logger.info('FileID: {} - overscan corrected'.format(fileid))
+
+        # correct bias
+        if bias is not None:
+            data = data - bias
+            logger.info(
+                'FileID: {} - bias corrected. mean value = {}'.format(
+                fileid, bias.mean()))
+        else:
+            logger.info('FileID: {} - no bias'%(fileid))
+
+        # correct flat
+        data = data/flat_map
+        message = 'FileID: {} - flat corrected'.format(fileid)
+        logger.info(message)
+        print(message)
+
+        # correct background
+        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split(';')]
+        fig_sec = os.path.join(report,
+                  'bkg_{}_sec.{}'.format(fileid, fig_format))
+
+        # find apertureset list for this item
+        apersets = {}
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            if len(fiberobj_lst[ifiber])>0:
+                apersets[fiber] = master_aperset[fiber]
+
+        section = config['reduce.background']
+        stray = find_background(data, mask,
+                aperturesets = apersets,
+                ncols        = section.getint('ncols'),
+                distance     = section.getfloat('distance'),
+                yorder       = section.getint('yorder'),
+                fig_section  = fig_sec,
+                )
+        data = data - stray
+
+        # plot stray light
+        fig_stray = os.path.join(report,
+                    'bkg_{}_stray.{}'.format(fileid, fig_format))
+        plot_background_aspect1(data+stray, stray, fig_stray)
+
+        message = 'FileID: {} - background corrected. max value = {}'.format(
+                fileid, stray.max())
+        logger.info(message)
+        print(message)
+
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            if fiberobj_lst[ifiber]=='':
+                # nothing in this fiber
+                continue
+            lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
+            upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
+
+            spectra1d = extract_aperset(data, mask,
+                            apertureset = master_aperset[fiber],
+                            lower_limit = lower_limits[fiber],
+                            upper_limit = upper_limits[fiber],
+                        )
+
+            fmt_string = ('FileID: {}'
+                            ' - fiber {}'
+                            ' - 1D spectra of {} orders extracted')
+            message = fmt_string.format(fileid, fiber, len(spectra1d))
+            logger.info(message)
+            print(message)
+
+            # pack spectrum
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                item = (aper, 0, flux_sum.size,
+                        np.zeros_like(flux_sum, dtype=np.float64),
+                        flux_sum
+                        )
+                spec.append(item)
+            spec = np.array(spec, dtype=spectype)
+
+            # wavelength calibration
+            weight_lst = get_time_weight(ref_datetime_lst[fiber],
+                                        head[statime_key])
+
+            message = ('FileID: {} - fiber {}'
+                        ' - wavelength calibration weights: {}').format(
+                        fileid, fiber,
+                        ','.join(['%8.4f'%w for w in weight_lst])
+                        )
+            logger.info(message)
+            print(message)
+
+            spec, card_lst = reference_wavelength(
+                                spec,
+                                ref_calib_lst[fiber],
+                                weight_lst,
+                                )
+
+            for key, value in newcards:
+                key = 'HIERARCH GAMSE WLCALIB '+key
+                head.append((key, value))
+
+            # pack and save to fits
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(header=head),
+                        fits.BinTableHDU(newspec),
+                        ])
+            filename = os.path.join(onedspec, '{}_{}{}.fits'.format(
+                                            fileid, fiber, oned_suffix))
+            hdu_lst.writeto(filename, overwrite=True)
+
+            message = 'FileID: {} - Spectra written to {}'.format(
+                        fileid, filename)
+            logger.info(message)
+            print(message)
 
 
 class Xinglong216HRS(Reduction):
