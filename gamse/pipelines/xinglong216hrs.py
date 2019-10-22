@@ -23,7 +23,7 @@ from ..echelle.imageproc import (combine_images, array_to_table,
 from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ..echelle.extract import extract_aperset
-from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
+from ..echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                get_time_weight, find_caliblamp_offset,
                                reference_wavelength,
                                reference_self_wavelength,
@@ -207,12 +207,13 @@ def correct_overscan(data, head, mask=None):
     return new_data, card_lst, overmean
 
 
-def parse_bias_frames(logtable, config):
+def parse_bias_frames(logtable, config, pinfo):
     """Parse the bias images and return the bias as an array.
 
     Args:
         logtable ():
         config ():
+        pinfo ():
 
     Returns:
         bias:
@@ -222,6 +223,7 @@ def parse_bias_frames(logtable, config):
 
     rawdata = config['data']['rawdata']
     section = config['reduce.bias']
+    bias_file = section['bias_file']
 
     bias_data_lst = []
     bias_fileid_lst = []
@@ -240,9 +242,9 @@ def parse_bias_frames(logtable, config):
             # print info
             if len(bias_data_lst) == 0:
                 print('* Combine Bias Images: {}'.format(bias_file))
-                print(' '*2 + pinfo2.get_title())
-                print(' '*2 + pinfo2.get_separator())
-            print(' '*2 + pinfo2.get_format().format(logitem, overmean))
+                print(' '*2 + pinfo.get_title())
+                print(' '*2 + pinfo.get_separator())
+            print(' '*2 + pinfo.get_format().format(logitem, overmean))
 
             bias_data_lst.append(data)
             bias_fileid_lst.append(logitem['fileid'])
@@ -258,12 +260,11 @@ def parse_bias_frames(logtable, config):
         bias = None
     else:
         # there is bias frames
-        print(' '*2 + pinfo2.get_separator())
+        print(' '*2 + pinfo.get_separator())
 
         # combine bias images
         bias_data_lst = np.array(bias_data_lst)
 
-        section = config['reduce.bias']
         bias = combine_images(bias_data_lst,
                 mode       = 'mean',
                 upper_clip = section.getfloat('cosmic_clip'),
@@ -314,7 +315,47 @@ def parse_bias_frames(logtable, config):
         logger.info(message)
         print(message)
 
-    return bias
+    return bias, bias_card_lst
+
+
+def select_calib_from_database(database_path, dateobs):
+    """Select wavelength calibration file in database.
+
+    Args:
+        path (str): Path to search for the calibration files.
+        dateobs (str): .
+    Returns:
+        tuple: A tuple containing:
+
+            * **spec** (:class:`numpy.dtype`): An array of previous calibrated
+                spectra.
+            * **calib** (dict): Previous calibration results.
+    """
+    
+    indexfile = os.path.join(database_path, 'index.dat')
+    calibtable = read_obslog(indexfile)
+
+    input_date = dateutil.parser.parse(dateobs)
+    if input_date > datetime.datetime(2019, 1, 1):
+        mask = calibtable['obsdate'] > datetime.datetime(2019, 1, 1)
+    else:                         
+        mask = calibtable['obsdate'] < datetime.datetime(2019, 1, 1)
+    
+    fileid = calibtable[mask][-1]['fileid']
+
+    filename = 'wlcalib.{}.fits'.format(fileid)
+    filepath = os.path.join(database_path, filename)
+         
+    # load spec, calib, and aperset from selected FITS file
+    f = fits.open(filepath)
+    head = f[0].header
+    spec = f[1].data
+    f.close()
+
+    calib = get_calib_from_header(head)
+
+    return spec, calib
+
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
@@ -1203,11 +1244,9 @@ def reduce_singlefiber(logtable, config):
             if section.getboolean('search_database'):
                 # find previouse calibration results
                 database_path = section.get('database_path')
-                search_path = os.path.join(database_path,
-                                            'Xinglong216.HRS/wlcalib')
 
                 result = select_calib_from_database(
-                        search_path, statime_key, head[statime_key])
+                            database_path, head[statime_key])
                 ref_spec, ref_calib = result
     
                 if ref_spec is None or ref_calib is None:
@@ -1417,6 +1456,7 @@ def reduce_singlefiber(logtable, config):
     #################### Extract Science Spectrum ##############################
     for logitem in logtable:
 
+        # logitem alias
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
         objname = logitem['object'].strip().lower()
@@ -1559,7 +1599,7 @@ def reduce_multifiber(logtable, config):
         print(message)
         bias_card_lst = []
     else:
-        bias, bias_card_lst = parse_bias_frames(logtable, config)
+        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -2118,11 +2158,9 @@ def reduce_multifiber(logtable, config):
                 if section.getboolean('search_database'):
                     # find previouse calibration results
                     database_path = section.get('database_path')
-                    search_path = os.path.join(database_path,
-                                                'Xinglong216.HRS/wlcalib')
 
                     ref_spec, ref_calib = select_calib_from_database(
-                        search_path, statime_key, head[statime_key])
+                            database_path, head[statime_key])
 
                     if ref_spec is None or ref_calib is None:
                         # if failed, pop up a calibration window and
@@ -2304,6 +2342,7 @@ def reduce_multifiber(logtable, config):
                 continue
 
     #################### Extract Science Spectrum ##############################
+
 
 class Xinglong216HRS(Reduction):
 
@@ -2763,7 +2802,7 @@ def make_config():
     config.add_section('data')
 
     # determine the time-dependent keywords
-    if input_datetime > datetime.datetime.strptime('2019-01-01', '%Y-%m-%d'):
+    if input_datetime > datetime.datetime(2009, 1, 1):
         # since 2019 there's another type of FITS header
         statime_key = 'DATE-OBS'
         exptime_key = 'EXPOSURE'
@@ -2814,7 +2853,8 @@ def make_config():
 
     config.add_section('reduce.wlcalib')
     config.set('reduce.wlcalib', 'search_database', 'yes')
-    config.set('reduce.wlcalib', 'database_path',   '/opt/gamse')
+    config.set('reduce.wlcalib', 'database_path',
+                                    '/opt/gamse/Xinglong216.HRS/wlcalib')
     config.set('reduce.wlcalib', 'linelist',        'thar.dat')
     config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
     config.set('reduce.wlcalib', 'window_size',     str(13))

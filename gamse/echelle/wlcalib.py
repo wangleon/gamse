@@ -2190,7 +2190,6 @@ def select_calib_from_database(path, time_key, current_time):
             * **spec** (:class:`numpy.dtype`): An array of previous calibrated
                 spectra.
             * **calib** (dict): Previous calibration results.
-            * **aperset** ():
         
     """
     if not os.path.exists(path):
