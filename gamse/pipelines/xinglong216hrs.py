@@ -197,12 +197,13 @@ def correct_overscan(data, head, mask=None):
         new_data = fix_pixels(new_data, bad_mask, 'x', 'linear')
 
     card_lst = []
-    card_lst.append(('OVERSCAN CORRECTED', True))
-    card_lst.append(('OVERSCAN METHOD',    'smooth:savgol'))
-    card_lst.append(('OVERSCAN WINLEN',    winlength))
-    card_lst.append(('OVERSCAN POLYORDER', polyorder))
-    #card_lst.append(('OVERSCAN AXIS-1',    '{}:{}'.format(x1, x2)))
-    #card_lst.append(('OVERSCAN AXIS-2',    '{}:{}'.format()))
+    prefix = 'HIERARCH GAMSE OVERSCAN'
+    card_lst.append((prefix+' CORRECTED', True))
+    card_lst.append((prefix+' METHOD',    'smooth:savgol'))
+    card_lst.append((prefix+' WINLEN',    winlength))
+    card_lst.append((prefix+' POLYORDER', polyorder))
+    #card_lst.append((prefix+' AXIS-1',    '{}:{}'.format(x1, x2)))
+    #card_lst.append((prefix+' AXIS-2',    '{}:{}'.format()))
 
     return new_data, card_lst, overmean
 
@@ -234,9 +235,7 @@ def parse_bias_frames(logtable, config, pinfo):
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
             data, card_lst, overmean = correct_overscan(data, head, mask)
-
             for key, value in card_lst:
-                key = 'HIERARCH GAMSE '+key
                 head.append((key, value))
 
             # print info
@@ -807,9 +806,7 @@ def reduce_singlefiber(logtable, config):
                 data, head = fits.getdata(filename, header=True)
                 mask = get_mask(data, head)
                 data, card_lst, overmean = correct_overscan(data, head, mask)
-
                 for key, value in card_lst:
-                    key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
                 # print info
@@ -980,7 +977,6 @@ def reduce_singlefiber(logtable, config):
                 # correct overscan for flat
                 data, card_lst, overmean = correct_overscan(data, head, mask)
                 for key, value in card_lst:
-                    key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
                 # correct bias for flat, if has bias
@@ -1204,9 +1200,7 @@ def reduce_singlefiber(logtable, config):
 
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, head, mask)
-
         for key, value in card_lst:
-            key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
         # correct bias for ThAr, if has bias
@@ -1475,16 +1469,21 @@ def reduce_singlefiber(logtable, config):
 
         # correct overscan
         data, card_lst, overmean = correct_overscan(data, head, mask)
-        logger.info('FileID: {} - overscan corrected'.format(fileid))
+        for key, value in card_lst:
+            head.append((key, value))
+        message = 'FileID: {} - overscan corrected'.format(fileid)
+        logger.info(message)
+        print(message)
 
         # correct bias
         if bias is not None:
             data = data - bias
-            logger.info(
-                'FileID: {} - bias corrected. mean value = {}'.format(
-                fileid, bias.mean()))
+            fmt_str = 'FileID: {} - bias corrected. mean value = {}'
+            message = fmt_str.format(fileid, bias.mean())
         else:
-            logger.info('FileID: {} - no bias'%(fileid))
+            message = 'FileID: {} - no bias'%(fileid)
+        logger.info(message)
+        print(message)
 
         # correct flat
         data = data/flat_map
@@ -1723,9 +1722,7 @@ def reduce_multifiber(logtable, config):
                     # head['BLANK'] is only valid for integer arrays.
                     if 'BLANK' in head:
                         del head['BLANK']
-                    for card in card_lst:
-                        key, value = card
-                        key = 'HIERARCH GAMSE '+key
+                    for key, valaue in card_lst:
                         head.append((key, value))
 
                     # correct bias for flat, if has bias
@@ -2117,9 +2114,7 @@ def reduce_multifiber(logtable, config):
 
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, head, mask)
-
         for key, value in card_lst:
-            key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
         # correct bias for ThAr, if has bias
@@ -2365,17 +2360,22 @@ def reduce_multifiber(logtable, config):
         mask = get_mask(data, head)
 
         # correct overscan
-        data, head, overmean = correct_overscan(data, head, mask)
-        logger.info('FileID: {} - overscan corrected'.format(fileid))
+        data, card_lst, overmean = correct_overscan(data, head, mask)
+        for key, value in card_lst:
+            head.append((key, value))
+        message = 'FileID: {} - overscan corrected'.format(fileid)
+        logger.info(message)
+        print(message)
 
         # correct bias
         if bias is not None:
             data = data - bias
-            logger.info(
-                'FileID: {} - bias corrected. mean value = {}'.format(
-                fileid, bias.mean()))
+            fmt_str = 'FileID: {} - bias corrected. mean value = {}'
+            message = fmt_str.format(fileid, bias.mean())
         else:
-            logger.info('FileID: {} - no bias'%(fileid))
+            message = 'FileID: {} - no bias'%(fileid)
+        logger.info(message)
+        print(message)
 
         # correct flat
         data = data/flat_map
@@ -2467,14 +2467,14 @@ def reduce_multifiber(logtable, config):
                                 weight_lst,
                                 )
 
-            for key, value in newcards:
+            for key, value in card_lst:
                 key = 'HIERARCH GAMSE WLCALIB '+key
                 head.append((key, value))
 
             # pack and save to fits
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(header=head),
-                        fits.BinTableHDU(newspec),
+                        fits.BinTableHDU(spec),
                         ])
             filename = os.path.join(onedspec, '{}_{}{}.fits'.format(
                                             fileid, fiber, oned_suffix))
