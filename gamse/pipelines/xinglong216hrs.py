@@ -1452,7 +1452,6 @@ def reduce_singlefiber(logtable, config):
     hdu_lst.writeto(filename, overwrite=True)
     '''
 
-    exit()
     #################### Extract Science Spectrum ##############################
     for logitem in logtable:
 
@@ -1461,97 +1460,99 @@ def reduce_singlefiber(logtable, config):
         imgtype = logitem['imgtype']
         objname = logitem['object'].strip().lower()
 
-        if (imgtype == 'cal' and objname == 'i2') or imgtype == 'sci':
+        #if (imgtype == 'cal' and objname == 'i2') or imgtype == 'sci':
+        if imgtype != 'sci' and objname != 'i2':
+            continue
 
-            filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawdata, fileid+'.fits')
 
-            logger.info('FileID: {} ({}) - start reduction: {}'.format(
-                fileid, imgtype, filename))
+        logger.info('FileID: {} ({}) - start reduction: {}'.format(
+            fileid, imgtype, filename))
 
-            # read raw data
-            data, head = fits.getdata(filename, header=True)
-            mask = get_mask(data, head)
+        # read raw data
+        data, head = fits.getdata(filename, header=True)
+        mask = get_mask(data, head)
 
-            # correct overscan
-            data, head, overmean = correct_overscan(data, head, mask)
-            logger.info('FileID: {} - overscan corrected'.format(fileid))
+        # correct overscan
+        data, card_lst, overmean = correct_overscan(data, head, mask)
+        logger.info('FileID: {} - overscan corrected'.format(fileid))
 
-            # correct bias
-            if bias is not None:
-                data = data - bias
-                logger.info(
-                    'FileID: {} - bias corrected. mean value = {}'.format(
-                    fileid, bias.mean()))
-            else:
-                logger.info('FileID: {} - no bias'%(fileid))
+        # correct bias
+        if bias is not None:
+            data = data - bias
+            logger.info(
+                'FileID: {} - bias corrected. mean value = {}'.format(
+                fileid, bias.mean()))
+        else:
+            logger.info('FileID: {} - no bias'%(fileid))
 
-            # correct flat
-            data = data/flat_map
-            message = 'FileID: {} - flat corrected'.format(fileid)
-            logger.info(message)
-            print(message)
+        # correct flat
+        data = data/flat_map
+        message = 'FileID: {} - flat corrected'.format(fileid)
+        logger.info(message)
+        print(message)
 
-            # correct background
-            section = config['reduce.background']
-            fig_sec = os.path.join(report,
-                        'bkg_{}_sec.{}'.format(fileid, fig_format))
+        # correct background
+        section = config['reduce.background']
+        fig_sec = os.path.join(report,
+                    'bkg_{}_sec.{}'.format(fileid, fig_format))
 
-            stray = find_background(data, mask,
-                    apertureset_lst = master_aperset,
-                    ncols           = section.getint('ncols'),
-                    distance        = section.getfloat('distance'),
-                    yorder          = section.getint('yorder'),
-                    fig_section     = fig_sec,
+        stray = find_background(data, mask,
+                apertureset_lst = master_aperset,
+                ncols           = section.getint('ncols'),
+                distance        = section.getfloat('distance'),
+                yorder          = section.getint('yorder'),
+                fig_section     = fig_sec,
+                )
+        data = data - stray
+
+        ####
+        #outfilename = os.path.join(midproc, '%s_bkg.fits'%fileid)
+        #fits.writeto(outfilename, data)
+
+        # plot stray light
+        fig_stray = os.path.join(report,
+                    'bkg_{}_stray.{}'.format(fileid, fig_format))
+        plot_background_aspect1(data+stray, stray, fig_stray)
+
+        logger.info('FileID: {} - background corrected'.format(fileid))
+
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        spectra1d = extract_aperset(data, mask,
+                    apertureset = master_aperset,
+                    lower_limit = section.getfloat('lower_limit'),
+                    upper_limit = section.getfloat('upper_limit'),
                     )
-            data = data - stray
+        logger.info('FileID: {} - 1D spectra of {} orders are extracted'.format(
+            fileid, len(spectra1d)))
 
-            ####
-            #outfilename = os.path.join(midproc, '%s_bkg.fits'%fileid)
-            #fits.writeto(outfilename, data)
+        # pack spectrum
+        spec = []
+        for aper, item in sorted(spectra1d.items()):
+            flux_sum = item['flux_sum']
+            spec.append((aper, 0, flux_sum.size,
+                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+        spec = np.array(spec, dtype=spectype)
 
-            # plot stray light
-            fig_stray = os.path.join(report,
-                        'bkg_{}_stray.{}'.format(fileid, fig_format))
-            plot_background_aspect1(data+stray, stray, fig_stray)
+        # wavelength calibration
+        weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-            logger.info('FileID: {} - background corrected'.format(fileid))
+        logger.info('FileID: {} - wavelength calibration weights: {}'.format(
+            fileid, ','.join(['%8.4f'%w for w in weight_lst])))
 
-            # extract 1d spectrum
-            section = config['reduce.extract']
-            spectra1d = extract_aperset(data, mask,
-                        apertureset = master_aperset,
-                        lower_limit = section.getfloat('lower_limit'),
-                        upper_limit = section.getfloat('upper_limit'),
-                        )
-            logger.info('FileID: {} - 1D spectra of {} orders are extracted'.format(
-                fileid, len(spectra1d)))
+        spec, head = wl_reference_singlefiber(spec, head,
+                        ref_calib_lst, weight_lst)
 
-            # pack spectrum
-            spec = []
-            for aper, item in sorted(spectra1d.items()):
-                flux_sum = item['flux_sum']
-                spec.append((aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
-            spec = np.array(spec, dtype=spectype)
-
-            # wavelength calibration
-            weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
-
-            logger.info('FileID: {} - wavelength calibration weights: {}'.format(
-                fileid, ','.join(['%8.4f'%w for w in weight_lst])))
-
-            spec, head = wl_reference_singlefiber(spec, head,
-                            ref_calib_lst, weight_lst)
-
-            # pack and save wavelength referenced spectra
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(header=head),
-                        fits.BinTableHDU(spec),
-                        ])
-            filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
-            hdu_lst.writeto(filename, overwrite=True)
-            logger.info('FileID: {} - Spectra written to {}'.format(
-                fileid, filename))
+        # pack and save wavelength referenced spectra
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    ])
+        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        hdu_lst.writeto(filename, overwrite=True)
+        logger.info('FileID: {} - Spectra written to {}'.format(
+            fileid, filename))
 
 def reduce_multifiber(logtable, config):
 
