@@ -24,9 +24,6 @@ def main():
     elif sys.argv[1] == 'plot':
         plot_spectra1d()
     elif sys.argv[1] == 'show':
-        #filename_lst = [filename for filename in sys.argv[2:]
-        #                if os.path.exists(filename)]
-        #show_spectra1d(filename_lst)
         show_onedspec()
     else:
         print('Unknow argument: %s'%sys.argv[1])

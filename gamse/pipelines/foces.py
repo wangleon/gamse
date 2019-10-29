@@ -2979,13 +2979,11 @@ def reduce_multifiber(logtable, config):
                         fileid, bias.mean())
         else:
             message = 'FileID: {} - no bias'.format(fileid)
-
         logger.info(message)
         print(message)
 
         # correct flat
         data = data/master_flatmap
-
         message = 'FileID: {} - flat corrected'.format(fileid)
         logger.info(message)
         print(message)
@@ -3037,27 +3035,27 @@ def reduce_multifiber(logtable, config):
             if fiberobj_lst[ifiber]=='':
                 # nothing in this fiber
                 continue
+            lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
+            upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
+
             spectra1d = extract_aperset(data, mask,
                             apertureset = master_aperset[fiber],
-                            lower_limit = {'A':section.getfloat('lower_limit'), 'B':4}[fiber],
-                            upper_limit = {'A':section.getfloat('upper_limit'), 'B':4}[fiber],
+                            lower_limit = lower_limits[fiber],
+                            upper_limit = upper_limits[fiber],
                         )
 
             fmt_string = ('FileID: {}'
                             ' - fiber {}'
                             ' - 1D spectra of {} orders extracted')
             message = fmt_string.format(fileid, fiber, len(spectra1d))
-
             logger.info(message)
             print(message)
 
+            # pack spectrum
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
-                item = (
-                        aper,
-                        0,
-                        flux_sum.size,
+                item = (aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64),
                         flux_sum
                         )
@@ -3086,8 +3084,7 @@ def reduce_multifiber(logtable, config):
 
         newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
-        for card in newcards:
-            key, value = card
+        for key, value in newcards:
             key = 'HIERARCH GAMSE WLCALIB '+key
             head.append((key, value))
         # pack and save to fits
