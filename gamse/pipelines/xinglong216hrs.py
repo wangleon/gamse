@@ -197,11 +197,11 @@ def correct_overscan(data, head, mask=None):
         new_data = fix_pixels(new_data, bad_mask, 'x', 'linear')
 
     card_lst = []
-    prefix = 'HIERARCH GAMSE OVERSCAN'
-    card_lst.append((prefix+' CORRECTED', True))
-    card_lst.append((prefix+' METHOD',    'smooth:savgol'))
-    card_lst.append((prefix+' WINLEN',    winlength))
-    card_lst.append((prefix+' POLYORDER', polyorder))
+    prefix = 'HIERARCH GAMSE OVERSCAN '
+    card_lst.append((prefix + 'CORRECTED', True))
+    card_lst.append((prefix + 'METHOD',    'smooth:savgol'))
+    card_lst.append((prefix + 'WINLEN',    winlength))
+    card_lst.append((prefix + 'POLYORDER', polyorder))
     #card_lst.append((prefix+' AXIS-1',    '{}:{}'.format(x1, x2)))
     #card_lst.append((prefix+' AXIS-2',    '{}:{}'.format()))
 
@@ -235,8 +235,6 @@ def parse_bias_frames(logtable, config, pinfo):
             data, head = fits.getdata(filename, header=True)
             mask = get_mask(data, head)
             data, card_lst, overmean = correct_overscan(data, head, mask)
-            for key, value in card_lst:
-                head.append((key, value))
 
             # print info
             if len(bias_data_lst) == 0:
@@ -762,6 +760,13 @@ def reduce():
         reduce_multifiber(logtable, config)
 
 def reduce_singlefiber(logtable, config):
+    """Reduce the single fiber data of Xinglong 2.16m HRS.
+
+    Args:
+        logtable ():
+        config ():
+
+    """
 
     # extract keywords from config file
     section     = config['data']
@@ -769,6 +774,7 @@ def reduce_singlefiber(logtable, config):
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
+
     section     = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -788,14 +794,14 @@ def reduce_singlefiber(logtable, config):
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ############################# parse bias ###################################
-    section = config['reduce.bias']
-    bias_file = section['bias_file']
-
-    if os.path.exists(bias_file):
-        has_bias = True
+    bias_file = config['reduce.bias']['bias_file']
+    if mode=='debug' and os.path.exists(bias_file):
         # load bias data from existing file
         bias, head = fits.getdata(bias_file, header=True)
-        logger.info('Load bias from image: %s'%bias_file)
+        message = 'Load bias from image: {}'.format(bias_file)
+        logger.info(message)
+        print(message)
+        bias_card_lst = []
     else:
         bias_data_lst = []
         bias_fileid_lst = []
@@ -1348,7 +1354,8 @@ def reduce_singlefiber(logtable, config):
                 )
                 
         #hdu_lst = self_reference_singlefiber(spec, head, calib)
-        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        filename = os.path.join(onedspec,
+                                '{}_{}.fits'.format(fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
     
         # add more infos in calib
@@ -1375,7 +1382,7 @@ def reduce_singlefiber(logtable, config):
         hdu_lst.writeto(filename, overwrite=True)
 
         filename = os.path.join(onedspec,
-                    '{}.{}.fits'.format(fileid, oned_suffix))
+                                '{}_{}.fits'.format(fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
 
         # pack to calib_lst
@@ -1548,12 +1555,20 @@ def reduce_singlefiber(logtable, config):
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(spec),
                     ])
-        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        filename = os.path.join(onedspec,
+                                '{}_{}.fits'.format(fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
         logger.info('FileID: {} - Spectra written to {}'.format(
             fileid, filename))
 
 def reduce_multifiber(logtable, config):
+    """Reduce the multi-fiber data of Xinglong 2.16m HRS.
+
+    Args:
+        logtable ():
+        config ():
+
+    """
 
     # extract keywords from config file
     section     = config['data']
@@ -1563,6 +1578,7 @@ def reduce_multifiber(logtable, config):
     direction   = section.get('direction')
     # if mulit-fiber, get fiber offset list from config file
     fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
+
     section     = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -2476,7 +2492,7 @@ def reduce_multifiber(logtable, config):
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(onedspec, '{}_{}{}.fits'.format(
+            filename = os.path.join(onedspec, '{}_{}_{}.fits'.format(
                                             fileid, fiber, oned_suffix))
             hdu_lst.writeto(filename, overwrite=True)
 
@@ -2897,7 +2913,9 @@ def print_wrapper(string, item):
         return string
 
 def make_config():
-    """Make config file for data from Xinglong 2.16m HRS
+    """Generate a config file for reducing the data taken with Xinglong 2.16m
+    HRS.
+
 
     """
 
@@ -2967,7 +2985,7 @@ def make_config():
     config.set('reduce', 'report',      'report')
     config.set('reduce', 'onedspec',    'onedspec')
     config.set('reduce', 'mode',        'normal')
-    config.set('reduce', 'oned_suffix', '_ods')
+    config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
     
     config.add_section('reduce.bias')
