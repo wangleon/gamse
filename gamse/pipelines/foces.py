@@ -35,6 +35,7 @@ from ..echelle.background import find_background, simple_debackground
 from ..utils.onedarray import get_local_minima
 from ..utils.regression import iterative_polyfit
 from ..utils.obslog import read_obslog
+from ..utils.misc import extract_date
 from .common import plot_background_aspect1, FormattedInfo
 from .reduction          import Reduction
 
@@ -618,6 +619,78 @@ def print_wrapper(string, item):
         return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
     else:
         return string
+
+def make_config():
+    """Generate a config file for reducing the data taken with FOCES.
+
+    """
+    # find date of data obtained
+    current_pathname = os.path.basename(os.getcwd())
+    guess_date = extract_date(current_pathname)
+
+    while(True):
+        if guess_date is None:
+            prompt = 'YYYYMMDD'
+        else:
+            prompt = guess_date
+
+        string = input('Date of observation [{}]: '.format(prompt))
+        input_date = extract_date(string)
+        if input_date is None:
+            if guess_date is None:
+                continue
+            else:
+                input_date = guess_date
+                break
+        else:
+            break
+   
+    input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
+
+    # determine the fiber mode
+    while(True):
+        string = input(
+            'The data was obatined with Single fiber or Double fibers? [s/d]:')
+        if string == 's':
+            fibermode = 'single'
+            break
+        elif string == 'd':
+            fibermode = 'double'
+            break
+        else:
+            print('Invalid input: {}'.format(string))
+            continue
+
+    # create config object
+    config = configparser.ConfigParser()
+
+    config.add_section('data')
+    config.set('data', 'telescope',   'Fraunhofer')
+    config.set('data', 'instrument',  'FOCES')
+    config.set('data', 'rawdata',     'rawdata')
+    config.set('data', 'statime_key', 'FRAME')
+    config.set('data', 'exptime_key', 'EXPOSURE')
+    config.set('data', 'direction',   'xb+')
+    config.set('data', 'fibermode',   fibermode)
+    if fibermode == 'double':
+        config.set('data', 'fiberoffset', str(9))
+
+    config.add_section('reduce')
+    config.set('reduce', 'midproc',     'midproc')
+    config.set('reduce', 'report',      'report')
+    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'mode',        'normal')
+    config.set('reduce', 'oned_suffix', 'ods')
+    config.set('reduce', 'fig_format',  'png')
+
+    config.add_section('reduce.bias')
+    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set('reduce.bias', 'cosmic_clip',   str(10))
+    config.set('reduce.bias', 'maxiter',       str(5))
+    config.set('reduce.bias', 'smooth',        'yes')
+    config.set('reduce.bias', 'smooth_method', 'gaussian')
+    config.set('reduce.bias', 'smooth_sigma',  str(3))
+    config.set('reduce.bias', 'smooth_mode',   'nearest')
 
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
