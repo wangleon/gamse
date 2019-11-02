@@ -692,6 +692,45 @@ def make_config():
     config.set('reduce.bias', 'smooth_sigma',  str(3))
     config.set('reduce.bias', 'smooth_mode',   'nearest')
 
+    config.add_section('reduce.trace')
+    config.set('reduce.trace', 'minimum',    str(8))
+    config.set('reduce.trace', 'scan_step',  str(100))
+    config.set('reduce.trace', 'separation', '500:26, 1500:15')
+    config.set('reduce.trace', 'filling',    str(0.3))
+    config.set('reduce.trace', 'align_deg',  str(2))
+    config.set('reduce.trace', 'display',    'no')
+    config.set('reduce.trace', 'degree',     str(3))
+
+    config.add_section('reduce.flat')
+    config.set('reduce.flat', 'slit_step',       str(128))
+    config.set('reduce.flat', 'q_threshold',     str(50))
+    config.set('reduce.flat', 'param_deg',       str(7))
+    config.set('reduce.flat', 'mosaic_maxcount', str(50000))
+
+    config.add_section('reduce.wlcalib')
+    config.set('reduce.wlcalib', 'search_database', 'yes')
+    config.set('reduce.wlcalib', 'database_path',
+                                    '/opt/gamse/FOCES/wlcalib')
+    config.set('reduce.wlcalib', 'linelist',        'thar.dat')
+    config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
+    config.set('reduce.wlcalib', 'window_size',     str(13))
+    config.set('reduce.wlcalib', 'xorder',          str(3))
+    config.set('reduce.wlcalib', 'yorder',          str(3))
+    # in previous single fiber data, yorder = 4
+    config.set('reduce.wlcalib', 'maxiter',         str(5))
+    config.set('reduce.wlcalib', 'clipping',        str(3))
+    config.set('reduce.wlcalib', 'q_threshold',     str(10))
+
+    config.add_section('reduce.background')
+    config.set('reduce.background', 'ncols',    str(9))
+    distance = {'single': 6, 'double': 2}[fibermode]
+    config.set('reduce.background', 'distance', str(distance))
+    config.set('reduce.background', 'yorder',   str(6))
+
+    config.add_section('reduce.extract')
+    config.set('reduce.extract', 'upper_limit', str(6))
+    config.set('reduce.extract', 'lower_limit', str(6))
+
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
