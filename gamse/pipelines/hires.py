@@ -10,12 +10,13 @@ import astropy.io.fits as fits
 from astropy.table import Table
 from astropy.time  import Time
 
-from ..utils.obslog import parse_num_seq, read_obslog
 from ..echelle.imageproc import combine_images
 from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
 from ..echelle.background import simple_debackground
 from ..echelle.extract import extract_aperset
 from ..echelle.flat import get_slit_flat
+from ..utils.obslog import parse_num_seq, read_obslog
+from ..utils.misc import extract_date
 
 from .common import FormattedInfo
 
@@ -103,6 +104,47 @@ def print_wrapper(string, item):
         return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
     else:
         return string
+
+
+def make_config():
+    """Generate a config file for reducing the data taken with Xinglong 2.16m
+    HRS.
+
+
+    """
+    # find date of data obtained
+    current_pathname = os.path.basename(os.getcwd())
+    guess_date = extract_date(current_pathname)
+
+    while(True):
+        if guess_date is None:
+            prompt = 'YYYYMMDD'
+        else:
+            prompt = guess_date
+
+        string = input('Date of observation [{}]: '.format(prompt))
+        input_date = extract_date(string)
+        if input_date is None:
+            if guess_date is None:
+                continue
+            else:
+                input_date = guess_date
+                break
+        else:
+            break
+   
+    input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
+
+    # create config object
+    config = configparser.ConfigParser()
+
+    config.add_section('data')
+
+    config.set('data', 'telescope',   'Keck-I')
+    config.set('data', 'instrument',  'HIRES')
+    config.set('data', 'rawdata',     'rawdata')
+    #config.set('data', 'statime_key', statime_key)
+    #config.set('data', 'exptime_key', exptime_key)
 
 def parse_3ccd_images(hdu_lst):
     """Parse the 3 CCD images.
