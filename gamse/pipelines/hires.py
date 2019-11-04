@@ -146,6 +146,36 @@ def make_config():
     #config.set('data', 'statime_key', statime_key)
     #config.set('data', 'exptime_key', exptime_key)
 
+    config.add_section('reduce')
+    config.set('reduce', 'midproc',     'midproc')
+    config.set('reduce', 'report',      'report')
+    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'mode',        'normal')
+    config.set('reduce', 'oned_suffix', 'ods')
+    config.set('reduce', 'fig_format',  'png')
+    
+    config.add_section('reduce.bias')
+    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set('reduce.bias', 'cosmic_clip',   str(10))
+    config.set('reduce.bias', 'maxiter',       str(5))
+    config.set('reduce.bias', 'smooth',        'yes')
+    config.set('reduce.bias', 'smooth_method', 'gaussian')
+    config.set('reduce.bias', 'smooth_sigma',  str(3))
+    config.set('reduce.bias', 'smooth_mode',   'nearest')
+
+    config.add_section('reduce.trace')
+    config.set('reduce.trace', 'minimum',    str(1e-3))
+    config.set('reduce.trace', 'scan_step',  str(100))
+    config.set('reduce.trace', 'separation', '100:84, 1500:45, 3000:14')
+    config.set('reduce.trace', 'filling',    str(0.2))
+    config.set('reduce.trace', 'align_deg',  str(2))
+    config.set('reduce.trace', 'display',    'no')
+    config.set('reduce.trace', 'degree',     str(4))
+    config.set('reduce.trace', 'file',       '${reduce:midproc}/trace.fits')
+
+    config.add_section('reduce.flat')
+    config.set('reduce.flat', 'file', '${reduce:midproc}/flat.fits')
+
 def parse_3ccd_images(hdu_lst):
     """Parse the 3 CCD images.
 
