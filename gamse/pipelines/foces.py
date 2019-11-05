@@ -1238,40 +1238,21 @@ def reduce():
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
 
-    # first load local config files starting with "FOCES"
-    config_file_lst = []
     # find local config file
     for fname in os.listdir(os.curdir):
         if fname[0:5]=='FOCES' and fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
 
-    config.read(config_file_lst)
+    fibermode = config['data']['fibermode']
 
-    section = config['data']
-    multi_fiber = section.getboolean('multi_fiber', True)
-
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-
-    # load general config file
-    config_file = os.path.join(config_path, 'FOCES.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.insert(0, config_file)
-
-    if multi_fiber:
-        config_file = os.path.join(config_path, 'FOCES.doublefiber.cfg')
-        if os.path.exists(config_file):
-            config_file_lst.insert(0, config_file)
-        config.read(config_file_lst)
-
+    if fibermode == 'single':
+        reduce_singlefiber(logtable, config)
+    elif fibermode == 'double':
         reduce_multifiber(logtable, config)
     else:
-        config_file = os.path.join(config_path, 'FOCES.singlefiber.cfg')
-        if os.path.exists(config_file):
-            config_file_lst.insert(0, config_file)
-        config.read(config_file_lst)
-
-        reduce_singlefiber(logtable, config)
-
+        print('Invalid fibermode:', fibermode)
 
 def reduce_singlefiber(logtable, config):
     """Data reduction for single-fiber configuration.
