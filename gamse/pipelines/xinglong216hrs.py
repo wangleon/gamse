@@ -754,13 +754,14 @@ def reduce():
             print('Load Congfile File: {}'.format(fname))
             break
 
-    section = config['data']
-    fibermode = section.get('fibermode')
+    fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
         reduce_singlefiber(logtable, config)
     elif fibermode == 'double':
         reduce_multifiber(logtable, config)
+    else:
+        print('Invalid fibermode:', fibermode)
 
 def reduce_singlefiber(logtable, config):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
