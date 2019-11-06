@@ -176,6 +176,21 @@ def make_config():
     config.add_section('reduce.flat')
     config.set('reduce.flat', 'file', '${reduce:midproc}/flat.fits')
 
+    # write to config file
+    filename = 'HIRES.{}.cfg'.format(input_date)
+    outfile = open(filename, 'w')
+    for section in config.sections():
+        maxkeylen = max([len(key) for key in config[section].keys()])
+        outfile.write('[{}]'.format(section)+os.linesep)
+        fmt = '{{:{}s}} = {{}}'.format(maxkeylen)
+        for key, value in config[section].items():
+            outfile.write(fmt.format(key, value)+os.linesep)
+        outfile.write(os.linesep)
+    outfile.close()
+
+    print('Config file written to {}'.format(filename))
+    
+
 def parse_3ccd_images(hdu_lst):
     """Parse the 3 CCD images.
 
