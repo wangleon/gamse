@@ -731,6 +731,20 @@ def make_config():
     config.set('reduce.extract', 'upper_limit', str(6))
     config.set('reduce.extract', 'lower_limit', str(6))
 
+    # write to config file
+    filename = 'FOCES.{}.cfg'.format(input_date)
+    outfile = open(filename, 'w')
+    for section in config.sections():
+        maxkeylen = max([len(key) for key in config[section].keys()])
+        outfile.write('[{}]'.format(section)+os.linesep)
+        fmt = '{{:{}s}} = {{}}'.format(maxkeylen)
+        for key, value in config[section].items():
+            outfile.write(fmt.format(key, value)+os.linesep)
+        outfile.write(os.linesep)
+    outfile.close()
+
+    print('Config file written to {}'.format(filename))
+
 def make_obslog(path):
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
