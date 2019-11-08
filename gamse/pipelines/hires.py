@@ -509,24 +509,16 @@ def reduce():
     logtable = read_obslog(logname_lst[0])
 
     # load config files
-    config_file_lst = []
-    # find built-in config file
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-    config_file = os.path.join(config_path, 'HIRES.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.append(config_file)
-
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
     # find local config file
     for fname in os.listdir(os.curdir):
         if fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
-
-    # load both built-in and local config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation           = configparser.ExtendedInterpolation(),
-                )
-    config.read(config_file_lst)
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
 
     # extract keywords from config file
     section = config['data']
