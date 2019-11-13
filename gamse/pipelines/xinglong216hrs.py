@@ -749,7 +749,7 @@ def reduce():
 
     # find local config file
     for fname in os.listdir(os.curdir):
-        if fname[0:14]=='Xinglong216HRS' and fname[-4:]=='.cfg':
+        if re.match ('Xinglong216HRS\S*.cfg', fname):
             config.read(fname)
             print('Load Congfile File: {}'.format(fname))
             break
