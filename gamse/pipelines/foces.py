@@ -1246,15 +1246,14 @@ def reduce():
     logtable = read_obslog(logname_lst[0])
 
     # load config files
-    # load both built-in and local config files
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
-                interpolation           = configparser.ExtendedInterpolation(),
+                interpolation = configparser.ExtendedInterpolation(),
                 )
 
     # find local config file
     for fname in os.listdir(os.curdir):
-        if fname[0:5]=='FOCES' and fname[-4:]=='.cfg':
+        if re.match('FOCES\S*.cfg', fname) is not None:
             config.read(fname)
             print('Load Congfile File: {}'.format(fname))
             break
@@ -1264,7 +1263,7 @@ def reduce():
     if fibermode == 'single':
         reduce_singlefiber(logtable, config)
     elif fibermode == 'double':
-        reduce_multifiber(logtable, config)
+        reduce_doublefiber(logtable, config)
     else:
         print('Invalid fibermode:', fibermode)
 
@@ -1272,8 +1271,9 @@ def reduce_singlefiber(logtable, config):
     """Data reduction for single-fiber configuration.
 
     Args:
-        logtable ():
-        config ():
+        logtable (:class:`astropy.table.Table`): The observing log.
+        config (:class:`configparser.ConfigParser`): The configuration of
+            reduction.
 
     """
 
@@ -2091,12 +2091,13 @@ def reduce_singlefiber(logtable, config):
 
 
 
-def reduce_multifiber(logtable, config):
+def reduce_doublefiber(logtable, config):
     """Data reduction for multiple-fiber configuration.
 
     Args:
-        logtable ():
-        config ():
+        logtable (:class:`astropy.table.Table`): The observing log.
+        config (:class:`configparser.ConfigParser`): The configuration of
+            reduction.
 
     """
 

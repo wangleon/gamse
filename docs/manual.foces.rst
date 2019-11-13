@@ -383,6 +383,8 @@ APIs
    gamse.pipelines.foces.plot_overscan_variation
    gamse.pipelines.foces.plot_bias_smooth
    gamse.pipelines.foces.reduce
+   gamse.pipelines.foces.reduce_singlefiber
+   gamse.pipelines.foces.reduce_doublefiber
    gamse.pipelines.foces.smooth_aperpar_A
    gamse.pipelines.foces.smooth_aperpar_k
    gamse.pipelines.foces.smooth_aperpar_c
