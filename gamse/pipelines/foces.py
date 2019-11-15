@@ -79,12 +79,13 @@ def correct_overscan(data, mask=None):
     new_data = data[:,20:2068] - ovrmean1
     
     card_lst = []
-    card_lst.append(('OVERSCAN CORRECTED', True))
-    card_lst.append(('OVERSCAN METHOD',    'mean'))
-    card_lst.append(('OVERSCAN AXIS-1',    '1:20'))
-    card_lst.append(('OVERSCAN AXIS-2',    '{}:{}'.format(vy1,vy2)))
-    card_lst.append(('OVERSCAN MEAN',      ovrmean1))
-    card_lst.append(('OVERSCAN STDEV',     ovrstd1))
+    prefix = 'HIERARCH GAMSE OVERSCAN '
+    card_lst.append((prefix + 'CORRECTED', True))
+    card_lst.append((prefix + 'METHOD',    'mean'))
+    card_lst.append((prefix + 'AXIS-1',    '1:20'))
+    card_lst.append((prefix + 'AXIS-2',    '{}:{}'.format(vy1,vy2)))
+    card_lst.append((prefix + 'MEAN',      ovrmean1))
+    card_lst.append((prefix + 'STDEV',     ovrstd1))
 
     return new_data, card_lst, ovrmean1
 
@@ -1253,7 +1254,7 @@ def reduce():
 
     # find local config file
     for fname in os.listdir(os.curdir):
-        if re.match('FOCES\S*.cfg', fname) is not None:
+        if re.match('FOCES\S*.cfg$', fname) is not None:
             config.read(fname)
             print('Load Congfile File: {}'.format(fname))
             break
@@ -1338,7 +1339,6 @@ def reduce_singlefiber(logtable, config):
                 if 'BLANK' in head:
                     del head['BLANK']
                 for key, value in card_lst:
-                    key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
                 # print info
@@ -1526,7 +1526,6 @@ def reduce_singlefiber(logtable, config):
                 if 'BLANK' in head:
                     del head['BLANK']
                 for key, value in card_lst:
-                    key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
                 # correct bias for flat, if has bias
@@ -1769,7 +1768,6 @@ def reduce_singlefiber(logtable, config):
         if 'BLANK' in head:
             del head['BLANK']
         for key, value in card_lst:
-            key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
         # correct bias for ThAr, if has bias
@@ -1806,11 +1804,9 @@ def reduce_singlefiber(logtable, config):
             if section.getboolean('search_database'):
                 # find previouse calibration results
                 database_path = section.get('database_path')
-                search_path = os.path.join(database_path,
-                                            'FOCES/wlcalib')
 
                 result = select_calib_from_database(
-                        search_path, statime_key, head[statime_key])
+                        database_path, statime_key, head[statime_key])
                 ref_spec, ref_calib = result
     
                 if ref_spec is None or ref_calib is None:
@@ -1990,7 +1986,6 @@ def reduce_singlefiber(logtable, config):
         if 'BLANK' in head:
             del head['BLANK']
         for key, value in card_lst:
-            key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
         message = 'FileID: {} - overscan corrected'.format(fileid)
@@ -2090,7 +2085,6 @@ def reduce_singlefiber(logtable, config):
         print(message)
 
 
-
 def reduce_doublefiber(logtable, config):
     """Data reduction for multiple-fiber configuration.
 
@@ -2108,7 +2102,7 @@ def reduce_doublefiber(logtable, config):
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
     # if mulit-fiber, get fiber offset list from config file
-    fiber_offsets = [float(v) for v in section.get('fiber_offsets').split(',')]
+    fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
     section = config['reduce']
     midproc     = section.get('midproc')
     onedspec    = section.get('onedspec')
@@ -2173,7 +2167,6 @@ def reduce_doublefiber(logtable, config):
                 if 'BLANK' in head:
                     del head['BLANK']
                 for key, value in card_lst:
-                    key = 'HIERARCH GAMSE '+key
                     head.append((key, value))
 
                 # print info
@@ -2389,9 +2382,7 @@ def reduce_doublefiber(logtable, config):
                     # head['BLANK'] is only valid for integer arrays.
                     if 'BLANK' in head:
                         del head['BLANK']
-                    for card in card_lst:
-                        key, value = card
-                        key = 'HIERARCH GAMSE '+key
+                    for key, value in card_lst:
                         head.append((key, value))
 
                     # correct bias for flat, if has bias
@@ -2467,6 +2458,35 @@ def reduce_doublefiber(logtable, config):
                 aperset.save_txt(aperset_filename)
                 aperset.save_reg(aperset_regname, fiber=fiber,
                                 color={'A':'green','B':'yellow'}[fiber])
+
+            '''
+            # correct background for flat
+            fig_sec = os.path.join(report,
+                    'bkg_flat_{}_{}_sec.{}'.format(fiber, flatname, fig_format))
+            section = config['reduce.background']
+            stray = find_background(data, mask,
+                    aperturesets = aperset,
+                    ncols        = section.getint('ncols'),
+                    distance     = section.getfloat('distance'),
+                    yorder       = section.getint('yorder'),
+                    fig_section  = fig_sec,
+                    )
+            flat_dbkg = flat_data - stray
+
+            # plot stray light of flat
+            fig_stray = os.path.join(report,
+                        'bkg_flat_{}_{}_stray.{}'.format(
+                        fiber, flatname, fig_format))
+            plot_background_aspect1(flat_data, stray, fig_stray)
+
+            # extract 1d spectrum of flat
+            section = config['reduce.extract']
+            spectra1d = extract_aperset(flat_dbkg, mask,
+                            apertureset = aperset,
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
+                        )
+            '''
 
             # append the flat data and mask
             flat_data_lst[fiber][flatname] = flat_data
@@ -2709,6 +2729,23 @@ def reduce_doublefiber(logtable, config):
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
+    #################### Extract Flat Fielding Spectrum ########################
+
+    # correct flat for flatfielding
+    flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    for ifiber in range(n_fiber):
+        fiber = chr(ifiber+65)
+        data = flat_norm_lst[fiber]/master_flatmap
+        mask = flat_mask_lst[fiber]
+
+        section = config['reduce.extract']
+        spectra1d = extract_aperset(data, mask,
+                        apertureset = master_aperset[fiber],
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+        flat_spec_lst[fiber] = spectra1d
+
     ############################## Extract ThAr ################################
 
     # get the data shape
@@ -2721,6 +2758,7 @@ def reduce_doublefiber(logtable, config):
             ('points',     np.int16),
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
+            ('flat',       (np.float32, w)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -2771,7 +2809,6 @@ def reduce_doublefiber(logtable, config):
         if 'BLANK' in head:
             del head['BLANK']
         for key, value in card_lst:
-            key = 'HIERARCH GAMSE '+key
             head.append((key, value))
 
         # correct bias for ThAr, if has bias
@@ -2809,6 +2846,7 @@ def reduce_doublefiber(logtable, config):
                     flux_sum.size, # number of points
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
                     flux_sum,      # fluxes
+                    flat_spec_lst[fiber][aper]['flux_sum'],  # flat
                     ))
             spec = np.array(spec, dtype=spectype)
 
@@ -2824,11 +2862,9 @@ def reduce_doublefiber(logtable, config):
                 if section.getboolean('search_database'):
                     # find previouse calibration results
                     database_path = section.get('database_path')
-                    search_path = os.path.join(database_path,
-                                                'FOCES/wlcalib')
 
                     ref_spec, ref_calib = select_calib_from_database(
-                        search_path, statime_key, head[statime_key])
+                        database_path, statime_key, head[statime_key])
 
                     if ref_spec is None or ref_calib is None:
                         # if failed, pop up a calibration window and
@@ -3041,6 +3077,8 @@ def reduce_doublefiber(logtable, config):
             else:
                 continue
 
+    
+
     #################### Extract Science Spectrum ##############################
 
     for logitem in logtable:
@@ -3070,9 +3108,7 @@ def reduce_doublefiber(logtable, config):
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
-        for card in card_lst:
-            key, value = card
-            key = 'HIERARCH GAMSE '+key
+        for key, value in card_lst:
             head.append((key, value))
 
         message = 'FileID: {} - overscan corrected'.format(fileid)
@@ -3165,7 +3201,8 @@ def reduce_doublefiber(logtable, config):
                 flux_sum = item['flux_sum']
                 item = (aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64),
-                        flux_sum
+                        flux_sum,
+                        flat_spec_lst[fiber][aper]['flux_sum'],
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=spectype)
