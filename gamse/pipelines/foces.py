@@ -3028,7 +3028,7 @@ def reduce_doublefiber(logtable, config):
                     fits.BinTableHDU(newspec),
                     fits.BinTableHDU(newidentlist),
                     ])
-        filename = os.path.join(onedspec, '{}{}.fits'.format(
+        filename = os.path.join(onedspec, '{}_{}.fits'.format(
                                             fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
 
@@ -3237,7 +3237,7 @@ def reduce_doublefiber(logtable, config):
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(newspec),
                     ])
-        filename = os.path.join(onedspec, '{}{}.fits'.format(
+        filename = os.path.join(onedspec, '{}_{}.fits'.format(
                                             fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
 

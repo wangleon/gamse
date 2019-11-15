@@ -2197,7 +2197,7 @@ def select_calib_from_database(path, time_key, current_time):
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
-        if fname[0:8]=='wlcalib.' and fname[-5:]=='.fits':
+        if re.match('wlcalib.\S*.fits$', fname) is not None:
             filename = os.path.join(path, fname)
             head = fits.getheader(filename)
             dt = dateutil.parser.parse(head[time_key])
