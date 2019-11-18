@@ -2738,6 +2738,8 @@ def reduce_doublefiber(logtable, config):
         data = flat_norm_lst[fiber]/master_flatmap
         mask = flat_mask_lst[fiber]
 
+        fits.writeto('flat_flt.{}.fits'.format(fiber), data, overwrite=True)
+
         section = config['reduce.extract']
         spectra1d = extract_aperset(data, mask,
                         apertureset = master_aperset[fiber],
