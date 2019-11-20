@@ -810,10 +810,16 @@ def make_obslog(path):
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
                 imgtype, objectname = 'cal', 'Bias'
-            elif fileid[22:25]=='FLA':
-                imgtype, objectname = 'cal', 'Flat'
-            elif fileid[22:25]=='THA':
-                imgtype, objectname = 'cal', 'ThAr'
+            elif fileid[22:25]=='FLS':
+                imgtype, objectname = 'cal', 'Flat;'
+            elif fileid[22:25]=='FLC':
+                imgtype, objectname = 'cal', ';Flat'
+            elif fileid[22:26]=='COCS':
+                imgtype, objectname = 'cal', 'Comb;Comb'
+            elif fileid[22:25]=='THS':
+                imgtype, objectname = 'cal', 'ThAr;'
+            elif fileid[22:25]=='THC':
+                imgtype, objectname = 'cal', ';ThAr'               
             else:
                 objectname = 'Unknown'
                 imgtype = ('cal', 'sci')[fileid[22:24]=='SC']
