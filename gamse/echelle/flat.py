@@ -1402,6 +1402,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     # = True if there's unsaved figure in memory
     has_aperpar_fig = False
 
+    # initialize 1-d spectra array of flat
+    flatspec_lst = {aper: np.full(w, np.nan) for aper in apertureset}
+
     for iaper, aper in enumerate(sorted(apertureset.keys())):
         fitpar_lst  = [] # stores (A, k, c, bkg).has the same length as newx_lst
         aperpar_lst = []
@@ -1733,6 +1736,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             y1 = int(max(0, lbound[x]))
             y2 = int(min(h, ubound[x]))
             xdata = np.arange(y1, y2)
+            xdata2 = np.arange(y1, y2-1, 0.02)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
             _badmask = bad_mask[y1:y2, x]
@@ -1757,7 +1761,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #    flat[flatmask] = (flat[flatmask]-1)*decay + 1
             flatdata[y1:y2, x][flatmask] = flat[flatmask]
 
-
+            flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
+            flatspecv = np.trapz(flatmod, x=xdata2)
+            flatspec_lst[aper][x] = flatspecv
+            
             #if aper==0:
             #    print(x, y1, y2, flatmask)
 
@@ -1789,7 +1796,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         plt.close(fig)
         has_aperpar_fig = False
 
-    return flatdata
+    return flatdata, flatspec_lst
 
 
 def default_smooth_flux(x, y, w):
