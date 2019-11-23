@@ -15,6 +15,7 @@ setup(
                     'gamse/utils',
                     'gamse/echelle',
                     'gamse/pipelines',
+                    'gamse/pipelines/foces',
                    ],
     package_data = {
                     'gamse': ['data/config/*',
