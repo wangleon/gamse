@@ -7,8 +7,11 @@ import astropy.io.fits as fits
 from astropy.time  import Time
 from astropy.table import Table
 
-from ...utils.misc import extract_date
+from .reduce_singlefiber import reduce_singlefiber
+from .reduce_doublefiber import reduce_doublefiber
 from ..common import FormattedInfo
+from ...utils.obslog import read_obslog
+from ...utils.misc import extract_date
 
 def make_config():
     """Generate a config file for reducing the data taken with FOCES.
@@ -278,3 +281,47 @@ def make_obslog(path):
     for row in logtable:
         outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
+
+def reduce_rawdata():
+    """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
+    Observatory.
+    """
+
+    # find obs log
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname[-7:]=='.obslog']
+    if len(logname_lst)==0:
+        print('No observation log found')
+        exit()
+    elif len(logname_lst)>1:
+        print('Multiple observation log found:')
+        for logname in sorted(logname_lst):
+            print('  '+logname)
+    else:
+        pass
+
+    # read obs log
+    logtable = read_obslog(logname_lst[0])
+
+    # load config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
+
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if re.match('FOCES\S*.cfg$', fname) is not None:
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
+
+    fibermode = config['data']['fibermode']
+
+    if fibermode == 'single':
+        reduce_singlefiber(logtable, config)
+    elif fibermode == 'double':
+        reduce_doublefiber(logtable, config)
+    else:
+        print('Invalid fibermode:', fibermode)
+

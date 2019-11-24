@@ -65,7 +65,7 @@ def reduce_echelle():
     logger.info('Start reducing %s, %s data'%(telescope, instrument))
 
     if telescope == 'Fraunhofer' and instrument == 'FOCES':
-        foces.reduce()
+        foces.reduce_rawdata()
     elif telescope == 'Xinglong216' and instrument == 'HRS':
         xinglong216hrs.reduce()
     elif telescope == 'APF' and instrument == 'Levy':
