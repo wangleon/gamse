@@ -103,7 +103,7 @@ def make_config():
     config.add_section('reduce.wlcalib')
     config.set('reduce.wlcalib', 'search_database', 'yes')
     config.set('reduce.wlcalib', 'database_path',
-                                    '/opt/gamse/FOCES/wlcalib')
+                                    '~/.gamse/FOCES/wlcalib')
     config.set('reduce.wlcalib', 'linelist',        'thar.dat')
     config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
     config.set('reduce.wlcalib', 'window_size',     str(13))

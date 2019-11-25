@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.signal import savgol_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 
 from ...utils.onedarray import get_local_minima

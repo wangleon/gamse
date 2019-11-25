@@ -8,20 +8,17 @@ import configparser
 import dateutil.parser
 
 import numpy as np
-from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
-from astropy.table import Table
-from astropy.time  import Time
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 
 from ...echelle.trace import TraceFigureCommon
-from ..utils.obslog import read_obslog
-from .reduction          import Reduction
+from ...utils.obslog import read_obslog
+from ..reduction          import Reduction
 
 def correct_overscan(data, mask=None):
     """Correct overscan for an input image and update related information in the
