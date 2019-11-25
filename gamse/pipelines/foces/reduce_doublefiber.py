@@ -1,11 +1,15 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
 
-from .common import TraceFigure
+from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
+                     TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg
                    )
@@ -482,12 +486,12 @@ def reduce_doublefiber(logtable, config):
                             slit_file       = None,
                             )
 
+                fig = plt.figure(dpi=150)
+                ax = fig.gca()
                 for aper, spec in sorted(flatspec.items()):
-                    fig = plt.figure(dpi=150)
-                    ax = fig.gca()
-                    ax.plot(spec)
-                    fig.savefig('flatspec_%s_%s_%d.png'%(fiber, flatname, aper))
-                    plt.close(fig)
+                    ax.plot(spec, lw=0.5)
+                fig.savefig('flatspec_%s_%s.png'%(fiber, flatname))
+                plt.close(fig)
                 
                 # append the sensivity map to fits file
                 hdu_lst.append(fits.ImageHDU(flatmap))
@@ -810,6 +814,7 @@ def reduce_doublefiber(logtable, config):
                 if section.getboolean('search_database'):
                     # find previouse calibration results
                     database_path = section.get('database_path')
+                    database_path = os.path.expanduser(database_path)
 
                     message = ('Searching for archive wavelength calibration'
                                'file in "{}"'.format(database_path))

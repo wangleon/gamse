@@ -1,11 +1,15 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
 
-from .common import TraceFigure
+from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
+                     TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg
                    )
@@ -560,6 +564,7 @@ def reduce_singlefiber(logtable, config):
             if section.getboolean('search_database'):
                 # find previouse calibration results
                 database_path = section.get('database_path')
+                database_path = os.path.expanduser(database_path)
 
                 result = select_calib_from_database(
                         database_path, statime_key, head[statime_key])
