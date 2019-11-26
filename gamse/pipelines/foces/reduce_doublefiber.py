@@ -16,7 +16,8 @@ from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
 from ..common import plot_background_aspect1, FormattedInfo
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
-from ...echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
+from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
+                             mosaic_speclist)
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_time_weight, find_caliblamp_offset,
@@ -268,6 +269,7 @@ def reduce_doublefiber(logtable, config):
     flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
     # first combine the flats
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
@@ -486,12 +488,14 @@ def reduce_doublefiber(logtable, config):
                             slit_file       = None,
                             )
 
-                fig = plt.figure(dpi=150)
-                ax = fig.gca()
+                flat_spec_lst[fiber][flatname] = flatspec
+
                 for aper, spec in sorted(flatspec.items()):
-                    ax.plot(spec, lw=0.5)
-                fig.savefig('flatspec_%s_%s.png'%(fiber, flatname))
-                plt.close(fig)
+                    fig = plt.figure(dpi=150)
+                    ax = fig.gca()
+                    ax.plot(spec)
+                    fig.savefig('flatspec_%s_%s_%d_simps.png'%(fiber, flatname, aper))
+                    plt.close(fig)
                 
                 # append the sensivity map to fits file
                 hdu_lst.append(fits.ImageHDU(flatmap))
@@ -578,12 +582,16 @@ def reduce_doublefiber(logtable, config):
             # mosaic exptime-normalized flat images
             flat_norm = mosaic_images(flat_norm_lst[fiber],
                                         master_aperset[fiber])
+            # mosaic 1d spectra of flats
+            flat_spec = mosaic_speclist(flat_spec_lst[fiber],
+                                        master_aperset[fiber])
 
             # change contents of several lists
             flat_data_lst[fiber] = flat_data
             flat_mask_lst[fiber] = mask_data
             flatmap_lst[fiber]   = flat_map
             flat_norm_lst[fiber] = flat_norm
+            flat_spec_lst[fiber] = flat_spec
     
             # pack and save to fits file
             hdu_lst = fits.HDUList([
@@ -594,6 +602,12 @@ def reduce_doublefiber(logtable, config):
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
+            for aper, spec in flat_spec.items():
+                fig = plt.figure(dpi=150)
+                ax = fig.gca()
+                ax.plot(spec)
+                plt.savefig('tmp/flatspec_%s_%d.png'%(fiber,aper))
+                plt.close(fig)
 
         # align different fibers
         if ifiber == 0:
