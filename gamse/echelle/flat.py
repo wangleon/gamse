@@ -10,6 +10,7 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 import scipy.optimize as opt
 import scipy.signal as sg
+from scipy.integrate import simps
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
@@ -496,9 +497,9 @@ def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
 
     all_aperloc_lst = []
     # all_aperloc_lst  = [
-    #  [name1: aper_loc, name2: aper_loc],
-    #  [name1: aper_loc, name2: aper_loc],
-    #  [name1: aper_loc, name2: aper_loc],
+    #  [name1: (aper4, aper_loc4), name2: (aper4, aper_loc4)],
+    #  [name1: (aper5, aper_loc5), name2: (aper5, aper_loc5)],
+    #  [name1: (aper6, aper_loc6), name2: (aper6, aper_loc6)],
     # ]
 
     for iaperset, name in enumerate(name_lst):
@@ -512,8 +513,12 @@ def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
             if iaperset == 0:
                 # append all the apertures in the first trace file into the
                 # aperloc list
-                all_aperloc_lst.append({name: aper_loc})
+                all_aperloc_lst.append({name: (aper, aper_loc)})
             else:
+                # first we have to check if this aperture is belong to any
+                # existing aperture in the all_aperloc_lst
+                # this is done by calculating the distance of this aperture
+                # to all existing apertures in teh all_aperloc_lst
                 poly = aper_loc.position
                 npoints = poly.domain[1] - poly.domain[0]
                 if aper_loc.nsat/npoints > 0.7:
@@ -525,11 +530,11 @@ def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
                     if name in aperloc_lst:
                         continue
                     # calculate the relative distances.
-                    for _name, _aperloc in aperloc_lst.items():
+                    for _name, (_aper, _aperloc) in aperloc_lst.items():
                         distance = aper_loc.get_distance(_aperloc)
                         if abs(distance) < 0.5*loc_sep:
                             # append this aperture to an existing aperture
-                            all_aperloc_lst[iaperloc_lst][name] = aper_loc
+                            all_aperloc_lst[iaperloc_lst][name] = (aper, aper_loc)
                             insert = True
                             break
                     # if already added to an existing aperture, skip the rest
@@ -540,7 +545,7 @@ def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
                 # if this aperture does not belong to any existing aperture,
                 # append it as a new aperture
                 if not insert:
-                    all_aperloc_lst.append({name: aper_loc})
+                    all_aperloc_lst.append({name: (aper, aper_loc)})
 
 
     # prepare the information written to running log
@@ -558,36 +563,44 @@ def mosaic_flat_auto(aperture_set_lst, max_count, name_lst):
         msg = []
         for name in name_lst:
             if name in list1:
-                aper_loc = list1[name]
-                msg.append('{:6.1f} {:4d} {:10.1f}'.format(
-                    aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
+                aper, aper_loc = list1[name]
+                msg.append('{:3d} {:6.1f} {:4d} {:10.1f}'.format(
+                    aper, aper_loc.get_center(), aper_loc.nsat, aper_loc.max))
             else:
-                msg.append(' '*22)
+                msg.append(' '*26)
         message.append('| '+(' | '.join(msg))+' |')
 
         # pick up the best trace file for each aperture
-        nosat_lst = {name: aper_loc
-                        for name, aper_loc in list1.items()
+        nosat_lst = {name: (aper, aper_loc)
+                        for name, (aper, aper_loc) in list1.items()
                         if aper_loc.nsat == 0 and aper_loc.max < max_count}
 
         if len(nosat_lst)>0:
             # if there are apertures without saturated pixels, find the one
             # with largest median values
             nosat_sort_lst = sorted(nosat_lst.items(),
-                                key=lambda item: item[1].median)
-            pick_name, pick_aperloc = nosat_sort_lst[-1]
+                                key=lambda item: item[1][1].median)
+            pick_name, (pick_aper, pick_aperloc) = nosat_sort_lst[-1]
         else:
             # all apertures are saturated. Then find the aperture that has
             # the least number of saturated pixels.
-            sat_sort_lst = sorted(list1.items(), key=lambda item: item[1].nsat)
-            pick_name, pick_aperloc = sat_sort_lst[0]
+            sat_sort_lst = sorted(list1.items(),
+                                key=lambda item: item[1][1].nsat)
+            pick_name, (pick_aper, pick_aperloc) = sat_sort_lst[0]
 
+        # give a new attribute called "tracename"
         setattr(pick_aperloc, 'tracename', pick_name)
+        # give a new attribute called "ori_aper"
+        setattr(pick_aperloc, 'ori_aper', pick_aper)
+        # add this aperloc to mosaic_aperset
         mosaic_aperset.add_aperture(pick_aperloc)
 
     logger.info((os.linesep+' '*3).join(message))
+
+    # resort all the aperloc
     mosaic_aperset.sort()
 
+    # make a summary and write it to log
     message = ['Flat Mosaic Information',
                 'aper, yposition, flatname, N (sat), Max (count)']
     for aper, aper_loc in sorted(mosaic_aperset.items()):
@@ -625,7 +638,8 @@ def mosaic_images(image_lst, mosaic_aperset):
             datatypes as images in **images_lst**.
 
     See Also:
-        :func:`mosaic_flat_auto`
+        * :func:`mosaic_speclist`
+        * :func:`mosaic_flat_auto`
 
     """
 
@@ -683,6 +697,32 @@ def mosaic_images(image_lst, mosaic_aperset):
         mosaic_image += _image*_maskdata
 
     return mosaic_image
+
+def mosaic_speclist(spec_lst, mosaic_aperset):
+    """Mosaic input spectra list with the identifications in the input aperture
+    set.
+
+    Args:
+        spec_lst (dict): A dict containing {*names*: *spec*}
+        mosaic_aperset (:class:`~gamse.echelle.trace.ApertureSet`): The mosaiced
+            aperture set.
+    
+    Returns:
+
+    See Also:
+        * :func:`mosaic_images`
+        * :func:`mosaic_flat_auto`
+    """
+
+    speclist = {}
+
+    for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
+        tracename = aper_loc.tracename
+        ori_aper = aper_loc.ori_aper
+        speclist[aper] = spec_lst[tracename][ori_aper]
+
+    return speclist
+
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
     """Save boundaries data in a SAO-DS9 region file.
@@ -1736,7 +1776,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             y1 = int(max(0, lbound[x]))
             y2 = int(min(h, ubound[x]))
             xdata = np.arange(y1, y2)
-            xdata2 = np.arange(y1, y2-1, 0.02)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
             _badmask = bad_mask[y1:y2, x]
@@ -1761,8 +1800,16 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #    flat[flatmask] = (flat[flatmask]-1)*decay + 1
             flatdata[y1:y2, x][flatmask] = flat[flatmask]
 
+            # extract the 1d spectra of the modeled flat using super-sampling
+            # integration
+            y1s = max(0, np.round(lbound[x]-2, 1))
+            y2s = min(h, np.round(ubound[x]+2, 1))
+            xdata2 = np.arange(y1s, y2s, 0.1)
             flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
-            flatspecv = np.trapz(flatmod, x=xdata2)
+            # use trapezoidal integration
+            #flatspecv = np.trapz(flatmod, x=xdata2)
+            # use simpson integration
+            flatspecv = simps(flatmod, x=xdata2)
             flatspec_lst[aper][x] = flatspecv
             
             #if aper==0:
