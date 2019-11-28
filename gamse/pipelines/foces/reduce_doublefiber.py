@@ -490,12 +490,14 @@ def reduce_doublefiber(logtable, config):
 
                 flat_spec_lst[fiber][flatname] = flatspec
 
+                '''
                 for aper, spec in sorted(flatspec.items()):
                     fig = plt.figure(dpi=150)
                     ax = fig.gca()
                     ax.plot(spec)
                     fig.savefig('flatspec_%s_%s_%d_simps.png'%(fiber, flatname, aper))
                     plt.close(fig)
+                '''
                 
                 # append the sensivity map to fits file
                 hdu_lst.append(fits.ImageHDU(flatmap))
@@ -602,12 +604,14 @@ def reduce_doublefiber(logtable, config):
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
+            '''
             for aper, spec in flat_spec.items():
                 fig = plt.figure(dpi=150)
                 ax = fig.gca()
                 ax.plot(spec)
                 plt.savefig('tmp/flatspec_%s_%d.png'%(fiber,aper))
                 plt.close(fig)
+            '''
 
         # align different fibers
         if ifiber == 0:
@@ -693,6 +697,7 @@ def reduce_doublefiber(logtable, config):
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
+    '''
     #################### Extract Flat Fielding Spectrum ########################
 
     # correct flat for flatfielding
@@ -711,6 +716,7 @@ def reduce_doublefiber(logtable, config):
                         upper_limit = section.getfloat('upper_limit'),
                         )
         flat_spec_lst[fiber] = spectra1d
+    '''
 
     ############################## Extract ThAr ################################
 
@@ -725,6 +731,7 @@ def reduce_doublefiber(logtable, config):
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
             ('flat',       (np.float32, w)),
+            ('background', (np.float32, w)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -769,6 +776,7 @@ def reduce_doublefiber(logtable, config):
             data = data[0,:,:]
         mask = get_mask(data)
 
+        head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, mask)
         # head['BLANK'] is only valid for integer arrays.
@@ -783,6 +791,8 @@ def reduce_doublefiber(logtable, config):
             logger.info('Bias corrected')
         else:
             logger.info('No bias. skipped bias correction')
+
+        head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
         # initialize data for all fibers
         all_spec      = {}
@@ -812,7 +822,8 @@ def reduce_doublefiber(logtable, config):
                     flux_sum.size, # number of points
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
                     flux_sum,      # fluxes
-                    flat_spec_lst[fiber][aper]['flux_sum'],  # flat
+                    flat_spec_lst[fiber][aper],  # flat
+                    np.zeros_like(flux_sum, dtype=np.float32), # background
                     ))
             spec = np.array(spec, dtype=spectype)
 
@@ -1088,6 +1099,7 @@ def reduce_doublefiber(logtable, config):
             data = data[0,:,:]
         mask = get_mask(data)
 
+        head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
         data, card_lst, overmean = correct_overscan(data, mask)
         # head['BLANK'] is only valid for integer arrays.
@@ -1097,7 +1109,6 @@ def reduce_doublefiber(logtable, config):
             head.append((key, value))
 
         message = 'FileID: {} - overscan corrected'.format(fileid)
-
         logger.info(message)
         print(message)
 
@@ -1130,15 +1141,27 @@ def reduce_doublefiber(logtable, config):
             if len(fiberobj_lst[ifiber])>0:
                 apersets[fiber] = master_aperset[fiber]
 
+        # background correction
         section = config['reduce.background']
+        ncols    = section.getint('ncols')
+        distance = section.getfloat('distance')
+        yorder   = section.getint('yorder')
+
         stray = find_background(data, mask,
-                aperturesets = apersets,
-                ncols        = section.getint('ncols'),
-                distance     = section.getfloat('distance'),
-                yorder       = section.getint('yorder'),
-                fig_section  = fig_sec,
+                        aperturesets = apersets,
+                        ncols        = ncols,
+                        distance     = distance,
+                        yorder       = yorder,
+                        fig_section  = fig_sec,
                 )
         data = data - stray
+        prefix = 'HIERARCH GAMSE BACKGROUND '
+        head.append((prefix + 'CORRECTED', True))
+        head.append((prefix + 'XMETHOD', 'cubic spline'))
+        head.append((prefix + 'YMETHOD', 'polynomial'))
+        head.append((prefix + 'NCOLUMN', ncols))
+        head.append((prefix + 'DISTANCE', distance))
+        head.append((prefix + 'YORDER', yorder))
 
         # plot stray light
         fig_stray = os.path.join(report,
@@ -1158,36 +1181,53 @@ def reduce_doublefiber(logtable, config):
         # extract 1d spectrum
         section = config['reduce.extract']
         all_spec  = {}   # use to pack final 1d spectrum
-        all_cards = {}
+        #all_cards = {}
+        lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
+        upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
             if fiberobj_lst[ifiber]=='':
                 # nothing in this fiber
                 continue
-            lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
-            upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
+
+            #all_cards[fiber] = []
+
+            lower_limit = lower_limits[fiber]
+            upper_limit = upper_limits[fiber]
+            apertureset = master_aperset[fiber]
 
             spectra1d = extract_aperset(data, mask,
-                            apertureset = master_aperset[fiber],
-                            lower_limit = lower_limits[fiber],
-                            upper_limit = upper_limits[fiber],
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
                         )
 
-            fmt_string = ('FileID: {}'
-                            ' - fiber {}'
-                            ' - 1D spectra of {} orders extracted')
+            # extract 1d spectra for stray light
+            stray1d = extract_aperset(stray, mask,
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+
+            fmt_string = ('FileID: {} - fiber {}'
+                          ' - 1D spectra of {} orders extracted')
             message = fmt_string.format(fileid, fiber, len(spectra1d))
             logger.info(message)
             print(message)
+
+            prefix = 'HIERARCH GAMSE EXTRACTION FIBER {} '.format(fiber)
+            head.append((prefix + 'LOWER LIMIT', lower_limit))
+            head.append((prefix + 'UPPER LIMIT', upper_limit))
 
             # pack spectrum
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
                 item = (aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64),
+                        np.zeros_like(flux_sum, dtype=np.float64), # wavelength
                         flux_sum,
-                        flat_spec_lst[fiber][aper]['flux_sum'],
+                        flat_spec_lst[fiber][aper], # 1d spectra of flat
+                        stray1d[aper]['flux_sum'],  # 1d sepctra of background
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=spectype)
@@ -1210,13 +1250,16 @@ def reduce_doublefiber(logtable, config):
                                 weight_lst,
                                 )
             all_spec[fiber] = spec
-            all_cards[fiber] = card_lst
+            #all_cards[fiber] = card_lst
+            prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
+            for key, value in card_lst:
+                head.append((prefix+key, value))
 
-        newcards = combine_fiber_cards(all_cards)
+        #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
-        for key, value in newcards:
-            key = 'HIERARCH GAMSE WLCALIB '+key
-            head.append((key, value))
+        #for key, value in newcards:
+        #    key = 'HIERARCH GAMSE WLCALIB '+key
+        #    head.append((key, value))
         # pack and save to fits
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
