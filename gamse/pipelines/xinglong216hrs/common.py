@@ -1,6 +1,5 @@
 import os
 import re
-import shutil
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -15,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates as mdates
 
+from ...echelle.trace import TraceFigureCommon
 from ...echelle.background import find_background
 from ...utils.onedarray import get_local_minima
 from ...utils.obslog import parse_num_seq, read_obslog

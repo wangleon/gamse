@@ -16,6 +16,7 @@ setup(
                     'gamse/echelle',
                     'gamse/pipelines',
                     'gamse/pipelines/foces',
+                    'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {
                     'gamse': ['data/config/*',

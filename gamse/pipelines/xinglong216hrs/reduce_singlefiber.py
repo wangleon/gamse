@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import logging
 logger = logging.getLogger(__name__)
 
@@ -7,14 +8,17 @@ import numpy as np
 import astropy.io.fits as fits
 
 from ...echelle.imageproc import combine_images, array_to_table, fix_pixels
-from ...echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
+from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
-                               get_time_weight, find_caliblamp_offset,
-                               reference_wavelength,
-                               reference_self_wavelength)
-from ..common import plot_background_aspect1, FormattedInfo
+                                get_time_weight, find_caliblamp_offset,
+                                reference_wavelength,
+                                reference_self_wavelength)
+from ..common import plot_background_aspect1
+from .common import (get_mask, correct_overscan, parse_bias_frames,
+                     all_columns, FormattedInfo, TraceFigure,
+                     select_calib_from_database)
 
 def reduce_singlefiber(logtable, config):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
