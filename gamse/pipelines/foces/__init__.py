@@ -7,11 +7,11 @@ import astropy.io.fits as fits
 from astropy.time  import Time
 from astropy.table import Table
 
-from .reduce_singlefiber import reduce_singlefiber
-from .reduce_doublefiber import reduce_doublefiber
-from ..common import FormattedInfo
 from ...utils.obslog import read_obslog
 from ...utils.misc import extract_date
+from ..common import FormattedInfo
+from .reduce_singlefiber import reduce_singlefiber
+from .reduce_doublefiber import reduce_doublefiber
 
 def make_config():
     """Generate a config file for reducing the data taken with FOCES.

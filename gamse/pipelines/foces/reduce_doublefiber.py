@@ -8,12 +8,6 @@ import astropy.io.fits as fits
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
-from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
-                     TraceFigure)
-from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg
-                   )
-from ..common import plot_background_aspect1, FormattedInfo
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
@@ -28,6 +22,11 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_identlist,
                                 )
 from ...echelle.background import find_background, simple_debackground
+from ..common import plot_background_aspect1, FormattedInfo
+from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
+                     TraceFigure)
+from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
+                   smooth_aperpar_bkg)
 
 def reduce_doublefiber(logtable, config):
     """Data reduction for multiple-fiber configuration.
@@ -82,15 +81,23 @@ def reduce_doublefiber(logtable, config):
                          'number of fiber = {}'.format(n_fiber)])
     print(message)
 
+    # initialize general card list
+    general_card_lst = {}
+
     ################################ parse bias ################################
     bias_file = config['reduce.bias'].get('bias_file')
 
     if mode=='debug' and os.path.exists(bias_file):
-        has_bias = True
         # load bias data from existing file
         bias, head = fits.getdata(bias_file, header=True)
-        bias_card_lst = [card for card in head.cards
-                            if card.keyword[0:10]=='GAMSE BIAS']
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # pack header cards
+        general_card_lst['bias'] = []
+        for card in head.cards:
+            if reobj.match(card.keyword):
+                general_card_lst['bias'].append((card.keyword, card.value))
+
         logger.info('Load bias from image: %s'%bias_file)
     else:
         # read each individual CCD

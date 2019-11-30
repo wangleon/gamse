@@ -18,7 +18,7 @@ import matplotlib.dates  as mdates
 
 from ...echelle.trace import TraceFigureCommon
 from ...utils.obslog import read_obslog
-from ..reduction          import Reduction
+from ..reduction     import Reduction
 
 def correct_overscan(data, mask=None):
     """Correct overscan for an input image and update related information in the
