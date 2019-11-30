@@ -10,15 +10,18 @@ import astropy.io.fits as fits
 from ...echelle.imageproc import combine_images, array_to_table, fix_pixels
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
+from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 get_time_weight, find_caliblamp_offset,
                                 reference_wavelength,
                                 reference_self_wavelength)
-from ..common import plot_background_aspect1
+from ..common import plot_background_aspect1, FormattedInfo
 from .common import (get_mask, correct_overscan, parse_bias_frames,
-                     all_columns, FormattedInfo, TraceFigure,
+                     all_columns, TraceFigure,
                      select_calib_from_database)
+from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
+                   smooth_aperpar_bkg)
 
 def reduce_singlefiber(logtable, config):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
@@ -54,6 +57,8 @@ def reduce_singlefiber(logtable, config):
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
+    # initialize general card list
+    general_card_lst = {}
     ############################# parse bias ###################################
 
     bias_file = config['reduce.bias']['bias_file']

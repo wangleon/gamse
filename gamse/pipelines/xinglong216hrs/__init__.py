@@ -10,7 +10,7 @@ import astropy.io.fits as fits
 from astropy.time import Time
 from astropy.table import Table
 
-from ...echelleutils.misc import extract_date
+from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog
 from ..common import FormattedInfo
 from .reduce_singlefiber import reduce_singlefiber
