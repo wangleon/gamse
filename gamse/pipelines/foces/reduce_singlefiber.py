@@ -73,124 +73,21 @@ def reduce_singlefiber(logtable, config):
     bias_file = config['reduce.bias'].get('bias_file')
 
     if mode=='debug' and os.path.exists(bias_file):
-        has_bias = True
         # load bias data from existing file
         bias, head = fits.getdata(bias_file, header=True)
-        bias_card_lst = [card for card in head.cards
-                            if card.keyword[0:10]=='GAMSE BIAS']
-        logger.info('Load bias from image: %s'%bias_file)
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # pack header cards
+        bias_card_lst = []
+        for card in head.cards:
+            if reobj.match(card.keyword):
+                bias_card_lst.append((card.keyword, card.value))
+        # print info
+        message = 'Load bias from image: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
     else:
-        # read each individual CCD
-        bias_data_lst = []
-        bias_head_lst = []
-        bias_fileid_lst = []
-
-        for logitem in logtable:
-            if logitem['object'].strip().lower()=='bias':
-                fname = logitem['fileid']+'.fits'
-                filename = os.path.join(rawdata, fname)
-                data, head = fits.getdata(filename, header=True)
-                if data.ndim == 3:
-                    data = data[0,:,:]
-                mask = get_mask(data)
-                data, card_lst, overmean = correct_overscan(data, mask)
-                # head['BLANK'] is only valid for integer arrays.
-                if 'BLANK' in head:
-                    del head['BLANK']
-                for key, value in card_lst:
-                    head.append((key, value))
-
-                # print info
-                if len(bias_data_lst) == 0:
-                    print('* Combine Bias Images: {}'.format(bias_file))
-                    print(' '*2 + pinfo2.get_separator())
-                    print(' '*2 + pinfo2.get_title())
-                    print(' '*2 + pinfo2.get_separator())
-                string = pinfo2.get_format().format(logitem, overmean)
-                print(' '*2 + print_wrapper(string, logitem))
-
-                bias_data_lst.append(data)
-                bias_head_lst.append(head)
-                bias_fileid_lst.append(logitem['fileid'])
-
-        n_bias = len(bias_data_lst)         # number of bias images
-        has_bias = n_bias > 0
-
-        if has_bias:
-            # there is bias frames
-            print(' '*2 + pinfo2.get_separator())
-
-            # combine bias images
-            bias_data_lst = np.array(bias_data_lst)
-
-            section = config['reduce.bias']
-            bias = combine_images(bias_data_lst,
-                    mode       = 'mean',
-                    upper_clip = section.getfloat('cosmic_clip'),
-                    maxiter    = section.getint('maxiter'),
-                    mask       = (None, 'max')[n_bias>=3],
-                    )
-
-            # initialize card list for bias header
-            bias_card_lst = []
-            bias_card_lst.append(('HIERARCH GAMSE BIAS NFILE', n_bias))
-
-            # move cards related to OVERSCAN corrections from individual headers
-            # to bias header
-            for ifile, (head, fileid) in enumerate(zip(bias_head_lst,
-                                                       bias_fileid_lst)):
-                key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile)
-                bias_card_lst.append((key_prefix+' FILEID', fileid))
-
-                # move OVERSCAN cards to bias header
-                for card in head.cards:
-                    mobj = re.match('^GAMSE (OVERSCAN[\s\S]*)', card.keyword)
-                    if mobj is not None:
-                        newkey = key_prefix + ' ' + mobj.group(1)
-                        bias_card_lst.append((newkey, card.value))
-
-            ############## bias smooth ##################
-            key_prefix = 'HIERARCH GAMSE BIAS SMOOTH'
-            section = config['reduce.bias']
-            if section.getboolean('smooth'):
-                # bias needs to be smoothed
-                smooth_method = section.get('smooth_method')
-
-                if smooth_method in ['gauss', 'gaussian']:
-                    # perform 2D gaussian smoothing
-                    smooth_sigma = section.getint('smooth_sigma')
-                    smooth_mode  = section.get('smooth_mode')
-
-                    bias_smooth = gaussian_filter(bias,
-                                    sigma=smooth_sigma, mode=smooth_mode)
-
-                    # write information to FITS header
-                    bias_card_lst.append((key_prefix+' CORRECTED', True))
-                    bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
-                    bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
-                    bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
-                else:
-                    print('Unknown smooth method: ', smooth_method)
-                    pass
-
-                bias = bias_smooth
-            else:
-                # bias not smoothed
-                bias_card_lst.append((key_prefix+' CORRECTED', False))
-
-            # create new FITS Header for bias
-            head = fits.Header()
-            for card in bias_card_lst:
-                head.append(card)
-            fits.writeto(bias_file, bias, header=head, overwrite=True)
-
-            message = 'Bias image written to "{}"'.format(bias_file)
-            logger.info(message)
-            print(message)
-
-        else:
-            # no bias found
-            pass
+        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
