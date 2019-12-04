@@ -94,42 +94,45 @@ def parse_bias_frames(logtable, config, pinfo):
 
     count_file = 0
     for logitem in logtable:
-        if logitem['object'].strip().lower()=='bias':
-            count_file += 1
-            fname = logitem['fileid']+'.fits'
-            filename = os.path.join(rawdata, fname)
-            data, head = fits.getdata(filename, header=True)
-            if data.ndim == 3:
-                data = data[0,:,:]
-            mask = get_mask(data)
-            data, card_lst, overmean = correct_overscan(data, mask)
-            # head['BLANK'] is only valid for integer arrays.
-            if 'BLANK' in head:
-                del head['BLANK']
+        if logitem['object'].strip().lower()!='bias':
+            continue
+        # now filter the bias frames
+        count_file += 1
+        fname = logitem['fileid']+'.fits'
+        filename = os.path.join(rawdata, fname)
+        data, head = fits.getdata(filename, header=True)
+        if data.ndim == 3:
+            data = data[0,:,:]
+        mask = get_mask(data)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
 
-            # pack the data and fileid list
-            bias_data_lst.append(data)
+        # pack the data and fileid list
+        bias_data_lst.append(data)
 
-            # append the file information
-            key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
-            card = (key_prefix+' FILEID', logitem['fileid'])
-            bias_card_lst.append(card)
+        # append the file information
+        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
+        card = (key_prefix+' FILEID', logitem['fileid'])
+        bias_card_lst.append(card)
 
-            # append the overscan information of each bias frame to
-            # bias_card_lst
-            for keyword, value in card_lst:
-                if re.match('^GAMSE (OVERSCAN[\s\S]*)', keyword):
-                    newkey = key_prefix + ' ' + mobj.group(1)
-                    bias_card_lst.append((newkey, value))
+        # append the overscan information of each bias frame to
+        # bias_card_lst
+        for keyword, value in card_lst:
+            mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
+            if mobj:
+                newkey = key_prefix + ' ' + mobj.group(1)
+                bias_card_lst.append((newkey, value))
 
-            # print info
-            if count_file == 1:
-                print('* Combine Bias Images: {}'.format(bias_file))
-                print(' '*2 + pinfo.get_separator())
-                print(' '*2 + pinfo.get_title())
-                print(' '*2 + pinfo.get_separator())
-            string = pinfo.get_format().format(logitem, overmean)
-            print(' '*2 + print_wrapper(string, logitem))
+        # print info
+        if count_file == 1:
+            print('* Combine Bias Images: {}'.format(bias_file))
+            print(' '*2 + pinfo.get_separator())
+            print(' '*2 + pinfo.get_title())
+            print(' '*2 + pinfo.get_separator())
+        string = pinfo.get_format().format(logitem, overmean)
+        print(' '*2 + print_wrapper(string, logitem))
 
     n_bias = len(bias_data_lst)         # number of bias images
     has_bias = n_bias > 0
