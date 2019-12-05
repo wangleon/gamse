@@ -22,8 +22,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import find_background, simple_debackground
 from ..common import plot_background_aspect1, FormattedInfo
-from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
-                     parse_bias_frames, TraceFigure)
+from .common import (get_obslog_columns, print_wrapper, get_mask,
+                    correct_overscan, parse_bias_frames, TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
@@ -67,7 +67,7 @@ def reduce_doublefiber(logtable, config):
     # now the maxlen_fileid is the maximum length of fileid
 
     # initialize printing infomation
-    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+    pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 

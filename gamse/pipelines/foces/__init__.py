@@ -3,6 +3,7 @@ import re
 import datetime
 import configparser
 
+import numpy as np
 import astropy.io.fits as fits
 from astropy.time  import Time
 from astropy.table import Table
@@ -10,6 +11,7 @@ from astropy.table import Table
 from ...utils.obslog import read_obslog
 from ...utils.misc import extract_date
 from ..common import FormattedInfo
+from .common import get_obslog_columns, print_wrapper
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -164,17 +166,35 @@ def make_obslog(path):
             maxlen_fileid = max(maxlen_fileid, len(fileid))
     # now the maxlen_fileid is the maximum length of fileid
 
-    # prepare logtable
-    logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
-        ('imgtype', 'S3'),  ('object', 'S12'),  ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
-        ])
 
     # prepare infomation to print
-    pinfo = FormattedInfo(all_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
-            'nsat', 'q95'])
+    # read config
+    config = load_config()
+    fibermode = config['data']['fibermode']
+    obslog_columns = get_obslog_columns(fibermode)
+    if fibermode == 'single':
+        # prepare logtable
+        logtable = Table(dtype=[
+            ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
+            ('imgtype', 'S7'),  ('object', 'S12'),  ('exptime', 'f4'),
+            ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
+            ])
+        display_columns = ['frameid', 'fileid', 'imgtype', 'object',
+                            'exptime', 'obsdate', 'nsat', 'q95']
+    elif fibermode == 'double':
+        # prepare logtable
+        logtable = Table(dtype=[
+            ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
+            ('imgtype', 'S7'),  ('fiber_A', 'S12'), ('fiber_B', 'S12'),
+            ('exptime', 'f4'),  ('obsdate', Time),  ('nsat',   'i4'),
+            ('q95',     'i4'),
+            ])
+        display_columns = ['frameid', 'fileid', 'imgtype', 'fiber_A', 'fiber_B',
+                            'exptime', 'obsdate', 'nsat', 'q95']
+    else:
+        pass
+    pinfo = FormattedInfo(obslog_columns, display_columns)
+            
 
     # print header of logtable
     print(pinfo.get_separator())
@@ -192,38 +212,93 @@ def make_obslog(path):
         data, head = fits.getdata(filename, header=True)
 
         # old FOCES data are 3-dimensional arrays
-        if data.ndim == 3: scidata = data[0, 20:-20]
-        else:              scidata = data[:,20:-20]
+        if data.ndim == 3:
+            scidata = data[0, 20:-20]
+        else:
+            scidata = data[:,20:-20]
             
         obsdate = Time(head['FRAME'])
         exptime = head['EXPOSURE']
 
-        if re.match(name_pattern1, fileid) is not None:
+        if re.match(name_pattern1, fileid):
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
-                imgtype, objectname = 'cal', 'Bias'
+                imgtype = 'bias'
+                if fibermode == 'single':
+                    objectname = ''
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = '', ''
+                else:
+                    pass
             elif fileid[22:25]=='FLS':
-                imgtype, objectname = 'cal', 'Flat;'
+                imgtype = 'calib'
+                if fibermode == 'single':
+                    objectname = 'Flat'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = 'Flat', ''
+                else:
+                    pass
             elif fileid[22:25]=='FLC':
-                imgtype, objectname = 'cal', ';Flat'
+                imgtype = 'calib'
+                if fibermode == 'single':
+                    objectname = 'Flat'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = '', 'Flat'
+                else:
+                    pass
             elif fileid[22:26]=='COCS':
-                imgtype, objectname = 'cal', 'Comb;Comb'
+                imgtype = 'calib'
+                if fibermode == 'single':
+                    objectname = 'Comb'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = 'Comb', 'Comb'
+                else:
+                    pass
             elif fileid[22:25]=='THS':
-                imgtype, objectname = 'cal', 'ThAr;'
+                imgtype = 'calib'
+                if fibermode == 'single':
+                    objectname = 'ThAr'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = 'ThAr', 'ThAr'
+                else:
+                    pass
             elif fileid[22:25]=='THC':
-                imgtype, objectname = 'cal', ';ThAr'               
+                imgtype  = 'calib'
+                if fibermode == 'single':
+                    objectname = 'ThAr'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = '', 'ThAr'
+                else:
+                    pass
             else:
-                objectname = 'Unknown'
-                imgtype = ('cal', 'sci')[fileid[22:24]=='SC']
+                imgtype = ('calib', 'science')[fileid[22:24]=='SC']
+                if fibermode == 'single':
+                    objectname = 'Unknown'
+                elif fibermode == 'double':
+                    fiber_A, fiber_B = 'Unknown', 'Unknown'
+                else:
+                    pass
             frameid = int(fileid[9:13])
             has_frameid = True
-        elif re.match(name_pattern2, fileid) is not None:
+        elif re.match(name_pattern2, fileid):
             frameid = prev_frameid + 1
-            imgtype, objectname = 'cal', ''
+            imgtype = 'calib'
+            if fibermode == 'single':
+                objectname = ''
+            elif fibermode == 'double':
+                fiber_A, fiber_B = '', ''
+            else:
+                pass
             has_frameid = True
         else:
             # fileid does not follow the naming convetion
-            imgtype, objectname = 'cal', ''
+            imgtype = 'calib'
+            if fibermode == 'single':
+                objectname = ''
+            elif fibermode == 'double':
+                fiber_A, fiber_B = '', ''
+            else:
+                pass
             frameid = 0
             has_frameid = False
 
@@ -231,10 +306,17 @@ def make_obslog(path):
         saturation = (data>=63000).sum()
 
         # find the 95% quantile
-        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
+        #quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
+        quantile95 = int(np.round(np.percentile(data, 95)))
 
-        item = [frameid, fileid, imgtype, objectname, exptime, obsdate,
-                saturation, quantile95]
+        if fibermode == 'single':
+            item = [frameid, fileid, imgtype, objectname, exptime,
+                    obsdate, saturation, quantile95]
+        elif fibermode == 'double':
+            item = [frameid, fileid, imgtype, fiber_A, fiber_B, exptime,
+                    obsdate, saturation, quantile95]
+        else:
+            pass
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
@@ -273,7 +355,7 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
-    loginfo = FormattedInfo(all_columns)
+    loginfo = FormattedInfo(obslog_columns)
     outfile = open(outfilename, 'w')
     outfile.write(loginfo.get_title()+os.linesep)
     outfile.write(loginfo.get_dtype()+os.linesep)
@@ -281,6 +363,22 @@ def make_obslog(path):
     for row in logtable:
         outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
     outfile.close()
+
+def load_config():
+    """Load the config file.
+    """
+    # load config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if re.match('FOCES\S*.cfg$', fname):
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
+    return config
 
 def reduce_rawdata():
     """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
@@ -303,18 +401,8 @@ def reduce_rawdata():
     # read obs log
     logtable = read_obslog(logname_lst[0])
 
-    # load config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation = configparser.ExtendedInterpolation(),
-                )
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if re.match('FOCES\S*.cfg$', fname) is not None:
-            config.read(fname)
-            print('Load Congfile File: {}'.format(fname))
-            break
+    # read config
+    config = load_config()
 
     fibermode = config['data']['fibermode']
 

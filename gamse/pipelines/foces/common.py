@@ -134,12 +134,11 @@ def parse_bias_frames(logtable, config, pinfo):
         string = pinfo.get_format().format(logitem, overmean)
         print(' '*2 + print_wrapper(string, logitem))
 
-    n_bias = len(bias_data_lst)         # number of bias images
-    has_bias = n_bias > 0
+    # get the number of bias images
+    n_bias = len(bias_data_lst)
 
     prefix = 'HIERARCH GAMSE BIAS '
-    card = (prefix + 'NFILE', n_bias)
-    bias_card_lst.append(card)
+    bias_card_lst.append((prefix + 'NFILE', n_bias))
 
     if n_bias == 0:
         # there is no bias frames
@@ -183,9 +182,9 @@ def parse_bias_frames(logtable, config, pinfo):
 
                 # write information to FITS header
                 bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
-                bias_card_lst.append((prefix+'SMOOTH METHOD',    'GAUSSIAN'))
-                bias_card_lst.append((prefix+'SMOOTH SIGMA',     smooth_sigma))
-                bias_card_lst.append((prefix+'SMOOTH MODE',      smooth_mode))
+                bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+                bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+                bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
             else:
                 print('Unknown smooth method: ', smooth_method)
                 pass
@@ -701,16 +700,39 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-all_columns = [
+
+def get_obslog_columns(fibermode):
+
+    obslog_columns = []
+    for item in [
         ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
         ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
         ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
+        ]:
+        obslog_columns.append(item)
+
+    if fibermode == 'single':
+        obslog_columns.append(
+        ('object',  'str',   '{:^12s}', '{0[object]:12s}')
+        )
+    elif fibermode == 'double':
+        for item in [
+        ('fiber_A',  'str',   '{:^12s}', '{0[fiber_A]:12s}'),
+        ('fiber_B',  'str',   '{:^12s}', '{0[fiber_B]:12s}'),
+        ]:
+            obslog_columns.append(item)
+    else:
+        print('Wrong fiber mode:',fibermode)
+        exit()
+
+    for item in [
         ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
         ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
         ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
         ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-        ]
+        ]:
+        obslog_columns.append(item)
+    return obslog_columns
 
 def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.
@@ -724,19 +746,29 @@ def print_wrapper(string, item):
 
     """
     imgtype = item['imgtype']
-    obj     = item['object']
 
-    if len(obj)>=4 and obj[0:4].lower()=='bias':
+    if imgtype=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='sci':
+    elif imgtype=='science':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif len(obj)>=4 and obj[0:4].lower()=='thar':
-        # arc lamp, use light yellow (93)
-        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    elif imgtype=='calib':
+        if 'object' in item:
+            if item['object'].lower()=='thar':
+                # arc lamp, use light yellow (93)
+                return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+            else:
+                return string
+        elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
+                                                    ('', 'ThAr'),
+                                                    ('ThAr', 'ThAr')]:
+            # arc lamp, use light yellow (93)
+            return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+        else:
+            return string
     else:
         return string
 
