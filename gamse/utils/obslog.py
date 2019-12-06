@@ -7,12 +7,11 @@ from astropy.io import registry as io_registry
 from astropy.table import Table, MaskedColumn
 from astropy.time import Time
 
-def _read_obslog(filename, delimiter=' '):
+def _read_obslog(filename):
     """A customized function use to read the observing log
 
     Args:
         filename (str): Filename of the obsereving log file.
-        delimiter (str): Delimiter of the items.
 
     Returns:
         :class:`astropy.table.Table`: An observing log object.
@@ -40,6 +39,15 @@ def _read_obslog(filename, delimiter=' '):
             # third row: horizontal lines
             row = row.strip()
             index_lst = []
+
+            # find the delimiter 
+            aset = set(row.replace('-',''))
+            if len(aset) == 1:
+                delimiter = aset.pop()
+            else:
+                print('Wrong delimiter:', aset)
+                delimiter = ' '
+
             g = row.split(delimiter)
             lens = [len(v) for v in g]
             i2 = -1
@@ -104,12 +112,11 @@ def _read_obslog(filename, delimiter=' '):
     return logtable
 
 
-def read_obslog(filename, delimiter=' '):
+def read_obslog(filename):
     """Read the observing log.
 
     Args:
         filename (str): Filename of the obsereving log file.
-        delimiter (str): Delimiter of the items.
         multi_object (bool): Multi-object if True.
 
     Returns:
@@ -117,7 +124,7 @@ def read_obslog(filename, delimiter=' '):
     
     """
     io_registry.register_reader('obslog', Table, _read_obslog)
-    table = Table.read(filename, format='obslog', delimiter=delimiter)
+    table = Table.read(filename, format='obslog')
     io_registry.unregister_reader('obslog', Table)
     return table
 
