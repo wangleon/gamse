@@ -22,7 +22,7 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import find_background, simple_debackground
 from ..common import plot_background_aspect1, FormattedInfo
-from .common import (get_obslog_columns, print_wrapper, get_mask,
+from .common import (obslog_columns, print_wrapper, get_mask,
                     correct_overscan, parse_bias_frames, TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
@@ -58,30 +58,12 @@ def reduce_doublefiber(logtable, config):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
-    # find the maximum length of fileid
-    maxlen_fileid = 0
-    for fname in os.listdir(rawdata):
-        if fname[-5:] == '.fits':
-            fileid = fname[0:-5]
-            maxlen_fileid = max(maxlen_fileid, len(fileid))
-    # now the maxlen_fileid is the maximum length of fileid
-
     # initialize printing infomation
     pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
-    # count the number of fibers
-    n_fiber = 1
-    for logitem in logtable:
-        n = len(logitem['object'].split(';'))
-        n_fiber = max(n_fiber, n)
-    message = ', '.join(['multi_fiber = True',
-                         'number of fiber = {}'.format(n_fiber)])
-    print(message)
-
-    # initialize general card list
-    general_card_lst = {}
+    n_fiber = 2
 
     ################################ parse bias ################################
     bias_file = config['reduce.bias'].get('bias_file')
@@ -114,7 +96,7 @@ def reduce_doublefiber(logtable, config):
     #                     'flat_N': [fileid1, fileid2, ...]}}
 
     for logitem in logtable:
-        fiberobj_lst = [v.strip() for v in logitem['object'].split(';')]
+        fiberobj_lst = [v.strip() for v in logitem['object'].split('|')]
 
         if n_fiber > len(fiberobj_lst):
             continue
@@ -122,8 +104,7 @@ def reduce_doublefiber(logtable, config):
         for ifiber in range(n_fiber):
             fiber = chr(ifiber+65)
             objname = fiberobj_lst[ifiber].lower().strip()
-            mobj = re.match('^flat[\s\S]*', objname)
-            if mobj is not None:
+            if re.match('^flat[\s\S]*', objname):
                 # the object name of the channel matches "flat ???"
             
                 # check the lengthes of names for other channels
@@ -138,7 +119,7 @@ def reduce_doublefiber(logtable, config):
                 # find a proper name (flatname) for this flat
                 if objname=='flat':
                     # no special names given, use exptime
-                    flatname = '{:g}'.format(logitem['exptime'])
+                    flatname = '{[exptime]:g}'.format(logitem)
                 else:
                     # flatname is given. replace space with "_"
                     # remove "flat" before the objectname. e.g.,

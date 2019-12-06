@@ -92,11 +92,11 @@ def parse_bias_frames(logtable, config, pinfo):
 
     count_file = 0
     for logitem in logtable:
-        if logitem['object'].strip().lower()!='bias':
+        if logitem['object'].lower().strip() != 'bias':
             continue
         # now filter the bias frames
         count_file += 1
-        fname = logitem['fileid']+'.fits'
+        fname = '{[fileid]}.fits'.format(logitem)
         filename = os.path.join(rawdata, fname)
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
@@ -699,38 +699,17 @@ class FOCES(Reduction):
         plt.close(fig)
 
 
-def get_obslog_columns(fibermode):
 
-    obslog_columns = []
-    for item in [
-        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
-        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ]:
-        obslog_columns.append(item)
-
-    if fibermode == 'single':
-        obslog_columns.append(
-        ('object',  'str',   '{:^12s}', '{0[object]:12s}')
-        )
-    elif fibermode == 'double':
-        for item in [
-        ('fiber_A',  'str',   '{:^12s}', '{0[fiber_A]:12s}'),
-        ('fiber_B',  'str',   '{:^12s}', '{0[fiber_B]:12s}'),
-        ]:
-            obslog_columns.append(item)
-    else:
-        print('Wrong fiber mode:',fibermode)
-        exit()
-
-    for item in [
-        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
-        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-        ]:
-        obslog_columns.append(item)
-    return obslog_columns
+obslog_columns = [
+    ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+    ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
+    ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+    ('object',  'str',   '{:^21s}', '{0[object]:21s}'),
+    ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+    ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+    ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+    ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
+    ]
 
 def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.

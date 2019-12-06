@@ -292,7 +292,7 @@ class FormattedInfo(object):
         _, _, _, fmt_item = zip(*self.columns)
         fmt_item = list(fmt_item)
         if has_esc:
-            return delmiter.join(fmt_item)
+            return delimiter.join(fmt_item)
         else:
             pattern = re.compile('\x1b\[[\d;]+m([\s\S]*)\x1b\[0m')
             newfmt_item = []

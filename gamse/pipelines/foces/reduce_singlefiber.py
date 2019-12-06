@@ -22,7 +22,7 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import find_background, simple_debackground
 from ..common import plot_background_aspect1, FormattedInfo
-from .common import (get_obslog_columns, print_wrapper, get_mask,
+from .common import (obslog_columns, print_wrapper, get_mask,
                     correct_overscan, parse_bias_frames, TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
@@ -55,14 +55,6 @@ def reduce_singlefiber(logtable, config):
     if not os.path.exists(report):   os.mkdir(report)
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
-
-    # find the maximum length of fileid
-    maxlen_fileid = 0
-    for fname in os.listdir(rawdata):
-        if fname[-5:] == '.fits':
-            fileid = fname[0:-5]
-            maxlen_fileid = max(maxlen_fileid, len(fileid))
-    # now the maxlen_fileid is the maximum length of fileid
 
     # initialize printing infomation
     pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
