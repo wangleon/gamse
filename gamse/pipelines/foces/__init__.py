@@ -8,9 +8,8 @@ import astropy.io.fits as fits
 from astropy.time  import Time
 from astropy.table import Table
 
-from ...utils.obslog import read_obslog
 from ...utils.misc import extract_date
-from ..common import FormattedInfo
+from ..common import load_obslog, load_config, FormattedInfo
 from .common import get_obslog_columns, print_wrapper
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
@@ -169,14 +168,14 @@ def make_obslog(path):
 
     # prepare infomation to print
     # read config
-    config = load_config()
+    config = load_config('FOCES\S*\.cfg$')
     fibermode = config['data']['fibermode']
     obslog_columns = get_obslog_columns(fibermode)
     if fibermode == 'single':
         # prepare logtable
         logtable = Table(dtype=[
             ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
-            ('imgtype', 'S7'),  ('object', 'S12'),  ('exptime', 'f4'),
+            ('imgtype', 'S4'),  ('object', 'S12'),  ('exptime', 'f4'),
             ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
             ])
         display_columns = ['frameid', 'fileid', 'imgtype', 'object',
@@ -185,7 +184,7 @@ def make_obslog(path):
         # prepare logtable
         logtable = Table(dtype=[
             ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
-            ('imgtype', 'S7'),  ('fiber_A', 'S12'), ('fiber_B', 'S12'),
+            ('imgtype', 'S4'),  ('fiber_A', 'S12'), ('fiber_B', 'S12'),
             ('exptime', 'f4'),  ('obsdate', Time),  ('nsat',   'i4'),
             ('q95',     'i4'),
             ])
@@ -231,7 +230,7 @@ def make_obslog(path):
                 else:
                     pass
             elif fileid[22:25]=='FLS':
-                imgtype = 'calib'
+                imgtype = 'cal'
                 if fibermode == 'single':
                     objectname = 'Flat'
                 elif fibermode == 'double':
@@ -239,7 +238,7 @@ def make_obslog(path):
                 else:
                     pass
             elif fileid[22:25]=='FLC':
-                imgtype = 'calib'
+                imgtype = 'cal'
                 if fibermode == 'single':
                     objectname = 'Flat'
                 elif fibermode == 'double':
@@ -247,7 +246,7 @@ def make_obslog(path):
                 else:
                     pass
             elif fileid[22:26]=='COCS':
-                imgtype = 'calib'
+                imgtype = 'cal'
                 if fibermode == 'single':
                     objectname = 'Comb'
                 elif fibermode == 'double':
@@ -255,7 +254,7 @@ def make_obslog(path):
                 else:
                     pass
             elif fileid[22:25]=='THS':
-                imgtype = 'calib'
+                imgtype = 'cal'
                 if fibermode == 'single':
                     objectname = 'ThAr'
                 elif fibermode == 'double':
@@ -263,7 +262,7 @@ def make_obslog(path):
                 else:
                     pass
             elif fileid[22:25]=='THC':
-                imgtype  = 'calib'
+                imgtype  = 'cal'
                 if fibermode == 'single':
                     objectname = 'ThAr'
                 elif fibermode == 'double':
@@ -271,7 +270,7 @@ def make_obslog(path):
                 else:
                     pass
             else:
-                imgtype = ('calib', 'science')[fileid[22:24]=='SC']
+                imgtype = ('cal', 'sci')[fileid[22:24]=='SC']
                 if fibermode == 'single':
                     objectname = 'Unknown'
                 elif fibermode == 'double':
@@ -282,7 +281,7 @@ def make_obslog(path):
             has_frameid = True
         elif re.match(name_pattern2, fileid):
             frameid = prev_frameid + 1
-            imgtype = 'calib'
+            imgtype = 'cal'
             if fibermode == 'single':
                 objectname = ''
             elif fibermode == 'double':
@@ -292,7 +291,7 @@ def make_obslog(path):
             has_frameid = True
         else:
             # fileid does not follow the naming convetion
-            imgtype = 'calib'
+            imgtype = 'cal'
             if fibermode == 'single':
                 objectname = ''
             elif fibermode == 'double':
@@ -357,52 +356,23 @@ def make_obslog(path):
     # save the logtable
     loginfo = FormattedInfo(obslog_columns)
     outfile = open(outfilename, 'w')
-    outfile.write(loginfo.get_title()+os.linesep)
-    outfile.write(loginfo.get_dtype()+os.linesep)
-    outfile.write(loginfo.get_separator()+os.linesep)
+    outfile.write(loginfo.get_title(delimiter='|')+os.linesep)
+    outfile.write(loginfo.get_dtype(delimiter='|')+os.linesep)
+    outfile.write(loginfo.get_separator(delimiter='+')+os.linesep)
+    fmt_string = loginfo.get_format(has_esc=False, delimiter='|')
     for row in logtable:
-        outfile.write(loginfo.get_format(has_esc=False).format(row)+os.linesep)
+        outfile.write(fmt_string.format(row)+os.linesep)
     outfile.close()
 
-def load_config():
-    """Load the config file.
-    """
-    # load config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation = configparser.ExtendedInterpolation(),
-                )
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if re.match('FOCES\S*.cfg$', fname):
-            config.read(fname)
-            print('Load Congfile File: {}'.format(fname))
-            break
-    return config
 
 def reduce_rawdata():
     """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein
     Observatory.
     """
 
-    # find obs log
-    logname_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-7:]=='.obslog']
-    if len(logname_lst)==0:
-        print('No observation log found')
-        exit()
-    elif len(logname_lst)>1:
-        print('Multiple observation log found:')
-        for logname in sorted(logname_lst):
-            print('  '+logname)
-    else:
-        pass
-
-    # read obs log
-    logtable = read_obslog(logname_lst[0])
-
-    # read config
-    config = load_config()
+    # read obslog and config
+    logtable = load_obslog('\S*\.obslog$')
+    config = load_config('FOCES\S*\.cfg$')
 
     fibermode = config['data']['fibermode']
 

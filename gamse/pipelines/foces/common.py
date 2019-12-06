@@ -4,7 +4,6 @@ import shutil
 import datetime
 import logging
 logger = logging.getLogger(__name__)
-import configparser
 import dateutil.parser
 
 import numpy as np
@@ -18,7 +17,6 @@ import matplotlib.dates  as mdates
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
-from ...utils.obslog import read_obslog
 from ..reduction     import Reduction
 
 def correct_overscan(data, mask=None):
