@@ -1,7 +1,50 @@
+import os
 import re
+import configparser
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+
+from ..utils.obslog import read_obslog
+
+def load_config(pattern):
+    """Load the config file.
+    """
+    # load config files
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
+    # find local config file
+    for fname in os.listdir(os.curdir):
+        if re.match(pattern, fname):
+            config.read(fname)
+            print('Load Congfile File: {}'.format(fname))
+            break
+    return config
+
+def load_obslog(pattern):
+    """Find and read the observing log file.
+    """
+
+    # find obs log
+    logname_lst = [fname for fname in os.listdir(os.curdir)
+                            if re.match(pattern, fname)]
+    if len(logname_lst)==0:
+        print('No observation log found')
+        exit()
+    elif len(logname_lst)>1:
+        print('Multiple observation log found:')
+        for logname in sorted(logname_lst):
+            print('  '+logname)
+    else:
+        pass
+
+    logfile = logname_lst[0]
+    logtable = read_obslog(logfile)
+    return logtable
+
 
 def plot_spectra1d():
     """Plot 1d spectra.
@@ -205,33 +248,59 @@ class FormattedInfo(object):
             new_columns.append(element)
         return FormattedInfo(new_columns)
 
-    def get_title(self):
+    def get_title(self, delimiter=' '):
+        """Get the title string.
+        Args：
+            delimiter (str): Delimiter of the columns.
+        Returns:
+            str:
+        """
         titles, _, fmt_title, _ = zip(*self.columns)
-        fmt_title = ' '.join(fmt_title)
+        fmt_title = delimiter.join(fmt_title)
         return fmt_title.format(*titles)
 
-    def get_dtype(self):
+    def get_dtype(self, delimiter=' '):
+        """Get the datatype string.
+        Args：
+            delimiter (str): Delimiter of the columns.
+        Returns:
+            str:
+        """
         _, dtypes, fmt_title, _ = zip(*self.columns)
-        fmt_title = ' '.join(fmt_title)
+        fmt_title = delimiter.join(fmt_title)
         return fmt_title.format(*dtypes)
 
-    def get_separator(self):
+    def get_separator(self, delimiter=' '):
+        """Get the separator string.
+        Args：
+            delimiter (str): Delimiter of the columns.
+        Returns:
+            str:
+        """
         lst = ['-'*len(fmt.format(title)) for title, _, fmt, _ in self.columns]
-        return ' '.join(lst)
+        return delimiter.join(lst)
 
-    def get_format(self, has_esc=True, color_rule=None):
+    def get_format(self, has_esc=True, color_rule=None, delimiter=' '):
+        """
+        Args：
+            has_esc (bool):
+            color_rule (str):
+            delimiter (str): Delimiter of the columns.
+        Returns:
+            str:
+        """
         _, _, _, fmt_item = zip(*self.columns)
         fmt_item = list(fmt_item)
         if has_esc:
-            return ' '.join(fmt_item)
+            return delimiter.join(fmt_item)
         else:
             pattern = re.compile('\x1b\[[\d;]+m([\s\S]*)\x1b\[0m')
             newfmt_item = []
             for item in fmt_item:
                 mobj = pattern.match(item)
-                if mobj is None:
-                    newfmt_item.append(item)
-                else:
+                if mobj:
                     newfmt_item.append(mobj.group(1))
-            return ' '.join(newfmt_item)
+                else:
+                    newfmt_item.append(item)
+            return delimiter.join(newfmt_item)
 

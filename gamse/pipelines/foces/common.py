@@ -4,7 +4,6 @@ import shutil
 import datetime
 import logging
 logger = logging.getLogger(__name__)
-import configparser
 import dateutil.parser
 
 import numpy as np
@@ -16,9 +15,10 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
 
+from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
-from ...utils.obslog import read_obslog
-from ..reduction          import Reduction
+from ...echelle.background import BackgroundFigureCommon
+from ..reduction     import Reduction
 
 def correct_overscan(data, mask=None):
     """Correct overscan for an input image and update related information in the
@@ -69,6 +69,142 @@ def correct_overscan(data, mask=None):
     card_lst.append((prefix + 'STDEV',     ovrstd1))
 
     return new_data, card_lst, ovrmean1
+
+def parse_bias_frames(logtable, config, pinfo):
+    """Parse the bias images and return the bias as an array.
+
+    Args:
+        logtable ():
+        config ():
+        pinfo ():
+
+    Returns:
+        bias:
+        bias_card_lst:
+
+    """
+    rawdata = config['data']['rawdata']
+    section = config['reduce.bias']
+    bias_file = section['bias_file']
+
+    # read each individual CCD
+    bias_data_lst = []
+    bias_card_lst = []
+
+    count_file = 0
+    for logitem in logtable:
+        if logitem['object'].lower().strip() != 'bias':
+            continue
+        # now filter the bias frames
+        count_file += 1
+        fname = '{[fileid]}.fits'.format(logitem)
+        filename = os.path.join(rawdata, fname)
+        data, head = fits.getdata(filename, header=True)
+        if data.ndim == 3:
+            data = data[0,:,:]
+        mask = get_mask(data)
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+
+        # pack the data and fileid list
+        bias_data_lst.append(data)
+
+        # append the file information
+        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
+        card = (key_prefix+' FILEID', logitem['fileid'])
+        bias_card_lst.append(card)
+
+        # append the overscan information of each bias frame to
+        # bias_card_lst
+        for keyword, value in card_lst:
+            mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
+            if mobj:
+                newkey = key_prefix + ' ' + mobj.group(1)
+                bias_card_lst.append((newkey, value))
+
+        # print info
+        if count_file == 1:
+            print('* Combine Bias Images: {}'.format(bias_file))
+            print(' '*2 + pinfo.get_separator())
+            print(' '*2 + pinfo.get_title())
+            print(' '*2 + pinfo.get_separator())
+        string = pinfo.get_format().format(logitem, overmean)
+        print(' '*2 + print_wrapper(string, logitem))
+
+    # get the number of bias images
+    n_bias = len(bias_data_lst)
+
+    prefix = 'HIERARCH GAMSE BIAS '
+    bias_card_lst.append((prefix + 'NFILE', n_bias))
+
+    if n_bias == 0:
+        # there is no bias frames
+        bias = None
+    else:
+        # there is bias frames
+        print(' '*2 + pinfo.get_separator())
+
+        # combine bias images
+        bias_data_lst = np.array(bias_data_lst)
+
+        combine_mode = 'mean'
+        cosmic_clip  = section.getfloat('cosmic_clip')
+        maxiter      = section.getint('maxiter')
+        mask_mode    = (None, 'max')[n_bias>=3]
+
+        bias = combine_images(bias_data_lst,
+                mode       = combine_mode,
+                upper_clip = cosmic_clip,
+                maxiter    = maxiter,
+                mask       = mask_mode,
+                )
+
+        bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+        bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+        bias_card_lst.append((prefix+'MAXITER',      maxiter))
+        bias_card_lst.append((prefix+'MASK_MODE',    str(mask_mode)))
+
+        ############## bias smooth ##################
+        if section.getboolean('smooth'):
+            # bias needs to be smoothed
+            smooth_method = section.get('smooth_method')
+
+            if smooth_method in ['gauss', 'gaussian']:
+                # perform 2D gaussian smoothing
+                smooth_sigma = section.getint('smooth_sigma')
+                smooth_mode  = section.get('smooth_mode')
+
+                bias_smooth = gaussian_filter(bias,
+                                sigma=smooth_sigma, mode=smooth_mode)
+
+                # write information to FITS header
+                bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
+                bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+                bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+                bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+            else:
+                print('Unknown smooth method: ', smooth_method)
+                pass
+
+            bias = bias_smooth
+        else:
+            # bias not smoothed
+            bias_card_lst.append((prefix+'SMOOTH CORRECTED', False))
+
+        # create new FITS Header for bias
+        head = fits.Header()
+        for card in bias_card_lst:
+            head.append(card)
+        fits.writeto(bias_file, bias, header=head, overwrite=True)
+
+        message = 'Bias image written to "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
+
+    return bias, bias_card_lst
+
 
 def get_mask(data):
     """Get the mask of input image.
@@ -563,16 +699,18 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-all_columns = [
-        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
-        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
-        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
-        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-        ]
+
+
+obslog_columns = [
+    ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
+    ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
+    ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
+    ('object',  'str',   '{:^21s}', '{0[object]:21s}'),
+    ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
+    ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
+    ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+    ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
+    ]
 
 def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.
@@ -586,19 +724,29 @@ def print_wrapper(string, item):
 
     """
     imgtype = item['imgtype']
-    obj     = item['object']
 
-    if len(obj)>=4 and obj[0:4].lower()=='bias':
+    if imgtype=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='sci':
+    elif imgtype=='science':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif len(obj)>=4 and obj[0:4].lower()=='thar':
-        # arc lamp, use light yellow (93)
-        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    elif imgtype=='calib':
+        if 'object' in item:
+            if item['object'].lower()=='thar':
+                # arc lamp, use light yellow (93)
+                return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+            else:
+                return string
+        elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
+                                                    ('', 'ThAr'),
+                                                    ('ThAr', 'ThAr')]:
+            # arc lamp, use light yellow (93)
+            return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+        else:
+            return string
     else:
         return string
 
@@ -943,3 +1091,36 @@ class TraceFigure(TraceFigureCommon):
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
 
+class BackgroudFigure(BackgroundFigureCommon):
+    """Figure to plot the background correction.
+    """
+    def __init__(self):
+        BackgroundFigureCommon.__init__(self, figsize=(16, 7), dpi=150)
+        _width = 0.37
+        _height = _width*16/7
+        self.ax1  = self.add_axes([0.06, 0.1, _width, _height])
+        self.ax2  = self.add_axes([0.55, 0.1, _width, _height])
+        self.ax1c = self.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])
+        self.ax2c = self.add_axes([0.55+_width+0.01, 0.1, 0.015, _height])
+
+    def plot_background(self, data, stray):
+        # find the minimum and maximum value of plotting
+        #s = np.sort(oridata.flatten())
+        #vmin = s[int(0.05*data.size)]
+        #vmax = s[int(0.95*data.size)]
+        vmin = np.percentile(data, 5)
+        vmax = np.percentile(data, 95)
+
+        cax_data  = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax)
+        cax_stray = self.ax2.imshow(stray, cmap='viridis')
+        cs = self.ax2.contour(stray, colors='r', linewidths=0.5)
+        self.ax2.clabel(cs, inline=1, fontsize=9, use_clabeltext=True)
+        self.colorbar(cax_data, cax=self.ax1c)
+        self.colorbar(cax_stray, cax=self.ax2c)
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))

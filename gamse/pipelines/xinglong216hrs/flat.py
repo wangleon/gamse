@@ -1,8 +1,8 @@
 import numpy as np
 from scipy.interpolate import InterpolatedUnivariateSpline
 
-from ..utils.onedarray import get_local_minima
-from ..utils.regression import iterative_polyfit
+from ...utils.onedarray import get_local_minima
+from ...utils.regression import iterative_polyfit
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of

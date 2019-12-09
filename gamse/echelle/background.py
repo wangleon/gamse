@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm     as cmap
 import matplotlib.ticker as tck
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 from ..echelle.trace      import ApertureSet
 from ..utils.onedarray    import get_local_minima
@@ -574,8 +576,8 @@ def find_background(data, mask, aperturesets, ncols, distance,
 
         if plot_section and x in plot_cols:
             i = plot_cols.index(x)
-            ax1 = fig1.add_axes([0.05, (4-i)*0.19+0.05, 0.9, 0.18])
-            ax2 = ax1.twinx()
+            ax1 = fig1.add_axes([0.05, (4-i)*0.19+0.05, 0.93, 0.18])
+            #ax2 = ax1.twinx()
             ax1.plot(xsection, ls='-' ,color='C0', lw=0.5, alpha=0.2)
 
         for ichannel, (channel, apertureset) in enumerate(sorted(apertureset_lst.items())):
@@ -623,6 +625,7 @@ def find_background(data, mask, aperturesets, ncols, distance,
             pre_aper_lst = np.array(pre_aper_lst)
             pre_apercen_lst = np.array(pre_apercen_lst)
 
+            '''
             # plot aper_lst, pre-aperture list, and post-aperture list
             if plot_section and x in plot_cols:
                 _color = 'C%d'%ichannel
@@ -635,12 +638,15 @@ def find_background(data, mask, aperturesets, ncols, distance,
                 _newx = np.arange(aper_lst[0], aper_lst[-1], 0.1)
                 ax2.plot(np.polyval(coeff, _newx), _newx, '-',
                         color=_color, lw=1, alpha=0.5)
+            '''
 
             for y in np.concatenate((apercen_lst, post_apercen_lst, pre_apercen_lst)):
                 mask = np.abs(ally - y) > distance
                 intermask *= mask
                 if plot_section and x in plot_cols:
-                    ax1.axvline(x=y, color='C%d'%ichannel, ls='--', lw=0.5, alpha=0.2)
+                    # plot order center using vertical lines
+                    ax1.axvline(x=y, color='C%d'%ichannel,
+                                ls='--', lw=0.5, alpha=0.3)
 
         if plot_section and x in plot_cols:
             _yplot = np.copy(xsection)
@@ -723,17 +729,17 @@ def find_background(data, mask, aperturesets, ncols, distance,
                 tick.label1.set_fontsize(tick_size)
             for tick in ax1.yaxis.get_major_ticks():
                 tick.label1.set_fontsize(tick_size)
-            for tick in ax2.yaxis.get_major_ticks():
-                tick.label2.set_fontsize(tick_size)
-                tick.label2.set_color('C0')
-            for tickline in ax2.yaxis.get_ticklines():
-                tickline.set_color('C0')
+            #for tick in ax2.yaxis.get_major_ticks():
+            #    tick.label2.set_fontsize(tick_size)
+            #    tick.label2.set_color('C0')
+            #for tickline in ax2.yaxis.get_ticklines():
+            #    tickline.set_color('C0')
             if i < 4:
                 ax1.set_xticklabels([])
             else:
                 ax1.set_xlabel('Y', fontsize=label_size)
             ax1.set_ylabel('Flux', fontsize=label_size)
-            ax2.set_ylabel('Aperture Number', fontsize=label_size, color='C0')
+            #ax2.set_ylabel('Aperture Number', fontsize=label_size, color='C0')
 
     if plot_section:
         fig1.savefig(fig_section)
@@ -830,3 +836,10 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     corrected_data = np.zeros_like(data)
     corrected_data[pmask] = np.log(data[pmask]) - stray[pmask]
     return np.exp(corrected_data)
+
+class BackgroundFigureCommon(Figure):
+    """Figure to plot the background correction.
+    """
+    def __init__(self, *args, **kwargs):
+        Figure.__init__(self, *args, **kwargs)
+        self.canvas = FigureCanvasAgg(self)

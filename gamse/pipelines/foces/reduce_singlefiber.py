@@ -8,12 +8,6 @@ import astropy.io.fits as fits
 from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
-from .common import (all_columns, print_wrapper, get_mask, correct_overscan,
-                     TraceFigure)
-from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg
-                   )
-from ..common import plot_background_aspect1, FormattedInfo
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
@@ -27,6 +21,12 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_identlist,
                                 )
 from ...echelle.background import find_background, simple_debackground
+from ...utils.obslog import parse_num_seq
+from ..common import plot_background_aspect1, FormattedInfo
+from .common import (obslog_columns, print_wrapper, get_mask,
+                    correct_overscan, parse_bias_frames, TraceFigure)
+from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
+                   smooth_aperpar_bkg)
 
 def reduce_singlefiber(logtable, config):
     """Data reduction for single-fiber configuration.
@@ -57,16 +57,8 @@ def reduce_singlefiber(logtable, config):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
-    # find the maximum length of fileid
-    maxlen_fileid = 0
-    for fname in os.listdir(rawdata):
-        if fname[-5:] == '.fits':
-            fileid = fname[0:-5]
-            maxlen_fileid = max(maxlen_fileid, len(fileid))
-    # now the maxlen_fileid is the maximum length of fileid
-
     # initialize printing infomation
-    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
+    pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
@@ -74,124 +66,21 @@ def reduce_singlefiber(logtable, config):
     bias_file = config['reduce.bias'].get('bias_file')
 
     if mode=='debug' and os.path.exists(bias_file):
-        has_bias = True
         # load bias data from existing file
         bias, head = fits.getdata(bias_file, header=True)
-        bias_card_lst = [card for card in head.cards
-                            if card.keyword[0:10]=='GAMSE BIAS']
-        logger.info('Load bias from image: %s'%bias_file)
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # pack header cards
+        bias_card_lst = []
+        for card in head.cards:
+            if reobj.match(card.keyword):
+                bias_card_lst.append((card.keyword, card.value))
+        # print info
+        message = 'Load bias from image: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
     else:
-        # read each individual CCD
-        bias_data_lst = []
-        bias_head_lst = []
-        bias_fileid_lst = []
-
-        for logitem in logtable:
-            if logitem['object'].strip().lower()=='bias':
-                fname = logitem['fileid']+'.fits'
-                filename = os.path.join(rawdata, fname)
-                data, head = fits.getdata(filename, header=True)
-                if data.ndim == 3:
-                    data = data[0,:,:]
-                mask = get_mask(data)
-                data, card_lst, overmean = correct_overscan(data, mask)
-                # head['BLANK'] is only valid for integer arrays.
-                if 'BLANK' in head:
-                    del head['BLANK']
-                for key, value in card_lst:
-                    head.append((key, value))
-
-                # print info
-                if len(bias_data_lst) == 0:
-                    print('* Combine Bias Images: {}'.format(bias_file))
-                    print(' '*2 + pinfo2.get_separator())
-                    print(' '*2 + pinfo2.get_title())
-                    print(' '*2 + pinfo2.get_separator())
-                string = pinfo2.get_format().format(logitem, overmean)
-                print(' '*2 + print_wrapper(string, logitem))
-
-                bias_data_lst.append(data)
-                bias_head_lst.append(head)
-                bias_fileid_lst.append(logitem['fileid'])
-
-        n_bias = len(bias_data_lst)         # number of bias images
-        has_bias = n_bias > 0
-
-        if has_bias:
-            # there is bias frames
-            print(' '*2 + pinfo2.get_separator())
-
-            # combine bias images
-            bias_data_lst = np.array(bias_data_lst)
-
-            section = config['reduce.bias']
-            bias = combine_images(bias_data_lst,
-                    mode       = 'mean',
-                    upper_clip = section.getfloat('cosmic_clip'),
-                    maxiter    = section.getint('maxiter'),
-                    mask       = (None, 'max')[n_bias>=3],
-                    )
-
-            # initialize card list for bias header
-            bias_card_lst = []
-            bias_card_lst.append(('HIERARCH GAMSE BIAS NFILE', n_bias))
-
-            # move cards related to OVERSCAN corrections from individual headers
-            # to bias header
-            for ifile, (head, fileid) in enumerate(zip(bias_head_lst,
-                                                       bias_fileid_lst)):
-                key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile)
-                bias_card_lst.append((key_prefix+' FILEID', fileid))
-
-                # move OVERSCAN cards to bias header
-                for card in head.cards:
-                    mobj = re.match('^GAMSE (OVERSCAN[\s\S]*)', card.keyword)
-                    if mobj is not None:
-                        newkey = key_prefix + ' ' + mobj.group(1)
-                        bias_card_lst.append((newkey, card.value))
-
-            ############## bias smooth ##################
-            key_prefix = 'HIERARCH GAMSE BIAS SMOOTH'
-            section = config['reduce.bias']
-            if section.getboolean('smooth'):
-                # bias needs to be smoothed
-                smooth_method = section.get('smooth_method')
-
-                if smooth_method in ['gauss', 'gaussian']:
-                    # perform 2D gaussian smoothing
-                    smooth_sigma = section.getint('smooth_sigma')
-                    smooth_mode  = section.get('smooth_mode')
-
-                    bias_smooth = gaussian_filter(bias,
-                                    sigma=smooth_sigma, mode=smooth_mode)
-
-                    # write information to FITS header
-                    bias_card_lst.append((key_prefix+' CORRECTED', True))
-                    bias_card_lst.append((key_prefix+' METHOD', 'GAUSSIAN'))
-                    bias_card_lst.append((key_prefix+' SIGMA',  smooth_sigma))
-                    bias_card_lst.append((key_prefix+' MODE',   smooth_mode))
-                else:
-                    print('Unknown smooth method: ', smooth_method)
-                    pass
-
-                bias = bias_smooth
-            else:
-                # bias not smoothed
-                bias_card_lst.append((key_prefix+' CORRECTED', False))
-
-            # create new FITS Header for bias
-            head = fits.Header()
-            for card in bias_card_lst:
-                head.append(card)
-            fits.writeto(bias_file, bias, header=head, overwrite=True)
-
-            message = 'Bias image written to "{}"'.format(bias_file)
-            logger.info(message)
-            print(message)
-
-        else:
-            # no bias found
-            pass
+        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -498,6 +387,8 @@ def reduce_singlefiber(logtable, config):
             ('points',     np.int16),
             ('wavelength', (np.float64, w)),
             ('flux',       (np.float32, w)),
+            ('flat',       (np.float32, w)),
+            ('background', (np.float32, w)),
             ]
 
     names, formats = list(zip(*types))
@@ -552,8 +443,8 @@ def reduce_singlefiber(logtable, config):
                     np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
         spec = np.array(spec, dtype=spectype)
     
-        wlcalib_fig = os.path.join(report,
-                'wlcalib_{}.{}'.format(fileid, fig_format))
+        figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
+        wlcalib_fig = os.path.join(report, figname)
 
         section = config['reduce.wlcalib']
         
@@ -594,12 +485,14 @@ def reduce_singlefiber(logtable, config):
                                 None)[direction[2]=='?']
                     # determine the name of the output figure during lamp shift
                     # finding.
-                    fig_ccf = {'normal': None,
-                                'debug': os.path.join(report,
-                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
-                    fig_scatter = {'normal': None,
-                                    'debug': os.path.join(report,
-                                        'lamp_ccf_scatter.png')}[mode]
+                    if mode == 'debug':
+                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
+                        figname2 = 'lamp_ccf_scatter.png'
+                        fig_ccf     = os.path.join(report, figname1)
+                        fig_scatter = os.path.join(report, figname2)
+                    else:
+                        fig_ccf = None
+                        fig_scatter = None
 
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
@@ -674,8 +567,24 @@ def reduce_singlefiber(logtable, config):
                 direction        = direction,
                 )
         
-        hdu_lst = self_reference_singlefiber(spec, head, calib)
-        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        # reference the ThAr spectra
+        spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+        for key, value in card_lst:
+            key = 'HIERARCH GAMSE WLCALIB '+key
+            head.append((key, value))
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    fits.BinTableHDU(identlist),
+                    ])
+        # save in midproc as a wlcalib reference file
+        fname = 'wlcalib.{}.fits'.format(fileid)
+        filename = os.path.join(midproc, fname)
+        hdu_lst.writeto(filename, overwrite=True)
+
+        # save a second time in onedspec
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
         # add more infos in calib
@@ -761,42 +670,62 @@ def reduce_singlefiber(logtable, config):
                         fileid, bias.mean())
         else:
             message = 'FileID: {} - no bias'.format(fileid)
-
         logger.info(message)
         print(message)
 
         # correct flat
         data = data/flat_map
-
         message = 'FileID: {} - flat corrected'.format(fileid)
         logger.info(message)
         print(message)
 
-        # correct background
-        fig_sec = os.path.join(report,
-                  'bkg_{}_sec.{}'.format(fileid, fig_format))
-
+        # background correction
         section = config['reduce.background']
-        stray = find_background(data, mask,
-                aperturesets = master_aperset,
-                ncols        = section.getint('ncols'),
-                distance     = section.getfloat('distance'),
-                yorder       = section.getint('yorder'),
-                fig_section  = fig_sec,
-                )
-        data = data - stray
+        ncols    = section.getint('ncols')
+        distance = section.getfloat('distance')
+        yorder   = section.getint('yorder')
+        subtract = section.getboolean('subtract')
+        excluded_frameids = section.get('excluded_frameids')
+        excluded_frameids = parse_num_seq(excluded_frameids)
 
-        # plot stray light
-        fig_stray = os.path.join(report,
-                    'bkg_{}_stray.{}'.format(fileid, fig_format))
-        plot_background_aspect1(data+stray, stray, fig_stray)
+        if (subtract and frameid not in excluded_frameids) or \
+           (not subtract and frameid in excluded_frameids):
 
-        # generate two figures for each background
-        #plot_background_aspect1_alt(data+stray, stray,
-        #    os.path.join(report, 'bkg_%s_stray1.%s'%(fileid, fig_format)),
-        #    os.path.join(report, 'bkg_%s_stray2.%s'%(fileid, fig_format)))
+            figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
+            fig_sec = os.path.join(report, figname)
 
-        message = 'FileID: {} - background corrected'.format(fileid)
+            stray = find_background(data, mask,
+                            aperturesets = master_aperset,
+                            ncols        = ncols,
+                            distance     = distance,
+                            yorder       = yorder,
+                            fig_section  = fig_sec,
+                    )
+            data = data - stray
+
+            # put information into header
+            prefix = 'HIERARCH GAMSE BACKGROUND '
+            head.append((prefix + 'CORRECTED', True))
+            head.append((prefix + 'XMETHOD',   'cubic spline'))
+            head.append((prefix + 'YMETHOD',   'polynomial'))
+            head.append((prefix + 'NCOLUMN',   ncols))
+            head.append((prefix + 'DISTANCE',  distance))
+            head.append((prefix + 'YORDER',    yorder))
+
+            # plot stray light
+            figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
+            fig_stray = os.path.join(report, figname)
+            plot_background_aspect1(data+stray, stray, fig_stray)
+
+            message = 'FileID: {} - background corrected. max value = {}'.format(
+                    fileid, stray.max())
+        else:
+            stray = None
+            # put information into header
+            prefix = 'HIERARCH GAMSE BACKGROUND '
+            head.append((prefix + 'CORRECTED', False))
+            message = 'FileID: {} - background not corrected.'.format(fileid)
+
         logger.info(message)
         print(message)
 
@@ -817,8 +746,13 @@ def reduce_singlefiber(logtable, config):
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
-            spec.append((aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            item = (aper, 0, flux_sum.size,
+                    np.zeros_like(flux_sum, dtype=np.float64), # wavelength
+                    flux_sum,
+                    flat_spec_lst[aper],       # 1d spectra of flat
+                    stray1d[aper]['flux_sum'], # 1d spectra of background
+                    )
+            spec.append(item)
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
@@ -837,10 +771,11 @@ def reduce_singlefiber(logtable, config):
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(spec),
                     ])
-        filename = os.path.join(onedspec, fileid+oned_suffix+'.fits')
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to {}'.format(
+        message = 'FileID: {} - Spectra written to "{}"'.format(
                     fileid, filename)
         logger.info(message)
         print(message)
