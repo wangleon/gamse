@@ -116,10 +116,12 @@ def make_config():
     config.set('reduce.wlcalib', 'q_threshold',     str(10))
 
     config.add_section('reduce.background')
+    config.set('reduce.background', 'subtract', 'yes')
     config.set('reduce.background', 'ncols',    str(9))
     distance = {'single': 6, 'double': 2}[fibermode]
     config.set('reduce.background', 'distance', str(distance))
     config.set('reduce.background', 'yorder',   str(6))
+    config.set('reduce.background', 'excluded_frameids', '')
 
     config.add_section('reduce.extract')
     config.set('reduce.extract', 'upper_limit', str(6))

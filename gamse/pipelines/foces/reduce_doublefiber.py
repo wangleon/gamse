@@ -21,6 +21,7 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_identlist,
                                 )
 from ...echelle.background import find_background, simple_debackground
+from ...utils.obslog import parse_num_seq
 from ..common import plot_background_aspect1, FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
                     correct_overscan, parse_bias_frames, TraceFigure)
@@ -963,6 +964,7 @@ def reduce_doublefiber(logtable, config):
     for logitem in logtable:
         
         # logitem alias
+        frameid = logitem['frameid']
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
 
@@ -970,6 +972,8 @@ def reduce_doublefiber(logtable, config):
             continue
 
         filename = os.path.join(rawdata, fileid+'.fits')
+
+        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split('|')]
 
         logger.info(
             'FileID: {} ({}) - start reduction: {}'.format(
@@ -1011,57 +1015,63 @@ def reduce_doublefiber(logtable, config):
         logger.info(message)
         print(message)
 
-        # correct background
-        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split('|')]
-
-        figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
-        fig_sec = os.path.join(report, figname)
-
-        # find apertureset list for this item
-        apersets = {}
-        for ifiber in range(n_fiber):
-            fiber = chr(ifiber+65)
-            if len(fiberobj_lst[ifiber])>0:
-                apersets[fiber] = master_aperset[fiber]
-
         # background correction
         section = config['reduce.background']
         ncols    = section.getint('ncols')
         distance = section.getfloat('distance')
         yorder   = section.getint('yorder')
+        subtract = section.getboolean('subtract')
+        excluded_frameids = section.get('excluded_frameids')
+        excluded_frameids = parse_num_seq(excluded_frameids)
 
-        stray = find_background(data, mask,
-                        aperturesets = apersets,
-                        ncols        = ncols,
-                        distance     = distance,
-                        yorder       = yorder,
-                        fig_section  = fig_sec,
-                )
-        data = data - stray
+        if (subtract and frameid not in excluded_frameids) or \
+           (not subtract and frameid in excluded_frameids):
 
-        # put information into header
-        prefix = 'HIERARCH GAMSE BACKGROUND '
-        head.append((prefix + 'CORRECTED', True))
-        head.append((prefix + 'XMETHOD',   'cubic spline'))
-        head.append((prefix + 'YMETHOD',   'polynomial'))
-        head.append((prefix + 'NCOLUMN',   ncols))
-        head.append((prefix + 'DISTANCE',  distance))
-        head.append((prefix + 'YORDER',    yorder))
+            # find apertureset list for this item
+            apersets = {}
+            for ifiber in range(n_fiber):
+                fiber = chr(ifiber+65)
+                if len(fiberobj_lst[ifiber])>0:
+                    apersets[fiber] = master_aperset[fiber]
 
-        # plot stray light
-        figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
-        fig_stray = os.path.join(report, figname)
-        plot_background_aspect1(data+stray, stray, fig_stray)
+            figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
+            fig_sec = os.path.join(report, figname)
 
-        # generate two figures for each background
-        #plot_background_aspect1_alt(data+stray, stray,
-        #    os.path.join(report, 'bkg_%s_stray1.%s'%(fileid, fig_format)),
-        #    os.path.join(report, 'bkg_%s_stray2.%s'%(fileid, fig_format)))
+            stray = find_background(data, mask,
+                            aperturesets = apersets,
+                            ncols        = ncols,
+                            distance     = distance,
+                            yorder       = yorder,
+                            fig_section  = fig_sec,
+                    )
+            data = data - stray
 
-        message = 'FileID: {} - background corrected. max value = {}'.format(
-                fileid, stray.max())
+            # put information into header
+            prefix = 'HIERARCH GAMSE BACKGROUND '
+            head.append((prefix + 'CORRECTED', True))
+            head.append((prefix + 'XMETHOD',   'cubic spline'))
+            head.append((prefix + 'YMETHOD',   'polynomial'))
+            head.append((prefix + 'NCOLUMN',   ncols))
+            head.append((prefix + 'DISTANCE',  distance))
+            head.append((prefix + 'YORDER',    yorder))
+
+            # plot stray light
+            figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
+            fig_stray = os.path.join(report, figname)
+            plot_background_aspect1(data+stray, stray, fig_stray)
+
+            message = 'FileID: {} - background corrected. max value = {}'.format(
+                    fileid, stray.max())
+        else:
+            stray = None
+            # put information into header
+            prefix = 'HIERARCH GAMSE BACKGROUND '
+            head.append((prefix + 'CORRECTED', False))
+            message = 'FileID: {} - background not corrected.'.format(fileid)
+
         logger.info(message)
         print(message)
+
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1087,12 +1097,20 @@ def reduce_doublefiber(logtable, config):
                             upper_limit = upper_limit,
                         )
 
-            # extract 1d spectra for stray light
-            stray1d = extract_aperset(stray, mask,
-                            apertureset = apertureset,
-                            lower_limit = lower_limit,
-                            upper_limit = upper_limit,
-                        )
+            if stray is None:
+                # background is not subtracted
+                stray1d = {aper: {'flux_sum':
+                                  np.zeros_like(spectra1d[aper]['flux_sum'],
+                                                dtype=np.float32)
+                                 }
+                            for aper in apertureset}
+            else:
+                # extract 1d spectra for stray light
+                stray1d = extract_aperset(stray, mask,
+                                apertureset = apertureset,
+                                lower_limit = lower_limit,
+                                upper_limit = upper_limit,
+                            )
 
             fmt_string = ('FileID: {} - fiber {}'
                           ' - 1D spectra of {} orders extracted')
@@ -1150,11 +1168,11 @@ def reduce_doublefiber(logtable, config):
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(newspec),
                     ])
-        filename = os.path.join(onedspec, '{}_{}.fits'.format(
-                                            fileid, oned_suffix))
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to {}'.format(
+        message = 'FileID: {} - Spectra written to "{}"'.format(
                     fileid, filename)
         logger.info(message)
         print(message)
