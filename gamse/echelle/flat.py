@@ -1555,8 +1555,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             continue
 
 
-        mask_lst = []
-
         # pick up NaN positions in fitpar_lst and generate fitmask.
         # NaN = False. Real number = True
         fitmask = ~np.isnan(fitpar_lst[:,0])
@@ -1569,11 +1567,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         # filter out short segments
         # every index in group is index in newx_lst, NOT real pixel numbers
         group_lst = [group for group in group_lst
-                    if newx_lst[group[-1]] - newx_lst[group[0]] > w/10]
+                     if newx_lst[group[-1]] - newx_lst[group[0]] > w/10]
 
         if len(group_lst) == 0:
-            print('Skip Aperture %2d'%aper)
-            logger.debug('Skip aperture %d because of no group'%aper)
+            message = ('Aperture {:3d}: Skipped'.format(aper))
+            print(message)
+            logger.debug(message)
             continue
 
         # loop for A, k, c, bkg. Smooth these parameters
@@ -1733,19 +1732,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         fig5.savefig(figname2)
                         plt.close(fig5)
 
-
-            # pack the positions of mask
-            mask_lst.append(mask)
-
-        mask_lst = np.array(mask_lst)
-
         if plot_aperpar:
             # save and close the figure
             if iaper%5==4:
                 fig.savefig(fig_aperpar%aper)
                 plt.close(fig)
                 has_aperpar_fig = False
-
 
         # find columns to be corrected in this order
         correct_x_lst = []
@@ -1835,7 +1827,15 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #    plt.close(fig)
             
         t2 = time.time()
-        print('Aper %2d t = %6.1f ms'%(aper, (t2-t1)*1e3))
+        message = ('Aperture {:3d}: {:2d} group{:1s}; '
+                   'correct {:4d} pixels from {:4d} to {:4d}; '
+                   't = {:6.1f} ms').format(
+                    aper, len(group_lst), (' ','s')[len(group_lst)>1],
+                    len(correct_x_lst),
+                    correct_x_lst[0], correct_x_lst[-1],
+                    (t2-t1)*1e3
+                    )
+        print(message)
     ###################### aperture loop ends here ########################
     if plot_aperpar and has_aperpar_fig:
         # there's unsaved figure in memory. save and close the figure
