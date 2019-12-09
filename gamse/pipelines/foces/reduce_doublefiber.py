@@ -22,9 +22,10 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import find_background, simple_debackground
 from ...utils.obslog import parse_num_seq
-from ..common import plot_background_aspect1, FormattedInfo
+from ..common import FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
-                    correct_overscan, parse_bias_frames, TraceFigure)
+                     correct_overscan, parse_bias_frames,
+                     TraceFigure, BackgroudFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
@@ -1056,9 +1057,12 @@ def reduce_doublefiber(logtable, config):
             head.append((prefix + 'YORDER',    yorder))
 
             # plot stray light
+            bkgfig = BackgroudFigure()
+            bkgfig.plot_background(data+stray, stray)
+            bkgfig.suptitle('Background Correction for {}'.format(fileid))
             figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
             fig_stray = os.path.join(report, figname)
-            plot_background_aspect1(data+stray, stray, fig_stray)
+            bkgfig.savefig(fig_stray)
 
             message = 'FileID: {} - background corrected. max value = {}'.format(
                     fileid, stray.max())

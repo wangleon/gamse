@@ -17,6 +17,7 @@ import matplotlib.dates  as mdates
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.background import BackgroundFigureCommon
 from ..reduction     import Reduction
 
 def correct_overscan(data, mask=None):
@@ -1090,3 +1091,36 @@ class TraceFigure(TraceFigureCommon):
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
 
+class BackgroudFigure(BackgroundFigureCommon):
+    """Figure to plot the background correction.
+    """
+    def __init__(self):
+        BackgroundFigureCommon.__init__(self, figsize=(16, 7), dpi=150)
+        _width = 0.37
+        _height = _width*16/7
+        self.ax1  = self.add_axes([0.06, 0.1, _width, _height])
+        self.ax2  = self.add_axes([0.55, 0.1, _width, _height])
+        self.ax1c = self.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])
+        self.ax2c = self.add_axes([0.55+_width+0.01, 0.1, 0.015, _height])
+
+    def plot_background(self, data, stray):
+        # find the minimum and maximum value of plotting
+        #s = np.sort(oridata.flatten())
+        #vmin = s[int(0.05*data.size)]
+        #vmax = s[int(0.95*data.size)]
+        vmin = np.percentile(data, 5)
+        vmax = np.percentile(data, 95)
+
+        cax_data  = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax)
+        cax_stray = self.ax2.imshow(stray, cmap='viridis')
+        cs = self.ax2.contour(stray, colors='r', linewidths=0.5)
+        self.ax2.clabel(cs, inline=1, fontsize=9, use_clabeltext=True)
+        self.colorbar(cax_data, cax=self.ax1c)
+        self.colorbar(cax_stray, cax=self.ax2c)
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
