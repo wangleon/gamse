@@ -634,7 +634,7 @@ def reduce_doublefiber(logtable, config):
             continue
 
         fiberobj_lst = [v.strip().lower()
-                        for v in logitem['object'].split(';')]
+                        for v in logitem['object'].split('|')]
 
         # check if there's any other objects
         has_others = False
@@ -708,8 +708,8 @@ def reduce_doublefiber(logtable, config):
                     ))
             spec = np.array(spec, dtype=spectype)
 
-            wlcalib_fig = os.path.join(report,
-                    'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
+            figname = 'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format)
+            wlcalib_fig = os.path.join(report, figname)
 
             section = config['reduce.wlcalib']
 
@@ -761,12 +761,14 @@ def reduce_doublefiber(logtable, config):
                                     None)[direction[2]=='?']
                         # determine the name of the output figure during lamp
                         # shift finding.
-                        fig_ccf = {'normal': None,
-                                    'debug': os.path.join(report,
-                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
-                        fig_scatter = {'normal': None,
-                                        'debug': os.path.join(report,
-                                            'lamp_ccf_scatter.png')}[mode]
+                        if mode == 'debug':
+                            figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
+                            figname2 = 'lamp_ccf_scatter.png'
+                            fig_ccf     = os.path.join(report, figname1)
+                            fig_scatter = os.path.join(report, figname2)
+                        else:
+                            fig_ccf = None
+                            fig_scatter = None
 
                         result = find_caliblamp_offset(ref_spec, spec,
                                     aperture_k  = aperture_k,
@@ -878,8 +880,8 @@ def reduce_doublefiber(logtable, config):
                         fits.BinTableHDU(spec),
                         fits.BinTableHDU(identlist),
                         ])
-            filename = os.path.join(midproc,
-                                    'wlcalib.{}.{}.fits'.format(fileid, fiber))
+            fname = 'wlcalib.{}.{}.fits'.format(fileid, fiber)
+            filename = os.path.join(midproc, fname)
             hdu_lst.writeto(filename, overwrite=True)
 
             # pack to calib_lst
@@ -905,8 +907,8 @@ def reduce_doublefiber(logtable, config):
                     fits.BinTableHDU(newspec),
                     fits.BinTableHDU(newidentlist),
                     ])
-        filename = os.path.join(onedspec, '{}_{}.fits'.format(
-                                            fileid, oned_suffix))
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
     # print fitting summary
@@ -994,7 +996,7 @@ def reduce_doublefiber(logtable, config):
         print(message)
 
         # correct bias
-        if has_bias:
+        if bias is not None:
             data = data - bias
             message = 'FileID: {} - bias corrected. mean value = {}'.format(
                         fileid, bias.mean())
@@ -1010,10 +1012,10 @@ def reduce_doublefiber(logtable, config):
         print(message)
 
         # correct background
-        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split(';')]
+        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split('|')]
 
-        fig_sec = os.path.join(report,
-                  'bkg_{}_sec.{}'.format(fileid, fig_format))
+        figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
+        fig_sec = os.path.join(report, figname)
 
         # find apertureset list for this item
         apersets = {}
@@ -1036,17 +1038,19 @@ def reduce_doublefiber(logtable, config):
                         fig_section  = fig_sec,
                 )
         data = data - stray
+
+        # put information into header
         prefix = 'HIERARCH GAMSE BACKGROUND '
         head.append((prefix + 'CORRECTED', True))
-        head.append((prefix + 'XMETHOD', 'cubic spline'))
-        head.append((prefix + 'YMETHOD', 'polynomial'))
-        head.append((prefix + 'NCOLUMN', ncols))
-        head.append((prefix + 'DISTANCE', distance))
-        head.append((prefix + 'YORDER', yorder))
+        head.append((prefix + 'XMETHOD',   'cubic spline'))
+        head.append((prefix + 'YMETHOD',   'polynomial'))
+        head.append((prefix + 'NCOLUMN',   ncols))
+        head.append((prefix + 'DISTANCE',  distance))
+        head.append((prefix + 'YORDER',    yorder))
 
         # plot stray light
-        fig_stray = os.path.join(report,
-                    'bkg_{}_stray.{}'.format(fileid, fig_format))
+        figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
+        fig_stray = os.path.join(report, figname)
         plot_background_aspect1(data+stray, stray, fig_stray)
 
         # generate two figures for each background

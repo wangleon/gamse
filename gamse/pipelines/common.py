@@ -298,9 +298,9 @@ class FormattedInfo(object):
             newfmt_item = []
             for item in fmt_item:
                 mobj = pattern.match(item)
-                if mobj is None:
-                    newfmt_item.append(item)
-                else:
+                if mobj:
                     newfmt_item.append(mobj.group(1))
+                else:
+                    newfmt_item.append(item)
             return delimiter.join(newfmt_item)
 
