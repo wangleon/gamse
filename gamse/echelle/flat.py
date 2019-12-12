@@ -698,7 +698,7 @@ def mosaic_images(image_lst, mosaic_aperset):
 
     return mosaic_image
 
-def mosaic_speclist(spec_lst, mosaic_aperset):
+def mosaic_spec(spec_lst, mosaic_aperset):
     """Mosaic input spectra list with the identifications in the input aperture
     set.
 
@@ -714,14 +714,19 @@ def mosaic_speclist(spec_lst, mosaic_aperset):
         * :func:`mosaic_flat_auto`
     """
 
-    speclist = {}
+    spec = []
 
     for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
         tracename = aper_loc.tracename
         ori_aper = aper_loc.ori_aper
-        speclist[aper] = spec_lst[tracename][ori_aper]
+        spec1 = spec_lst[tracename]
+        mask = spec1['aperture'] == ori_aper
+        row = spec1[mask][0]
+        spec.append(tuple(row))
 
-    return speclist
+    spec = np.array(spec, dtype=spec1.dtype)
+
+    return spec
 
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
@@ -1149,7 +1154,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         slit_file (str): Path to the ASCII file of slit functions.
 
     Returns:
-        :class:`numpy.ndarray`: 2D response map.
+        tuple: A tuple containing:
+
+            * :class:`numpy.ndarray`: 2D response map.
+            * :class:`numpy.ndarray`: A dict of flat 1-d spectra.
 
     """
     # define the fitting and error functions
@@ -1170,6 +1178,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         return ydata - fitfunc2(p, xdata, interf)
 
     h, w = data.shape
+
 
     # find saturation mask
     sat_mask = (mask&4 > 0)
@@ -1541,19 +1550,27 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 fitpar_lst.append(blank_p)
 
         if break_aperture:
-            logger.debug('Break aperture %d because of break_aperture=True'%aper)
+            message = ('Aperture {:3d}: Skipped because of '
+                       'break_aperture=True').format(aper)
+            logger.debug(message)
+            print(message)
             continue
 
         fitpar_lst = np.array(fitpar_lst)
 
         if np.isnan(fitpar_lst[:,0]).sum()>0.5*w:
-            logger.debug('Break aperture %d because of too many NaN values in aperpar'%aper)
+            message = ('Aperture {:3d}: Skipped because of too many NaN '
+                       'values in aperture parameters').format(aper)
+            logger.debug(message)
+            print(message)
             continue
 
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
-            logger.debug('Break aperture %d because of too few real values in aperpar'%aper)
+            message = ('Aperture {:3d}: Skipped because of too few real '
+                       'values in aperture parameters').format(aper)
+            logger.debug(message)
+            print(message)
             continue
-
 
         # pick up NaN positions in fitpar_lst and generate fitmask.
         # NaN = False. Real number = True
@@ -1799,10 +1816,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             xdata2 = np.arange(y1s, y2s, 0.1)
             flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
             # use trapezoidal integration
-            #flatspecv = np.trapz(flatmod, x=xdata2)
+            # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspecv = simps(flatmod, x=xdata2)
-            flatspec_lst[aper][x] = flatspecv
+            flatspec_lst[aper][x] = simps(flatmod, x=xdata2)
             
             #if aper==0:
             #    print(x, y1, y2, flatmask)
@@ -1825,6 +1841,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #    ax2.set_xlim(xdata[0], xdata[-1])
             #    fig.savefig('img/flat/new_%02d_%04d.png'%(aper,x))
             #    plt.close(fig)
+
             
         t2 = time.time()
         message = ('Aperture {:3d}: {:2d} group{:1s}; '
@@ -1836,6 +1853,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     (t2-t1)*1e3
                     )
         print(message)
+
+    # pack the final 1-d spectra of flat
+    flatspectable = [(aper, flatspec_lst[aper])
+                     for aper in sorted(apertureset.keys())]
+
+    # define the datatype of flat 1d spectra
+    flatspectype = np.dtype(
+                    {'names':   ['aperture', 'flux'],
+                     'formats': [np.int32, (np.float32, w)],}
+                    )
+    flatspectable = np.array(flatspectable, dtype=flatspectype)
+
     ###################### aperture loop ends here ########################
     if plot_aperpar and has_aperpar_fig:
         # there's unsaved figure in memory. save and close the figure
@@ -1843,7 +1872,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         plt.close(fig)
         has_aperpar_fig = False
 
-    return flatdata, flatspec_lst
+
+    return flatdata, flatspectable
 
 
 def default_smooth_flux(x, y, w):
