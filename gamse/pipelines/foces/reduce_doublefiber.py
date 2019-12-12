@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
-                             mosaic_speclist)
+                             mosaic_spec)
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_time_weight, find_caliblamp_offset,
@@ -324,6 +324,8 @@ def reduce_doublefiber(logtable, config):
 
     ########################### Get flat fielding ##############################
     flatmap_lst = {}
+    
+    h, w = flat_data.shape
 
     for fiber, fiber_group in sorted(flat_groups.items()):
         for flatname in sorted(fiber_group.keys()):
@@ -371,18 +373,14 @@ def reduce_doublefiber(logtable, config):
                             )
 
                 flat_spec_lst[fiber][flatname] = flatspec
+                print(fiber, flatname, flatspec['aperture'])
 
-                '''
-                for aper, spec in sorted(flatspec.items()):
-                    fig = plt.figure(dpi=150)
-                    ax = fig.gca()
-                    ax.plot(spec)
-                    fig.savefig('flatspec_%s_%s_%d_simps.png'%(fiber, flatname, aper))
-                    plt.close(fig)
-                '''
-                
                 # append the sensivity map to fits file
                 hdu_lst.append(fits.ImageHDU(flatmap))
+
+                # append the flat spec to fits file
+                hdu_lst.append(fits.BinTableHDU(flatspec))
+
                 # write back to the original file
                 hdu_lst.flush()
     
@@ -467,7 +465,7 @@ def reduce_doublefiber(logtable, config):
             flat_norm = mosaic_images(flat_norm_lst[fiber],
                                         master_aperset[fiber])
             # mosaic 1d spectra of flats
-            flat_spec = mosaic_speclist(flat_spec_lst[fiber],
+            flat_spec = mosaic_spec(flat_spec_lst[fiber],
                                         master_aperset[fiber])
 
             # change contents of several lists
@@ -483,6 +481,7 @@ def reduce_doublefiber(logtable, config):
                         fits.ImageHDU(mask_data),
                         fits.ImageHDU(flat_map),
                         fits.ImageHDU(flat_norm),
+                        fits.BinTableHDU(flat_spec),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
