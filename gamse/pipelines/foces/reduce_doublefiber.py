@@ -323,7 +323,7 @@ def reduce_doublefiber(logtable, config):
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
 
     ########################### Get flat fielding ##############################
-    flatmap_lst = {}
+    flat_map_lst = {}
     
     h, w = flat_data.shape
 
@@ -373,7 +373,6 @@ def reduce_doublefiber(logtable, config):
                             )
 
                 flat_spec_lst[fiber][flatname] = flatspec
-                print(fiber, flatname, flatspec['aperture'])
 
                 # append the sensivity map to fits file
                 hdu_lst.append(fits.ImageHDU(flatmap))
@@ -385,9 +384,9 @@ def reduce_doublefiber(logtable, config):
                 hdu_lst.flush()
     
             # append the flatmap
-            if fiber not in flatmap_lst:
-                flatmap_lst[fiber] = {}
-            flatmap_lst[fiber][flatname] = flatmap
+            if fiber not in flat_map_lst:
+                flat_map_lst[fiber] = {}
+            flat_map_lst[fiber][flatname] = flatmap
     
             # continue to the next colored flat
         # continue to the next fiber
@@ -436,7 +435,7 @@ def reduce_doublefiber(logtable, config):
             shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
             '''
 
-            flat_map = flatmap_lst[fiber][flatname]
+            flat_map = flat_map_lst[fiber][flatname]
     
             # no need to mosaic aperset
             master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
@@ -459,7 +458,7 @@ def reduce_doublefiber(logtable, config):
             mask_data = mosaic_images(flat_mask_lst[fiber],
                                         master_aperset[fiber])
             # mosaic sensitivity map
-            flat_map = mosaic_images(flatmap_lst[fiber],
+            flat_map = mosaic_images(flat_map_lst[fiber],
                                         master_aperset[fiber])
             # mosaic exptime-normalized flat images
             flat_norm = mosaic_images(flat_norm_lst[fiber],
@@ -471,7 +470,7 @@ def reduce_doublefiber(logtable, config):
             # change contents of several lists
             flat_data_lst[fiber] = flat_data
             flat_mask_lst[fiber] = mask_data
-            flatmap_lst[fiber]   = flat_map
+            flat_map_lst[fiber]  = flat_map
             flat_norm_lst[fiber] = flat_norm
             flat_spec_lst[fiber] = flat_spec
     
@@ -484,15 +483,6 @@ def reduce_doublefiber(logtable, config):
                         fits.BinTableHDU(flat_spec),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
-
-            '''
-            for aper, spec in flat_spec.items():
-                fig = plt.figure(dpi=150)
-                ax = fig.gca()
-                ax.plot(spec)
-                plt.savefig('tmp/flatspec_%s_%d.png'%(fiber,aper))
-                plt.close(fig)
-            '''
 
         # align different fibers
         if ifiber == 0:
@@ -512,6 +502,10 @@ def reduce_doublefiber(logtable, config):
 
             # correct the aperture offset
             master_aperset[fiber].shift_aperture(-offset)
+
+            # also correct the aperture number in flatspec
+            flat_spec_lst[fiber]['aperture'] -= offset
+
 
     # find all the aperture list for all fibers
     allmax_aper = -99
@@ -556,19 +550,15 @@ def reduce_doublefiber(logtable, config):
         mask = (yy >= prev_line)*(yy < next_line)
         master_flatdata[mask] = flat_data_lst[fiber][mask]
         master_flatmask[mask] = flat_mask_lst[fiber][mask]
-        master_flatmap[mask]  = flatmap_lst[fiber][mask]
+        master_flatmap[mask]  = flat_map_lst[fiber][mask]
         master_flatnorm[mask] = flat_norm_lst[fiber][mask]
         prev_line = next_line
     # parse the last order
     mask = yy >= prev_line
     master_flatdata[mask] = flat_data_lst[next_fiber][mask]
     master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
-    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
+    master_flatmap[mask]  = flat_map_lst[next_fiber][mask]
     master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
-
-    #ax.imshow(master_flatmap, alpha=0.6)
-    #plt.show()
-    #print(h, w)
 
     hdu_lst = fits.HDUList([
                 fits.PrimaryHDU(master_flatdata),
@@ -578,26 +568,6 @@ def reduce_doublefiber(logtable, config):
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
-    '''
-    #################### Extract Flat Fielding Spectrum ########################
-
-    # correct flat for flatfielding
-    flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        data = flat_norm_lst[fiber]/master_flatmap
-        mask = flat_mask_lst[fiber]
-
-        fits.writeto('flat_flt.{}.fits'.format(fiber), data, overwrite=True)
-
-        section = config['reduce.extract']
-        spectra1d = extract_aperset(data, mask,
-                        apertureset = master_aperset[fiber],
-                        lower_limit = section.getfloat('lower_limit'),
-                        upper_limit = section.getfloat('upper_limit'),
-                        )
-        flat_spec_lst[fiber] = spectra1d
-    '''
 
     ############################## Extract ThAr ################################
 
@@ -698,13 +668,18 @@ def reduce_doublefiber(logtable, config):
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                # search for flat flux
+                m = flat_spec_lst[fiber]['aperture']==aper
+                flat_flux = flat_spec_lst[fiber][m][0]['flux']
+
+                # pack to table
                 spec.append((
                     aper,          # aperture
                     0,             # order (not determined yet)
                     flux_sum.size, # number of points
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
                     flux_sum,      # fluxes
-                    flat_spec_lst[fiber][aper],  # flat
+                    flat_flux,     # flat
                     np.zeros_like(flux_sum, dtype=np.float32), # background
                     ))
             spec = np.array(spec, dtype=spectype)
@@ -1129,10 +1104,14 @@ def reduce_doublefiber(logtable, config):
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                # search for flat flux
+                m = flat_spec_lst[fiber]['aperture']==aper
+                flat_flux = flat_spec_lst[fiber][m][0]['flux']
+
                 item = (aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64), # wavelength
                         flux_sum,
-                        flat_spec_lst[fiber][aper], # 1d spectra of flat
+                        flat_flux,                  # 1d spectra of flat
                         stray1d[aper]['flux_sum'],  # 1d sepctra of background
                         )
                 spec.append(item)
