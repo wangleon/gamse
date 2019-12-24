@@ -251,7 +251,7 @@ def reduce_doublefiber(logtable, config):
                 sat_mask = allmask > nflat/2.
                 flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
-                # exposure time normalized flat data
+                # get exposure time normalized flats
                 flat_norm = flat_data/exptime
 
                 # create the trace figure
@@ -485,6 +485,22 @@ def reduce_doublefiber(logtable, config):
             # also correct the aperture number in flatspec
             flat_spec_lst[fiber]['aperture'] -= offset
 
+    # save the mosaic, offset-corrected aperset to txt files
+    for fiber, aperset in sorted(master_aperset.items()):
+        # save as .trc file
+        fname = 'trace_{}.trc'.format(fiber)
+        outfilename = os.path.join(midproc, fname)
+        aperset.save_txt(outfilename)
+        message = '{} Apertures for fiber {} saved to "{}"'.format(
+                    len(aperset), fiber, outfilename)
+        logger.info(message)
+        print(message)
+
+        # save as .reg file
+        fname = 'trace_{}.reg'.format(fiber)
+        outfilename = os.path.join(midproc, fname)
+        color = {'A': 'green', 'B': 'yellow'}[fiber]
+        aperset.save_reg(outfilename, fiber=fiber, color=color)
 
     # find all the aperture list for all fibers
     allmax_aper = -99
@@ -493,11 +509,6 @@ def reduce_doublefiber(logtable, config):
         fiber = chr(ifiber+65)
         allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
         allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
-
-    #fig = plt.figure(dpi=150)
-    #ax = fig.gca()
-    #test_data = {'A': np.ones((2048, 2048))+1,
-    #             'B': np.ones((2048, 2048))+2}
 
     # pack all aperloc into a single list
     all_aperloc_lst = []
@@ -508,7 +519,6 @@ def reduce_doublefiber(logtable, config):
             x, y = aperloc.get_position()
             center = aperloc.get_center()
             all_aperloc_lst.append([fiber, aper, aperloc, center])
-            #ax.plot(x, y, color='gy'[ifiber], lw=1)
 
     # mosaic flat map
     sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
