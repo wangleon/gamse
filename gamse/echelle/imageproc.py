@@ -145,16 +145,16 @@ def make_mask():
     pass
 
 
-def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
+def savitzky_golay_2d(z, window_length, order,
+        mode='reflect', derivative=None):
     """Savitzky-Golay 2D filter, with different window size and order along *x*
     and *y* directions.
 
     Args:
         z (:class:`numpy.ndarray`): Input 2-d array.
-        xwindow (int): Window size along *x*-axis.
-        ywindow (int): Window size along *y*-axis.
-        xorder (float): Degree of polynomial along *x*-axis.
-        yorder (float): Degree of polynomial along *y*-axis.
+        window_length (int, tuple, or list): Window size in pixel.
+        order (int, tuple, or list): Degree of polynomial.
+        mode (str): Mode.
         derivative (str): *None*, *col*, *row*, or *both*.
 
     Returns:
@@ -177,51 +177,112 @@ def savitzky_golay_2d(z, xwindow, ywindow, xorder, yorder, derivative=None):
     yind = np.arange(-yhalf, yhalf+1, dtype=np.float64)
     dy = np.tile(yind, [xwindow, 1]).reshape(xwindow*ywindow,)
 
-    A = np.empty(((xwindow*ywindow), len(exps)))
+    A = np.empty(((xwin*ywin), len(exps)))
     for i, exp in enumerate(exps):
         A[:, i] = (dx**exp[0])*(dy**exp[1])
 
-    newshape = z.shape[0] + 2*yhalf, z.shape[1] + 2*xhalf
-    Z = np.zeros((newshape))
-    # top band
-    band = z[0,:]
-    Z[:yhalf, xhalf:-xhalf] = band - np.abs(np.flipud(z[1:yhalf+1,:])-band)
-    # bottom band
-    band = z[-1,:]
-    Z[-yhalf:, xhalf:-xhalf] = band + np.abs(np.flipud(z[-yhalf-1:-1])-band)
-    # left band
-    band = np.tile(z[:,0].reshape(-1,1), [1, xhalf])
-    Z[yhalf:-yhalf, :xhalf] = band - np.abs(np.fliplr(z[:,1:xhalf+1])-band)
-    # right band
-    band = np.tile(z[:,-1].reshape(-1,1), [1, xhalf])
-    Z[yhalf:-yhalf, -xhalf:] = band + np.abs(np.fliplr(z[:,-xhalf-1:-1])-band)
-    # central region
-    Z[yhalf:-yhalf, xhalf:-xhalf] = z
-    # top left corner
-    band = z[0,0]
-    Z[:yhalf, :xhalf] = band - np.abs(np.flipud(np.fliplr(z[1:yhalf+1, 1:xhalf+1]))-band)
-    # bottom right corner
-    band = z[-1,-1]
-    Z[-yhalf:, -xhalf:] = band + np.abs(np.flipud(np.fliplr(z[-yhalf-1:-1,-xhalf-1:-1]))-band)
-    # top right corner
-    band = Z[yhalf, -xhalf:]
-    Z[:yhalf, -xhalf:] = band - np.abs(np.flipud(Z[yhalf+1:2*yhalf+1,-xhalf:])-band)
-    # bottom left corner
-    band = Z[-yhalf:,xhalf].reshape(-1,1)
-    Z[-yhalf:, :xhalf] = band - np.abs(np.fliplr(Z[-yhalf:, xhalf+1:2*xhalf+1])-band)
+    newshape = (z.shape[0] + 2*yhalf, z.shape[1] + 2*xhalf)
+    Z = np.zeros(newshape)
+
+    Z[hf_y:-hf_y, hf_x:-hf_x] = z
+
+    if mode == 'reflect':
+        # top band
+        Z[:hf_y, hf_x:-hf_x] = np.flipud(z[:hf_y, :])
+        # bottom band
+        Z[-hf_y:, hf_x:-hf_x] = np.flipud(z[-hf_y:, :])
+        # left band
+        Z[hf_y:-hf_y, :hf_x] = np.fliplr(z[:, :hf_x])
+        # right band
+        Z[hf_y:-hf_y, -hf_x:] = np.fliplr(z[:, -hf_x:])
+
+        # top left corner
+        Z[:hf_y, :hf_x] = np.flipud(np.fliplr(z[:hf_y, :hf_x]))
+        # top right corner
+        Z[:hf_y, -hf_x:] = np.flipud(np.fliplr(z[:hf_y, -hf_x:]))
+        # bottom left corner
+        Z[-hf_y:, :hf_x] = np.flipud(np.fliplr(z[-hf_y:, :hf_x]))
+        # bottom right corner
+        Z[-hf_y:, -hf_x:] = np.flipud(np.fliplr(z[-hf_y:, -hf_x:]))
+
+    elif mode == 'mirror':
+        # top band
+        Z[:hf_y, hf_x:-hf_x] = np.flipud(z[1:hf_y+1, :])
+        # bottom band
+        Z[-hf_y:, hf_x:-hf_x] = np.flipud(z[-hf_y-1:-1, :])
+        # left band
+        Z[hf_y:-hf_y, :hf_x] = np.fliplr(z[:, 1:hf_x+1])
+        # right band
+        Z[hf_y:-hf_y, -hf_x:] = np.fliplr(z[:, -hf_x-1:-1])
+
+        # top left corner
+        Z[:hf_y, :hf_x] = np.flipud(np.fliplr(z[1:hf_y+1, 1:hf_x+1]))
+        # top right corner
+        Z[:hf_y, -hf_x:] = np.flipud(np.fliplr(z[1:hf_y+1, -hf_x-1:-1]))
+        # bottom left corner
+        Z[-hf_y:, :hf_x] = np.flipud(np.fliplr(z[-hf_y-1:-1, 1:hf_x+1]))
+        # bottom right corner
+        Z[-hf_y:, -hf_x:] = np.flipud(np.fliplr(z[-hf_y-1:-1, -hf_x-1:-1]))
+
+    elif mode == 'nearest':
+        # top band
+        Z[:hf_y, hf_x:-hf_x] = z[0, :]
+        # bottom band
+        Z[-hf_y:, hf_x:-hf_x] = z[-1, :]
+        # left band
+        Z[hf_y:-hf_y, :hf_x] = z[:, 0].reshape(-1,1)
+        # right band
+        Z[hf_y:-hf_y, -hf_x:] = z[:, -1].reshape(-1,1)
+
+        # top left corner
+        Z[:hf_y, :hf_x] = z[0, 0]
+        # top right corner
+        Z[:hf_y, -hf_x:] = z[0, -1]
+        # bottom left corner
+        Z[-hf_y:, :hf_x] = z[-1, 0]
+        # bottom right corner
+        Z[-hf_y:, -hf_x:] = z[-1, -1]
+
+    else:
+        # top band
+        band = z[0,:]
+        Z[:yhalf, xhalf:-xhalf] = band - np.abs(np.flipud(z[1:yhalf+1,:])-band)
+        # bottom band
+        band = z[-1,:]
+        Z[-yhalf:, xhalf:-xhalf] = band + np.abs(np.flipud(z[-yhalf-1:-1])-band)
+        # left band
+        band = np.tile(z[:,0].reshape(-1,1), [1, xhalf])
+        Z[yhalf:-yhalf, :xhalf] = band - np.abs(np.fliplr(z[:,1:xhalf+1])-band)
+        # right band
+        band = np.tile(z[:,-1].reshape(-1,1), [1, xhalf])
+        Z[yhalf:-yhalf, -xhalf:] = band + np.abs(np.fliplr(z[:,-xhalf-1:-1])-band)
+        # central region
+        Z[yhalf:-yhalf, xhalf:-xhalf] = z
+        # top left corner
+        band = z[0,0]
+        Z[:yhalf, :xhalf] = band - np.abs(np.flipud(np.fliplr(z[1:yhalf+1, 1:xhalf+1]))-band)
+        # bottom right corner
+        band = z[-1,-1]
+        Z[-yhalf:, -xhalf:] = band + np.abs(np.flipud(np.fliplr(z[-yhalf-1:-1,-xhalf-1:-1]))-band)
+        # top right corner
+        band = Z[yhalf, -xhalf:]
+        Z[:yhalf, -xhalf:] = band - np.abs(np.flipud(Z[yhalf+1:2*yhalf+1,-xhalf:])-band)
+        # bottom left corner
+        band = Z[-yhalf:,xhalf].reshape(-1,1)
+        Z[-yhalf:, :xhalf] = band - np.abs(np.fliplr(Z[-yhalf:, xhalf+1:2*xhalf+1])-band)
 
     if derivative is None:
-        m = np.linalg.pinv(A)[0].reshape((ywindow, xwindow))
+        m = np.linalg.pinv(A)[0].reshape((ywin, xwin))
         return scipy.signal.fftconvolve(Z, m, mode='valid')
     elif derivative == 'col':
-        c = np.linalg.pinv(A)[1].reshape((ywindow, xwindow))
+        c = np.linalg.pinv(A)[1].reshape((ywin, xwin))
         return scipy.signal.fftconvolve(Z, -c, mode='valid')
     elif derivative == 'row':
-        r = np.linalg.pinv(A)[2].rehsape((ywindow, xwindow))
+        r = np.linalg.pinv(A)[2].rehsape((ywin, xwin))
         return scipy.signal.fftconvolve(Z, -r, mode='valid')
     elif derivative == 'both':
-        c = np.linalg.pinv(A)[1].reshape((ywindow, xwindow))
-        r = np.linalg.pinv(A)[2].rehsape((ywindow, xwindow))
+        c = np.linalg.pinv(A)[1].reshape((ywin, xwin))
+        r = np.linalg.pinv(A)[2].rehsape((ywin, xwin))
         return (scipy.signal.fftconvolve(Z, -r, mode='valid'),
                 scipy.signal.fftconvolve(Z, -c, mode='valid'))
 
