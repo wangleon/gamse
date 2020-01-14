@@ -446,3 +446,110 @@ def fix_pixels(data, mask, direction, method):
         raise ValueError
 
     return newdata
+
+
+def expand_2darray(z, n, mode, cval=None):
+    """Expand a two-dimensional array with given edge modes.
+
+    Args:
+        z (:class:`numpy.ndarray`): Input 2-D array.
+        n (int, tuple, or list): Number of pixels to expand.
+        mode (string): Edge mode.
+        cval (int or float): Constant value to fill the array.
+
+    Returns:
+        :class:`numpy.ndarray`: The expanded array.
+
+
+    """
+    if isinstance(z, int):
+        nt, nb, nl, nr = n, n, n, n
+    if isinstance(n, (tuple, list)):
+        if len(n) == 2:
+            nt, nb = n[0], n[0]
+            nl, nr = n[1], n[1]
+        elif len(n) == 4:
+            nt, nb, nl, nr = n[0], n[1], n[2], n[3]
+        else:
+            raise ValueError
+
+    new_shape = (z.shape[0] + nt + nb, z.shape[1] + nl + nr)
+    Z = np.zeros(new_shape)
+
+    Z[nt:-nb, nl:-nr] = z
+
+    # pad input array with appropriate values at the four borders
+    if mode == 'reflect':
+        # top, bottom, left, and right bands
+        Z[:nt, nl:-nr]  = np.flipud(z[:nt, :])
+        Z[-nb:, nl:-nr] = np.flipud(z[-nb:, :])
+        Z[nt:-nb, :nl]  = np.fliplr(z[:, :nl])
+        Z[nt:-nb, -nr:] = np.fliplr(z[:, -nr:])
+
+        # top-left, top-right, bottom-left, and bottom-right corners
+        Z[:nt, :nl]   = np.flipud(np.fliplr(z[:nt, :nl]))
+        Z[:nt, -nr:]  = np.flipud(np.fliplr(z[:nt, -nr:]))
+        Z[-nb:, :nl]  = np.flipud(np.fliplr(z[-nb:, :nl]))
+        Z[-nb:, -nr:] = np.flipud(np.fliplr(z[-nb:, -nr:]))
+
+    elif mode == 'mirror':
+        # top, bottom, left, and right bands
+        Z[:nt, nl:-nr]  = np.flipud(z[1:1+nt, :])
+        Z[-nb:, nl:-nr] = np.flipud(z[-nb-1:-1, :])
+        Z[nt:-nb, :nl]  = np.fliplr(z[:, 1:1+nl])
+        Z[nt:-nb, -nr:] = np.fliplr(z[:, -nr-1:-1])
+
+        # top-left, top-right, bottom-left, and bottom-right corners
+        Z[:nt, :nl]   = np.flipud(np.fliplr(z[1:1+nt, 1:1+nl]))
+        Z[:nt, -nr:]  = np.flipud(np.fliplr(z[1:1+nt, -nr-1:-1]))
+        Z[-nb:, :nl]  = np.flipud(np.fliplr(z[-nb-1:-1, 1:1+nl]))
+        Z[-nb:, -nr:] = np.flipud(np.fliplr(z[-nb-1:-1, -nr-1:-1]))
+
+    elif mode == 'nearest':
+        # top, bottom, left, and right bands
+        Z[:nt, nl:-nr]  = z[0, :]
+        Z[-nb:, nl:-nr] = z[-1, :]
+        Z[nt:-nb, :nl]  = z[:, 0].reshape(-1,1)
+        Z[nt:-nb, -nr:] = z[:, -1].reshape(-1,1)
+
+        # top-left, top-right, bottom-left, and bottom-right corners
+        Z[:nt, :nl]   = z[0, 0]
+        Z[:nt, -nr:]  = z[0, -1]
+        Z[-nb:, :nl]  = z[-1, 0]
+        Z[-nb:, -nr:] = z[-1, -1]
+
+    elif mode == 'constant':
+        if cval is None:
+            raise ValueError
+        # top, bottom, left, and right bands
+        Z[:nt, nl:-nr]  = cval
+        Z[-nb:, nl:-nr] = cval
+        Z[nt:-nb, :nl]  = cval
+        Z[nt:-nb, -nr:] = cval
+
+        # top-left, top-right, bottom-left, and bottom-right corners
+        Z[:nt, :nl]   = cval
+        Z[:nt, -nr:]  = cval
+        Z[-nb:, :nl]  = cval
+        Z[-nb:, -nr:] = cval
+
+    elif mode == 'z-symmetry':
+        # top, bottom, left, and right bands
+        Z[:nt, nl:-nr]  = z[0, :] - (np.flipud(z[1:1+nt, :]) - z[0, :])
+        Z[-nb:, nl:-nr] = z[-1, :] - (np.flipud(z[-nb-1:-1, :]) - z[-1, :])
+        band = np.tile(z[:,0].reshape(-1,1), [1,nl])
+        Z[nt:-nb, :nl] = band - (np.fliplr(z[:, 1:1+nl]) - band)
+        band = np.tile(z[:,-1].reshape(-1,1), [1,nr])
+        Z[nt:-nb, -nr:] = band - (np.fliplr(z[:, -nr-1:-1]) - band)
+
+        # top-left, top-right, bottom-left, and bottom-right corners
+        Z[:nt,:nl]   = z[0,0] - (np.flipud(np.fliplr(z[1:1+nt,1:1+nl])) - z[0,0])
+        Z[:nt,-nr:]  = z[0,-1] - (np.flipud(np.fliplr(z[1:1+nt,-nr-1:-1])) - z[0,-1])
+        Z[-nb:,:nl]  = z[-1,0] - (np.flipud(np.fliplr(z[-nb-1:-1,1:1+nl])) - z[-1,0])
+        Z[-nb:,-nr:] = z[-1,-1] - (np.flipud(np.fliplr(z[-nb-1:-1,-nr-1:-1])) - z[-1,-1])
+
+    else:
+        raise ValueError
+
+    return Z
+
