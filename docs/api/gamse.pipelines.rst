@@ -1,6 +1,14 @@
 gamse.pipelines package
 =======================
 
+Subpackages
+-----------
+
+.. toctree::
+
+    gamse.pipelines.foces
+    gamse.pipelines.xinglong216hrs
+
 Submodules
 ----------
 
@@ -16,14 +24,6 @@ gamse.pipelines.feros module
 ----------------------------
 
 .. automodule:: gamse.pipelines.feros
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.foces module
-----------------------------
-
-.. automodule:: gamse.pipelines.foces
     :members:
     :undoc-members:
     :show-inheritance:
@@ -56,14 +56,6 @@ gamse.pipelines.sarg module
 ---------------------------
 
 .. automodule:: gamse.pipelines.sarg
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.xinglong216hrs module
--------------------------------------
-
-.. automodule:: gamse.pipelines.xinglong216hrs
     :members:
     :undoc-members:
     :show-inheritance:
