@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
+import scipy.signal
 
 def combine_images(data,
         mode       = 'mean',  # mode = ['mean'|'sum'|'median']
@@ -145,8 +146,8 @@ def make_mask():
     pass
 
 
-def savitzky_golay_2d(z, window_length, order,
-        mode='reflect', derivative=None):
+def savitzky_golay_2d(z, window_length, order, mode='reflect', cval=None,
+        derivative=None):
     """Savitzky-Golay 2D filter, with different window size and order along *x*
     and *y* directions.
 
@@ -154,7 +155,7 @@ def savitzky_golay_2d(z, window_length, order,
         z (:class:`numpy.ndarray`): Input 2-d array.
         window_length (int, tuple, or list): Window size in pixel.
         order (int, tuple, or list): Degree of polynomial.
-        mode (str): Mode.
+        mode (str): Edge Mode.
         derivative (str): *None*, *col*, *row*, or *both*.
 
     Returns:
@@ -163,114 +164,50 @@ def savitzky_golay_2d(z, window_length, order,
             derivative = "both".
         
     """
-    if xwindow%2 == 0:
-        xwindow += 1
-    if ywindow%2 == 0:
-        ywindow += 1
+    if isinstance(window_length, int):
+        ywin, xwin = window_length, window_length
+    elif isinstance(window_length, (tuple, list)):
+        ywin, xwin = window_length[0], window_length[1]
+    else:
+        raise ValueError
+    if xwin%2==0 or ywin%2==0:
+        raise ValueError('window_length must be odd')
 
+    if isinstance(order, int):
+        yorder, xorder = order, order
+    elif isinstance(order, (tuple, list)):
+        yorder, xorder = order[0], order[1]
+    else:
+        raise ValueError
+
+    # half of the window size
+    yhalf = ywin//2
+    xhalf = xwin//2
+
+    # exponents of the polynomial. 
+    # p(x,y) = a0 + a1*x + a2*y + a3*x^2 + a4*y^2 + a5*x*y + ...
+    # this line gives a list of two item tuple. Each tuple contains
+    # the exponents of the k-th term. First element of tuple is for x
+    # second element for y.
+    # Ex. exps = [(0,0), (1,0), (0,1), (2,0), (1,1), (0,2), ...]
+    maxorder = max(xorder, yorder)
     exps = [(k-n, n) for k in range(max(xorder, yorder)+1) for n in range(k+1)
             if k-n <= xorder and n <= yorder]
-    xhalf = xwindow//2
-    yhalf = ywindow//2
-    xind = np.arange(-xhalf, xhalf+1, dtype=np.float64)
-    dx = np.repeat(xind, ywindow)
-    yind = np.arange(-yhalf, yhalf+1, dtype=np.float64)
-    dy = np.tile(yind, [xwindow, 1]).reshape(xwindow*ywindow,)
 
+    # coordinates of points
+    xind = np.arange(-xhalf, xhalf+1, dtype=np.float64)
+    yind = np.arange(-yhalf, yhalf+1, dtype=np.float64)
+    dx = np.repeat(xind, ywin)
+    dy = np.tile(yind, [xwin, 1]).reshape(xwin*ywin,)
+
+    # build matrix of system of equation
     A = np.empty(((xwin*ywin), len(exps)))
     for i, exp in enumerate(exps):
         A[:, i] = (dx**exp[0])*(dy**exp[1])
 
-    newshape = (z.shape[0] + 2*yhalf, z.shape[1] + 2*xhalf)
-    Z = np.zeros(newshape)
+    Z = expand_2darray(z, (yhalf, xhalf), mode=mode, cval=cval)
 
-    Z[hf_y:-hf_y, hf_x:-hf_x] = z
-
-    if mode == 'reflect':
-        # top band
-        Z[:hf_y, hf_x:-hf_x] = np.flipud(z[:hf_y, :])
-        # bottom band
-        Z[-hf_y:, hf_x:-hf_x] = np.flipud(z[-hf_y:, :])
-        # left band
-        Z[hf_y:-hf_y, :hf_x] = np.fliplr(z[:, :hf_x])
-        # right band
-        Z[hf_y:-hf_y, -hf_x:] = np.fliplr(z[:, -hf_x:])
-
-        # top left corner
-        Z[:hf_y, :hf_x] = np.flipud(np.fliplr(z[:hf_y, :hf_x]))
-        # top right corner
-        Z[:hf_y, -hf_x:] = np.flipud(np.fliplr(z[:hf_y, -hf_x:]))
-        # bottom left corner
-        Z[-hf_y:, :hf_x] = np.flipud(np.fliplr(z[-hf_y:, :hf_x]))
-        # bottom right corner
-        Z[-hf_y:, -hf_x:] = np.flipud(np.fliplr(z[-hf_y:, -hf_x:]))
-
-    elif mode == 'mirror':
-        # top band
-        Z[:hf_y, hf_x:-hf_x] = np.flipud(z[1:hf_y+1, :])
-        # bottom band
-        Z[-hf_y:, hf_x:-hf_x] = np.flipud(z[-hf_y-1:-1, :])
-        # left band
-        Z[hf_y:-hf_y, :hf_x] = np.fliplr(z[:, 1:hf_x+1])
-        # right band
-        Z[hf_y:-hf_y, -hf_x:] = np.fliplr(z[:, -hf_x-1:-1])
-
-        # top left corner
-        Z[:hf_y, :hf_x] = np.flipud(np.fliplr(z[1:hf_y+1, 1:hf_x+1]))
-        # top right corner
-        Z[:hf_y, -hf_x:] = np.flipud(np.fliplr(z[1:hf_y+1, -hf_x-1:-1]))
-        # bottom left corner
-        Z[-hf_y:, :hf_x] = np.flipud(np.fliplr(z[-hf_y-1:-1, 1:hf_x+1]))
-        # bottom right corner
-        Z[-hf_y:, -hf_x:] = np.flipud(np.fliplr(z[-hf_y-1:-1, -hf_x-1:-1]))
-
-    elif mode == 'nearest':
-        # top band
-        Z[:hf_y, hf_x:-hf_x] = z[0, :]
-        # bottom band
-        Z[-hf_y:, hf_x:-hf_x] = z[-1, :]
-        # left band
-        Z[hf_y:-hf_y, :hf_x] = z[:, 0].reshape(-1,1)
-        # right band
-        Z[hf_y:-hf_y, -hf_x:] = z[:, -1].reshape(-1,1)
-
-        # top left corner
-        Z[:hf_y, :hf_x] = z[0, 0]
-        # top right corner
-        Z[:hf_y, -hf_x:] = z[0, -1]
-        # bottom left corner
-        Z[-hf_y:, :hf_x] = z[-1, 0]
-        # bottom right corner
-        Z[-hf_y:, -hf_x:] = z[-1, -1]
-
-    else:
-        # top band
-        band = z[0,:]
-        Z[:yhalf, xhalf:-xhalf] = band - np.abs(np.flipud(z[1:yhalf+1,:])-band)
-        # bottom band
-        band = z[-1,:]
-        Z[-yhalf:, xhalf:-xhalf] = band + np.abs(np.flipud(z[-yhalf-1:-1])-band)
-        # left band
-        band = np.tile(z[:,0].reshape(-1,1), [1, xhalf])
-        Z[yhalf:-yhalf, :xhalf] = band - np.abs(np.fliplr(z[:,1:xhalf+1])-band)
-        # right band
-        band = np.tile(z[:,-1].reshape(-1,1), [1, xhalf])
-        Z[yhalf:-yhalf, -xhalf:] = band + np.abs(np.fliplr(z[:,-xhalf-1:-1])-band)
-        # central region
-        Z[yhalf:-yhalf, xhalf:-xhalf] = z
-        # top left corner
-        band = z[0,0]
-        Z[:yhalf, :xhalf] = band - np.abs(np.flipud(np.fliplr(z[1:yhalf+1, 1:xhalf+1]))-band)
-        # bottom right corner
-        band = z[-1,-1]
-        Z[-yhalf:, -xhalf:] = band + np.abs(np.flipud(np.fliplr(z[-yhalf-1:-1,-xhalf-1:-1]))-band)
-        # top right corner
-        band = Z[yhalf, -xhalf:]
-        Z[:yhalf, -xhalf:] = band - np.abs(np.flipud(Z[yhalf+1:2*yhalf+1,-xhalf:])-band)
-        # bottom left corner
-        band = Z[-yhalf:,xhalf].reshape(-1,1)
-        Z[-yhalf:, :xhalf] = band - np.abs(np.fliplr(Z[-yhalf:, xhalf+1:2*xhalf+1])-band)
-
+    # solve system and convolve
     if derivative is None:
         m = np.linalg.pinv(A)[0].reshape((ywin, xwin))
         return scipy.signal.fftconvolve(Z, m, mode='valid')
@@ -285,6 +222,8 @@ def savitzky_golay_2d(z, window_length, order,
         r = np.linalg.pinv(A)[2].rehsape((ywin, xwin))
         return (scipy.signal.fftconvolve(Z, -r, mode='valid'),
                 scipy.signal.fftconvolve(Z, -c, mode='valid'))
+    else:
+        return None
 
 def array_to_table(array):
     """Convert the non-zeros elements of a Numpy array to a stuctured array.
