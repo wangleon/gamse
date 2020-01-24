@@ -1174,7 +1174,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         A, k, c, bkg = p
         return A*interf((xdata-c)*k) + bkg
     def errfunc2(p, xdata, ydata, interf):
-        n = xdata.size
         return ydata - fitfunc2(p, xdata, interf)
 
     h, w = data.shape
@@ -1369,11 +1368,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     # write the slit function into an ascii file
     if slit_file is not None:
         slitoutfile = open(slit_file, 'w')
-        for row in np.arange(xnodes.size):
-            slitoutfile.write('%5.2f'%xnodes[row])
-            for col in np.arange(x_lst.size):
-                slitoutfile.write(' %12.8f'%slit_array[row, col])
+
+        string = ', '.join(['{:d}'.format(x) for x in x_lst])
+        slitoutfile.write('COLUMNS = ' + string + os.linesep)
+
+        string = ', '.join(['{:5.2f}'.format(x) for x in xnodes])
+        slitoutfile.write('NODES = ' + string + os.linesep)
+
+        for col in np.arange(x_lst.size):
+            for row in np.arange(xnodes.size):
+                slitoutfile.write(' {:12.8f}'.format(slit_array[row, col]))
             slitoutfile.write(os.linesep)
+
         slitoutfile.close()
 
     # plot the slit function
