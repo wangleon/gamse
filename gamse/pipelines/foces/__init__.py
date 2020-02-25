@@ -202,28 +202,49 @@ def make_obslog(path):
             
         obsdate = Time(head['FRAME'])
         exptime = head['EXPOSURE']
+        target  = 'Unknown'
+        if 'PROJECT' in head: target  = str(head['PROJECT'])[:10]
+        if 'OBJECT'  in head: target  = str(head['OBJECT'])[:10]
 
         if re.match(name_pattern1, fileid):
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
-                imgtype, objectname = 'cal', 'bias'
+                imgtype = 'cal'
+                objectname = '{:^11s}{:^10s}'.format('bias', '')
             elif fileid[22:25]=='FLS':
-                imgtype, objectname = 'cal', 'Flat'
+                imgtype = 'cal'
+                objectname = '{:^10s}|{:^10s}'.format('Flat', '')
             elif fileid[22:25]=='FLC':
                 imgtype = 'cal'
                 objectname = '{:^10s}|{:^10s}'.format('', 'Flat')
             elif fileid[22:26]=='COCS':
                 imgtype = 'cal'
                 objectname = '{:^10s}|{:^10s}'.format('Comb', 'Comb')
+            elif fileid[22:26]=='COC0':
+                imgtype = 'cal'
+                objectname = '{:^10s}|{:^10s}'.format('', 'Comb')
+            elif fileid[22:26]=='COS0':
+                imgtype = 'cal'
+                objectname = '{:^10s}|{:^10s}'.format('Comb', '')
             elif fileid[22:25]=='THS':
                 imgtype = 'cal'
                 objectname = '{:^10s}|{:^10s}'.format('ThAr', 'ThAr')
             elif fileid[22:25]=='THC':
                 imgtype  = 'cal'
                 objectname = '{:^10s}|{:^10s}'.format('', 'ThAr')
-            else:
-                imgtype = ('cal', 'sci')[fileid[22:24]=='SC']
-                objectname = 'Unknown'
+            elif fileid[22:25]=='THS':
+                imgtype  = 'cal'
+                objectname = '{:^10s}|{:^10s}'.format('ThAr', '')
+            elif fileid[22:26]=='SCI0':
+                imgtype  = 'sci'
+                objectname = '{:^10s}|{:^10s}'.format(target, ' ')
+            elif fileid[22:26]=='SCC2':
+                imgtype  = 'sci'
+                objectname = '{:^10s}|{:^10s}'.format(target, 'Comb')
+            elif fileid[22:26]=='SCT2':
+                imgtype  = 'sci'
+                objectname = '{:^10s}|{:^10s}'.format(target, 'ThAr')
+  
             frameid = int(fileid[9:13])
             has_frameid = True
         elif re.match(name_pattern2, fileid):
