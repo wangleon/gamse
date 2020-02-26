@@ -20,7 +20,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_spec,
                                 combine_fiber_identlist,
                                 )
-from ...echelle.background import find_background, simple_debackground
+from ...echelle.background import (find_background, simple_debackground,
+                                   get_single_background)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
@@ -294,10 +295,14 @@ def reduce_doublefiber(logtable, config):
                 else:
                     fig_aperpar = None
 
-                # prepare the name for slig figure
+                # prepare the name for slit figure
                 figname = 'slit_flat_{}_{}.{}'.format(
                             fiber, flatname, fig_format)
                 fig_slit = os.path.join(report, figname)
+
+                # prepare the name for slit file
+                fname = 'slit_flat_{}_{}.dat'.format(fiber, flatname)
+                slit_file = os.path.join(midproc, fname)
 
                 section = config['reduce.flat']
 
@@ -315,7 +320,7 @@ def reduce_doublefiber(logtable, config):
                             fig_aperpar     = fig_aperpar,
                             fig_overlap     = None,
                             fig_slit        = fig_slit,
-                            slit_file       = None,
+                            slit_file       = slit_file,
                             )
 
                 # pack results and save to fits
@@ -556,6 +561,50 @@ def reduce_doublefiber(logtable, config):
                 fits.ImageHDU(master_flatsens),
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
+
+    ######################### Find Background Lights ###########################
+    for logitem in logtable:
+        # alias
+        fileid     = logitem['fileid']
+        objectname = logitem['object']
+
+        if objectname.strip().lower() in ['bias', 'dark']:
+            continue
+        fiberobj_lst = [v.strip().lower()
+                        for v in objectname.split('|')]
+
+        # this image shall contains data from only 1 fiber
+        alst = list(filter(lambda v: len(v[1])>0, enumerate(fiberobj_lst)))
+        if len(alst) != 1:
+            continue
+        ifiber, objname = alst[0]
+        fiber = chr(ifiber+65)
+
+        print(fiberobj_lst, fiber, objname)
+
+        if objname == 'comb':
+            filename = os.path.join(rawdata, fileid+'.fits')
+            data, head = fits.getdata(filename, header=True)
+            if data.ndim == 3:
+                data = data[0,:,:]
+            mask = get_mask(data)
+
+            # correct overscan
+            data, card_lst, overmean = correct_overscan(data, mask)
+
+            # correct bias for ThAr, if has bias
+            if bias is None:
+                message = 'No bias. skipped bias correction'
+            else:
+                data = data - bias
+                message = 'Bias corrected'
+
+            bkg_image = get_single_background(data, master_aperset[fiber])
+
+            fits.writeto(os.path.join(midproc, 'bkg_{}.fits'.format(fileid)),
+                         bkg_image)
+    
+    exit()
 
 
     ############################## Extract ThAr ################################
@@ -979,6 +1028,11 @@ def reduce_doublefiber(logtable, config):
         logger.info(message)
         print(message)
 
+        # for DEBUG use
+        fname = '{}_flt.fits'.format(logitem['fileid'])
+        filename = os.path.join(midproc, fname)
+        fits.writeto(filename, data, overwrite=True)
+
         # background correction
         section = config['reduce.background']
         ncols    = section.getint('ncols')
@@ -1147,3 +1201,4 @@ def reduce_doublefiber(logtable, config):
                     fileid, filename)
         logger.info(message)
         print(message)
+
