@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 from scipy.ndimage.filters import median_filter
 import scipy.interpolate as intp
+import scipy.signal as sg
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -16,7 +17,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ..echelle.trace      import ApertureSet
-from ..utils.onedarray    import get_local_minima
+from ..echelle.imageproc  import savitzky_golay_2d
+from ..utils.onedarray    import get_local_minima, get_edge_bin
 from ..utils.regression   import get_clip_mean
 from ..utils.regression2d import polyfit2d, polyval2d
 from .imageproc           import table_to_array, array_to_table
@@ -836,6 +838,75 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     corrected_data = np.zeros_like(data)
     corrected_data[pmask] = np.log(data[pmask]) - stray[pmask]
     return np.exp(corrected_data)
+
+
+def get_single_background(data, apertureset):
+    #apertureset = load_aperture_set('../midproc/trace_A.trc')
+    h, w = data.shape
+    
+    bkg_image = np.zeros_like(data, dtype=np.float32)
+    allrows = np.arange(h)
+    plot_x = []
+    for x in np.arange(w):
+        if x in plot_x:
+            plot = True
+        else:
+            plot = False
+        mask_rows = np.zeros_like(allrows, dtype=np.bool)
+        for aper, aperloc in sorted(apertureset.items()):
+            ycen = aperloc.position(x)
+            if plot:
+                ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+                ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+    
+            imask = np.abs(allrows - ycen)<7
+            mask_rows += imask
+        if plot:
+            ax01.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
+        x_lst, y_lst = [], []
+        for (y1, y2) in get_edge_bin(~mask_rows):
+            if plot:
+                ax01.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
+                ax02.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
+            if y2-y1>1:
+                yflux = data[y1:y2, x]
+                xlist = np.arange(y1, y2)
+                _m = xlist == y1 + np.argmax(yflux)
+                mean = yflux[~_m].mean()
+                std  = yflux[~_m].std()
+                if yflux.max() < mean + 3.*std:
+                    meany = yflux.mean()
+                    meanx = (y1+y2-1)/2
+                else:
+                    meanx = xlist[~_m].mean()
+                    meany = mean
+            else:
+                meany = data[y1,x]
+                meanx = y1
+            x_lst.append(meanx)
+            y_lst.append(meany)
+        x_lst = np.array(x_lst)
+        y_lst = np.array(y_lst)
+        y_lst = np.maximum(y_lst, 0)
+        y_lst = sg.medfilt(y_lst, 3)
+        f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
+        bkg = f(allrows)
+        bkg_image[:, x] = bkg
+        if plot:
+            ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax01.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            ax02.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            _y1, _y2 = ax02.get_ylim()
+            ax02.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
+            ax02.set_ylim(_y1, _y2)
+    
+    bkg_image = median_filter(bkg_image, size=(9,1), mode='nearest')
+    #fits.writeto('bkg_{}.fits'.format(fileid), bkg_image, overwrite=True)
+    bkg_image = savitzky_golay_2d(bkg_image, window_length=(11, 51), order=3, mode='nearest')
+    #fits.writeto('bkg_{}_sm.fits'.format(fileid), bkg_image, overwrite=True)
+    return bkg_image
+
 
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.
