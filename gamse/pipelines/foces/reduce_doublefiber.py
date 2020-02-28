@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+import scipy.interpolate as intp
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
@@ -563,10 +564,14 @@ def reduce_doublefiber(logtable, config):
     hdu_lst.writeto(flat_file, overwrite=True)
 
     ######################### Find Background Lights ###########################
+    registered_bkg_lst = []
+    #fig = plt.figure(dpi=150)
+    #ax = fig.gca()
     for logitem in logtable:
         # alias
         fileid     = logitem['fileid']
         objectname = logitem['object']
+        exptime    = logitem['exptime']
 
         if objectname.strip().lower() in ['bias', 'dark']:
             continue
@@ -582,6 +587,7 @@ def reduce_doublefiber(logtable, config):
 
         print(fiberobj_lst, fiber, objname)
 
+        # find background lights
         if objname == 'comb':
             filename = os.path.join(rawdata, fileid+'.fits')
             data, head = fits.getdata(filename, header=True)
@@ -599,13 +605,24 @@ def reduce_doublefiber(logtable, config):
                 data = data - bias
                 message = 'Bias corrected'
 
+            # get background lights
             bkg_image = get_single_background(data, master_aperset[fiber])
 
+            # save to fits
             fits.writeto(os.path.join(midproc, 'bkg_{}.fits'.format(fileid)),
-                         bkg_image)
-    
-    exit()
+                         bkg_image, overwrite=True)
 
+            # get order brightness profile
+            brightness_profile = get_xdisp_profile(data, master_aperset[fiber])
+
+            # pack to background list
+            item = (fiber, 'comb', exptime, brightness_profile, bkg_image)
+    
+            registered_bkg_lst.append(item)
+
+            #ax.plot(brightness_profile, label='{}: {}'.format(fiber, 'comb'))
+    #ax.legend(loc='upper left')
+    #plt.show()
 
     ############################## Extract ThAr ################################
 
@@ -986,7 +1003,9 @@ def reduce_doublefiber(logtable, config):
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split('|')]
+        object_lst = [v.strip().lower() for v in logitem['object'].split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
+                                   enumerate(object_lst)))
 
         logger.info(
             'FileID: {} ({}) - start reduction: {}'.format(
@@ -1034,64 +1053,87 @@ def reduce_doublefiber(logtable, config):
         fits.writeto(filename, data, overwrite=True)
 
         # background correction
-        section = config['reduce.background']
-        ncols    = section.getint('ncols')
-        distance = section.getfloat('distance')
-        yorder   = section.getint('yorder')
-        subtract = section.getboolean('subtract')
-        excluded_frameids = section.get('excluded_frameids')
-        excluded_frameids = parse_num_seq(excluded_frameids)
 
-        if (subtract and frameid not in excluded_frameids) or \
-           (not subtract and frameid in excluded_frameids):
-
-            # find apertureset list for this item
-            apersets = {}
-            for ifiber in range(n_fiber):
-                fiber = chr(ifiber+65)
-                if len(fiberobj_lst[ifiber])>0:
+        if len(fiberobj_lst)==1:
+            section = config['reduce.background']
+            ncols    = section.getint('ncols')
+            distance = section.getfloat('distance')
+            yorder   = section.getint('yorder')
+            subtract = section.getboolean('subtract')
+            excluded_frameids = section.get('excluded_frameids')
+            excluded_frameids = parse_num_seq(excluded_frameids)
+            
+            if (subtract and frameid not in excluded_frameids) or \
+               (not subtract and frameid in excluded_frameids):
+            
+                # find apertureset list for this item
+                apersets = {}
+                for (ifiber, objt) in fiberobj_lst:
+                    fiber = chr(ifiber+65)
                     apersets[fiber] = master_aperset[fiber]
+            
+                figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
+                fig_sec = os.path.join(report, figname)
+            
+                stray = find_background(data, mask,
+                                aperturesets = apersets,
+                                ncols        = ncols,
+                                distance     = distance,
+                                yorder       = yorder,
+                                fig_section  = fig_sec,
+                        )
+                data = data - stray
+            
+                # put information into header
+                prefix = 'HIERARCH GAMSE BACKGROUND '
+                head.append((prefix + 'CORRECTED', True))
+                head.append((prefix + 'XMETHOD',   'cubic spline'))
+                head.append((prefix + 'YMETHOD',   'polynomial'))
+                head.append((prefix + 'NCOLUMN',   ncols))
+                head.append((prefix + 'DISTANCE',  distance))
+                head.append((prefix + 'YORDER',    yorder))
+            
+                # plot stray light
+                bkgfig = BackgroudFigure()
+                bkgfig.plot_background(data+stray, stray)
+                bkgfig.suptitle('Background Correction for {}'.format(fileid))
+                figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
+                fig_stray = os.path.join(report, figname)
+                bkgfig.savefig(fig_stray)
+            
+                message = 'FileID: {} - background corrected. max value = {}'.format(
+                        fileid, stray.max())
+            else:
+                stray = None
+                # put information into header
+                prefix = 'HIERARCH GAMSE BACKGROUND '
+                head.append((prefix + 'CORRECTED', False))
+                message = 'FileID: {} - background not corrected.'.format(fileid)
+            
+            logger.info(message)
+            print(message)
 
-            figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
-            fig_sec = os.path.join(report, figname)
-
-            stray = find_background(data, mask,
-                            aperturesets = apersets,
-                            ncols        = ncols,
-                            distance     = distance,
-                            yorder       = yorder,
-                            fig_section  = fig_sec,
-                    )
-            data = data - stray
-
-            # put information into header
-            prefix = 'HIERARCH GAMSE BACKGROUND '
-            head.append((prefix + 'CORRECTED', True))
-            head.append((prefix + 'XMETHOD',   'cubic spline'))
-            head.append((prefix + 'YMETHOD',   'polynomial'))
-            head.append((prefix + 'NCOLUMN',   ncols))
-            head.append((prefix + 'DISTANCE',  distance))
-            head.append((prefix + 'YORDER',    yorder))
-
-            # plot stray light
-            bkgfig = BackgroudFigure()
-            bkgfig.plot_background(data+stray, stray)
-            bkgfig.suptitle('Background Correction for {}'.format(fileid))
-            figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
-            fig_stray = os.path.join(report, figname)
-            bkgfig.savefig(fig_stray)
-
-            message = 'FileID: {} - background corrected. max value = {}'.format(
-                    fileid, stray.max())
         else:
-            stray = None
-            # put information into header
-            prefix = 'HIERARCH GAMSE BACKGROUND '
-            head.append((prefix + 'CORRECTED', False))
-            message = 'FileID: {} - background not corrected.'.format(fileid)
+            for (ifiber, obj) in fiberobj_lst:
+                fiber = chr(ifiber+65)
+                brt_profile = get_xdisp_profile(
+                                data, master_aperset[fiber])
+                for item in registered_bkg_lst:
+                    if item[0] == fiber and item[1] == obj:
+                        saved_brt_profile = item[3]
 
-        logger.info(message)
-        print(message)
+                        '''
+                        fig = plt.figure(dpi=150, figsize=(12, 8))
+                        ax1 = fig.add_subplot(211)
+                        ax2 = fig.add_subplot(212)
+                        ax1.plot(brt_profile, label='obs')
+                        ax1.plot(saved_brt_profile, label='saved')
+                        ax2.plot(brt_profile/saved_brt_profile)
+                        ax1.legend(loc='upper left')
+                        plt.show()
+                        '''
+
+                        break
 
 
         # extract 1d spectrum
@@ -1100,11 +1142,8 @@ def reduce_doublefiber(logtable, config):
         #all_cards = {}
         lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
         upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
-        for ifiber in range(n_fiber):
+        for ifiber, obj in fiberobj_lst:
             fiber = chr(ifiber+65)
-            if fiberobj_lst[ifiber]=='':
-                # nothing in this fiber
-                continue
 
             #all_cards[fiber] = []
 
@@ -1202,3 +1241,27 @@ def reduce_doublefiber(logtable, config):
         logger.info(message)
         print(message)
 
+def get_xdisp_profile(data, apertureset):
+    # get order brightness profile
+    h, w = data.shape
+    yy, xx = np.mgrid[:h:, :w:]
+    
+    aperture_lst, aper_brt_lst, aper_pos_lst = [], [], []
+    x_lst = np.arange(w)
+    for aper, aperloc in sorted(apertureset.items()):
+        ycen_lst = aperloc.position(x_lst)
+        m1 = yy > ycen_lst - 1
+        m2 = yy < ycen_lst + 2
+        mask_image = m1*m2
+        maxflux_lst = (data*mask_image).max(axis=0)
+        # maxflux is a spectrum but with maximum values in each pixel
+        brightness = np.percentile(maxflux_lst, 99)
+        aperture_lst.append(aper)
+        aper_brt_lst.append(brightness)
+        aper_pos_lst.append(aperloc.position(w//2))
+    aper_brt_lst = np.array(aper_brt_lst)
+    aper_pos_lst = np.array(aper_pos_lst)
+    
+    f = intp.InterpolatedUnivariateSpline(aper_pos_lst, aper_brt_lst, k=3)
+    brightness_profile = f(np.arange(h))
+    return brightness_profile
