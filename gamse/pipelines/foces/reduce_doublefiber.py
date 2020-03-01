@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
+import scipy.optimize as opt
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
@@ -1114,27 +1115,30 @@ def reduce_doublefiber(logtable, config):
             print(message)
 
         else:
+            fig = plt.figure(dpi=150, figsize=(12, 8))
+            ax1 = fig.add_subplot(211)
+            ax2 = fig.add_subplot(212)
+
             for (ifiber, obj) in fiberobj_lst:
                 fiber = chr(ifiber+65)
                 brt_profile = get_xdisp_profile(
                                 data, master_aperset[fiber])
+                ax1.plot(brt_profile, label='obs, Fiber {}'.format(fiber))
+
                 for item in registered_bkg_lst:
                     if item[0] == fiber and item[1] == obj:
                         saved_brt_profile = item[3]
 
-                        '''
-                        fig = plt.figure(dpi=150, figsize=(12, 8))
-                        ax1 = fig.add_subplot(211)
-                        ax2 = fig.add_subplot(212)
-                        ax1.plot(brt_profile, label='obs')
                         ax1.plot(saved_brt_profile, label='saved')
+                        scale = find_profile_scale(brt_profile,
+                                                    saved_brt_profile)
+                        ax1.plot(saved_brt_profile*scale, label='scaled')
                         ax2.plot(brt_profile/saved_brt_profile)
                         ax1.legend(loc='upper left')
-                        plt.show()
-                        '''
 
                         break
 
+            plt.show()
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1265,3 +1269,11 @@ def get_xdisp_profile(data, apertureset):
     f = intp.InterpolatedUnivariateSpline(aper_pos_lst, aper_brt_lst, k=3)
     brightness_profile = f(np.arange(h))
     return brightness_profile
+
+def find_profile_scale(input_profile, ref_profile):
+    fitfunc = lambda s: ref_profile*s
+    errfunc = lambda s: input_profile - fitfunc(s)
+    s0 = np.median(input_profile)/np.median(ref_profile)
+    fitres = opt.least_squares(errfunc, s0)
+    s = fitres.x[0]
+    return s
