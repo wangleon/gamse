@@ -908,6 +908,69 @@ def get_single_background(data, apertureset):
     return bkg_image
 
 
+
+def get_xdisp_profile(data, apertureset):
+    """Get brightness profile along the cross-dispersion direction.
+
+    Args:
+        data (numpy.ndarray):
+        apertureset ():
+
+    Returns:
+        tuple: A tuple containing:
+
+            * brightness profile
+            * list of aperture numbers
+            * list of aperture positions
+            * list of aperture britness
+    """
+    # get order brightness profile
+    ny, nx = data.shape
+    yy, xx = np.mgrid[:ny:, :nx:]
+    
+    aper_num_lst, aper_brt_lst, aper_pos_lst = [], [], []
+    x_lst = np.arange(nx)
+    for aper, aperloc in sorted(apertureset.items()):
+        ycen_lst = aperloc.position(x_lst)
+        m1 = yy > ycen_lst - 1
+        m2 = yy < ycen_lst + 2
+        mask_image = m1*m2
+        maxflux_lst = (data*mask_image).max(axis=0)
+        # maxflux is a spectrum but with maximum values in each pixel
+        brightness = np.percentile(maxflux_lst, 99)
+        aper_lst.append(aper)
+        aper_brt_lst.append(brightness)
+        aper_pos_lst.append(aperloc.position(nx//2))
+    aper_num_lst = np.array(aper_num_lst)
+    aper_brt_lst = np.array(aper_brt_lst)
+    aper_pos_lst = np.array(aper_pos_lst)
+    
+    f = intp.InterpolatedUnivariateSpline(aper_pos_lst, aper_brt_lst, k=3)
+    brightness_profile = f(np.arange(ny))
+    return brightness_profile, aper_num_lst, aper_pos_lst, aper_brt_lst
+
+def find_profile_scale(input_profile, ref_profile):
+    """Find the scaling factor of two brightness profiles.
+
+    """
+    fitfunc = lambda s: ref_profile*s
+    errfunc = lambda s: input_profile - fitfunc(s)
+    s0 = np.median(input_profile)/np.median(ref_profile)
+    fitres = opt.least_squares(errfunc, s0)
+    s = fitres.x[0]
+    return s
+
+class BackgroundLight(object):
+    def __init__(self, info, data, xdisp_profile,
+            aper_num_lst, aper_ord_lst, aper_pos_lst, aper_brt_lst):
+        self.info = info
+        self.data = data
+        self.xdisp_profile = xdisp_profile
+        self.aper_num_lst  = aper_num_lst
+        self.aper_ord_lst  = aper_ord_lst
+        self.aper_pos_lst  = aper_pos_lst
+        self.aper_brt_lst  = aper_brt_lst
+
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.
     """

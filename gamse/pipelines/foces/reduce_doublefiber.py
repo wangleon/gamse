@@ -23,7 +23,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_identlist,
                                 )
 from ...echelle.background import (find_background, simple_debackground,
-                                   get_single_background)
+                                   get_single_background, get_xdisp_profile,
+                                   find_profile_scale, BackgroundLight)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
@@ -565,7 +566,7 @@ def reduce_doublefiber(logtable, config):
     hdu_lst.writeto(flat_file, overwrite=True)
 
     ######################### Find Background Lights ###########################
-    registered_bkg_lst = []
+    saved_bkg_lst = []
     #fig = plt.figure(dpi=150)
     #ax = fig.gca()
     for logitem in logtable:
@@ -609,17 +610,38 @@ def reduce_doublefiber(logtable, config):
             # get background lights
             bkg_image = get_single_background(data, master_aperset[fiber])
 
-            # save to fits
-            fits.writeto(os.path.join(midproc, 'bkg_{}.fits'.format(fileid)),
-                         bkg_image, overwrite=True)
-
             # get order brightness profile
-            brightness_profile = get_xdisp_profile(data, master_aperset[fiber])
+            result = get_xdisp_profile(data, master_aperset[fiber])
+            brt_profile  = result[0]
+            aper_num_lst = result[1]
+            aper_pos_lst = result[2]
+            aper_brt_lst = result[3]
+
+            # save to fits
+            outfilename = os.path.join(midproc,
+                            'bkg_{}.fits'.format(fileid))
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(bkg_image, head),
+                        fits.BinTableHDU(brightness_profile),
+                        ])
+            fits.writeto(outfilename, hdu_lst, overwrite=True)
 
             # pack to background list
-            item = (fiber, 'comb', exptime, brightness_profile, bkg_image)
+            bkg_info = {'fiber': fiber,
+                        'object': 'comb',
+                        'exptime': exptime,
+                        'date-obs': head[statime_key],
+                        }
+            bkg_obj = BackgroundLight(
+                        info          = info,
+                        data          = bkg_image,
+                        xdisp_profile = brt_profile,
+                        aper_num_lst  = aper_num_lst,
+                        aper_pos_lst  = aper_pos_lst,
+                        aper_brt_lst  = aper_brt_lst,
+                        )
     
-            registered_bkg_lst.append(item)
+            saved_bkg_lst.append(bkg_obj)
 
             #ax.plot(brightness_profile, label='{}: {}'.format(fiber, 'comb'))
     #ax.legend(loc='upper left')
@@ -989,6 +1011,14 @@ def reduce_doublefiber(logtable, config):
                 continue
 
     
+    ###### Calibrate the Saved Background LightsExtract Science Spectrum #######
+    if len(saved_bkg_lst)>0:
+        for bkg_obj in saved_bkg_lst:
+            # get weights for calib list
+            fiber   = bkg_obj.info['fiber']
+            dateobs = bkg_obj.info['date-obs']
+            weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
+                                        
 
     #################### Extract Science Spectrum ##############################
 
@@ -1245,35 +1275,3 @@ def reduce_doublefiber(logtable, config):
         logger.info(message)
         print(message)
 
-def get_xdisp_profile(data, apertureset):
-    # get order brightness profile
-    h, w = data.shape
-    yy, xx = np.mgrid[:h:, :w:]
-    
-    aperture_lst, aper_brt_lst, aper_pos_lst = [], [], []
-    x_lst = np.arange(w)
-    for aper, aperloc in sorted(apertureset.items()):
-        ycen_lst = aperloc.position(x_lst)
-        m1 = yy > ycen_lst - 1
-        m2 = yy < ycen_lst + 2
-        mask_image = m1*m2
-        maxflux_lst = (data*mask_image).max(axis=0)
-        # maxflux is a spectrum but with maximum values in each pixel
-        brightness = np.percentile(maxflux_lst, 99)
-        aperture_lst.append(aper)
-        aper_brt_lst.append(brightness)
-        aper_pos_lst.append(aperloc.position(w//2))
-    aper_brt_lst = np.array(aper_brt_lst)
-    aper_pos_lst = np.array(aper_pos_lst)
-    
-    f = intp.InterpolatedUnivariateSpline(aper_pos_lst, aper_brt_lst, k=3)
-    brightness_profile = f(np.arange(h))
-    return brightness_profile
-
-def find_profile_scale(input_profile, ref_profile):
-    fitfunc = lambda s: ref_profile*s
-    errfunc = lambda s: input_profile - fitfunc(s)
-    s0 = np.median(input_profile)/np.median(ref_profile)
-    fitres = opt.least_squares(errfunc, s0)
-    s = fitres.x[0]
-    return s
