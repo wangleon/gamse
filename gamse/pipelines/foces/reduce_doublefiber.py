@@ -16,7 +16,8 @@ from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_time_weight, find_caliblamp_offset,
-                                reference_wavelength,
+                                reference_spec_wavelength,
+                                reference_pixel_wavelength,
                                 reference_self_wavelength,
                                 combine_fiber_cards,
                                 combine_fiber_spec,
@@ -1017,9 +1018,16 @@ def reduce_doublefiber(logtable, config):
             # get weights for calib list
             fiber   = bkg_obj.info['fiber']
             dateobs = bkg_obj.info['date-obs']
+            aper_num_lst = bkg_obj.aper_num_lst
+            ny, nx = bkg_obj.data.shape
             weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
-                                        
+            pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+            orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                                ref_calib_lst[fiber], weight_lst)
+            bkg_obj.aper_ord_lst = orders
+            bkg_obj.wavelength_lst = waves
 
+                                        
     #################### Extract Science Spectrum ##############################
 
     for logitem in logtable:
@@ -1245,11 +1253,8 @@ def reduce_doublefiber(logtable, config):
             logger.info(message)
             print(message)
 
-            spec, card_lst = reference_wavelength(
-                                spec,
-                                ref_calib_lst[fiber],
-                                weight_lst,
-                                )
+            spec, card_lst = reference_spec_wavelength(spec,
+                                ref_calib_lst[fiber], weight_lst)
             all_spec[fiber] = spec
             #all_cards[fiber] = card_lst
             prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
