@@ -971,6 +971,17 @@ class BackgroundLight(object):
         self.aper_pos_lst  = aper_pos_lst
         self.aper_brt_lst  = aper_brt_lst
 
+    def savefits(self):
+        header = fits.Header()
+        prefix = 'HIERARCH GAMSE BACKGROUDLIGHT '
+        header.append((prefix + 'FIBER',    self.info['fiber']))
+        header.append((prefix + 'OBJECT',   self.info['object']))
+        header.append((prefix + 'EXPTIME',  self.info['exptime']))
+        header.append((prefix + 'DATE-OBS', self.info['date-obs']))
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(),
+                    ])
+
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.
     """
