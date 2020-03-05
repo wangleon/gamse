@@ -588,8 +588,6 @@ def reduce_doublefiber(logtable, config):
         ifiber, objname = alst[0]
         fiber = chr(ifiber+65)
 
-        print(fiberobj_lst, fiber, objname)
-
         # find background lights
         if objname == 'comb':
             filename = os.path.join(rawdata, fileid+'.fits')
@@ -613,30 +611,21 @@ def reduce_doublefiber(logtable, config):
 
             # get order brightness profile
             result = get_xdisp_profile(data, master_aperset[fiber])
-            brt_profile  = result[0]
-            aper_num_lst = result[1]
-            aper_pos_lst = result[2]
-            aper_brt_lst = result[3]
+            aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
-            # save to fits
-            outfilename = os.path.join(midproc,
-                            'bkg_{}.fits'.format(fileid))
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(bkg_image, head),
-                        fits.BinTableHDU(brightness_profile),
-                        ])
-            fits.writeto(outfilename, hdu_lst, overwrite=True)
 
             # pack to background list
-            bkg_info = {'fiber': fiber,
+            bkg_info = {
+                        'fileid': fileid,
+                        'fiber': fiber,
                         'object': 'comb',
                         'exptime': exptime,
                         'date-obs': head[statime_key],
                         }
             bkg_obj = BackgroundLight(
-                        info          = info,
+                        info          = bkg_info,
+                        header        = head,
                         data          = bkg_image,
-                        xdisp_profile = brt_profile,
                         aper_num_lst  = aper_num_lst,
                         aper_pos_lst  = aper_pos_lst,
                         aper_brt_lst  = aper_brt_lst,
@@ -1015,19 +1004,30 @@ def reduce_doublefiber(logtable, config):
     ###### Calibrate the Saved Background LightsExtract Science Spectrum #######
     if len(saved_bkg_lst)>0:
         for bkg_obj in saved_bkg_lst:
-            # get weights for calib list
+            fileid  = bkg_obj.info['fileid']
             fiber   = bkg_obj.info['fiber']
             dateobs = bkg_obj.info['date-obs']
+
+            # get weights for calib list
+            weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
             aper_num_lst = bkg_obj.aper_num_lst
             ny, nx = bkg_obj.data.shape
-            weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
             pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+            # reference the wavelengths of background image
             orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
                                 ref_calib_lst[fiber], weight_lst)
             bkg_obj.aper_ord_lst = orders
             bkg_obj.wavelength_lst = waves
 
-                                        
+            # save to fits
+            outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
+            bkg_obj.savefits(outfilename)
+
+            message = 'Background Light {fileid}: fiber: {fiber} oject:{object}'.format(
+                        **bkg_obj.info)
+            print(message)
+            logger.info(message)
+
     #################### Extract Science Spectrum ##############################
 
     for logitem in logtable:
@@ -1159,24 +1159,31 @@ def reduce_doublefiber(logtable, config):
 
             for (ifiber, obj) in fiberobj_lst:
                 fiber = chr(ifiber+65)
-                brt_profile = get_xdisp_profile(
-                                data, master_aperset[fiber])
-                ax1.plot(brt_profile, label='obs, Fiber {}'.format(fiber))
+                result = get_xdisp_profile(data, master_aperset[fiber])
+                aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
-                for item in registered_bkg_lst:
-                    if item[0] == fiber and item[1] == obj:
-                        saved_brt_profile = item[3]
+                ax1.plot(aper_pos_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
 
-                        ax1.plot(saved_brt_profile, label='saved')
-                        scale = find_profile_scale(brt_profile,
-                                                    saved_brt_profile)
-                        ax1.plot(saved_brt_profile*scale, label='scaled')
-                        ax2.plot(brt_profile/saved_brt_profile)
+                for bkg_obj in saved_bkg_lst:
+                    info = bkg_obj.info
+                    if info['fiber'] == fiber and info['object'] == obj \
+                        and bkg_obj.data.shape == data.shape:
+                        saved_pos_lst = bkg_obj.aper_pos_lst
+                        saved_brt_lst = bkg_obj.aper_brt_lst
+
+                        ax1.plot(saved_pos_lst, saved_brt_lst, label='saved')
+                        #scale = find_profile_scale(brt_profile,
+                        #                            saved_brt_lst)
+                        #ax1.plot(saved_brt_profile*scale, label='scaled')
+                        #ax2.plot(brt_profile/saved_brt_profile)
                         ax1.legend(loc='upper left')
 
                         break
 
             plt.show()
+
+        exit()
 
         # extract 1d spectrum
         section = config['reduce.extract']
