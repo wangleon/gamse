@@ -919,7 +919,6 @@ def get_xdisp_profile(data, apertureset):
     Returns:
         tuple: A tuple containing:
 
-            * brightness profile
             * list of aperture numbers
             * list of aperture positions
             * list of aperture britness
@@ -938,16 +937,14 @@ def get_xdisp_profile(data, apertureset):
         maxflux_lst = (data*mask_image).max(axis=0)
         # maxflux is a spectrum but with maximum values in each pixel
         brightness = np.percentile(maxflux_lst, 99)
-        aper_lst.append(aper)
+        aper_num_lst.append(aper)
         aper_brt_lst.append(brightness)
         aper_pos_lst.append(aperloc.position(nx//2))
     aper_num_lst = np.array(aper_num_lst)
     aper_brt_lst = np.array(aper_brt_lst)
     aper_pos_lst = np.array(aper_pos_lst)
     
-    f = intp.InterpolatedUnivariateSpline(aper_pos_lst, aper_brt_lst, k=3)
-    brightness_profile = f(np.arange(ny))
-    return brightness_profile, aper_num_lst, aper_pos_lst, aper_brt_lst
+    return aper_num_lst, aper_pos_lst, aper_brt_lst
 
 def find_profile_scale(input_profile, ref_profile):
     """Find the scaling factor of two brightness profiles.
@@ -961,26 +958,51 @@ def find_profile_scale(input_profile, ref_profile):
     return s
 
 class BackgroundLight(object):
-    def __init__(self, info, data, xdisp_profile,
-            aper_num_lst, aper_ord_lst, aper_pos_lst, aper_brt_lst):
-        self.info = info
-        self.data = data
-        self.xdisp_profile = xdisp_profile
-        self.aper_num_lst  = aper_num_lst
-        self.aper_ord_lst  = aper_ord_lst
-        self.aper_pos_lst  = aper_pos_lst
-        self.aper_brt_lst  = aper_brt_lst
+    def __init__(self, info, header, data, aper_num_lst=None,
+            aper_ord_lst=None, aper_pos_lst=None, aper_brt_lst=None):
+        """
+        """
+        self.info   = info
+        self.header = header
+        self.data   = data
+        if aper_num_lst is not None:
+            self.aper_num_lst  = aper_num_lst
+        if aper_ord_lst is not None:
+            self.aper_ord_lst  = aper_ord_lst
+        if aper_pos_lst is not None:
+            self.aper_pos_lst  = aper_pos_lst
+        if aper_brt_lst is not None:
+            self.aper_brt_lst  = aper_brt_lst
 
-    def savefits(self):
-        header = fits.Header()
+    def savefits(self, filename):
+        """Save this object to FITS file.
+
+        Args:
+            filename (str):
+
+        """
         prefix = 'HIERARCH GAMSE BACKGROUDLIGHT '
-        header.append((prefix + 'FIBER',    self.info['fiber']))
-        header.append((prefix + 'OBJECT',   self.info['object']))
-        header.append((prefix + 'EXPTIME',  self.info['exptime']))
-        header.append((prefix + 'DATE-OBS', self.info['date-obs']))
-        hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(),
-                    ])
+        self.header.append((prefix + 'FILEID',   self.info['fileid']))
+        self.header.append((prefix + 'FIBER',    self.info['fiber']))
+        self.header.append((prefix + 'OBJECT',   self.info['object']))
+        self.header.append((prefix + 'EXPTIME',  self.info['exptime']))
+        self.header.append((prefix + 'DATE-OBS', self.info['date-obs']))
+
+        for aper, order, pos, brt in zip(self.aper_num_lst,
+                                         self.aper_ord_lst,
+                                         self.aper_pos_lst,
+                                         self.aper_brt_lst,
+                                         ):
+
+            prefix2 = prefix + 'APERTURE {} '.format(aper)
+
+            self.header.append((prefix2 + 'ORDER',      order))
+            self.header.append((prefix2 + 'POSITION',   pos))
+            self.header.append((prefix2 + 'BRIGHTNESS', brt))
+
+        fits.writeto(filename, self.data, self.header, overwrite=True)
+
+
 
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.
