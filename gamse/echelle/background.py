@@ -988,17 +988,19 @@ class BackgroundLight(object):
         self.header.append((prefix + 'EXPTIME',  self.info['exptime']))
         self.header.append((prefix + 'DATE-OBS', self.info['date-obs']))
 
-        for aper, order, pos, brt in zip(self.aper_num_lst,
-                                         self.aper_ord_lst,
-                                         self.aper_pos_lst,
-                                         self.aper_brt_lst,
-                                         ):
+        for aper, order, pos, brt, wav in zip(self.aper_num_lst,
+                                              self.aper_ord_lst,
+                                              self.aper_pos_lst,
+                                              self.aper_brt_lst,
+                                              self.aper_wav_lst,
+                                             ):
 
             prefix2 = prefix + 'APERTURE {} '.format(aper)
 
             self.header.append((prefix2 + 'ORDER',      order))
             self.header.append((prefix2 + 'POSITION',   pos))
             self.header.append((prefix2 + 'BRIGHTNESS', brt))
+            self.header.append((prefix2 + 'WAVELENGTH', wav))
 
         fits.writeto(filename, self.data, self.header, overwrite=True)
 

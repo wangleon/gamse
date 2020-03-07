@@ -1001,7 +1001,7 @@ def reduce_doublefiber(logtable, config):
                 continue
 
     
-    ###### Calibrate the Saved Background LightsExtract Science Spectrum #######
+    #################### Calibrate the Saved Background Lights #################
     if len(saved_bkg_lst)>0:
         for bkg_obj in saved_bkg_lst:
             fileid  = bkg_obj.info['fileid']
@@ -1017,14 +1017,14 @@ def reduce_doublefiber(logtable, config):
             orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
                                 ref_calib_lst[fiber], weight_lst)
             bkg_obj.aper_ord_lst = orders
-            bkg_obj.wavelength_lst = waves
+            bkg_obj.aper_wav_lst = waves
 
             # save to fits
             outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
             bkg_obj.savefits(outfilename)
 
-            message = 'Background Light {fileid}: fiber: {fiber} oject:{object}'.format(
-                        **bkg_obj.info)
+            message = ('Background Light of {fileid} in fiber {fiber}: '
+                       'oject = {object}').format(**bkg_obj.info)
             print(message)
             logger.info(message)
 
@@ -1161,6 +1161,15 @@ def reduce_doublefiber(logtable, config):
                 fiber = chr(ifiber+65)
                 result = get_xdisp_profile(data, master_aperset[fiber])
                 aper_num_lst, aper_pos_lst, aper_brt_lst = result
+
+                weight_lst = get_time_weight(ref_datetime_lst[fiber],
+                                            head[statime_key])
+                ny, nx = bkg_obj.data.shape
+                pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+                aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
+                                                pixel_lst, aper_num_lst,
+                                                ref_calib_lst[fiber],
+                                                weight_lst)
 
                 ax1.plot(aper_pos_lst, aper_brt_lst,
                             label='obs, Fiber {}'.format(fiber))
