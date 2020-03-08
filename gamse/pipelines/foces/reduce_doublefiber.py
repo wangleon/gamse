@@ -1154,8 +1154,9 @@ def reduce_doublefiber(logtable, config):
 
         else:
             fig = plt.figure(dpi=150, figsize=(12, 8))
-            ax1 = fig.add_subplot(211)
-            ax2 = fig.add_subplot(212)
+            ax1 = fig.add_subplot(311)
+            ax2 = fig.add_subplot(312)
+            ax3 = fig.add_subplot(313)
 
             for (ifiber, obj) in fiberobj_lst:
                 fiber = chr(ifiber+65)
@@ -1173,20 +1174,31 @@ def reduce_doublefiber(logtable, config):
 
                 ax1.plot(aper_pos_lst, aper_brt_lst,
                             label='obs, Fiber {}'.format(fiber))
+                ax2.plot(aper_wav_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
+                ax3.plot(aper_ord_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
 
                 for bkg_obj in saved_bkg_lst:
                     info = bkg_obj.info
                     if info['fiber'] == fiber and info['object'] == obj \
                         and bkg_obj.data.shape == data.shape:
+                        saved_apr_lst = bkg_obj.aper_num_lst
+                        saved_ord_lst = bkg_obj.aper_ord_lst
                         saved_pos_lst = bkg_obj.aper_pos_lst
                         saved_brt_lst = bkg_obj.aper_brt_lst
+                        saved_wav_lst = bkg_obj.aper_wav_lst
 
                         ax1.plot(saved_pos_lst, saved_brt_lst, label='saved')
+                        ax2.plot(saved_wav_lst, saved_brt_lst, label='saved')
+                        ax3.plot(saved_ord_lst, saved_brt_lst, label='saved')
                         #scale = find_profile_scale(brt_profile,
                         #                            saved_brt_lst)
                         #ax1.plot(saved_brt_profile*scale, label='scaled')
                         #ax2.plot(brt_profile/saved_brt_profile)
                         ax1.legend(loc='upper left')
+                        ax2.legend(loc='upper left')
+                        ax3.legend(loc='upper left')
 
                         break
 
