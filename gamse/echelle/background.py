@@ -8,6 +8,7 @@ import numpy as np
 from scipy.ndimage.filters import median_filter
 import scipy.interpolate as intp
 import scipy.signal as sg
+import scipy.optimize as opt
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -958,21 +959,100 @@ def find_profile_scale(input_profile, ref_profile):
     return s
 
 class BackgroundLight(object):
-    def __init__(self, info, header, data, aper_num_lst=None,
-            aper_ord_lst=None, aper_pos_lst=None, aper_brt_lst=None):
+    def __init__(self, info=None, header=None, data=None, aper_num_lst=None,
+            aper_ord_lst=None, aper_pos_lst=None, aper_brt_lst=None,
+            aper_wav_lst=None):
         """
         """
         self.info   = info
         self.header = header
         self.data   = data
-        if aper_num_lst is not None:
-            self.aper_num_lst  = aper_num_lst
-        if aper_ord_lst is not None:
-            self.aper_ord_lst  = aper_ord_lst
-        if aper_pos_lst is not None:
-            self.aper_pos_lst  = aper_pos_lst
-        if aper_brt_lst is not None:
-            self.aper_brt_lst  = aper_brt_lst
+        self.aper_num_lst = aper_num_lst
+        self.aper_ord_lst = aper_ord_lst
+        self.aper_pos_lst = aper_pos_lst
+        self.aper_brt_lst = aper_brt_lst
+        self.aper_wav_lst = aper_wav_lst
+
+    def get_wavelength(self, aperture=None, order=None):
+        """Get wavelength of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: wavelength of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_wav_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_wav_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
+
+    def get_brightness(self, aperture=None, order=None):
+        """Get brightness of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: brigtness of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_brt_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_brt_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
+
+    def get_position(self, aperture=None, order=None):
+        """Get position of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: position of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_pos_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_pos_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
 
     def savefits(self, filename):
         """Save this object to FITS file.
@@ -1004,7 +1084,47 @@ class BackgroundLight(object):
 
         fits.writeto(filename, self.data, self.header, overwrite=True)
 
+    def find_xdisp_shift(self, bkg_obj):
+        """Find the relative shift between this and the input background light
+        object.
 
+        Args:
+            bkg_obj ():
+
+        Returns:
+            *float*: Relative shift along the cross-dispersion direction.
+        """
+        
+        common_ord_lst = [order for order in self.aper_ord_lst
+                                if order in bkg_obj.aper_ord_lst]
+        pixel_shift_lst = [self.get_position(order=o)
+                            - bkg_obj.get_position(order=o)
+                                for o in common_ord_lst]
+        pixel_shift_lst = np.array(pixel_shift_lst)
+        return np.median(pixel_shift_lst)
+
+    def find_brightness_scale(self, bkg_obj):
+        """Find the scale factor of the brightness between this and the input
+        background light object.
+
+        Args:
+            bkg_obj ():
+
+        Returns:
+            *float*: Scale factor of brightness.
+        """
+        common_ord_lst = [order for order in self.aper_ord_lst
+                                if order in bkg_obj.aper_ord_lst]
+
+        brt_lst1 = [self.get_brightness(order=o) for o in common_ord_lst]
+        brt_lst2 = [bkg_obj.get_brightness(order=o) for o in common_ord_lst]
+
+        fitfunc = lambda s: brt_lst2*s
+        errfunc = lambda s: brt_lst1 - fitfunc(s)
+        s0 = np.median(brt_lst1)/np.median(brt_lst2)
+        fitres = opt.least_squares(errfunc, s0)
+        s = fitres.x[0]
+        return s
 
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.

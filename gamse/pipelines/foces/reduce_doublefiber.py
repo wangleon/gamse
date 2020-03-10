@@ -1165,12 +1165,20 @@ def reduce_doublefiber(logtable, config):
 
                 weight_lst = get_time_weight(ref_datetime_lst[fiber],
                                             head[statime_key])
-                ny, nx = bkg_obj.data.shape
+                ny, nx = data.shape
                 pixel_lst = np.repeat(nx//2, aper_num_lst.size)
                 aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
                                                 pixel_lst, aper_num_lst,
                                                 ref_calib_lst[fiber],
                                                 weight_lst)
+
+                obs_bkg_obj = BackgroundLight(
+                                aper_num_lst = aper_num_lst,
+                                aper_pos_lst = aper_pos_lst,
+                                aper_brt_lst = aper_brt_lst,
+                                aper_ord_lst = aper_ord_lst,
+                                aper_wav_lst = aper_wav_lst,
+                                )
 
                 ax1.plot(aper_pos_lst, aper_brt_lst,
                             label='obs, Fiber {}'.format(fiber))
@@ -1192,8 +1200,10 @@ def reduce_doublefiber(logtable, config):
                         ax1.plot(saved_pos_lst, saved_brt_lst, label='saved')
                         ax2.plot(saved_wav_lst, saved_brt_lst, label='saved')
                         ax3.plot(saved_ord_lst, saved_brt_lst, label='saved')
-                        #scale = find_profile_scale(brt_profile,
-                        #                            saved_brt_lst)
+                        scale = obs_bkg_obj.find_brightness_scale(bkg_obj)
+                        ax1.plot(saved_pos_lst, saved_brt_lst*scale, label='saved')
+                        ax2.plot(saved_wav_lst, saved_brt_lst*scale, label='saved')
+                        ax3.plot(saved_ord_lst, saved_brt_lst*scale, label='saved')
                         #ax1.plot(saved_brt_profile*scale, label='scaled')
                         #ax2.plot(brt_profile/saved_brt_profile)
                         ax1.legend(loc='upper left')
