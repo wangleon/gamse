@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 import numpy as np
 from scipy.ndimage.filters import median_filter
 import scipy.interpolate as intp
+import scipy.signal as sg
+import scipy.optimize as opt
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -16,7 +18,8 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ..echelle.trace      import ApertureSet
-from ..utils.onedarray    import get_local_minima
+from ..echelle.imageproc  import savitzky_golay_2d
+from ..utils.onedarray    import get_local_minima, get_edge_bin
 from ..utils.regression   import get_clip_mean
 from ..utils.regression2d import polyfit2d, polyval2d
 from .imageproc           import table_to_array, array_to_table
@@ -836,6 +839,292 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     corrected_data = np.zeros_like(data)
     corrected_data[pmask] = np.log(data[pmask]) - stray[pmask]
     return np.exp(corrected_data)
+
+
+def get_single_background(data, apertureset):
+    #apertureset = load_aperture_set('../midproc/trace_A.trc')
+    h, w = data.shape
+    
+    bkg_image = np.zeros_like(data, dtype=np.float32)
+    allrows = np.arange(h)
+    plot_x = []
+    for x in np.arange(w):
+        if x in plot_x:
+            plot = True
+        else:
+            plot = False
+        mask_rows = np.zeros_like(allrows, dtype=np.bool)
+        for aper, aperloc in sorted(apertureset.items()):
+            ycen = aperloc.position(x)
+            if plot:
+                ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+                ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+    
+            imask = np.abs(allrows - ycen)<7
+            mask_rows += imask
+        if plot:
+            ax01.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
+        x_lst, y_lst = [], []
+        for (y1, y2) in get_edge_bin(~mask_rows):
+            if plot:
+                ax01.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
+                ax02.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
+            if y2-y1>1:
+                yflux = data[y1:y2, x]
+                xlist = np.arange(y1, y2)
+                _m = xlist == y1 + np.argmax(yflux)
+                mean = yflux[~_m].mean()
+                std  = yflux[~_m].std()
+                if yflux.max() < mean + 3.*std:
+                    meany = yflux.mean()
+                    meanx = (y1+y2-1)/2
+                else:
+                    meanx = xlist[~_m].mean()
+                    meany = mean
+            else:
+                meany = data[y1,x]
+                meanx = y1
+            x_lst.append(meanx)
+            y_lst.append(meany)
+        x_lst = np.array(x_lst)
+        y_lst = np.array(y_lst)
+        y_lst = np.maximum(y_lst, 0)
+        y_lst = sg.medfilt(y_lst, 3)
+        f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
+        bkg = f(allrows)
+        bkg_image[:, x] = bkg
+        if plot:
+            ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax01.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            ax02.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            _y1, _y2 = ax02.get_ylim()
+            ax02.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
+            ax02.set_ylim(_y1, _y2)
+    
+    bkg_image = median_filter(bkg_image, size=(9,1), mode='nearest')
+    #fits.writeto('bkg_{}.fits'.format(fileid), bkg_image, overwrite=True)
+    bkg_image = savitzky_golay_2d(bkg_image, window_length=(11, 51), order=3, mode='nearest')
+    #fits.writeto('bkg_{}_sm.fits'.format(fileid), bkg_image, overwrite=True)
+    return bkg_image
+
+
+
+def get_xdisp_profile(data, apertureset):
+    """Get brightness profile along the cross-dispersion direction.
+
+    Args:
+        data (numpy.ndarray):
+        apertureset ():
+
+    Returns:
+        tuple: A tuple containing:
+
+            * list of aperture numbers
+            * list of aperture positions
+            * list of aperture britness
+    """
+    # get order brightness profile
+    ny, nx = data.shape
+    yy, xx = np.mgrid[:ny:, :nx:]
+    
+    aper_num_lst, aper_brt_lst, aper_pos_lst = [], [], []
+    x_lst = np.arange(nx)
+    for aper, aperloc in sorted(apertureset.items()):
+        ycen_lst = aperloc.position(x_lst)
+        m1 = yy > ycen_lst - 1
+        m2 = yy < ycen_lst + 2
+        mask_image = m1*m2
+        maxflux_lst = (data*mask_image).max(axis=0)
+        # maxflux is a spectrum but with maximum values in each pixel
+        brightness = np.percentile(maxflux_lst, 99)
+        aper_num_lst.append(aper)
+        aper_brt_lst.append(brightness)
+        aper_pos_lst.append(aperloc.position(nx//2))
+    aper_num_lst = np.array(aper_num_lst)
+    aper_brt_lst = np.array(aper_brt_lst)
+    aper_pos_lst = np.array(aper_pos_lst)
+    
+    return aper_num_lst, aper_pos_lst, aper_brt_lst
+
+def find_profile_scale(input_profile, ref_profile):
+    """Find the scaling factor of two brightness profiles.
+
+    """
+    fitfunc = lambda s: ref_profile*s
+    errfunc = lambda s: input_profile - fitfunc(s)
+    s0 = np.median(input_profile)/np.median(ref_profile)
+    fitres = opt.least_squares(errfunc, s0)
+    s = fitres.x[0]
+    return s
+
+class BackgroundLight(object):
+    def __init__(self, info=None, header=None, data=None, aper_num_lst=None,
+            aper_ord_lst=None, aper_pos_lst=None, aper_brt_lst=None,
+            aper_wav_lst=None):
+        """
+        """
+        self.info   = info
+        self.header = header
+        self.data   = data
+        self.aper_num_lst = aper_num_lst
+        self.aper_ord_lst = aper_ord_lst
+        self.aper_pos_lst = aper_pos_lst
+        self.aper_brt_lst = aper_brt_lst
+        self.aper_wav_lst = aper_wav_lst
+
+    def get_wavelength(self, aperture=None, order=None):
+        """Get wavelength of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: wavelength of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_wav_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_wav_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
+
+    def get_brightness(self, aperture=None, order=None):
+        """Get brightness of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: brigtness of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_brt_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_brt_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
+
+    def get_position(self, aperture=None, order=None):
+        """Get position of a specific aperture or order.
+
+        Args:
+            aperture (int): Aperture number.
+            order (int): Order number.
+
+        Returns:
+            *float*: position of the specific aperture or order.
+        """
+        if aperture is not None and order is None:
+            # aperture is given and order is NOT given
+            for i, aper in enumerate(self.aper_num_lst):
+                if aper == aperture:
+                    return self.aper_pos_lst[i]
+            print('Error: Aperture {} does not exist'.format(aperture))
+            raise ValueError
+        elif order is not None and aperture is None:
+            # order is given and aperture is NOT given
+            for i, o in enumerate(self.aper_ord_lst):
+                if o == order:
+                    return self.aper_pos_lst[i]
+            print('Error: Order {} does not exist'.format(order))
+            raise ValueError
+        else:
+            raise ValueError
+
+    def savefits(self, filename):
+        """Save this object to FITS file.
+
+        Args:
+            filename (str):
+
+        """
+        prefix = 'HIERARCH GAMSE BACKGROUDLIGHT '
+        self.header.append((prefix + 'FILEID',   self.info['fileid']))
+        self.header.append((prefix + 'FIBER',    self.info['fiber']))
+        self.header.append((prefix + 'OBJECT',   self.info['object']))
+        self.header.append((prefix + 'EXPTIME',  self.info['exptime']))
+        self.header.append((prefix + 'DATE-OBS', self.info['date-obs']))
+
+        for aper, order, pos, brt, wav in zip(self.aper_num_lst,
+                                              self.aper_ord_lst,
+                                              self.aper_pos_lst,
+                                              self.aper_brt_lst,
+                                              self.aper_wav_lst,
+                                             ):
+
+            prefix2 = prefix + 'APERTURE {} '.format(aper)
+
+            self.header.append((prefix2 + 'ORDER',      order))
+            self.header.append((prefix2 + 'POSITION',   pos))
+            self.header.append((prefix2 + 'BRIGHTNESS', brt))
+            self.header.append((prefix2 + 'WAVELENGTH', wav))
+
+        fits.writeto(filename, self.data, self.header, overwrite=True)
+
+    def find_xdisp_shift(self, bkg_obj):
+        """Find the relative shift between this and the input background light
+        object.
+
+        Args:
+            bkg_obj ():
+
+        Returns:
+            *float*: Relative shift along the cross-dispersion direction.
+        """
+        
+        common_ord_lst = [order for order in self.aper_ord_lst
+                                if order in bkg_obj.aper_ord_lst]
+        pixel_shift_lst = [self.get_position(order=o)
+                            - bkg_obj.get_position(order=o)
+                                for o in common_ord_lst]
+        pixel_shift_lst = np.array(pixel_shift_lst)
+        return np.median(pixel_shift_lst)
+
+    def find_brightness_scale(self, bkg_obj):
+        """Find the scale factor of the brightness between this and the input
+        background light object.
+
+        Args:
+            bkg_obj ():
+
+        Returns:
+            *float*: Scale factor of brightness.
+        """
+        common_ord_lst = [order for order in self.aper_ord_lst
+                                if order in bkg_obj.aper_ord_lst]
+
+        brt_lst1 = [self.get_brightness(order=o) for o in common_ord_lst]
+        brt_lst2 = [bkg_obj.get_brightness(order=o) for o in common_ord_lst]
+
+        fitfunc = lambda s: brt_lst2*s
+        errfunc = lambda s: brt_lst1 - fitfunc(s)
+        s0 = np.median(brt_lst1)/np.median(brt_lst2)
+        fitres = opt.least_squares(errfunc, s0)
+        s = fitres.x[0]
+        return s
 
 class BackgroundFigureCommon(Figure):
     """Figure to plot the background correction.

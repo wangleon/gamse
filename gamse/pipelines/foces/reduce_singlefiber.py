@@ -5,7 +5,6 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
-from scipy.ndimage.filters import gaussian_filter
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
@@ -258,7 +257,7 @@ def reduce_singlefiber(logtable, config):
         flat_info_lst[flatname] = {'exptime': exptime}
 
     ########################### Get flat fielding ##############################
-    flatmap_lst = {}
+    flat_map_lst = {}
 
     for flatname in sorted(flat_groups.keys()):
 
@@ -308,7 +307,7 @@ def reduce_singlefiber(logtable, config):
             hdu_lst.flush()
     
         # append the flatmap
-        flatmap_lst[flatname] = flatmap
+        flat_map_lst[flatname] = flatmap
     
         # continue to the next colored flat
 
@@ -335,7 +334,7 @@ def reduce_singlefiber(logtable, config):
         shutil.copyfile(os.path.join(midproc, oriname), treg_file)
         '''
 
-        flat_map = flatmap_lst[flatname]
+        flat_map = flat_map_lst[flatname]
     
         # no need to mosaic aperset
         master_aperset = list(aperset_lst.values())[0]
@@ -356,14 +355,14 @@ def reduce_singlefiber(logtable, config):
         # mosaic flat mask images
         mask_data = mosaic_images(flat_mask_lst, master_aperset)
         # mosaic sensitivity map
-        flat_map = mosaic_images(flatmap_lst, master_aperset)
+        flat_map = mosaic_images(flat_map_lst, master_aperset)
         # mosaic exptime-normalized flat images
         flat_norm = mosaic_images(flat_norm_lst, master_aperset)
 
         # change contents of several lists
         #flat_data_lst[fiber] = flat_data
         #flat_mask_lst[fiber] = mask_data
-        #flatmap_lst[fiber]   = flat_map
+        #flat_map_lst[fiber]  = flat_map
         #flat_norm_lst[fiber] = flat_norm
     
         # pack and save to fits file

@@ -698,7 +698,7 @@ def mosaic_images(image_lst, mosaic_aperset):
 
     return mosaic_image
 
-def mosaic_speclist(spec_lst, mosaic_aperset):
+def mosaic_spec(spec_lst, mosaic_aperset):
     """Mosaic input spectra list with the identifications in the input aperture
     set.
 
@@ -714,14 +714,19 @@ def mosaic_speclist(spec_lst, mosaic_aperset):
         * :func:`mosaic_flat_auto`
     """
 
-    speclist = {}
+    spec = []
 
     for iaper, (aper, aper_loc) in enumerate(sorted(mosaic_aperset.items())):
         tracename = aper_loc.tracename
         ori_aper = aper_loc.ori_aper
-        speclist[aper] = spec_lst[tracename][ori_aper]
+        spec1 = spec_lst[tracename]
+        mask = spec1['aperture'] == ori_aper
+        row = spec1[mask][0]
+        spec.append(tuple(row))
 
-    return speclist
+    spec = np.array(spec, dtype=spec1.dtype)
+
+    return spec
 
 
 def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
@@ -763,7 +768,7 @@ def save_mosaic_reg(filename, coeff_lst, disp_axis, shape, npoints=20):
                            x1+1,y1+1,x2+1,y2+1, os.linesep))
     outfile.close()
 
-def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
+def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -773,7 +778,7 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Number of points in this order.
 
     Returns:
         tuple: A tuple containing:
@@ -796,11 +801,11 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     
     """
     has_fringe_lst = []
-    aperpar = np.array([np.nan]*w)
+    aperpar = np.array([np.nan]*npoints)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
     ypiece_res_lst = np.array([np.nan]*newx_lst.size)
     mask_rej_lst   = np.array([np.nan]*newx_lst.size)
-    allx = np.arange(w)
+    allx = np.arange(npoints)
     # the dtype of xpiece_lst and ypiece_lst is np.float64
 
     # first try, scan every segment. find fringe by checking the local maximum
@@ -858,14 +863,14 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         # determine how many pixels in each bin.
         # if w=4000, then 500 pix. if w=2000, then 250 pix.
         npixbin = w//8
-        bins = np.linspace(p1, p2, int(p2-p1)/npixbin+2)
+        bins = np.linspace(p1, p2, int(p2-p1)//npixbin+2)
         hist, _ = np.histogram(x, bins)
 
         n_nonzerobins = np.nonzero(hist)[0].size
         n_zerobins = hist.size - n_nonzerobins
 
-        if p2-p1<w/8 or n_zerobins<=1 or \
-            n_zerobins<n_nonzerobins or n_nonzerobins>=3:
+        if p2-p1 < npoints/8 or n_zerobins <= 1 or \
+            n_zerobins < n_nonzerobins or n_nonzerobins >= 3:
             # there's fringe
             has_fringe = True
         else:
@@ -875,23 +880,28 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
     # use global polynomial fitting if this order is affected by fringe and the
     # following conditions are satisified
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2 and \
-        has_fringe_lst.count(True) == len(has_fringe_lst):
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2 \
+        and has_fringe_lst.count(True) == len(has_fringe_lst):
         # fit polynomial over the whole order
 
         # prepare xpiece and y piece
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
-        # fit with poly
         # determine the polynomial degree
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
+
+        # fit with polynomial
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-            upper_clip=3)
-        aperpar = np.polyval(coeff, allx/w)
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst = ~_m
@@ -903,17 +913,20 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
             ypiece = ypara[group]
             xspan = xpiece[-1] - xpiece[0]
             if has_fringe:
-                deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+                if   xspan > npoints/2: deg = 4
+                elif xspan > npoints/4: deg = 3
+                elif xspan > npoints/8: deg = 2
+                else:                   deg = 1
             else:
                 deg = 7
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, np.log(ypiece), deg=deg, maxiter=10,
+                xpiece/npoints, np.log(ypiece), deg=deg, maxiter=10,
                 lower_clip=3, upper_clip=3)
             ypiece_fit = np.exp(ypiece_fit)
             ypiece_res = ypiece - ypiece_fit
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.exp(np.polyval(coeff, ii/w))
+            aperpar[ii] = np.exp(np.polyval(coeff, ii/npoints))
             xpiece_lst[group]     = xpiece
             ypiece_res_lst[group] = ypiece_res
             mask_rej_lst[group]   = ~_m
@@ -921,7 +934,7 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
 
-def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
+def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -931,7 +944,7 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Number of points in this order.
 
     Returns:
         tuple: A tuple containing:
@@ -954,22 +967,29 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
     
     """
 
-    allx = np.arange(w)
+    allx = np.arange(npoints)
 
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2:
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2:
+
         # fit polynomial over the whole order
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
+        # determine the polynomial degree
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
 
+        # fit with polynomial
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10,
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
             lower_clip=3, upper_clip=3)
 
-        aperpar = np.polyval(coeff, allx/w)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst     = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst   = ~_m
@@ -982,22 +1002,28 @@ def default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         for group in group_lst:
             xpiece = newx_lst[group]
             ypiece = ypara[group]
-            xspan = xpiece[-1] - xpiece[0]
-            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
 
+            # determine the polynomial degree
+            xspan = xpiece[-1] - xpiece[0]
+            if   xspan > npoints/2: deg = 4
+            elif xspan > npoints/4: deg = 3
+            elif xspan > npoints/8: deg = 2
+            else:                   deg = 1
+
+            # fit with polynomial
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                xpiece/npoints, ypiece, deg=deg, maxiter=10, lower_clip=3,
                 upper_clip=3)
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.polyval(coeff, ii/w)
+            aperpar[ii] = np.polyval(coeff, ii/npoints)
             xpiece_lst[group]     = xpiece
             ypiece_res_lst[group] = ypiece_res
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
+def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -1007,7 +1033,7 @@ def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Number of points in this order.
 
     Returns:
         tuple: A tuple containing:
@@ -1030,9 +1056,9 @@ def default_smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
     
     """
 
-    return default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
+    return default_smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints)
 
-def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
+def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -1042,7 +1068,7 @@ def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Number of points in this order.
 
     Returns:
         tuple: A tuple containing:
@@ -1065,45 +1091,57 @@ def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
     
     """
 
-    allx = np.arange(w)
+    allx = np.arange(npoints)
 
     # fit for bkg
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2:
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2:
         # fit polynomial over the whole order
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
+        # determine the degree of polynomial
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
 
+        # polynomial fitting
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10,
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
             lower_clip=3, upper_clip=3)
 
-        aperpar = np.polyval(coeff, allx/w)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst     = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst   = ~_m
     else:
         # fit polynomial for every segment
-        aperpar = np.array([np.nan]*w)
+        aperpar = np.array([np.nan]*npoints)
         xpiece_lst     = np.array([np.nan]*newx_lst.size)
         ypiece_res_lst = np.array([np.nan]*newx_lst.size)
         mask_rej_lst   = np.array([np.nan]*newx_lst.size)
         for group in group_lst:
             xpiece = newx_lst[group]
             ypiece = ypara[group]
+
+            # determine the degree of polynomial
             xspan = xpiece[-1] - xpiece[0]
-            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 7)[xspan>w/2]
+            if   xspan > npoints/2: deg = 7
+            elif xspan > npoints/4: deg = 3
+            elif xspan > npoints/8: deg = 2
+            else:                   deg = 1
 
             scale = ('linear','log')[(ypiece<=0).sum()==0]
             if scale=='log':
                 ypiece = np.log(ypiece)
 
+            # polynomial fitting
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-                upper_clip=3)
+                xpiece/npoints, ypiece, deg=deg, maxiter=10,
+                lower_clip=3, upper_clip=3)
 
             if scale=='log':
                 ypiece = np.exp(ypiece)
@@ -1111,7 +1149,7 @@ def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
                 ypiece_res = ypiece - ypiece_fit
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.polyval(coeff, ii/w)
+            aperpar[ii] = np.polyval(coeff, ii/npoints)
             if scale=='log':
                 aperpar[ii] = np.exp(aperpar[ii])
             xpiece_lst[group]     = xpiece
@@ -1149,7 +1187,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         slit_file (str): Path to the ASCII file of slit functions.
 
     Returns:
-        :class:`numpy.ndarray`: 2D response map.
+        tuple: A tuple containing:
+
+            * :class:`numpy.ndarray`: 2D response map.
+            * :class:`numpy.ndarray`: A dict of flat 1-d spectra.
 
     """
     # define the fitting and error functions
@@ -1166,10 +1207,10 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         A, k, c, bkg = p
         return A*interf((xdata-c)*k) + bkg
     def errfunc2(p, xdata, ydata, interf):
-        n = xdata.size
         return ydata - fitfunc2(p, xdata, interf)
 
     h, w = data.shape
+
 
     # find saturation mask
     sat_mask = (mask&4 > 0)
@@ -1360,11 +1401,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     # write the slit function into an ascii file
     if slit_file is not None:
         slitoutfile = open(slit_file, 'w')
-        for row in np.arange(xnodes.size):
-            slitoutfile.write('%5.2f'%xnodes[row])
-            for col in np.arange(x_lst.size):
-                slitoutfile.write(' %12.8f'%slit_array[row, col])
+
+        string = ', '.join(['{:d}'.format(x) for x in x_lst])
+        slitoutfile.write('COLUMNS = ' + string + os.linesep)
+
+        string = ', '.join(['{:5.2f}'.format(x) for x in xnodes])
+        slitoutfile.write('NODES = ' + string + os.linesep)
+
+        for col in np.arange(x_lst.size):
+            for row in np.arange(xnodes.size):
+                slitoutfile.write(' {:12.8f}'.format(slit_array[row, col]))
             slitoutfile.write(os.linesep)
+
         slitoutfile.close()
 
     # plot the slit function
@@ -1541,19 +1589,27 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 fitpar_lst.append(blank_p)
 
         if break_aperture:
-            logger.debug('Break aperture %d because of break_aperture=True'%aper)
+            message = ('Aperture {:3d}: Skipped because of '
+                       'break_aperture=True').format(aper)
+            logger.debug(message)
+            print(message)
             continue
 
         fitpar_lst = np.array(fitpar_lst)
 
         if np.isnan(fitpar_lst[:,0]).sum()>0.5*w:
-            logger.debug('Break aperture %d because of too many NaN values in aperpar'%aper)
+            message = ('Aperture {:3d}: Skipped because of too many NaN '
+                       'values in aperture parameters').format(aper)
+            logger.debug(message)
+            print(message)
             continue
 
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
-            logger.debug('Break aperture %d because of too few real values in aperpar'%aper)
+            message = ('Aperture {:3d}: Skipped because of too few real '
+                       'values in aperture parameters').format(aper)
+            logger.debug(message)
+            print(message)
             continue
-
 
         # pick up NaN positions in fitpar_lst and generate fitmask.
         # NaN = False. Real number = True
@@ -1799,10 +1855,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             xdata2 = np.arange(y1s, y2s, 0.1)
             flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
             # use trapezoidal integration
-            #flatspecv = np.trapz(flatmod, x=xdata2)
+            # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspecv = simps(flatmod, x=xdata2)
-            flatspec_lst[aper][x] = flatspecv
+            flatspec_lst[aper][x] = simps(flatmod, x=xdata2)
             
             #if aper==0:
             #    print(x, y1, y2, flatmask)
@@ -1825,6 +1880,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             #    ax2.set_xlim(xdata[0], xdata[-1])
             #    fig.savefig('img/flat/new_%02d_%04d.png'%(aper,x))
             #    plt.close(fig)
+
             
         t2 = time.time()
         message = ('Aperture {:3d}: {:2d} group{:1s}; '
@@ -1836,6 +1892,18 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     (t2-t1)*1e3
                     )
         print(message)
+
+    # pack the final 1-d spectra of flat
+    flatspectable = [(aper, flatspec_lst[aper])
+                     for aper in sorted(apertureset.keys())]
+
+    # define the datatype of flat 1d spectra
+    flatspectype = np.dtype(
+                    {'names':   ['aperture', 'flux'],
+                     'formats': [np.int32, (np.float32, w)],}
+                    )
+    flatspectable = np.array(flatspectable, dtype=flatspectype)
+
     ###################### aperture loop ends here ########################
     if plot_aperpar and has_aperpar_fig:
         # there's unsaved figure in memory. save and close the figure
@@ -1843,7 +1911,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         plt.close(fig)
         has_aperpar_fig = False
 
-    return flatdata, flatspec_lst
+
+    return flatdata, flatspectable
 
 
 def default_smooth_flux(x, y, w):

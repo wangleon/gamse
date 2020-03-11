@@ -10,3 +10,7 @@
 p {
     text-align: justify;
 }
+
+div[class^='highlight'] pre {
+    font-family: monospace;
+}

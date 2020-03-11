@@ -1469,7 +1469,7 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
     return coeff, std, k, offset, nuse, ntot
 
 def get_wavelength(coeff, npixel, pixel, order):
-    """Get the wavelength solution.
+    """Get wavelength.
     
     Args:
         coeff (:class:`numpy.ndarray`): 2-D Coefficient array.
@@ -2743,6 +2743,16 @@ def reference_wl_new(spec, calib, head, channel, include_identlist):
     return fits.HDUList(hdu_lst)
 
 def get_time_weight(datetime_lst, datetime):
+    """Get weight according to the time interval.
+
+    Args:
+        datetime_lst (list):
+        datetime (datetime.datetime):
+
+    Returns:
+        list: A list of floats as the weights.
+
+    """
     input_datetime = dateutil.parser.parse(datetime)
     dt_lst = [(dateutil.parser.parse(dt) - input_datetime).total_seconds()
                 for dt in datetime_lst]
@@ -2769,6 +2779,44 @@ def get_time_weight(datetime_lst, datetime):
         weight_lst[i]   = w1/(w1+w2)
 
     return weight_lst
+
+def combine_calib(calib_lst, weight_lst):
+    """Combine a list of wavelength calibration results.
+
+    Args:
+        calib_lst (list):
+        weight_lst (list):
+
+    Return:
+        dict: The combined wavelength claibration result
+
+    """
+
+    k      = calib_lst[0]['k']
+    offset = calib_lst[0]['offset']
+    xorder = calib_lst[0]['xorder']
+    yorder = calib_lst[0]['yorder']
+    npixel = calib_lst[0]['npixel']
+
+    for calib in calib_lst:
+        if     calib['k']      != k \
+            or calib['offset'] != offset \
+            or calib['xorder'] != xorder \
+            or calib['yorder'] != yorder \
+            or calib['npixel'] != npixel:
+            print('Error: calib list is not self-consistent')
+            raise ValueError
+
+
+    # calculate the weighted average coefficients
+    coeff = np.zeros_like(calib_lst[0]['coeff'], dtype=np.float64)
+    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
+        for calib, weight in zip(calib_lst, weight_lst):
+            coeff[j, i] += calib['coeff'][j, i]*weight
+
+    return {'k': k, 'offset': offset, 'xorder': xorder, 'yorder': yorder,
+            'npixel': npixel, 'coeff': coeff}
+
 
 def get_calib_from_header(header):
     """Get calib from FITS header.
@@ -2962,28 +3010,38 @@ def combine_fiber_identlist(identlist_lst):
 
     return newidentlist
 
-def reference_wavelength(spec, calib_lst, weight_lst):
-    """
-    """
-    k      = calib_lst[0]['k']
-    offset = calib_lst[0]['offset']
-    xorder = calib_lst[0]['xorder']
-    yorder = calib_lst[0]['yorder']
-    npixel = calib_lst[0]['npixel']
+def reference_spec_wavelength(spec, calib_lst, weight_lst):
+    """Calculate the wavelength of a spectrum with given calibration list and
+    weights.
+    
+    Args:
+        spec (class:`numpy.dtype`):
+        calib_lst (list):
+        weight_lst (list):
 
-    # calculate the weighted average coefficients
-    coeff = np.zeros_like(calib_lst[0]['coeff'], dtype=np.float64)
-    for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        for calib, weight in zip(calib_lst, weight_lst):
-            coeff[j, i] += calib['coeff'][j, i]*weight
+    Returns:
+        tuple:
+
+    See Also:
+        :func:`reference_pixel_wavelength`
+        
+    """
+    combined_calib = combine_calib(calib_lst, weight_lst)
+
+    k      = combined_calib['k']
+    offset = combined_calib['offset']
+    xorder = combined_calib['xorder']
+    yorder = combined_calib['yorder']
+    npixel = combined_calib['npixel']
+    coeff  = combined_calib['coeff']
 
     # calculate the wavelength for each aperture
     for row in spec:
         aperture = row['aperture']
-        npixel   = row['points']
+        npoints  = row['points']
         order = aperture*k + offset
         wavelength = get_wavelength(coeff, npixel,
-                        np.arange(npixel), np.repeat(order, npixel))
+                        np.arange(npoints), np.repeat(order, npoints))
         row['order']      = order
         row['wavelength'] = wavelength
 
@@ -3015,6 +3073,39 @@ def reference_wavelength(spec, calib_lst, weight_lst):
         card_lst.append((prefix+' STDDEV',   calib['std']))
 
     return spec, card_lst
+
+def reference_pixel_wavelength(pixels, apertures, calib_lst, weight_lst):
+    """Calculate the wavelength of a list of pixels with given calibration list
+    and weights.
+
+    Args:
+        pixels (*list* or class:`numpy.ndarray`):
+        apertures (*list* or class:`numpy.ndarray`):
+        calib_lst (*list*):
+        weight_lst (*list*):
+
+    Returns:
+        tuple:
+
+    See Also:
+        :func:`reference_spec_wavelength`
+        
+    """
+    pixels    = np.array(pixels)
+    apertures = np.array(apertures)
+
+    combined_calib = combine_calib(calib_lst, weight_lst)
+
+    k      = combined_calib['k']
+    offset = combined_calib['offset']
+    xorder = combined_calib['xorder']
+    yorder = combined_calib['yorder']
+    npixel = combined_calib['npixel']
+    coeff  = combined_calib['coeff']
+
+    orders = apertures*k + offset
+    wavelengths = get_wavelength(coeff, npixel, pixels, orders)
+    return orders, wavelengths
 
 def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
     """Reference the wavelength and write the wavelength solution to the FITS

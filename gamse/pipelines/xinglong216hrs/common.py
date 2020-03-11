@@ -37,51 +37,77 @@ def parse_bias_frames(logtable, config, pinfo):
     bias_file = section['bias_file']
 
     bias_data_lst = []
-    bias_fileid_lst = []
+    bias_card_lst = []
 
+    count_file = 0
     for logitem in logtable:
-        if logitem['object'].strip().lower()=='bias':
-            filename = os.path.join(rawdata, logitem['fileid']+'.fits')
-            data, head = fits.getdata(filename, header=True)
-            mask = get_mask(data, head)
-            data, card_lst, overmean = correct_overscan(data, head, mask)
+        if logitem['object'].strip().lower()!='bias':
+            continue
+        # now filter the bias frames
+        count_file += 1
+        fname = logitem['fileid']+'.fits'
+        filename = os.path.join(rawdata, fname)
+        data, head = fits.getdata(filename, header=True)
+        mask = get_mask(data, head)
+        data, card_lst, overmean = correct_overscan(data, head, mask)
 
-            # print info
-            if len(bias_data_lst) == 0:
-                print('* Combine Bias Images: {}'.format(bias_file))
-                print(' '*2 + pinfo.get_title())
-                print(' '*2 + pinfo.get_separator())
-            print(' '*2 + pinfo.get_format().format(logitem, overmean))
+        # pack the data and fileid list
+        bias_fileid_lst.append(logitem['fileid'])
 
-            bias_data_lst.append(data)
-            bias_fileid_lst.append(logitem['fileid'])
+        # append the file information
+        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
+        card = (key_prefix+' FILEID', logitem['fileid'])
+        bias_card_lst.append(card)
 
-    # get number of bias images
+        # append the overscan information of each bias frame to
+        # bias_card_lst
+        for keyword, value in card_lst:
+            mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
+            if mobj:
+                newkey = key_prefix + ' ' + mobj.group(1)
+                bias_card_lst.append((newkey, value))
+
+        # print info
+        if count_file == 1:
+            print('* Combine Bias Images: {}'.format(bias_file))
+            print(' '*2 + pinfo.get_separator())
+            print(' '*2 + pinfo.get_title())
+            print(' '*2 + pinfo.get_separator())
+        string = pinfo.get_format().format(logitem, overmean)
+        print(' '*2 + print_wrapper(string, logitem))
+
+    # get the number of bias images
     n_bias = len(bias_data_lst)
 
     prefix = 'HIERARCH GAMSE BIAS '
-    bias_card_lst = []
     bias_card_lst.append((prefix + 'NFILE', n_bias))
 
     if n_bias == 0:
         # there is no bias frames
         bias = None
     else:
-        for i, fileid in enumerate(bias_fileid_lst):
-            bias_card_lst.append((prefix + 'FILEID {:02d}'.format(i), fileid))
-
         # there is bias frames
         print(' '*2 + pinfo.get_separator())
 
         # combine bias images
         bias_data_lst = np.array(bias_data_lst)
 
+        combine_mode = 'mean'
+        cosmic_clip  = section.getfloat('cosmic_clip')
+        maxiter      = section.getint('maxiter')
+        mask_mode    = (None, 'max')[n_bias>=3]
+
         bias = combine_images(bias_data_lst,
-                mode       = 'mean',
-                upper_clip = section.getfloat('cosmic_clip'),
-                maxiter    = section.getint('maxiter'),
-                mask       = (None, 'max')[n_bias>=3],
+                mode       = combine_mode,
+                upper_clip = cosmic_clip,
+                maxiter    = maxiter,
+                mask       = mask_mode,
                 )
+
+        bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+        bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+        bias_card_lst.append((prefix+'MAXITER',      maxiter))
+        bias_card_lst.append((prefix+'MASK_MODE',    str(mask_mode)))
 
         ############## bias smooth ##################
         if section.getboolean('smooth'):
@@ -102,10 +128,10 @@ def parse_bias_frames(logtable, config, pinfo):
                                             mode  = smooth_mode)
 
                 # write information to FITS header
-                bias_card_lst.append((prefix + 'SMOOTH CORRECTED',  True))
-                bias_card_lst.append((prefix + 'SMOOTH METHOD', 'GAUSSIAN'))
-                bias_card_lst.append((prefix + 'SMOOTH SIGMA',  smooth_sigma))
-                bias_card_lst.append((prefix + 'SMOOTH MODE',   smooth_mode))
+                bias_card_lst.append((prefix+'SMOOTH CORRECTED',  True))
+                bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+                bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+                bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
             else:
                 print('Unknown smooth method: ', smooth_method)
                 pass

@@ -117,7 +117,7 @@ configuration file:
 
 .. list-table:: Accepted entries in ``reduce`` section
    :widths: 12, 8, 12, 50
-   :headr-rows: 1
+   :header-rows: 1
 
    * - Key
      - Type

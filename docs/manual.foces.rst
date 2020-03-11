@@ -377,19 +377,21 @@ Format of Output Spectra
 APIs
 ----
 .. autosummary::
-   gamse.pipelines.foces.correct_overscan
-   gamse.pipelines.foces.get_primary_header
+
+   gamse.pipelines.foces.make_config
    gamse.pipelines.foces.make_obslog
+   gamse.pipelines.foces.reduce_rawdata
+   gamse.pipelines.foces.common.correct_overscan
+   gamse.pipelines.foces.common.parse_bias_frames
+   gamse.pipelines.foces.common.get_primary_header
    gamse.pipelines.foces.plot_overscan_variation
    gamse.pipelines.foces.plot_bias_smooth
-   gamse.pipelines.foces.reduce
-   gamse.pipelines.foces.reduce_singlefiber
-   gamse.pipelines.foces.reduce_doublefiber
-   gamse.pipelines.foces.smooth_aperpar_A
-   gamse.pipelines.foces.smooth_aperpar_k
-   gamse.pipelines.foces.smooth_aperpar_c
-   gamse.pipelines.foces.smooth_aperpar_bkg
-
+   gamse.pipelines.foces.reduce_singlefiber.reduce_singlefiber
+   gamse.pipelines.foces.reduce_doublefiber.reduce_doublefiber
+   gamse.pipelines.foces.flat.smooth_aperpar_A
+   gamse.pipelines.foces.flat.smooth_aperpar_k
+   gamse.pipelines.foces.flat.smooth_aperpar_c
+   gamse.pipelines.foces.flat.smooth_aperpar_bkg
 
 References
 -----------

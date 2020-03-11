@@ -5,22 +5,27 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+import scipy.interpolate as intp
+import scipy.optimize as opt
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
-                             mosaic_speclist)
+                             mosaic_spec)
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_time_weight, find_caliblamp_offset,
-                                reference_wavelength,
+                                reference_spec_wavelength,
+                                reference_pixel_wavelength,
                                 reference_self_wavelength,
                                 combine_fiber_cards,
                                 combine_fiber_spec,
                                 combine_fiber_identlist,
                                 )
-from ...echelle.background import find_background, simple_debackground
+from ...echelle.background import (find_background, simple_debackground,
+                                   get_single_background, get_xdisp_profile,
+                                   find_profile_scale, BackgroundLight)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
@@ -146,11 +151,12 @@ def reduce_doublefiber(logtable, config):
     '''
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_sens_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
     # first combine the flats
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
@@ -171,9 +177,12 @@ def reduce_doublefiber(logtable, config):
                 and os.path.exists(aperset_filename):
                 # read flat data and mask array
                 hdu_lst = fits.open(flat_filename)
-                flat_data  = hdu_lst[0].data
-                exptime    = hdu_lst[0].header[exptime_key]
-                mask_array = hdu_lst[1].data
+                flat_data = hdu_lst[0].data
+                flat_mask = hdu_lst[1].data
+                flat_norm = hdu_lst[2].data
+                flat_sens = hdu_lst[3].data
+                flat_spec = hdu_lst[4].data
+                exptime   = hdu_lst[0].header[exptime_key]
                 hdu_lst.close()
                 aperset = load_aperture_set(aperset_filename)
             else:
@@ -245,16 +254,10 @@ def reduce_doublefiber(logtable, config):
 
                 # find saturation mask
                 sat_mask = allmask > nflat/2.
-                mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+                flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
-                # pack results and save to fits
-                hdu_lst = fits.HDUList([
-                            fits.PrimaryHDU(flat_data, head),
-                            fits.ImageHDU(mask_array),
-                            ])
-                hdu_lst.writeto(flat_filename, overwrite=True)
-
-                # now flt_data and mask_array are prepared
+                # get exposure time normalized flats
+                flat_norm = flat_data/exptime
 
                 # create the trace figure
                 tracefig = TraceFigure()
@@ -262,11 +265,11 @@ def reduce_doublefiber(logtable, config):
                 # if debackground before detecting the orders, then we lose the 
                 # ability to detect the weak blue orders.
                 #xnodes = np.arange(0, flat_data.shape[1], 200)
-                #flat_debkg = simple_debackground(flat_data, mask_array, xnodes,
+                #flat_dbkg = simple_debackground(flat_data, flat_mask, xnodes,
                 # smooth=5)
-                #aperset = find_apertures(flat_debkg, mask_array,
+                #aperset = find_apertures(flat_dbkg, flat_mask,
                 section = config['reduce.trace']
-                aperset = find_apertures(flat_data, mask_array,
+                aperset = find_apertures(flat_data, flat_mask,
                             scan_step  = section.getint('scan_step'),
                             minimum    = section.getfloat('minimum'),
                             separation = section.get('separation'),
@@ -279,12 +282,60 @@ def reduce_doublefiber(logtable, config):
 
                 # save the trace figure
                 tracefig.adjust_positions()
-                tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
+                title = 'Trace for {}'.format(flat_filename)
+                tracefig.suptitle(title, fontsize=15)
                 tracefig.savefig(trace_figname)
 
                 aperset.save_txt(aperset_filename)
-                aperset.save_reg(aperset_regname, fiber=fiber,
-                                color={'A':'green','B':'yellow'}[fiber])
+                color = {'A':'green','B':'yellow'}[fiber]
+                aperset.save_reg(aperset_regname, fiber=fiber, color=color)
+
+                # do flat fielding
+                # prepare the output midproc figures in debug mode
+                if mode=='debug':
+                    figname = 'flat_aperpar_{}_{}_%03d.{}'.format(
+                                fiber, flatname, fig_format)
+                    fig_aperpar = os.path.join(report, figname)
+                else:
+                    fig_aperpar = None
+
+                # prepare the name for slit figure
+                figname = 'slit_flat_{}_{}.{}'.format(
+                            fiber, flatname, fig_format)
+                fig_slit = os.path.join(report, figname)
+
+                # prepare the name for slit file
+                fname = 'slit_flat_{}_{}.dat'.format(fiber, flatname)
+                slit_file = os.path.join(midproc, fname)
+
+                section = config['reduce.flat']
+
+                flat_sens, flat_spec = get_fiber_flat(
+                            data            = flat_data,
+                            mask            = flat_mask,
+                            apertureset     = aperset,
+                            slit_step       = section.getint('slit_step'),
+                            nflat           = nflat,
+                            q_threshold     = section.getfloat('q_threshold'),
+                            smooth_A_func   = smooth_aperpar_A,
+                            smooth_k_func   = smooth_aperpar_k,
+                            smooth_c_func   = smooth_aperpar_c,
+                            smooth_bkg_func = smooth_aperpar_bkg,
+                            fig_aperpar     = fig_aperpar,
+                            fig_overlap     = None,
+                            fig_slit        = fig_slit,
+                            slit_file       = slit_file,
+                            )
+
+                # pack results and save to fits
+                hdu_lst = fits.HDUList([
+                            fits.PrimaryHDU(flat_data, head),
+                            fits.ImageHDU(flat_mask),
+                            fits.ImageHDU(flat_norm),
+                            fits.ImageHDU(flat_sens),
+                            fits.BinTableHDU(flat_spec)
+                            ])
+                hdu_lst.writeto(flat_filename, overwrite=True)
 
             '''
             # correct background for flat
@@ -317,80 +368,13 @@ def reduce_doublefiber(logtable, config):
 
             # append the flat data and mask
             flat_data_lst[fiber][flatname] = flat_data
-            flat_norm_lst[fiber][flatname] = flat_data/exptime
-            flat_mask_lst[fiber][flatname] = mask_array
-            aperset_lst[fiber][flatname]   = aperset
+            flat_mask_lst[fiber][flatname] = flat_mask
+            flat_norm_lst[fiber][flatname] = flat_norm
+            flat_sens_lst[fiber][flatname] = flat_sens
+            flat_spec_lst[fiber][flatname] = flat_spec
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
+            aperset_lst[fiber][flatname]   = aperset
 
-    ########################### Get flat fielding ##############################
-    flatmap_lst = {}
-
-    for fiber, fiber_group in sorted(flat_groups.items()):
-        for flatname in sorted(fiber_group.keys()):
-
-            # get filename of flat
-            flat_filename = os.path.join(midproc,
-                    'flat_{}_{}.fits'.format(fiber, flatname))
-
-            hdu_lst = fits.open(flat_filename, mode='update')
-            if len(hdu_lst)>=3:
-                # sensitivity map already exists in fits file
-                flatmap = hdu_lst[2].data
-                hdu_lst.close()
-            else:
-                # do flat fielding
-                print('*** Start parsing flat fielding: %s ***'%flat_filename)
-                fig_aperpar = {
-                    'debug': os.path.join(report,
-                            'flat_aperpar_{}_{}_%03d.{}'.format(
-                                fiber, flatname, fig_format)),
-                    'normal': None,
-                    }[mode]
-
-                fig_slit = os.path.join(report,
-                                'slit_flat_{}_{}.{}'.format(
-                                    fiber, flatname, fig_format))
-    
-                section = config['reduce.flat']
-    
-                flatmap, flatspec = get_fiber_flat(
-                            data            = flat_data_lst[fiber][flatname],
-                            mask            = flat_mask_lst[fiber][flatname],
-                            apertureset     = aperset_lst[fiber][flatname],
-                            slit_step       = section.getint('slit_step'),
-                            nflat           = len(flat_groups[fiber][flatname]),
-                            q_threshold     = section.getfloat('q_threshold'),
-                            smooth_A_func   = smooth_aperpar_A,
-                            smooth_k_func   = smooth_aperpar_k,
-                            smooth_c_func   = smooth_aperpar_c,
-                            smooth_bkg_func = smooth_aperpar_bkg,
-                            fig_aperpar     = fig_aperpar,
-                            fig_overlap     = None,
-                            fig_slit        = fig_slit,
-                            slit_file       = None,
-                            )
-
-                flat_spec_lst[fiber][flatname] = flatspec
-
-                '''
-                for aper, spec in sorted(flatspec.items()):
-                    fig = plt.figure(dpi=150)
-                    ax = fig.gca()
-                    ax.plot(spec)
-                    fig.savefig('flatspec_%s_%s_%d_simps.png'%(fiber, flatname, aper))
-                    plt.close(fig)
-                '''
-                
-                # append the sensivity map to fits file
-                hdu_lst.append(fits.ImageHDU(flatmap))
-                # write back to the original file
-                hdu_lst.flush()
-    
-            # append the flatmap
-            if fiber not in flatmap_lst:
-                flatmap_lst[fiber] = {}
-            flatmap_lst[fiber][flatname] = flatmap
-    
             # continue to the next colored flat
         # continue to the next fiber
 
@@ -419,8 +403,9 @@ def reduce_doublefiber(logtable, config):
             flatname = list(fiber_flat_lst)[0]
 
             # copy the flat fits
-            oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
+            fname = 'flat_{}_{}.fits'.format(fiber, flatname)
+            oriname = os.path.join(midproc, fname)
+            shutil.copyfile(oriname, flat_fiber_file)
 
             '''
             # copy the trc file
@@ -438,7 +423,7 @@ def reduce_doublefiber(logtable, config):
             shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
             '''
 
-            flat_map = flatmap_lst[fiber][flatname]
+            flat_sens = flat_sens_lst[fiber][flatname]
     
             # no need to mosaic aperset
             master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
@@ -458,42 +443,34 @@ def reduce_doublefiber(logtable, config):
             flat_data = mosaic_images(flat_data_lst[fiber],
                                         master_aperset[fiber])
             # mosaic flat mask images
-            mask_data = mosaic_images(flat_mask_lst[fiber],
-                                        master_aperset[fiber])
-            # mosaic sensitivity map
-            flat_map = mosaic_images(flatmap_lst[fiber],
+            flat_mask = mosaic_images(flat_mask_lst[fiber],
                                         master_aperset[fiber])
             # mosaic exptime-normalized flat images
             flat_norm = mosaic_images(flat_norm_lst[fiber],
                                         master_aperset[fiber])
+            # mosaic sensitivity map
+            flat_sens = mosaic_images(flat_sens_lst[fiber],
+                                        master_aperset[fiber])
             # mosaic 1d spectra of flats
-            flat_spec = mosaic_speclist(flat_spec_lst[fiber],
+            flat_spec = mosaic_spec(flat_spec_lst[fiber],
                                         master_aperset[fiber])
 
             # change contents of several lists
             flat_data_lst[fiber] = flat_data
-            flat_mask_lst[fiber] = mask_data
-            flatmap_lst[fiber]   = flat_map
+            flat_mask_lst[fiber] = flat_mask
             flat_norm_lst[fiber] = flat_norm
+            flat_sens_lst[fiber] = flat_sens
             flat_spec_lst[fiber] = flat_spec
     
             # pack and save to fits file
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(flat_data),
-                        fits.ImageHDU(mask_data),
-                        fits.ImageHDU(flat_map),
+                        fits.ImageHDU(flat_mask),
                         fits.ImageHDU(flat_norm),
+                        fits.ImageHDU(flat_sens),
+                        fits.BinTableHDU(flat_spec),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
-
-            '''
-            for aper, spec in flat_spec.items():
-                fig = plt.figure(dpi=150)
-                ax = fig.gca()
-                ax.plot(spec)
-                plt.savefig('tmp/flatspec_%s_%d.png'%(fiber,aper))
-                plt.close(fig)
-            '''
 
         # align different fibers
         if ifiber == 0:
@@ -514,6 +491,26 @@ def reduce_doublefiber(logtable, config):
             # correct the aperture offset
             master_aperset[fiber].shift_aperture(-offset)
 
+            # also correct the aperture number in flatspec
+            flat_spec_lst[fiber]['aperture'] -= offset
+
+    # save the mosaic, offset-corrected aperset to txt files
+    for fiber, aperset in sorted(master_aperset.items()):
+        # save as .trc file
+        fname = 'trace_{}.trc'.format(fiber)
+        outfilename = os.path.join(midproc, fname)
+        aperset.save_txt(outfilename)
+        message = '{} Apertures for fiber {} saved to "{}"'.format(
+                    len(aperset), fiber, outfilename)
+        logger.info(message)
+        print(message)
+
+        # save as .reg file
+        fname = 'trace_{}.reg'.format(fiber)
+        outfilename = os.path.join(midproc, fname)
+        color = {'A': 'green', 'B': 'yellow'}[fiber]
+        aperset.save_reg(outfilename, fiber=fiber, color=color)
+
     # find all the aperture list for all fibers
     allmax_aper = -99
     allmin_aper = 999
@@ -521,11 +518,6 @@ def reduce_doublefiber(logtable, config):
         fiber = chr(ifiber+65)
         allmax_aper = max(allmax_aper, max(master_aperset[fiber]))
         allmin_aper = min(allmin_aper, min(master_aperset[fiber]))
-
-    #fig = plt.figure(dpi=150)
-    #ax = fig.gca()
-    #test_data = {'A': np.ones((2048, 2048))+1,
-    #             'B': np.ones((2048, 2048))+2}
 
     # pack all aperloc into a single list
     all_aperloc_lst = []
@@ -536,15 +528,14 @@ def reduce_doublefiber(logtable, config):
             x, y = aperloc.get_position()
             center = aperloc.get_center()
             all_aperloc_lst.append([fiber, aper, aperloc, center])
-            #ax.plot(x, y, color='gy'[ifiber], lw=1)
 
     # mosaic flat map
     sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
-    h, w = flat_map.shape
+    h, w = flat_data.shape
     master_flatdata = np.ones_like(flat_data)
-    master_flatmask = np.ones_like(mask_data)
-    master_flatmap  = np.ones_like(flat_map)
+    master_flatmask = np.ones_like(flat_mask)
     master_flatnorm = np.ones_like(flat_norm)
+    master_flatsens = np.ones_like(flat_sens)
     yy, xx = np.mgrid[:h, :w]
     prev_line = np.zeros(w)
     for i in np.arange(len(sorted_aperloc_lst)-1):
@@ -557,53 +548,99 @@ def reduce_doublefiber(logtable, config):
         mask = (yy >= prev_line)*(yy < next_line)
         master_flatdata[mask] = flat_data_lst[fiber][mask]
         master_flatmask[mask] = flat_mask_lst[fiber][mask]
-        master_flatmap[mask]  = flatmap_lst[fiber][mask]
         master_flatnorm[mask] = flat_norm_lst[fiber][mask]
+        master_flatsens[mask] = flat_sens_lst[fiber][mask]
         prev_line = next_line
     # parse the last order
     mask = yy >= prev_line
     master_flatdata[mask] = flat_data_lst[next_fiber][mask]
     master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
-    master_flatmap[mask] = flatmap_lst[next_fiber][mask]
     master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
-
-    #ax.imshow(master_flatmap, alpha=0.6)
-    #plt.show()
-    #print(h, w)
+    master_flatsens[mask] = flat_sens_lst[next_fiber][mask]
 
     hdu_lst = fits.HDUList([
                 fits.PrimaryHDU(master_flatdata),
                 fits.ImageHDU(master_flatmask),
-                fits.ImageHDU(master_flatmap),
                 fits.ImageHDU(master_flatnorm),
+                fits.ImageHDU(master_flatsens),
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
-    '''
-    #################### Extract Flat Fielding Spectrum ########################
+    ######################### Find Background Lights ###########################
+    saved_bkg_lst = []
+    #fig = plt.figure(dpi=150)
+    #ax = fig.gca()
+    for logitem in logtable:
+        # alias
+        fileid     = logitem['fileid']
+        objectname = logitem['object']
+        exptime    = logitem['exptime']
 
-    # correct flat for flatfielding
-    flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    for ifiber in range(n_fiber):
+        if objectname.strip().lower() in ['bias', 'dark']:
+            continue
+        fiberobj_lst = [v.strip().lower()
+                        for v in objectname.split('|')]
+
+        # this image shall contains data from only 1 fiber
+        alst = list(filter(lambda v: len(v[1])>0, enumerate(fiberobj_lst)))
+        if len(alst) != 1:
+            continue
+        ifiber, objname = alst[0]
         fiber = chr(ifiber+65)
-        data = flat_norm_lst[fiber]/master_flatmap
-        mask = flat_mask_lst[fiber]
 
-        fits.writeto('flat_flt.{}.fits'.format(fiber), data, overwrite=True)
+        # find background lights
+        if objname == 'comb':
+            filename = os.path.join(rawdata, fileid+'.fits')
+            data, head = fits.getdata(filename, header=True)
+            if data.ndim == 3:
+                data = data[0,:,:]
+            mask = get_mask(data)
 
-        section = config['reduce.extract']
-        spectra1d = extract_aperset(data, mask,
-                        apertureset = master_aperset[fiber],
-                        lower_limit = section.getfloat('lower_limit'),
-                        upper_limit = section.getfloat('upper_limit'),
+            # correct overscan
+            data, card_lst, overmean = correct_overscan(data, mask)
+
+            # correct bias for ThAr, if has bias
+            if bias is None:
+                message = 'No bias. skipped bias correction'
+            else:
+                data = data - bias
+                message = 'Bias corrected'
+
+            # get background lights
+            bkg_image = get_single_background(data, master_aperset[fiber])
+
+            # get order brightness profile
+            result = get_xdisp_profile(data, master_aperset[fiber])
+            aper_num_lst, aper_pos_lst, aper_brt_lst = result
+
+
+            # pack to background list
+            bkg_info = {
+                        'fileid': fileid,
+                        'fiber': fiber,
+                        'object': 'comb',
+                        'exptime': exptime,
+                        'date-obs': head[statime_key],
+                        }
+            bkg_obj = BackgroundLight(
+                        info          = bkg_info,
+                        header        = head,
+                        data          = bkg_image,
+                        aper_num_lst  = aper_num_lst,
+                        aper_pos_lst  = aper_pos_lst,
+                        aper_brt_lst  = aper_brt_lst,
                         )
-        flat_spec_lst[fiber] = spectra1d
-    '''
+    
+            saved_bkg_lst.append(bkg_obj)
+
+            #ax.plot(brightness_profile, label='{}: {}'.format(fiber, 'comb'))
+    #ax.legend(loc='upper left')
+    #plt.show()
 
     ############################## Extract ThAr ################################
 
     # get the data shape
-    h, w = flat_map.shape
+    h, w = flat_sens.shape
 
     # define dtype of 1-d spectra for all fibers
     types = [
@@ -699,13 +736,18 @@ def reduce_doublefiber(logtable, config):
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                # search for flat flux
+                m = flat_spec_lst[fiber]['aperture']==aper
+                flat_flux = flat_spec_lst[fiber][m][0]['flux']
+
+                # pack to table
                 spec.append((
                     aper,          # aperture
                     0,             # order (not determined yet)
                     flux_sum.size, # number of points
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
                     flux_sum,      # fluxes
-                    flat_spec_lst[fiber][aper],  # flat
+                    flat_flux,     # flat
                     np.zeros_like(flux_sum, dtype=np.float32), # background
                     ))
             spec = np.array(spec, dtype=spectype)
@@ -959,6 +1001,32 @@ def reduce_doublefiber(logtable, config):
                 continue
 
     
+    #################### Calibrate the Saved Background Lights #################
+    if len(saved_bkg_lst)>0:
+        for bkg_obj in saved_bkg_lst:
+            fileid  = bkg_obj.info['fileid']
+            fiber   = bkg_obj.info['fiber']
+            dateobs = bkg_obj.info['date-obs']
+
+            # get weights for calib list
+            weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
+            aper_num_lst = bkg_obj.aper_num_lst
+            ny, nx = bkg_obj.data.shape
+            pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+            # reference the wavelengths of background image
+            orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                                ref_calib_lst[fiber], weight_lst)
+            bkg_obj.aper_ord_lst = orders
+            bkg_obj.aper_wav_lst = waves
+
+            # save to fits
+            outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
+            bkg_obj.savefits(outfilename)
+
+            message = ('Background Light of {fileid} in fiber {fiber}: '
+                       'oject = {object}').format(**bkg_obj.info)
+            print(message)
+            logger.info(message)
 
     #################### Extract Science Spectrum ##############################
 
@@ -974,7 +1042,9 @@ def reduce_doublefiber(logtable, config):
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        fiberobj_lst = [v.strip().lower() for v in logitem['object'].split('|')]
+        object_lst = [v.strip().lower() for v in logitem['object'].split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
+                                   enumerate(object_lst)))
 
         logger.info(
             'FileID: {} ({}) - start reduction: {}'.format(
@@ -1011,71 +1081,140 @@ def reduce_doublefiber(logtable, config):
         print(message)
 
         # correct flat
-        data = data/master_flatmap
+        data = data/master_flatsens
         message = 'FileID: {} - flat corrected'.format(fileid)
         logger.info(message)
         print(message)
 
+        # for DEBUG use
+        fname = '{}_flt.fits'.format(logitem['fileid'])
+        filename = os.path.join(midproc, fname)
+        fits.writeto(filename, data, overwrite=True)
+
         # background correction
-        section = config['reduce.background']
-        ncols    = section.getint('ncols')
-        distance = section.getfloat('distance')
-        yorder   = section.getint('yorder')
-        subtract = section.getboolean('subtract')
-        excluded_frameids = section.get('excluded_frameids')
-        excluded_frameids = parse_num_seq(excluded_frameids)
 
-        if (subtract and frameid not in excluded_frameids) or \
-           (not subtract and frameid in excluded_frameids):
-
-            # find apertureset list for this item
-            apersets = {}
-            for ifiber in range(n_fiber):
-                fiber = chr(ifiber+65)
-                if len(fiberobj_lst[ifiber])>0:
+        if len(fiberobj_lst)==1:
+            section = config['reduce.background']
+            ncols    = section.getint('ncols')
+            distance = section.getfloat('distance')
+            yorder   = section.getint('yorder')
+            subtract = section.getboolean('subtract')
+            excluded_frameids = section.get('excluded_frameids')
+            excluded_frameids = parse_num_seq(excluded_frameids)
+            
+            if (subtract and frameid not in excluded_frameids) or \
+               (not subtract and frameid in excluded_frameids):
+            
+                # find apertureset list for this item
+                apersets = {}
+                for (ifiber, objt) in fiberobj_lst:
+                    fiber = chr(ifiber+65)
                     apersets[fiber] = master_aperset[fiber]
+            
+                figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
+                fig_sec = os.path.join(report, figname)
+            
+                stray = find_background(data, mask,
+                                aperturesets = apersets,
+                                ncols        = ncols,
+                                distance     = distance,
+                                yorder       = yorder,
+                                fig_section  = fig_sec,
+                        )
+                data = data - stray
+            
+                # put information into header
+                prefix = 'HIERARCH GAMSE BACKGROUND '
+                head.append((prefix + 'CORRECTED', True))
+                head.append((prefix + 'XMETHOD',   'cubic spline'))
+                head.append((prefix + 'YMETHOD',   'polynomial'))
+                head.append((prefix + 'NCOLUMN',   ncols))
+                head.append((prefix + 'DISTANCE',  distance))
+                head.append((prefix + 'YORDER',    yorder))
+            
+                # plot stray light
+                bkgfig = BackgroudFigure()
+                bkgfig.plot_background(data+stray, stray)
+                bkgfig.suptitle('Background Correction for {}'.format(fileid))
+                figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
+                fig_stray = os.path.join(report, figname)
+                bkgfig.savefig(fig_stray)
+            
+                message = 'FileID: {} - background corrected. max value = {}'.format(
+                        fileid, stray.max())
+            else:
+                stray = None
+                # put information into header
+                prefix = 'HIERARCH GAMSE BACKGROUND '
+                head.append((prefix + 'CORRECTED', False))
+                message = 'FileID: {} - background not corrected.'.format(fileid)
+            
+            logger.info(message)
+            print(message)
 
-            figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
-            fig_sec = os.path.join(report, figname)
-
-            stray = find_background(data, mask,
-                            aperturesets = apersets,
-                            ncols        = ncols,
-                            distance     = distance,
-                            yorder       = yorder,
-                            fig_section  = fig_sec,
-                    )
-            data = data - stray
-
-            # put information into header
-            prefix = 'HIERARCH GAMSE BACKGROUND '
-            head.append((prefix + 'CORRECTED', True))
-            head.append((prefix + 'XMETHOD',   'cubic spline'))
-            head.append((prefix + 'YMETHOD',   'polynomial'))
-            head.append((prefix + 'NCOLUMN',   ncols))
-            head.append((prefix + 'DISTANCE',  distance))
-            head.append((prefix + 'YORDER',    yorder))
-
-            # plot stray light
-            bkgfig = BackgroudFigure()
-            bkgfig.plot_background(data+stray, stray)
-            bkgfig.suptitle('Background Correction for {}'.format(fileid))
-            figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
-            fig_stray = os.path.join(report, figname)
-            bkgfig.savefig(fig_stray)
-
-            message = 'FileID: {} - background corrected. max value = {}'.format(
-                    fileid, stray.max())
         else:
-            stray = None
-            # put information into header
-            prefix = 'HIERARCH GAMSE BACKGROUND '
-            head.append((prefix + 'CORRECTED', False))
-            message = 'FileID: {} - background not corrected.'.format(fileid)
+            fig = plt.figure(dpi=150, figsize=(12, 8))
+            ax1 = fig.add_subplot(311)
+            ax2 = fig.add_subplot(312)
+            ax3 = fig.add_subplot(313)
 
-        logger.info(message)
-        print(message)
+            for (ifiber, obj) in fiberobj_lst:
+                fiber = chr(ifiber+65)
+                result = get_xdisp_profile(data, master_aperset[fiber])
+                aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
+                weight_lst = get_time_weight(ref_datetime_lst[fiber],
+                                            head[statime_key])
+                ny, nx = data.shape
+                pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+                aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
+                                                pixel_lst, aper_num_lst,
+                                                ref_calib_lst[fiber],
+                                                weight_lst)
+
+                obs_bkg_obj = BackgroundLight(
+                                aper_num_lst = aper_num_lst,
+                                aper_pos_lst = aper_pos_lst,
+                                aper_brt_lst = aper_brt_lst,
+                                aper_ord_lst = aper_ord_lst,
+                                aper_wav_lst = aper_wav_lst,
+                                )
+
+                ax1.plot(aper_pos_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
+                ax2.plot(aper_wav_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
+                ax3.plot(aper_ord_lst, aper_brt_lst,
+                            label='obs, Fiber {}'.format(fiber))
+
+                for bkg_obj in saved_bkg_lst:
+                    info = bkg_obj.info
+                    if info['fiber'] == fiber and info['object'] == obj \
+                        and bkg_obj.data.shape == data.shape:
+                        saved_apr_lst = bkg_obj.aper_num_lst
+                        saved_ord_lst = bkg_obj.aper_ord_lst
+                        saved_pos_lst = bkg_obj.aper_pos_lst
+                        saved_brt_lst = bkg_obj.aper_brt_lst
+                        saved_wav_lst = bkg_obj.aper_wav_lst
+
+                        ax1.plot(saved_pos_lst, saved_brt_lst, label='saved')
+                        ax2.plot(saved_wav_lst, saved_brt_lst, label='saved')
+                        ax3.plot(saved_ord_lst, saved_brt_lst, label='saved')
+                        scale = obs_bkg_obj.find_brightness_scale(bkg_obj)
+                        ax1.plot(saved_pos_lst, saved_brt_lst*scale, label='saved')
+                        ax2.plot(saved_wav_lst, saved_brt_lst*scale, label='saved')
+                        ax3.plot(saved_ord_lst, saved_brt_lst*scale, label='saved')
+                        #ax1.plot(saved_brt_profile*scale, label='scaled')
+                        #ax2.plot(brt_profile/saved_brt_profile)
+                        ax1.legend(loc='upper left')
+                        ax2.legend(loc='upper left')
+                        ax3.legend(loc='upper left')
+
+                        break
+
+            plt.show()
+
+        exit()
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1083,11 +1222,8 @@ def reduce_doublefiber(logtable, config):
         #all_cards = {}
         lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
         upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
-        for ifiber in range(n_fiber):
+        for ifiber, obj in fiberobj_lst:
             fiber = chr(ifiber+65)
-            if fiberobj_lst[ifiber]=='':
-                # nothing in this fiber
-                continue
 
             #all_cards[fiber] = []
 
@@ -1130,10 +1266,14 @@ def reduce_doublefiber(logtable, config):
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                # search for flat flux
+                m = flat_spec_lst[fiber]['aperture']==aper
+                flat_flux = flat_spec_lst[fiber][m][0]['flux']
+
                 item = (aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64), # wavelength
                         flux_sum,
-                        flat_spec_lst[fiber][aper], # 1d spectra of flat
+                        flat_flux,                  # 1d spectra of flat
                         stray1d[aper]['flux_sum'],  # 1d sepctra of background
                         )
                 spec.append(item)
@@ -1151,11 +1291,8 @@ def reduce_doublefiber(logtable, config):
             logger.info(message)
             print(message)
 
-            spec, card_lst = reference_wavelength(
-                                spec,
-                                ref_calib_lst[fiber],
-                                weight_lst,
-                                )
+            spec, card_lst = reference_spec_wavelength(spec,
+                                ref_calib_lst[fiber], weight_lst)
             all_spec[fiber] = spec
             #all_cards[fiber] = card_lst
             prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
@@ -1180,3 +1317,4 @@ def reduce_doublefiber(logtable, config):
                     fileid, filename)
         logger.info(message)
         print(message)
+
