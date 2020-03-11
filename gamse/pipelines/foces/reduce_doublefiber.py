@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
-import scipy.optimize as opt
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
@@ -1191,21 +1190,14 @@ def reduce_doublefiber(logtable, config):
                     info = bkg_obj.info
                     if info['fiber'] == fiber and info['object'] == obj \
                         and bkg_obj.data.shape == data.shape:
-                        saved_apr_lst = bkg_obj.aper_num_lst
-                        saved_ord_lst = bkg_obj.aper_ord_lst
-                        saved_pos_lst = bkg_obj.aper_pos_lst
-                        saved_brt_lst = bkg_obj.aper_brt_lst
-                        saved_wav_lst = bkg_obj.aper_wav_lst
 
-                        ax1.plot(saved_pos_lst, saved_brt_lst, label='saved')
-                        ax2.plot(saved_wav_lst, saved_brt_lst, label='saved')
-                        ax3.plot(saved_ord_lst, saved_brt_lst, label='saved')
+                        ax1.plot(bkg_obj.aper_pos_lst, bkg_obj.aper_brt_lst, label='saved')
+                        ax2.plot(bkg_obj.aper_wav_lst, bkg_obj.aper_brt_lst, label='saved')
+                        ax3.plot(bkg_obj.aper_ord_lst, bkg_obj.aper_brt_lst, label='saved')
                         scale = obs_bkg_obj.find_brightness_scale(bkg_obj)
-                        ax1.plot(saved_pos_lst, saved_brt_lst*scale, label='saved')
-                        ax2.plot(saved_wav_lst, saved_brt_lst*scale, label='saved')
-                        ax3.plot(saved_ord_lst, saved_brt_lst*scale, label='saved')
-                        #ax1.plot(saved_brt_profile*scale, label='scaled')
-                        #ax2.plot(brt_profile/saved_brt_profile)
+                        ax1.plot(bkg_obj.aper_pos_lst, bkg_obj.aper_brt_lst*scale, label='scaled')
+                        ax2.plot(bkg_obj.aper_wav_lst, bkg_obj.aper_brt_lst*scale, label='scaled')
+                        ax3.plot(bkg_obj.aper_ord_lst, bkg_obj.aper_brt_lst*scale, label='scaled')
                         ax1.legend(loc='upper left')
                         ax2.legend(loc='upper left')
                         ax3.legend(loc='upper left')
