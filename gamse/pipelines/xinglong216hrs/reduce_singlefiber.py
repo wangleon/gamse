@@ -14,7 +14,7 @@ from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 get_time_weight, find_caliblamp_offset,
-                                reference_wavelength,
+                                reference_spec_wavelength,
                                 reference_self_wavelength)
 from ..common import plot_background_aspect1, FormattedInfo
 from .common import (get_mask, correct_overscan, parse_bias_frames,
@@ -724,19 +724,28 @@ def reduce_singlefiber(logtable, config):
         # wavelength calibration
         weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-        logger.info('FileID: {} - wavelength calibration weights: {}'.format(
-            fileid, ','.join(['%8.4f'%w for w in weight_lst])))
+        message = 'FileID: {} - wavelength calibration weights: {}'.format(
+                    fileid, ','.join(['{:8.4f}'.format(w) for w in weight_lst]))
 
-        spec, head = wl_reference_singlefiber(spec, head,
-                        ref_calib_lst, weight_lst)
+        logger.info(message)
+        print(message)
+
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix + key, value))
 
         # pack and save wavelength referenced spectra
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(spec),
                     ])
-        filename = os.path.join(onedspec,
-                                '{}_{}.fits'.format(fileid, oned_suffix))
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
-        logger.info('FileID: {} - Spectra written to {}'.format(
-            fileid, filename))
+
+        message = 'FileID: {} - Spectra written to {}'.format(
+                    fileid, filename)
+        logger.info(message)
+        print(message)

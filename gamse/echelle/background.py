@@ -1092,7 +1092,8 @@ class BackgroundLight(object):
             bkg_obj ():
 
         Returns:
-            *float*: Relative shift along the cross-dispersion direction.
+            *float*: Relative shift in pixel along the cross-dispersion
+                    direction.
         """
         
         common_ord_lst = [order for order in self.aper_ord_lst
@@ -1132,3 +1133,63 @@ class BackgroundFigureCommon(Figure):
     def __init__(self, *args, **kwargs):
         Figure.__init__(self, *args, **kwargs)
         self.canvas = FigureCanvasAgg(self)
+
+def find_best_background(background_lst, background, fiber, objname, time,
+        objtype):
+
+    if objname == 'comb':
+        candidate_lst = []
+        shift_lst = []
+        scale_lst = []
+        for bkg_obj in background_lst:
+            if bkg_obj.info['object'] == 'comb' \
+                and  bkg_obj.info['fiber'] == fiber:
+                shift = background.find_xdisp_shift(bkg_obj)
+                scale = background.find_brightness_scale(bkg_obj)
+                shift_lst.append(shift)
+                scale_lst.append(scale)
+                candidate_lst.append(bkg_obj)
+
+        if len(candidate_lst)>0:
+            index= np.array(scale_lst).argmin()
+            return candidate_lst[index]
+
+        for bkg_obj in background_lst:
+            if bkg_obj.info['object'] == 'comb':
+                shift = background.find_xdisp_shift(bkg_obj)
+                scale = background.find_brightness_scale(bkg_obj)
+                shift_lst.append(shift)
+                scale_lst.append(scale)
+                candidate_lst.append(bkg_obj)
+
+        if len(candidate_lst)>0:
+            index= np.array(scale_lst).argmin()
+            return candidate_lst[index]
+
+    elif objtype == 'star':
+        candidate_lst = []
+        scale_lst = []
+
+        # check the same star
+        for bkg_obj in background_lst:
+            if bkg_obj.info['object'] != objname \
+                or bkg_obj.info['fiber'] != fiber:
+                continue
+            scale = background.find_brightness_scale(bkg_obj)
+            scale_lst.append(scale)
+            candidate_lst.append(bkg_obj)
+
+        if len(candidate_lst)>0:
+            index = np.array(scale_lst).argmin()
+            return candidate_lst[index]
+
+        for bkg_obj in background_lst:
+            if bkg_obj.info['fiber'] != fiber:
+                continue
+            scale = background.find_brightness_scale(bkg_obj)
+            scale_lst.append(scale)
+            candidate_lst.append(bkg_obj)
+
+        if len(candidate_lst)>0:
+            index = np.array(scale_lst).argmin()
+            return candidate_lst[index]

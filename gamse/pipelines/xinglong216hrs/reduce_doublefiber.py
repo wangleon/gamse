@@ -14,7 +14,7 @@ from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 get_time_weight, find_caliblamp_offset,
-                                reference_wavelength,
+                                reference_spec_wavelength,
                                 reference_self_wavelength)
 from ..common import plot_background_aspect1, FormattedInfo
 from .common import (get_mask, correct_overscan, parse_bias_frames,
@@ -938,23 +938,20 @@ def reduce_doublefiber(logtable, config):
             logger.info(message)
             print(message)
 
-            spec, card_lst = reference_wavelength(
-                                spec,
-                                ref_calib_lst[fiber],
-                                weight_lst,
-                                )
+            spec, card_lst = reference_spec_wavelength(spec,
+                                ref_calib_lst[fiber], weight_lst)
 
+            prefix = 'HIERARCH GAMSE WLCALIB '
             for key, value in card_lst:
-                key = 'HIERARCH GAMSE WLCALIB '+key
-                head.append((key, value))
+                head.append((prefix + key, value))
 
             # pack and save to fits
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(header=head),
                         fits.BinTableHDU(spec),
                         ])
-            filename = os.path.join(onedspec, '{}_{}_{}.fits'.format(
-                                            fileid, fiber, oned_suffix))
+            fname = '{}_{}_{}.fits'.format(fileid, fiber, oned_suffix)
+            filename = os.path.join(onedspec, fname)
             hdu_lst.writeto(filename, overwrite=True)
 
             message = 'FileID: {} - Spectra written to {}'.format(

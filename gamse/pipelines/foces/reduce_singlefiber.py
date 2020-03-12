@@ -13,7 +13,7 @@ from ...echelle.flat import get_fiber_flat, mosaic_flat_auto, mosaic_images
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_time_weight, find_caliblamp_offset,
-                                reference_wavelength,
+                                reference_spec_wavelength,
                                 reference_self_wavelength,
                                 combine_fiber_cards,
                                 combine_fiber_spec,
@@ -758,12 +758,16 @@ def reduce_singlefiber(logtable, config):
         weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
         message = 'FileID: {} - wavelength calibration weights: {}'.format(
-                    fileid, ','.join(['%8.4f'%w for w in weight_lst]))
+                    fileid, ','.join(['{:8.4f}'.format(w) for w in weight_lst]))
 
         logger.info(message)
         print(message)
 
-        spec, head = wl_reference(spec, head, ref_calib_lst, weight_lst)
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix + key, value))
 
         # pack and save wavelength referenced spectra
         hdu_lst = fits.HDUList([
