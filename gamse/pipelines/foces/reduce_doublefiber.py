@@ -565,76 +565,6 @@ def reduce_doublefiber(logtable, config):
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
-    ######################### Find Background Lights ###########################
-    saved_bkg_lst = []
-    #fig = plt.figure(dpi=150)
-    #ax = fig.gca()
-    for logitem in logtable:
-        # alias
-        fileid     = logitem['fileid']
-        objectname = logitem['object']
-        exptime    = logitem['exptime']
-
-        if objectname.strip().lower() in ['bias', 'dark']:
-            continue
-        fiberobj_lst = [v.strip().lower()
-                        for v in objectname.split('|')]
-
-        # this image shall contains data from only 1 fiber
-        alst = list(filter(lambda v: len(v[1])>0, enumerate(fiberobj_lst)))
-        if len(alst) != 1:
-            continue
-        ifiber, objname = alst[0]
-        fiber = chr(ifiber+65)
-
-        # find background lights
-        if objname == 'comb':
-            filename = os.path.join(rawdata, fileid+'.fits')
-            data, head = fits.getdata(filename, header=True)
-            if data.ndim == 3:
-                data = data[0,:,:]
-            mask = get_mask(data)
-
-            # correct overscan
-            data, card_lst, overmean = correct_overscan(data, mask)
-
-            # correct bias for ThAr, if has bias
-            if bias is None:
-                message = 'No bias. skipped bias correction'
-            else:
-                data = data - bias
-                message = 'Bias corrected'
-
-            # get background lights
-            bkg_image = get_single_background(data, master_aperset[fiber])
-
-            # get order brightness profile
-            result = get_xdisp_profile(data, master_aperset[fiber])
-            aper_num_lst, aper_pos_lst, aper_brt_lst = result
-
-
-            # pack to background list
-            bkg_info = {
-                        'fileid': fileid,
-                        'fiber': fiber,
-                        'object': 'comb',
-                        'exptime': exptime,
-                        'date-obs': head[statime_key],
-                        }
-            bkg_obj = BackgroundLight(
-                        info          = bkg_info,
-                        header        = head,
-                        data          = bkg_image,
-                        aper_num_lst  = aper_num_lst,
-                        aper_pos_lst  = aper_pos_lst,
-                        aper_brt_lst  = aper_brt_lst,
-                        )
-    
-            saved_bkg_lst.append(bkg_obj)
-
-            #ax.plot(brightness_profile, label='{}: {}'.format(fiber, 'comb'))
-    #ax.legend(loc='upper left')
-    #plt.show()
 
     ############################## Extract ThAr ################################
 
@@ -999,56 +929,42 @@ def reduce_doublefiber(logtable, config):
             else:
                 continue
 
-    
-    #################### Calibrate the Saved Background Lights #################
-    if len(saved_bkg_lst)>0:
-        for bkg_obj in saved_bkg_lst:
-            fileid  = bkg_obj.info['fileid']
-            fiber   = bkg_obj.info['fiber']
-            dateobs = bkg_obj.info['date-obs']
+    #################### Extract Spectra with Single Objects ###################
 
-            # get weights for calib list
-            weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
-            aper_num_lst = bkg_obj.aper_num_lst
-            ny, nx = bkg_obj.data.shape
-            pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-            # reference the wavelengths of background image
-            orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                                ref_calib_lst[fiber], weight_lst)
-            bkg_obj.aper_ord_lst = orders
-            bkg_obj.aper_wav_lst = waves
-
-            # save to fits
-            outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
-            bkg_obj.savefits(outfilename)
-
-            message = ('Background Light of {fileid} in fiber {fiber}: '
-                       'oject = {object}').format(**bkg_obj.info)
-            print(message)
-            logger.info(message)
-
-    #################### Extract Science Spectrum ##############################
+    # first round, find the images with only single objects. extract the
+    # spectra, and save the background lights
+    saved_bkg_lst = []
 
     for logitem in logtable:
-        
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
+        obj     = logitem['object']
+        exptime = logitem['exptime']
 
-        if imgtype != 'sci':
+        # remove the single objects but bias and dark. because they are also
+        # appear to be "single" objects
+        if obj.strip().lower() in ['bias', 'dark']:
             continue
+
+        # split the object names and make fiberobj_lst
+        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
+        obj_lst = [s.strip().lower() for s in obj.split('|')]
+
+        # remove images with multi-fibers
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
+        if len(fiberobj_lst) != 1:
+            continue
+        ifiber, objname = fiberobj_lst[0]
+        fiber = chr(ifiber+65)
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        object_lst = [v.strip().lower() for v in logitem['object'].split('|')]
-        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
-                                   enumerate(object_lst)))
-
-        logger.info(
-            'FileID: {} ({}) - start reduction: {}'.format(
-            fileid, imgtype, filename)
-            )
+        message = 'FileID: {} ({}) - start reduction: {}'.format(
+                    fileid, imgtype, filename)
+        logger.info(message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -1070,12 +986,145 @@ def reduce_doublefiber(logtable, config):
         print(message)
 
         # correct bias
-        if bias is not None:
+        if bias is None:
+            message = 'FileID: {} - no bias'.format(fileid)
+        else:
             data = data - bias
             message = 'FileID: {} - bias corrected. mean value = {}'.format(
                         fileid, bias.mean())
-        else:
+        logger.info(message)
+        print(message)
+
+        # correct flat
+        data = data/master_flatsens
+        message = 'FileID: {} - flat corrected'.format(fileid)
+        logger.info(message)
+        print(message)
+
+        # get background lights
+        bkg_image = get_single_background(data, master_aperset[fiber])
+
+        # get order brightness profile
+        result = get_xdisp_profile(data, master_aperset[fiber])
+        aper_num_lst, aper_pos_lst, aper_brt_lst = result
+
+        # calibrate the wavelength of background
+        # get weights for calib list
+        weight_lst = get_time_weight(ref_datetime_lst[fiber], dateobs)
+
+        ny, nx = data.shape
+        pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+
+        # reference the wavelengths of background image
+        orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                            ref_calib_lst[fiber], weight_lst)
+        aper_ord_lst = orders
+        aper_wav_lst = waves
+
+        # pack to background list
+        bkg_info = {
+                    'fileid': fileid,
+                    'fiber': fiber,
+                    'object': objname,
+                    'exptime': exptime,
+                    'date-obs': head[statime_key],
+                    }
+        bkg_obj = BackgroundLight(
+                    info         = bkg_info,
+                    header       = head,
+                    data         = bkg_image,
+                    aper_num_lst = aper_num_lst,
+                    aper_ord_lst = aper_ord_lst,
+                    aper_pos_lst = aper_pos_lst,
+                    aper_brt_lst = aper_brt_lst,
+                    aper_wav_lst = aper_wav_lst,
+                    )
+        # save to fits
+        outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
+        bkg_obj.savefits(outfilename)
+        # pack to saved_bkg_lst
+        saved_bkg_lst.append(bkg_obj)
+
+        message = ('Background Light of {} in fiber {}: '
+                    'oject = {}').format(fileid, fiber, objname)
+        logger.info(message)
+        print(message)
+
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        all_spec  = {}   # use to pack final 1d spectrum
+        lower_limits = {'A':section.getfloat('lower_limit'), 'B':4}
+        upper_limits = {'A':section.getfloat('upper_limit'), 'B':4}
+
+        lower_limit = lower_limits[fiber]
+        upper_limit = upper_limits[fiber]
+        apertureset = master_aperset[fiber]
+
+        spectra1d = extract_aperset(data, mask,
+                        apertureset = apertureset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
+                    )
+
+        # extract 1d spectra for stray light
+        stray1d = extract_aperset(stray, mask,
+                        apertureset = apertureset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
+                    )
+
+    #################### Extract Science Spectrum ##############################
+
+    for logitem in logtable:
+        
+        # logitem alias
+        frameid    = logitem['frameid']
+        fileid     = logitem['fileid']
+        imgtype    = logitem['imgtype']
+        objectname = logitem['object']
+        exptime    = logitem['exptime']
+
+        if imgtype != 'sci':
+            continue
+
+
+        object_lst = [v.strip().lower() for v in logitem['object'].split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
+                                   enumerate(object_lst)))
+
+        filename = os.path.join(rawdata, fileid+'.fits')
+
+        message = 'FileID: {} ({}) - start reduction: {}'.format(
+                    fileid, imgtype, filename)
+        logger.info(message)
+        print(message)
+
+        # read raw data
+        data, head = fits.getdata(filename, header=True)
+        if data.ndim == 3:
+            data = data[0,:,:]
+        mask = get_mask(data)
+
+        head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
+        # correct overscan
+        data, card_lst, overmean = correct_overscan(data, mask)
+        # head['BLANK'] is only valid for integer arrays.
+        if 'BLANK' in head:
+            del head['BLANK']
+        for key, value in card_lst:
+            head.append((key, value))
+
+        message = 'FileID: {} - overscan corrected'.format(fileid)
+        logger.info(message)
+        print(message)
+
+        # correct bias
+        if bias None:
             message = 'FileID: {} - no bias'.format(fileid)
+        else:
+            data = data - bias
+            message = 'FileID: {} - bias corrected. mean value = {}'.format(
+                        fileid, bias.mean())
         logger.info(message)
         print(message)
 
@@ -1278,7 +1327,7 @@ def reduce_doublefiber(logtable, config):
             message = ('FileID: {} - fiber {}'
                         ' - wavelength calibration weights: {}').format(
                         fileid, fiber,
-                        ','.join(['%8.4f'%w for w in weight_lst])
+                        ','.join(['{:8.4f}'.format(w) for w in weight_lst])
                         )
             logger.info(message)
             print(message)
@@ -1289,7 +1338,7 @@ def reduce_doublefiber(logtable, config):
             #all_cards[fiber] = card_lst
             prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
             for key, value in card_lst:
-                head.append((prefix+key, value))
+                head.append((prefix + key, value))
 
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
