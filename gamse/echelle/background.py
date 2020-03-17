@@ -10,6 +10,7 @@ import scipy.interpolate as intp
 import scipy.signal as sg
 import scipy.optimize as opt
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm     as cmap
@@ -1084,6 +1085,54 @@ class BackgroundLight(object):
 
         fits.writeto(filename, self.data, self.header, overwrite=True)
 
+    @staticmethod
+    def read(filename):
+        data, head = fits.getdata(filename, header=True)
+        prefix = 'GAMSE BACKGROUNDLIGHT '
+        info = {'fileid':   head[prefix + 'FILEID'],
+                'fiber':    head[prefix + 'FIBER'],
+                'object':   head[prefix + 'OBJECT'],
+                'exptime':  head[prefix + 'EXPTIME'],
+                'date-obs': head[prefix + 'DATE-OBS'],
+                }
+
+        aper_num_lst = []
+        aper_ord_lst = []
+        aper_pos_lst = []
+        aper_brt_lst = []
+        aper_wav_lst = []
+        for key, value in head.items():
+            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) ORDER', key)
+            if m:
+                aper = int(m.group(1))
+                aper_num_lst.append(aper)
+                aper_ord_lst.append(value)
+                continue
+            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) POSITION', key)
+            if m:
+                aper_pos_lst.append(value)
+                continue
+            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) BRIGHTNESS', key)
+            if m:
+                aper_brt_lst.append(value)
+                continue
+            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) WAVELENGTH', key)
+            if m:
+                aper_wav_lst.append(value)
+                continue
+
+        bkg_obj = BackgroundLigth(
+                    info         = info,
+                    header       = head,
+                    data         = data,
+                    aper_num_lst = aper_num_lst,
+                    aper_ord_lst = aper_ord_lst,
+                    aper_pos_lst = aper_pos_lst,
+                    aper_brt_lst = aper_brt_lst,
+                    aper_wav_lst = aper_wav_lst,
+                )
+        return bkg_obj
+
     def find_xdisp_shift(self, bkg_obj):
         """Find the relative shift between this and the input background light
         object.
@@ -1193,3 +1242,37 @@ def find_best_background(background_lst, background, fiber, objname, time,
         if len(candidate_lst)>0:
             index = np.array(scale_lst).argmin()
             return candidate_lst[index]
+
+def select_background_from_database(path, **args):
+    # find the index file
+    shape     = args.pop('shape')
+    fiber     = args.pop('fiber')
+    direction = args.pop('direction')
+    objtype   = args.pop('objtype',  None)
+    obj       = args.pop('obj',      None)
+    spectype  = args.pop('spectype', None)
+
+    filename = os.path.join(path, 'index.dat')
+    table = Table.read(filename, format='ascii.fixed_width_two_line')
+    # first round
+    candidate_lst = []
+
+    mask = table['objtype']==objtype
+    table = table[mask]
+
+    if obj == 'comb':
+        mask = table['object']=='comb'
+        table = table[mask]
+        m1 = table['shape']==str(shape)[1:-1]
+        m2 = table['fiber']==fiber
+        m3 = table['direction']==direction
+        score = np.int32(m1) + np.int32(m2) + np.int32(m3)
+        mask = score == score.max()
+        table = table[mask]
+        row = table[0]
+    else:
+        pass
+
+    selected_fileid = row['fileid']
+    filename = os.path.join(path, 'bkg_{}.fits'.format(selected_fileid))
+    return BackgroundLight.read(filename)
