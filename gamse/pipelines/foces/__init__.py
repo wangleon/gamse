@@ -122,7 +122,9 @@ def make_config():
     config.set('reduce.background', 'distance', str(distance))
     config.set('reduce.background', 'yorder',   str(6))
     config.set('reduce.background', 'excluded_frameids', '')
-
+    config.set('reduce.background', 'database_path',
+                                    '~/.gamse/FOCES/background')
+                                    
     config.add_section('reduce.extract')
     config.set('reduce.extract', 'upper_limit', str(6))
     config.set('reduce.extract', 'lower_limit', str(6))
