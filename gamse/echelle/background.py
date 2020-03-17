@@ -1,3 +1,4 @@
+import re
 import os
 import math
 import logging
@@ -1062,10 +1063,11 @@ class BackgroundLight(object):
             filename (str):
 
         """
-        prefix = 'HIERARCH GAMSE BACKGROUDLIGHT '
+        prefix = 'HIERARCH GAMSE BACKGROUNDLIGHT '
         self.header.append((prefix + 'FILEID',   self.info['fileid']))
         self.header.append((prefix + 'FIBER',    self.info['fiber']))
         self.header.append((prefix + 'OBJECT',   self.info['object']))
+        #self.header.append((prefix + 'OBJTYPE',  self.info['objtype']))
         self.header.append((prefix + 'EXPTIME',  self.info['exptime']))
         self.header.append((prefix + 'DATE-OBS', self.info['date-obs']))
 
@@ -1092,6 +1094,7 @@ class BackgroundLight(object):
         info = {'fileid':   head[prefix + 'FILEID'],
                 'fiber':    head[prefix + 'FIBER'],
                 'object':   head[prefix + 'OBJECT'],
+                #'objtype':  head[prefix + 'OBJTYPE'],
                 'exptime':  head[prefix + 'EXPTIME'],
                 'date-obs': head[prefix + 'DATE-OBS'],
                 }
@@ -1121,7 +1124,7 @@ class BackgroundLight(object):
                 aper_wav_lst.append(value)
                 continue
 
-        bkg_obj = BackgroundLigth(
+        bkg_obj = BackgroundLight(
                     info         = info,
                     header       = head,
                     data         = data,
@@ -1274,5 +1277,5 @@ def select_background_from_database(path, **args):
         pass
 
     selected_fileid = row['fileid']
-    filename = os.path.join(path, 'bkg_{}.fits'.format(selected_fileid))
+    filename = os.path.join(path, 'bkg.{}.fits'.format(selected_fileid))
     return BackgroundLight.read(filename)
