@@ -25,7 +25,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ...echelle.background import (find_background, simple_debackground,
                                    get_single_background, get_xdisp_profile,
                                    find_profile_scale, BackgroundLight,
-                                   find_best_background)
+                                   find_best_background,
+                                   select_background_from_database)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
 from .common import (obslog_columns, print_wrapper, get_mask,
@@ -1029,11 +1030,16 @@ def reduce_doublefiber(logtable, config):
         aper_ord_lst = orders
         aper_wav_lst = waves
 
+        #if objname == 'comb':
+        #    objtype = 'comb'
+        #else:
+        #    objtype = 'star'
         # pack to background list
         bkg_info = {
                     'fileid': fileid,
                     'fiber': fiber,
                     'object': objname,
+                    #'objtype': objtype,
                     'exptime': exptime,
                     'date-obs': head[statime_key],
                     }
@@ -1048,7 +1054,7 @@ def reduce_doublefiber(logtable, config):
                     aper_wav_lst = aper_wav_lst,
                     )
         # save to fits
-        outfilename = os.path.join(midproc, 'bkg_{}.fits'.format(fileid))
+        outfilename = os.path.join(midproc, 'bkg.{}.fits'.format(fileid))
         bkg_obj.savefits(outfilename)
         # pack to saved_bkg_lst
         saved_bkg_lst.append(bkg_obj)
@@ -1314,7 +1320,19 @@ def reduce_doublefiber(logtable, config):
 
             selected_bkg = find_best_background(saved_bkg_lst, obs_bkg_obj,
                                 fiber, objname, head[statime_key], objtype)
+            if selected_bkg is None:
+                # not found in today's data
+                database_path = config['reduce.background'].get('database_path')
+                database_path = os.path.expanduser(database_path)
+                selected_bkg = select_background_from_database(database_path,
+                                shape     = data.shape,
+                                fiber     = fiber,
+                                direction = config['data'].get('direction'),
+                                objtype   = objtype,
+                                obj       = objname,
+                                )
             scale = obs_bkg_obj.find_brightness_scale(selected_bkg)
+
             message = ('FileID: {} - fiber {} - {}: use background of {} '
                        'scale = {:6.3f}').format(fileid, fiber, objname,
                         selected_bkg.info['fileid'], scale)
