@@ -946,6 +946,10 @@ def reduce_doublefiber(logtable, config):
         obj     = logitem['object']
         exptime = logitem['exptime']
 
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
         # remove the single objects but bias and dark. because they are also
         # appear to be "single" objects
         if obj.strip().lower() in ['bias', 'dark']:
@@ -953,7 +957,7 @@ def reduce_doublefiber(logtable, config):
 
         # split the object names and make obj_lst
         # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
-        obj_lst = [s.strip().lower() for s in obj.split('|')]
+        obj_lst = [s.strip() for s in obj.split('|')]
 
         # remove images with multi-fibers
         fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
@@ -961,6 +965,7 @@ def reduce_doublefiber(logtable, config):
             continue
         ifiber, objname = fiberobj_lst[0]
         fiber = chr(ifiber+65)
+        objname = objname.lower()
 
         # remove Flat and ThAr
         if objname in ['flat', 'thar']:
@@ -968,8 +973,8 @@ def reduce_doublefiber(logtable, config):
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        message = 'FileID: {} ({}) - start reduction: {}'.format(
-                    fileid, imgtype, filename)
+        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
+                    fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
         print(message)
 
@@ -988,30 +993,34 @@ def reduce_doublefiber(logtable, config):
         for key, value in card_lst:
             head.append((key, value))
 
-        message = 'FileID: {} - overscan corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct bias
         if bias is None:
-            message = 'FileID: {} - no bias'.format(fileid)
+            message = 'No bias'
         else:
             data = data - bias
-            message = 'FileID: {} - bias corrected. mean value = {}'.format(
-                        fileid, bias.mean())
-        logger.info(message)
-        print(message)
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct flat
         data = data/master_flatsens
-        message = 'FileID: {} - flat corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Flat field corrected'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # get background lights
         background = get_single_background(data, master_aperset[fiber])
 
         data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
 
         # get order brightness profile
         result = get_xdisp_profile(data, master_aperset[fiber])
@@ -1059,11 +1068,6 @@ def reduce_doublefiber(logtable, config):
         # pack to saved_bkg_lst
         saved_bkg_lst.append(bkg_obj)
 
-        message = ('Background Light of {} in fiber {}: '
-                    'oject: {}').format(fileid, fiber, objname)
-        logger.info(message)
-        print(message)
-
         # extract 1d spectrum
         section = config['reduce.extract']
         all_spec  = {}   # use to pack final 1d spectrum
@@ -1086,10 +1090,10 @@ def reduce_doublefiber(logtable, config):
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                         )
-        message = ('FileID: {} (fiber {}) - 1D spectra of {} orders'
-                   ' extracted').format(fileid, fiber, len(spectra1d))
-        logger.info(message)
-        print(message)
+        message = '1D spectra of {} orders in fiber {} extracted'.format(
+                   len(spectra1d), fiber)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         prefix = 'HIERARCH GAMSE EXTRACTION FIBER {} '.format(fiber)
         head.append((prefix + 'LOWER LIMIT', lower_limit))
@@ -1114,13 +1118,12 @@ def reduce_doublefiber(logtable, config):
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        message = ('FileID: {} - fiber {}'
-                    ' - wavelength calibration weights: {}').format(
-                    fileid, fiber,
+        message = ('Wavelength calibration of fiber {}: weights={}').format(
+                    fiber,
                     ','.join(['{:8.4f}'.format(w) for w in weight_lst])
                     )
-        logger.info(message)
-        print(message)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         spec, card_lst = reference_spec_wavelength(spec,
                             ref_calib_lst[fiber], weight_lst)
@@ -1144,10 +1147,9 @@ def reduce_doublefiber(logtable, config):
         filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to "{}"'.format(
-                    fileid, filename)
-        logger.info(message)
-        print(message)
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         extracted_fileid_lst.append(fileid)
 
@@ -1161,11 +1163,15 @@ def reduce_doublefiber(logtable, config):
         obj     = logitem['object']
         exptime = logitem['exptime']
 
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
         if fileid in extracted_fileid_lst:
             continue
 
         # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
-        obj_lst = [s.strip().lower() for s in obj.split('|')]
+        obj_lst = [s.strip() for s in obj.split('|')]
 
         fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
 
@@ -1174,8 +1180,8 @@ def reduce_doublefiber(logtable, config):
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        message = 'FileID: {} ({}) - start reduction: {}'.format(
-                    fileid, imgtype, filename)
+        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
+                    fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
         print(message)
 
@@ -1194,30 +1200,31 @@ def reduce_doublefiber(logtable, config):
         for key, value in card_lst:
             head.append((key, value))
 
-        message = 'FileID: {} - overscan corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct bias
         if bias is None:
-            message = 'FileID: {} - no bias'.format(fileid)
+            message = 'No bias'
         else:
             data = data - bias
-            message = 'FileID: {} - bias corrected. mean value = {}'.format(
-                        fileid, bias.mean())
-        logger.info(message)
-        print(message)
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct flat
         data = data/master_flatsens
-        message = 'FileID: {} - flat corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Flat field corrected'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # for DEBUG use
+        '''
         fname = '{}_flt.fits'.format(fileid)
         filename = os.path.join(midproc, fname)
         fits.writeto(filename, data, overwrite=True)
+        '''
 
         # background correction
 
@@ -1293,6 +1300,7 @@ def reduce_doublefiber(logtable, config):
         
         for (ifiber, objname) in fiberobj_lst:
             fiber = chr(ifiber+65)
+            objname = objname.lower()
             result = get_xdisp_profile(data, master_aperset[fiber])
             aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
@@ -1318,6 +1326,7 @@ def reduce_doublefiber(logtable, config):
             else:
                 objtype = 'star'
 
+            find_background = False
             selected_bkg = find_best_background(saved_bkg_lst, obs_bkg_obj,
                                 fiber, objname, head[statime_key], objtype)
             if selected_bkg is None:
@@ -1331,13 +1340,21 @@ def reduce_doublefiber(logtable, config):
                                 objtype   = objtype,
                                 obj       = objname,
                                 )
-            scale = obs_bkg_obj.find_brightness_scale(selected_bkg)
+                if selected_bkg is None:
+                    message = 'Error: No backgroudn found in the database'
+                    logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
+            else:
+                find_background = True
 
-            message = ('FileID: {} - fiber {} - {}: use background of {} '
-                       'scale = {:6.3f}').format(fileid, fiber, objname,
-                        selected_bkg.info['fileid'], scale)
-            logger.info(message)
-            print(message)
+            if find_background:
+                scale = obs_bkg_obj.find_brightness_scale(selected_bkg)
+
+                message = ('Use background of {} for fiber {}. '
+                           'scale = {:6.3f}'.format(
+                            selected_bkg.info['fileid'], fiber, scale))
+                logger.info(logger_prefix + message)
+                print(screen_prefix + message)
 
             background = background + selected_bkg.data*scale
 
@@ -1362,6 +1379,10 @@ def reduce_doublefiber(logtable, config):
         '''
 
         data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1399,10 +1420,10 @@ def reduce_doublefiber(logtable, config):
                                 upper_limit = upper_limit,
                             )
 
-            message = ('FileID: {} (fiber {}) - 1D spectra of {} orders'
-                       ' extracted').format(fileid, fiber, len(spectra1d))
-            logger.info(message)
-            print(message)
+            message = '1D spectra of {} orders in fiber {} extracted'.format(
+                        len(spectra1d), fiber)
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
 
             prefix = 'HIERARCH GAMSE EXTRACTION FIBER {} '.format(fiber)
             head.append((prefix + 'LOWER LIMIT', lower_limit))
@@ -1430,13 +1451,12 @@ def reduce_doublefiber(logtable, config):
             weight_lst = get_time_weight(ref_datetime_lst[fiber],
                                         head[statime_key])
 
-            message = ('FileID: {} - fiber {}'
-                        ' - wavelength calibration weights: {}').format(
-                        fileid, fiber,
+            message = ('Wavelength calibration of fiber {}: weights={}').format(
+                        fiber,
                         ','.join(['{:8.4f}'.format(w) for w in weight_lst])
                         )
-            logger.info(message)
-            print(message)
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
 
             spec, card_lst = reference_spec_wavelength(spec,
                                 ref_calib_lst[fiber], weight_lst)
@@ -1460,8 +1480,6 @@ def reduce_doublefiber(logtable, config):
         filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to "{}"'.format(
-                    fileid, filename)
-        logger.info(message)
-        print(message)
-
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
