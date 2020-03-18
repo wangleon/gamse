@@ -205,61 +205,71 @@ def make_obslog(path):
         obsdate = Time(head['FRAME'])
         exptime = head['EXPOSURE']
         target  = 'Unknown'
-        if 'PROJECT' in head: target  = str(head['PROJECT'])[:10]
-        if 'OBJECT'  in head: target  = str(head['OBJECT'])[:10]
+        if 'PROJECT' in head: target = str(head['PROJECT'])[:10]
+        if 'OBJECT'  in head: target = str(head['OBJECT'])[:10]
 
         if re.match(name_pattern1, fileid):
             # fileid matches the standard FOCES naming convention
             if fileid[22:25]=='BIA':
                 imgtype = 'cal'
-                objectname = '{:^11s}{:^10s}'.format('bias', '')
+                object_lst = ['Bias']
             elif fileid[22:25]=='FLS':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('Flat', '')
+                object_lst = ['Flat', '']
             elif fileid[22:25]=='FLC':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('', 'Flat')
+                object_lst = ['', 'Flat']
             elif fileid[22:26]=='COCS':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('Comb', 'Comb')
+                object_lst = ['Comb', 'Comb']
             elif fileid[22:26]=='COC0':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('', 'Comb')
+                object_lst = ['', 'Comb']
             elif fileid[22:26]=='COS0':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('Comb', '')
+                object_lst = ['Comb', '']
             elif fileid[22:25]=='THS':
                 imgtype = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('ThAr', 'ThAr')
+                object_lst = ['ThAr', 'ThAr']
             elif fileid[22:25]=='THC':
                 imgtype  = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('', 'ThAr')
+                object_lst = ['', 'ThAr']
             elif fileid[22:25]=='THS':
                 imgtype  = 'cal'
-                objectname = '{:^10s}|{:^10s}'.format('ThAr', '')
+                object_lst = ['ThAr', '']
             elif fileid[22:26]=='SCI0':
                 imgtype  = 'sci'
-                objectname = '{:^10s}|{:^10s}'.format(target, ' ')
+                object_lst = [target, '']
             elif fileid[22:26]=='SCC2':
                 imgtype  = 'sci'
-                objectname = '{:^10s}|{:^10s}'.format(target, 'Comb')
+                object_lst = [target, 'Comb']
             elif fileid[22:26]=='SCT2':
                 imgtype  = 'sci'
-                objectname = '{:^10s}|{:^10s}'.format(target, 'ThAr')
+                object_lst = [target, 'ThAr']
   
             frameid = int(fileid[9:13])
             has_frameid = True
         elif re.match(name_pattern2, fileid):
             frameid = prev_frameid + 1
             imgtype = 'cal'
-            objectname = '{:^10s}|{:^10s}'.format('', '')
+            object_lst = ['', '']
             has_frameid = True
         else:
             # fileid does not follow the naming convetion
             imgtype = 'cal'
-            objectname = '{:^10s}|{:^10s}'.format('', '')
+            object_lst = ['', '']
             frameid = 0
             has_frameid = False
+
+        if len(object_lst)==1:
+            objectname = '{:^21s}'.format(object_lst[0])
+        elif len(object_lst)==2:
+            objectname = '|'.join(['{:^10s}'.format(v) for v in object_lst])
+        else:
+            print('Warning: length of object_lst ({}) excess the maximum number'
+                  'of fibers (2)'.format(len(object_lst)))
+            objectname = '{:^21s}'.format('Error')
+            pass
 
         # determine the total number of saturated pixels
         saturation = (data>=63000).sum()
