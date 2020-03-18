@@ -1272,12 +1272,28 @@ def select_background_from_database(path, **args):
         m2 = table['fiber']==fiber
         m3 = table['direction']==direction
         score = np.int32(m1) + np.int32(m2) + np.int32(m3)
-        logger.info('score={}'.format(score))
+        logger.debug('score={}'.format(score))
         mask = score == score.max()
-        logger.info('mask={}'.format(mask))
+        logger.debug('mask={}'.format(mask))
         table = table[mask]
         row = table[0]
-        logger.info('selected {}'.format(row['fileid']))
+        logger.debug('selected {} (obj={}, fiber={})'.format(
+                      row['fileid'], row['object'], row['fiber']))
+    elif objtype == 'star':
+        mask = []
+        for row in table:
+            if row['object'].lower()==obj:
+                mask.append(True)
+            else:
+                mask.append(False)
+        if sum(mask)>0:
+            table = table[mask]
+            row = table[0]
+        else:
+            row = table[0]
+
+        logger.debug('selected {} (obj={}, fiber={})'.format(
+                      row['fileid'], row['object'], row['fiber']))
     else:
         pass
 

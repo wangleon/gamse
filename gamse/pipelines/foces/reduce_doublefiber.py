@@ -1341,10 +1341,15 @@ def reduce_doublefiber(logtable, config):
                                 obj       = objname,
                                 )
                 if selected_bkg is None:
+                    # not found either in database
                     message = 'Error: No backgroudn found in the database'
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
+                else:
+                    # background found in database
+                    find_background = True
             else:
+                # background found in the same dataset
                 find_background = True
 
             if find_background:
