@@ -1255,13 +1255,15 @@ def select_background_from_database(path, **args):
     obj       = args.pop('obj',      None)
     spectype  = args.pop('spectype', None)
 
+    logger.info('objtype={}, obj={}, spectype={}'.format(objtype, obj, spectype))
+
     filename = os.path.join(path, 'index.dat')
     table = Table.read(filename, format='ascii.fixed_width_two_line')
     # first round
-    candidate_lst = []
 
     mask = table['objtype']==objtype
     table = table[mask]
+    logger.info('mask={}'.format(mask))
 
     if obj == 'comb':
         mask = table['object']=='comb'
@@ -1270,9 +1272,28 @@ def select_background_from_database(path, **args):
         m2 = table['fiber']==fiber
         m3 = table['direction']==direction
         score = np.int32(m1) + np.int32(m2) + np.int32(m3)
+        logger.debug('score={}'.format(score))
         mask = score == score.max()
+        logger.debug('mask={}'.format(mask))
         table = table[mask]
         row = table[0]
+        logger.debug('selected {} (obj={}, fiber={})'.format(
+                      row['fileid'], row['object'], row['fiber']))
+    elif objtype == 'star':
+        mask = []
+        for row in table:
+            if row['object'].lower()==obj:
+                mask.append(True)
+            else:
+                mask.append(False)
+        if sum(mask)>0:
+            table = table[mask]
+            row = table[0]
+        else:
+            row = table[0]
+
+        logger.debug('selected {} (obj={}, fiber={})'.format(
+                      row['fileid'], row['object'], row['fiber']))
     else:
         pass
 
