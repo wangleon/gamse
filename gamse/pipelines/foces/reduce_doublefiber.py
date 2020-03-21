@@ -571,17 +571,17 @@ def reduce_doublefiber(logtable, config):
     ############################## Extract ThAr ################################
 
     # get the data shape
-    h, w = flat_sens.shape
+    ny, nx = flat_sens.shape
 
     # define dtype of 1-d spectra for all fibers
     types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
-            ('wavelength', (np.float64, w)),
-            ('flux',       (np.float32, w)),
-            ('flat',       (np.float32, w)),
-            ('background', (np.float32, w)),
+            ('wavelength', (np.float64, nx)),
+            ('flux',       (np.float32, nx)),
+            ('flat',       (np.float32, nx)),
+            ('background', (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -595,21 +595,28 @@ def reduce_doublefiber(logtable, config):
     #       }
     count_thar = 0
     for logitem in logtable:
-
+        # logitem alias
         frameid = logitem['frameid']
+        fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
         exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
 
         if imgtype != 'cal':
             continue
 
-        fiberobj_lst = [v.strip().lower()
-                        for v in logitem['object'].split('|')]
+        # split the object names and make obj_lst
+        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
+        obj_lst = [s.strip() for s in obj.split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
 
         # check if there's any other objects
         has_others = False
-        for fiberobj in fiberobj_lst:
-            if len(fiberobj)>0 and fiberobj != 'thar':
+        for ifiber, objname in fiberobj_lst:
+            if objname != 'thar':
                 has_others = True
         if has_others:
             continue
@@ -617,8 +624,10 @@ def reduce_doublefiber(logtable, config):
         # now all objects in fiberobj_lst must be thar
 
         count_thar += 1
-        fileid = logitem['fileid']
-        print('Wavelength Calibration for {}'.format(fileid))
+        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
+                   'identification'.format(fileid, imgtype, '|'.join(obj_lst)))
+        logger.info(message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
@@ -635,13 +644,18 @@ def reduce_doublefiber(logtable, config):
         for key, value in card_lst:
             head.append((key, value))
 
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
         # correct bias for ThAr, if has bias
         if bias is None:
-            message = 'No bias. skipped bias correction'
+            message = 'No bias'
         else:
             data = data - bias
-            message = 'Bias corrected'
-        logger.info(message)
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
@@ -650,9 +664,11 @@ def reduce_doublefiber(logtable, config):
         all_cards     = {}
         all_identlist = {}
 
-        for ifiber in range(n_fiber):
+        for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
-            if fiberobj_lst[ifiber] != 'thar':
+            objname = objname.lower()
+
+            if objname != 'thar':
                 continue
 
             section = config['reduce.extract']
@@ -699,7 +715,7 @@ def reduce_doublefiber(logtable, config):
 
                     message = ('Searching for archive wavelength calibration'
                                'file in "{}"'.format(database_path))
-                    logger.info(message)
+                    logger.info(logger_prefix + message)
 
                     ref_spec, ref_calib = select_calib_from_database(
                         database_path, statime_key, head[statime_key])
@@ -708,7 +724,7 @@ def reduce_doublefiber(logtable, config):
 
                         message = ('Did not find any archive wavelength'
                                    'calibration file')
-                        logger.info(message)
+                        logger.info(logger_prefix + message)
 
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
@@ -765,8 +781,8 @@ def reduce_doublefiber(logtable, config):
                         message = 'Aperture offset = {}; Pixel offset = {}'
                         message = message.format(aperture_koffset,
                                                  pixel_koffset)
-                        print(message)
-                        logger.info(message)
+                        logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
 
                         use = section.getboolean('use_prev_fitpar')
                         xorder      = (section.getint('xorder'), None)[use]
@@ -794,7 +810,7 @@ def reduce_doublefiber(logtable, config):
                             )
                 else:
                     message = 'No database searching. Identify lines manually'
-                    logger.info(message)
+                    logger.info(logger_prefix + message)
 
                     # do not search the database
                     calib = wlcalib(spec,
@@ -889,7 +905,7 @@ def reduce_doublefiber(logtable, config):
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
                     ' - fiber {:1s} ({:4g} sec)'
-                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
+                    ' - {:4d}/{:4d} RMS = {:7.5f}')
     for frameid, calib_fiber_lst in sorted(calib_lst.items()):
         for fiber, calib in sorted(calib_fiber_lst.items()):
             print(fmt_string.format(frameid, calib['fileid'], fiber,
@@ -1020,7 +1036,6 @@ def reduce_doublefiber(logtable, config):
                     background.max(), background.mean())
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
-
 
         # get order brightness profile
         result = get_xdisp_profile(data, master_aperset[fiber])

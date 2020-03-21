@@ -377,17 +377,17 @@ def reduce_singlefiber(logtable, config):
     ############################## Extract ThAr ################################
 
     # get the data shape
-    h, w = flat_map.shape
+    ny, nx = flat_map.shape
 
     # define dtype of 1-d spectra
     types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
-            ('wavelength', (np.float64, w)),
-            ('flux',       (np.float32, w)),
-            ('flat',       (np.float32, w)),
-            ('background', (np.float32, w)),
+            ('wavelength', (np.float64, nx)),
+            ('flux',       (np.float32, nx)),
+            ('flat',       (np.float32, nx)),
+            ('background', (np.float32, nx)),
             ]
 
     names, formats = list(zip(*types))
@@ -396,15 +396,24 @@ def reduce_singlefiber(logtable, config):
     calib_lst = {}
     count_thar = 0
     for logitem in logtable:
+        # logitem alias
+        frameid = logitem['frameid']
+        fileid  = logitem['fileid']
+        objname = logitem['object']
+        imgtype = logitem['imgtype']
+        exptime = logitem['exptime']
 
-        if logitem['imgtype'] != 'cal':
+        if imgtype != 'cal':
             continue
 
-        if logitem['object'].strip().lower() != 'thar':
+        if objname.strip().lower() != 'thar':
             continue
 
         count_thar += 1
-        fileid = logitem['fileid']
+        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
+                   'identification'.format(fileid, imgtype, objname))
+        logger.info(message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
@@ -412,6 +421,7 @@ def reduce_singlefiber(logtable, config):
             data = data[0,:,:]
         mask = get_mask(data)
 
+        head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
         data, card_lst, overmean = correct_overscan(data, mask)
         # head['BLANK'] is only valid for integer arrays.
@@ -420,12 +430,18 @@ def reduce_singlefiber(logtable, config):
         for key, value in card_lst:
             head.append((key, value))
 
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
         # correct bias for ThAr, if has bias
-        if has_bias:
-            data = data - bias
-            logger.info('Bias corrected')
+        if bias is None:
+            message = 'No bias'
         else:
-            logger.info('No bias. skipped bias correction')
+            data = data - bias
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         section = config['reduce.extract']
         spectra1d = extract_aperset(data, mask,
@@ -438,8 +454,13 @@ def reduce_singlefiber(logtable, config):
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
-            spec.append((aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            spec.append((
+                aper,
+                0,
+                flux_sum.size,
+                np.zeros_like(flux_sum, dtype=np.float64),
+                flux_sum,
+                ))
         spec = np.array(spec, dtype=spectype)
     
         figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
@@ -632,16 +653,21 @@ def reduce_singlefiber(logtable, config):
         # logitem alias
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
+        objname = logitem['object']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
 
         if imgtype != 'sci':
             continue
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        logger.info(
-            'FileID: {} ({}) - start reduction: {}'.format(
-            fileid, imgtype, filename)
-            )
+        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
+                    fileid, imgtype, objname)
+        logger.info(message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -649,6 +675,7 @@ def reduce_singlefiber(logtable, config):
             data = data[0,:,:]
         mask = get_mask(data)
 
+        head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
         data, card_lst, overmean = correct_overscan(data, mask)
         # head['BLANK'] is only valid for integer arrays.
@@ -657,26 +684,24 @@ def reduce_singlefiber(logtable, config):
         for key, value in card_lst:
             head.append((key, value))
 
-        message = 'FileID: {} - overscan corrected'.format(fileid)
-
-        logger.info(message)
-        print(message)
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct bias
-        if has_bias:
-            data = data - bias
-            message = 'FileID: {} - bias corrected. mean value = {}'.format(
-                        fileid, bias.mean())
+        if bais is None:
+            message = 'No bias'
         else:
-            message = 'FileID: {} - no bias'.format(fileid)
-        logger.info(message)
-        print(message)
+            data = data - bias
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct flat
         data = data/flat_map
-        message = 'FileID: {} - flat corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Flat field corrected'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # background correction
         section = config['reduce.background']
@@ -716,17 +741,17 @@ def reduce_singlefiber(logtable, config):
             fig_stray = os.path.join(report, figname)
             plot_background_aspect1(data+stray, stray, fig_stray)
 
-            message = 'FileID: {} - background corrected. max value = {}'.format(
-                    fileid, stray.max())
+            message = 'background corrected. max value = {}'.format(
+                        stray.max())
         else:
             stray = None
             # put information into header
             prefix = 'HIERARCH GAMSE BACKGROUND '
             head.append((prefix + 'CORRECTED', False))
-            message = 'FileID: {} - background not corrected.'.format(fileid)
+            message = 'background not corrected'
 
-        logger.info(message)
-        print(message)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -736,10 +761,9 @@ def reduce_singlefiber(logtable, config):
                     upper_limit = section.getfloat('upper_limit'),
                     )
 
-        message = 'FileID: {} - 1D spectra of {} orders extracted'.format(
-                    fileid, len(spectra1d))
-        logger.info(message)
-        print(message)
+        message = '1D spectra of {} orders extracted'.format(len(spectra1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # pack spectrum
         spec = []
@@ -757,11 +781,10 @@ def reduce_singlefiber(logtable, config):
         # wavelength calibration
         weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-        message = 'FileID: {} - wavelength calibration weights: {}'.format(
-                    fileid, ','.join(['{:8.4f}'.format(w) for w in weight_lst]))
-
-        logger.info(message)
-        print(message)
+        message = 'Wavelength calibration: weights={}'.format(
+                    ','.join(['{:8.4f}'.format(w) for w in weight_lst]))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         spec, card_lst = reference_spec_wavelength(spec,
                             ref_calib_lst, weight_lst)
@@ -778,7 +801,6 @@ def reduce_singlefiber(logtable, config):
         filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to "{}"'.format(
-                    fileid, filename)
-        logger.info(message)
-        print(message)
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
