@@ -50,11 +50,11 @@ def combine_images(data,
         final_array = np.zeros((h, w))
 
         # split the image into small segmentations
-        if h>4000 and h%4==0:   dy = h//4
+        if   h>4000 and h%4==0: dy = h//4
         elif h>2000 and h%2==0: dy = h//2
         else:                   dy = h
 
-        if w>4000 and w%4==0:   dx = w//4
+        if   w>4000 and w%4==0: dx = w//4
         elif w>2000 and w%2==0: dx = w//2
         else:                   dx = w
 
@@ -64,31 +64,31 @@ def combine_images(data,
             for x1 in np.arange(0, w, dx):
                 x2 = x1 + dx
 
-                small_data = data[:,y1:y2,x1:x2]
-                nz, ny, nx = small_data.shape
+                clipdata = data[:,y1:y2,x1:x2]
+                nz, ny, nx = clipdata.shape
                 # generate a mask containing the positions of maximum pixel
                 # along the first dimension
                 if mask is None:
-                    small_mask = np.zeros_like(small_data, dtype=np.bool)
+                    clipmask = np.zeros_like(clipdata, dtype=np.bool)
                 elif isinstance(mask, str):
                     if mask == 'max':
-                        small_mask = (np.mgrid[0:nz,0:ny,0:nx][0]
-                                      == small_data.argmax(axis=0))
+                        clipmask = (np.mgrid[0:nz,0:ny,0:nx][0]
+                                    == clipdata.argmax(axis=0))
                     elif mask == 'min':
-                        small_mask = (np.mgrid[0:nz,0:ny,0:nx][0]
-                                      == small_data.argmin(axis=0))
+                        clipmask = (np.mgrid[0:nz,0:ny,0:nx][0]
+                                    == clipdata.argmin(axis=0))
                     else:
                         pass
                 else:
                     pass
                 
                 for niter in range(maxiter):
-                    mdata = np.ma.masked_array(small_data, mask=small_mask)
+                    mdata = np.ma.masked_array(clipdata, mask=clipmask)
                     mean = mdata.mean(axis=0, dtype=np.float64).data
                     std  = mdata.std(axis=0, dtype=np.float64).data
-                    new_small_mask = np.ones_like(small_mask, dtype=np.bool)
+                    new_clipmask = np.ones_like(clipmask, dtype=np.bool)
                     for i in np.arange(nimage):
-                        chunk = small_data[i,:,:]
+                        chunk = clipdata[i,:,:]
                 
                         # parse upper clipping
                         if upper_clip is None:
@@ -104,13 +104,13 @@ def combine_images(data,
                         else:
                             mask2 = chunk < mean - abs(lower_clip)*std
                 
-                        new_small_mask[i,:,:] = np.logical_or(mask1, mask2)
+                        new_clipmask[i,:,:] = np.logical_or(mask1, mask2)
 
-                    if new_small_mask.sum() == small_mask.sum():
+                    if new_clipmask.sum() == clipmask.sum():
                         break
-                    small_mask = new_small_mask
+                    clipmask = new_clipmask
                 
-                mdata = np.ma.masked_array(small_data, mask=small_mask)
+                mdata = np.ma.masked_array(clipdata, mask=clipmask)
                 
                 if mode == 'mean':
                     mean = mdata.mean(axis=0).data
