@@ -24,7 +24,7 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import (find_background, simple_debackground,
                                    get_single_background, get_xdisp_profile,
-                                   find_profile_scale, BackgroundLight,
+                                   BackgroundLight,
                                    find_best_background,
                                    select_background_from_database)
 from ...utils.obslog import parse_num_seq
