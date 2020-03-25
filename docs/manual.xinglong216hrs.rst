@@ -190,17 +190,21 @@ The pipeline accepts the following options in the config file:
 
 APIs
 ----
-.. currentmodule:: gamse.pipelines.xinglong216hrs
 .. autosummary::
-   make_obslog
-   get_mask
-   get_badpixel_mask
-   correct_overscan
-   reduce
-   smooth_aperpar_A
-   smooth_aperpar_k
-   smooth_aperpar_c
-   smooth_aperpar_bkg
+   gamse.pipelines.xinglong216hrs.make_config
+   gamse.pipelines.xinglong216hrs.make_obslog
+   gamse.pipelines.xinglong216hrs.reduce_rawdata
+   gamse.pipelines.xinglong216hrs.common.correct_overscan
+   gamse.pipelines.xinglong216hrs.common.parse_bias_frames
+   gamse.pipelines.xinglong216hrs.common.get_mask
+   gamse.pipelines.xinglong216hrs.common.fix_cr
+   gamse.pipelines.xinglong216hrs.common.TraceFigure
+   gamse.pipelines.xinglong216hrs.reduce_singlefiber.reduce_singlefiber
+   gamse.pipelines.xinglong216hrs.reduce_doublefiber.reduce_doublefiber
+   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_A
+   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_k
+   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_c
+   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_bkg
 
 References
 ----------

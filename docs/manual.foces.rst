@@ -377,7 +377,6 @@ Format of Output Spectra
 APIs
 ----
 .. autosummary::
-
    gamse.pipelines.foces.make_config
    gamse.pipelines.foces.make_obslog
    gamse.pipelines.foces.reduce_rawdata
