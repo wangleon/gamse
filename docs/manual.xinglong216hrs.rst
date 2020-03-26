@@ -197,7 +197,9 @@ APIs
    gamse.pipelines.xinglong216hrs.common.correct_overscan
    gamse.pipelines.xinglong216hrs.common.parse_bias_frames
    gamse.pipelines.xinglong216hrs.common.get_mask
+   gamse.pipelines.xinglong216hrs.common.get_badpixel_mask
    gamse.pipelines.xinglong216hrs.common.fix_cr
+   gamse.pipelines.xinglong216hrs.common.select_calib_from_database
    gamse.pipelines.xinglong216hrs.common.TraceFigure
    gamse.pipelines.xinglong216hrs.reduce_singlefiber.reduce_singlefiber
    gamse.pipelines.xinglong216hrs.reduce_doublefiber.reduce_doublefiber
