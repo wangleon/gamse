@@ -480,7 +480,7 @@ def reduce_singlefiber(logtable, config):
 
         section = config['reduce.wlcalib']
         
-        title = fileid+'.fits'
+        title = '{}.fits'.format(fileid)
 
         if count_thar == 1:
             # this is the first ThAr frame in this observing run
@@ -489,11 +489,19 @@ def reduce_singlefiber(logtable, config):
                 database_path = section.get('database_path')
                 database_path = os.path.expanduser(database_path)
 
-                result = select_calib_from_database(
+                message = ('Searching for archive wavelength calibration'
+                           'file in "{}"'.format(database_path))
+                logger.info(logger_prefix + message)
+
+                ref_spec, ref_calib = select_calib_from_database(
                         database_path, statime_key, head[statime_key])
-                ref_spec, ref_calib = result
     
                 if ref_spec is None or ref_calib is None:
+
+                    message = ('Did not find any archive wavelength'
+                               'calibration file')
+                    logger.info(logger_prefix + message)
+
                     # if failed, pop up a calibration window and
                     # identify the wavelengths manually
                     calib = wlcalib(spec,
@@ -510,6 +518,9 @@ def reduce_singlefiber(logtable, config):
                 else:
                     # if success, run recalib
                     # determine the direction
+                    message = 'Found archive wavelength calibration file'
+                    logger.info(message)
+
                     ref_direction = ref_calib['direction']
                     aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
                                     None)[direction[1]=='?']
@@ -535,8 +546,11 @@ def reduce_singlefiber(logtable, config):
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
 
-                    print('Aperture offset =', aperture_koffset)
-                    print('Pixel offset =', pixel_koffset)
+                    message = 'Aperture offset = {}; Pixel offset = {}'
+                    message = message.format(aperture_koffset,
+                                             pixel_koffset)
+                    logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
 
                     use = section.getboolean('use_prev_fitpar')
                     xorder      = (section.getint('xorder'), None)[use]
@@ -563,6 +577,9 @@ def reduce_singlefiber(logtable, config):
                         direction        = direction,
                         )
             else:
+                message = 'No database searching. Identify lines manually'
+                logger.info(logger_prefix + message)
+
                 # do not search the database
                 calib = wlcalib(spec,
                     figfilename   = wlcalib_fig,
@@ -598,9 +615,15 @@ def reduce_singlefiber(logtable, config):
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
                 )
+
+        # add more infos in calib
+        calib['fileid']   = fileid
+        calib['date-obs'] = head[statime_key]
+        calib['exptime']  = head[exptime_key]
         
         # reference the ThAr spectra
         spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+
         for key, value in card_lst:
             key = 'HIERARCH GAMSE WLCALIB '+key
             head.append((key, value))
@@ -619,10 +642,6 @@ def reduce_singlefiber(logtable, config):
         filename = os.path.join(onedspec, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        # add more infos in calib
-        calib['fileid']   = fileid
-        calib['date-obs'] = head[statime_key]
-        calib['exptime']  = head[exptime_key]
         # pack to calib_lst
         calib_lst[logitem['frameid']] = calib
 
