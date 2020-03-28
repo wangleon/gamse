@@ -723,30 +723,30 @@ def print_wrapper(string, item):
         str: The color-coded string.
 
     """
-    imgtype = item['imgtype']
+    imgtype    = item['imgtype']
+    objectname = item['object'].strip().lower()
 
-    if imgtype=='bias':
+    if imgtype=='cal' and objectname=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='science':
+    elif imgtype=='sci':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='calib':
-        if 'object' in item:
-            if item['object'].lower()=='thar':
-                # arc lamp, use light yellow (93)
-                return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
-            else:
-                return string
-        elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
-                                                    ('', 'ThAr'),
-                                                    ('ThAr', 'ThAr')]:
+    elif imgtype=='cal':
+        if objectname == 'thar':
             # arc lamp, use light yellow (93)
             return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
         else:
             return string
+        #elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
+        #                                            ('', 'ThAr'),
+        #                                            ('ThAr', 'ThAr')]:
+        #    # arc lamp, use light yellow (93)
+        #    return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+        #else:
+        #    return string
     else:
         return string
 
