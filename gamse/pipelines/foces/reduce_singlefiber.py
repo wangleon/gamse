@@ -19,8 +19,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ...echelle.background import find_background, simple_debackground
 from ...utils.obslog import parse_num_seq
 from ..common import plot_background_aspect1, FormattedInfo
-from .common import (obslog_columns, print_wrapper, get_mask,
-                    correct_overscan, parse_bias_frames, TraceFigure)
+from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
+                    correct_overscan, TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
@@ -59,24 +59,7 @@ def reduce_singlefiber(logtable, config):
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ################################ parse bias ################################
-    bias_file = config['reduce.bias'].get('bias_file')
-
-    if mode=='debug' and os.path.exists(bias_file):
-        # load bias data from existing file
-        bias, head = fits.getdata(bias_file, header=True)
-
-        reobj = re.compile('GAMSE BIAS[\s\S]*')
-        # pack header cards
-        bias_card_lst = []
-        for card in head.cards:
-            if reobj.match(card.keyword):
-                bias_card_lst.append((card.keyword, card.value))
-        # print info
-        message = 'Load bias from image: "{}"'.format(bias_file)
-        logger.info(message)
-        print(message)
-    else:
-        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
+    bias, bias_card_lst = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -113,6 +96,7 @@ def reduce_singlefiber(logtable, config):
     flat_data_lst = {}
     flat_mask_lst = {}
     flat_norm_lst = {}
+    flat_sens_lst = {}
     flat_spec_lst = {}
     flat_info_lst = {}
     aperset_lst   = {}
@@ -172,7 +156,7 @@ def reduce_singlefiber(logtable, config):
                 allmask += sat_mask
 
                 # correct overscan for flat
-                data, card_lst, overmean = correct_overscan(data, mask)
+                data, card_lst, overmean = correct_overscan(data, mask, direction)
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
                     del head['BLANK']
@@ -203,7 +187,7 @@ def reduce_singlefiber(logtable, config):
                                 mode       = 'mean',
                                 upper_clip = 10,
                                 maxiter    = 5,
-                                mask       = (None, 'max')[nflat>3],
+                                maskmode   = (None, 'max')[nflat>3],
                                 )
 
             # get mean exposure time and write it to header
@@ -302,7 +286,7 @@ def reduce_singlefiber(logtable, config):
         flat_mask_lst[flatname] = flat_mask
         flat_norm_lst[flatname] = flat_norm
         flat_sens_lst[flatname] = flat_sens
-        flat_sepc_lst[flatname] = flat_spec
+        flat_spec_lst[flatname] = flat_spec
         flat_info_lst[flatname] = {'exptime': exptime}
         aperset_lst[flatname]   = aperset
 
@@ -359,12 +343,6 @@ def reduce_singlefiber(logtable, config):
         # mosaic 1d spectra of flats
         flat_spec = mosaic_spec(flat_spec_lst, master_aperset)
 
-        # change contents of several lists
-        #flat_data_lst[fiber] = flat_data
-        #flat_mask_lst[fiber] = mask_data
-        #flat_map_lst[fiber]  = flat_map
-        #flat_norm_lst[fiber] = flat_norm
-    
         # pack and save to fits file
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(flat_data),
@@ -378,7 +356,7 @@ def reduce_singlefiber(logtable, config):
     ############################## Extract ThAr ################################
 
     # get the data shape
-    ny, nx = flat_map.shape
+    ny, nx = flat_sens.shape
 
     # define dtype of 1-d spectra
     types = [
@@ -395,8 +373,12 @@ def reduce_singlefiber(logtable, config):
     spectype = np.dtype({'names': names, 'formats': formats})
     
     calib_lst = {}
-    count_thar = 0
-    for logitem in logtable:
+
+    # filter ThAr frames
+    thar_items = filter(lambda item: item['object'].lower() == 'thar',
+                        logtable)
+
+    for ithar, logitem in enumerate(tharitems):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
@@ -408,13 +390,6 @@ def reduce_singlefiber(logtable, config):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        if imgtype != 'cal':
-            continue
-
-        if objname.strip().lower() != 'thar':
-            continue
-
-        count_thar += 1
         message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
                    'identification'.format(fileid, imgtype, objname))
         logger.info(message)
@@ -428,7 +403,7 @@ def reduce_singlefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -482,7 +457,7 @@ def reduce_singlefiber(logtable, config):
         
         title = '{}.fits'.format(fileid)
 
-        if count_thar == 1:
+        if ithar == 0:
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
                 # find previouse calibration results
@@ -708,7 +683,7 @@ def reduce_singlefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -720,7 +695,7 @@ def reduce_singlefiber(logtable, config):
         print(screen_prefix + message)
 
         # correct bias
-        if bais is None:
+        if bias is None:
             message = 'No bias'
         else:
             data = data - bias
@@ -729,7 +704,7 @@ def reduce_singlefiber(logtable, config):
         print(screen_prefix + message)
 
         # correct flat
-        data = data/flat_map
+        data = data/flat_sens
         message = 'Flat field corrected'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
@@ -800,10 +775,13 @@ def reduce_singlefiber(logtable, config):
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
+            # seach for flat flux
+            m = flat_spec['aperture']==aper
+            flat_flux = flat_spec[m][0]['flux']
             item = (aper, 0, flux_sum.size,
                     np.zeros_like(flux_sum, dtype=np.float64), # wavelength
                     flux_sum,
-                    flat_spec_lst[aper],       # 1d spectra of flat
+                    flat_flux,                 # 1d spectra of flat
                     stray1d[aper]['flux_sum'], # 1d spectra of background
                     )
             spec.append(item)

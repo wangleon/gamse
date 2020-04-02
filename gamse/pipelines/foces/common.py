@@ -74,8 +74,8 @@ def correct_overscan(data, mask=None, direction=None):
     prefix = 'HIERARCH GAMSE OVERSCAN '
     card_lst.append((prefix + 'CORRECTED', True))
     card_lst.append((prefix + 'METHOD',    'mean'))
-    card_lst.append((prefix + 'AXIS-1',    '1:20'))
-    card_lst.append((prefix + 'AXIS-2',    '{}:{}'.format(vy1+1,vy2)))
+    card_lst.append((prefix + 'AXIS1',     '1:20'))
+    card_lst.append((prefix + 'AXIS2',     '{}:{}'.format(vy1+1,vy2)))
     card_lst.append((prefix + 'MEAN',      ovrmean1))
     card_lst.append((prefix + 'STDEV',     ovrstd1))
 
@@ -101,14 +101,15 @@ def get_bias(config, logtable):
 
     if mode=='debug' and os.path.exists(bias_file):
         # load bias data from existing file
-        bias, head = fits.getdata(bias_file, header=True)
+        hdu_lst = fits.open(bias_file)
+        bias = hdu_lst[-1].data
+        head = hdu_lst[0].header
+        hdu_lst.close()
 
         reobj = re.compile('GAMSE BIAS[\s\S]*')
-        # pack header cards
-        bias_card_lst = []
-        for card in head.cards:
-            if reobj.match(card.keyword):
-                bias_card_lst.append((card.keyword, card.value))
+        # filter header cards that match the above pattern
+        bias_card_lst = [(card.keyword, card.value) for card in head.cards
+                            if reobj.match(card.keyword)]
         # print info
         message = 'Load bias from image: "{}"'.format(bias_file)
         logger.info(message)
@@ -209,11 +210,20 @@ def combine_bias(config, logtable):
     bias_card_lst.append((prefix+'MAXITER',      maxiter))
     bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
 
+    # create the hdu list to be saved
+    hdu_lst = fits.HDUList()
+    # create new FITS Header for bias
+    head = fits.Header()
+    for card in bias_card_lst:
+        head.append(card)
+    hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
+
     ############## bias smooth ##################
     if section.getboolean('smooth'):
         # bias needs to be smoothed
         smooth_method = section.get('smooth_method')
 
+        newcard_lst = []
         if smooth_method in ['gauss', 'gaussian']:
             # perform 2D gaussian smoothing
             smooth_sigma = section.getint('smooth_sigma')
@@ -231,17 +241,24 @@ def combine_bias(config, logtable):
             print('Unknown smooth method: ', smooth_method)
             pass
 
+        # pack the cards to bias_card_lst and also hdu_lst
+        for card in newcard_lst:
+            bias_card_lst.append(card)
+            hdu_lst[0].header.append(card)
+        hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+
+        # bias is the result array to return
         bias = bias_smooth
     else:
         # bias not smoothed
-        bias_card_lst.append((prefix+'SMOOTH CORRECTED', False))
+        card = (prefix+'SMOOTH CORRECTED', False)
+        bias_card_lst.append(card)
+        hdu_lst[0].heaer.append(card)
+
+        # bias is the result array to return
         bias = bias_combine
 
-    # create new FITS Header for bias
-    head = fits.Header()
-    for card in bias_card_lst:
-        head.append(card)
-    fits.writeto(bias_file, bias, header=head, overwrite=True)
+    hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)
     logger.info(message)

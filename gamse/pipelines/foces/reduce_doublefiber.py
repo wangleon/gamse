@@ -29,9 +29,8 @@ from ...echelle.background import (find_background, simple_debackground,
                                    select_background_from_database)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
-from .common import (obslog_columns, print_wrapper, get_mask,
-                     correct_overscan, parse_bias_frames,
-                     TraceFigure, BackgroudFigure)
+from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
+                     correct_overscan, TraceFigure, BackgroudFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
@@ -74,24 +73,7 @@ def reduce_doublefiber(logtable, config):
     n_fiber = 2
 
     ################################ parse bias ################################
-    bias_file = config['reduce.bias'].get('bias_file')
-
-    if mode=='debug' and os.path.exists(bias_file):
-        # load bias data from existing file
-        bias, head = fits.getdata(bias_file, header=True)
-
-        reobj = re.compile('GAMSE BIAS[\s\S]*')
-        # pack header cards
-        bias_card_lst = []
-        for card in head.cards:
-            if reobj.match(card.keyword):
-                bias_card_lst.append((card.keyword, card.value))
-        # print info
-        message = 'Load bias from image: "{}"'.format(bias_file)
-        logger.info(message)
-        print(message)
-    else:
-        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
+    bias, bias_card_lst = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -214,7 +196,7 @@ def reduce_doublefiber(logtable, config):
                     allmask += sat_mask
 
                     # correct overscan for flat
-                    data, card_lst, overmean = correct_overscan(data, mask)
+                    data, card_lst, overmean = correct_overscan(data, mask, direction)
                     # head['BLANK'] is only valid for integer arrays.
                     if 'BLANK' in head:
                         del head['BLANK']
@@ -245,7 +227,7 @@ def reduce_doublefiber(logtable, config):
                                     mode       = 'mean',
                                     upper_clip = 10,
                                     maxiter    = 5,
-                                    mask       = (None, 'max')[nflat>3],
+                                    maskmode   = (None, 'max')[nflat>3],
                                     )
 
                 # get mean exposure time and write it to header
@@ -334,7 +316,7 @@ def reduce_doublefiber(logtable, config):
                             fits.ImageHDU(flat_mask),
                             fits.ImageHDU(flat_norm),
                             fits.ImageHDU(flat_sens),
-                            fits.BinTableHDU(flat_spec)
+                            fits.BinTableHDU(flat_spec),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
@@ -637,7 +619,7 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1002,7 +984,7 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1208,7 +1190,7 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1357,7 +1339,7 @@ def reduce_doublefiber(logtable, config):
                                 )
                 if selected_bkg is None:
                     # not found either in database
-                    message = 'Error: No backgroudn found in the database'
+                    message = 'Error: No background found in the database'
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
                 else:
