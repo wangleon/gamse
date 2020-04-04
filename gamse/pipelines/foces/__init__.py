@@ -363,15 +363,15 @@ def reduce_rawdata():
     """
 
     # read obslog and config
-    logtable = load_obslog('\S*\.obslog$')
     config = load_config('FOCES\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$')
 
     fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
-        reduce_singlefiber(logtable, config)
+        reduce_singlefiber(config, logtable)
     elif fibermode == 'double':
-        reduce_doublefiber(logtable, config)
+        reduce_doublefiber(config, logtable)
     else:
         print('Invalid fibermode:', fibermode)
 

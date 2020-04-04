@@ -34,13 +34,13 @@ from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
-def reduce_doublefiber(logtable, config):
+def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
 
     Args:
-        logtable (:class:`astropy.table.Table`): The observing log.
         config (:class:`configparser.ConfigParser`): The configuration of
             reduction.
+        logtable (:class:`astropy.table.Table`): The observing log.
 
     """
 
@@ -109,7 +109,7 @@ def reduce_doublefiber(logtable, config):
                 # find a proper name (flatname) for this flat
                 if objname=='flat':
                     # no special names given, use exptime
-                    flatname = '{[exptime]:g}'.format(logitem)
+                    flatname = '{:g}'.format(logitem['exptime'])
                 else:
                     # flatname is given. replace space with "_"
                     # remove "flat" before the objectname. e.g.,
@@ -196,7 +196,8 @@ def reduce_doublefiber(logtable, config):
                     allmask += sat_mask
 
                     # correct overscan for flat
-                    data, card_lst, overmean = correct_overscan(data, mask, direction)
+                    data, card_lst, overmean, overstd = correct_overscan(
+                                                        data, mask, direction)
                     # head['BLANK'] is only valid for integer arrays.
                     if 'BLANK' in head:
                         del head['BLANK']
@@ -619,7 +620,8 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -984,7 +986,8 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1190,7 +1193,8 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']

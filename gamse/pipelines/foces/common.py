@@ -36,6 +36,7 @@ def correct_overscan(data, mask=None, direction=None):
               corrected.
             * **card_lst** (*list*) – A new card list for FITS header.
             * **overmean** (*float*) – Mean value of overscan pixels.
+            * **overstd** (*float*) – Standard deviation of overscan pixels.
     """
     ny, nx = data.shape
     overdata1 = data[:, 0:20]
@@ -79,7 +80,7 @@ def correct_overscan(data, mask=None, direction=None):
     card_lst.append((prefix + 'MEAN',      ovrmean1))
     card_lst.append((prefix + 'STDEV',     ovrstd1))
 
-    return new_data, card_lst, ovrmean1
+    return new_data, card_lst, ovrmean1, ovrstd1
 
 def get_bias(config, logtable):
     """Get bias image.
@@ -132,6 +133,13 @@ def combine_bias(config, logtable):
             * **bias** (:class:`numpy.ndarray`) – Output bias image.
             * **bias_card_lst** (list) – List of FITS header cards related to
               the bias correction.
+    
+    Combine bias frames found in observing log.
+    The resulting array **bias** is combined using sigma-clipping method with
+    an uppper clipping value given by "cosmic_clip" in "reduce.bias" section in
+    **config**.
+    Meanwhile, a card list containing the method, mean value and standard
+    deviation to be added to the FITS header is also returned.
 
     """
     rawdata   = config['data']['rawdata']
@@ -160,7 +168,7 @@ def combine_bias(config, logtable):
         if data.ndim == 3:
             data = data[0,:,:]
         mask = get_mask(data)
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']

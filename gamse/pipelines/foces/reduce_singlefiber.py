@@ -24,13 +24,13 @@ from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
-def reduce_singlefiber(logtable, config):
+def reduce_singlefiber(config, logtable):
     """Data reduction for single-fiber configuration.
 
     Args:
-        logtable (:class:`astropy.table.Table`): The observing log.
         config (:class:`configparser.ConfigParser`): The configuration of
             reduction.
+        logtable (:class:`astropy.table.Table`): The observing log.
 
     """
 
@@ -72,8 +72,7 @@ def reduce_singlefiber(logtable, config):
     for logitem in logtable:
         objname = logitem['object'].lower().strip()
 
-        mobj = re.match('^flat[\s\S]*', objname)
-        if mobj is not None:
+        if re.match('^flat[\s\S]*', objname):
             # the object name of the channel matches "flat ???"
             
             # find a proper name (flatname) for this flat
@@ -156,7 +155,8 @@ def reduce_singlefiber(logtable, config):
                 allmask += sat_mask
 
                 # correct overscan for flat
-                data, card_lst, overmean = correct_overscan(data, mask, direction)
+                data, card_lst, overmean, overstd = correct_overscan(
+                                                    data, mask, direction)
                 # head['BLANK'] is only valid for integer arrays.
                 if 'BLANK' in head:
                     del head['BLANK']
@@ -375,10 +375,10 @@ def reduce_singlefiber(logtable, config):
     calib_lst = {}
 
     # filter ThAr frames
-    thar_items = filter(lambda item: item['object'].lower() == 'thar',
-                        logtable)
+    thar_items = list(filter(lambda item: item['object'].lower() == 'thar',
+                             logtable))
 
-    for ithar, logitem in enumerate(tharitems):
+    for ithar, logitem in enumerate(thar_items):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
@@ -403,7 +403,8 @@ def reduce_singlefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -683,7 +684,8 @@ def reduce_singlefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
