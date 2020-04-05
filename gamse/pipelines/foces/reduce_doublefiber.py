@@ -70,10 +70,16 @@ def reduce_doublefiber(config, logtable):
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
+    def get_fiberobj_lst(string):
+        object_lst = [s.strip() for s in string.split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
+                                    enumerate(object_lst)))
+        return fiberobj_lst
+
     n_fiber = 2
 
     ################################ parse bias ################################
-    bias, bias_card_lst = get_bias(config, logtable)
+    bias, bias_card_lst, n_bias, bias_overstd = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -602,8 +608,16 @@ def reduce_doublefiber(config, logtable):
     #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
     #       ... ...
     #       }
+
+    def filter_thar(logitem):
+        fiberobj_lst = get_fiberobj_lst(logitem['object'])
+        newlst = list(filter(lambda v: v[1].lower()=='thar', fiberobj_lst))
+        return len(newlst) == len(fiberobj_lst)
+
+    thar_items = list(filter(filter_thar, logtable))
+
     count_thar = 0
-    for logitem in logtable:
+    for logitem in thar_items:
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
@@ -615,21 +629,8 @@ def reduce_doublefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        if imgtype != 'cal':
-            continue
-
-        # split the object names and make obj_lst
-        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
-        obj_lst = [s.strip() for s in obj.split('|')]
-        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
-
-        # check if there's any other objects
-        has_others = False
-        for ifiber, objname in fiberobj_lst:
-            if objname != 'thar':
-                has_others = True
-        if has_others:
-            continue
+        fiberobj_lst = get_fiberobj_lst(item['object'])
+        obj_lst = list(map(lambda s:s.strip(), obj.split('|')))
 
         # now all objects in fiberobj_lst must be thar
 
@@ -678,9 +679,6 @@ def reduce_doublefiber(config, logtable):
         for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
             objname = objname.lower()
-
-            if objname != 'thar':
-                continue
 
             section = config['reduce.extract']
             spectra1d = extract_aperset(data, mask,
