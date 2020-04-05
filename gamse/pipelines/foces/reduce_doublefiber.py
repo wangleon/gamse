@@ -608,6 +608,7 @@ def reduce_doublefiber(config, logtable):
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
+        obj     = logitem['object']
         exptime = logitem['exptime']
 
         # prepare message prefix
