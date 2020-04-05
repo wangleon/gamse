@@ -140,7 +140,7 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     hdu_lst.writeto(outfilename, overwrite=True)
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
-def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
+def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5, variance=False):
     """Extract 1-D spectra from the input image data following the input
     :class:`~gamse.echelle.trace.ApertureSet`.
 
@@ -151,6 +151,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
             :class:`~gamse.echelle.trace.ApertureSet` instance.
         lower_limit (float): Lower limit of the extracted aperture.
         upper_limit (float): Upper limit of the extracted aperture.
+        variance (bool)    : If a variance array is processed the weights 
+                             need to be squared
 
     Returns:
         dict: A dict of 1-d spectra with the aperture numbers as keys, and a
@@ -185,8 +187,12 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5):
         newmask[:,d1:d2] = m1*m2
         newmask = np.float32(newmask)
         # determine the weight in the boundary
-        newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
-        newmask[upper_ints, newx] = (upper_line+0.5)%1
+        if variance:
+            newmask[lower_ints, newx] = (1-(lower_line+0.5)%1)**2
+            newmask[upper_ints, newx] = ((upper_line+0.5)%1)**2
+        else:
+            newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
+            newmask[upper_ints, newx] = (upper_line+0.5)%1
         # filter the bad, saturated, and gap pixels
         newmask = newmask*(~sat_mask)
         newmask = newmask*(~bad_mask)
