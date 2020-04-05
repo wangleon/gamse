@@ -629,7 +629,7 @@ def reduce_doublefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        fiberobj_lst = get_fiberobj_lst(item['object'])
+        fiberobj_lst = get_fiberobj_lst(logitem['object'])
         obj_lst = list(map(lambda s:s.strip(), obj.split('|')))
 
         # now all objects in fiberobj_lst must be thar
