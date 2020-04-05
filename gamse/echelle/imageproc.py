@@ -85,7 +85,9 @@ def combine_images(data,
                 else:
                     clipmask1 = mask[:,y1:y2,x1:x2]
 
-                if maskmode == 'max':
+                if maskmode is None:
+                    clipmask2 = np.zeros_like(clipdata, dtype=np.bool)
+                elif maskmode == 'max':
                     clipmask2 = (np.mgrid[0:nz,0:ny,0:nx][0]
                                 == clipdata.argmax(axis=0))
                 elif maskmode == 'min':
