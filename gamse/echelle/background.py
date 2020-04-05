@@ -846,7 +846,7 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
 def get_single_background(data, apertureset):
     #apertureset = load_aperture_set('../midproc/trace_A.trc')
     h, w = data.shape
-    
+
     bkg_image = np.zeros_like(data, dtype=np.float32)
     allrows = np.arange(h)
     plot_x = []
@@ -906,7 +906,7 @@ def get_single_background(data, apertureset):
     
     bkg_image = median_filter(bkg_image, size=(9,1), mode='nearest')
     #fits.writeto('bkg_{}.fits'.format(fileid), bkg_image, overwrite=True)
-    bkg_image = savitzky_golay_2d(bkg_image, window_length=(11, 51), order=3, mode='nearest')
+    bkg_image = savitzky_golay_2d(bkg_image, window_length=(21, 101), order=3, mode='nearest')
     #fits.writeto('bkg_{}_sm.fits'.format(fileid), bkg_image, overwrite=True)
     return bkg_image
 
