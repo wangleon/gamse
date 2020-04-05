@@ -24,24 +24,23 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 )
 from ...echelle.background import (find_background, simple_debackground,
                                    get_single_background, get_xdisp_profile,
-                                   find_profile_scale, BackgroundLight,
+                                   BackgroundLight,
                                    find_best_background,
                                    select_background_from_database)
 from ...utils.obslog import parse_num_seq
 from ..common import FormattedInfo
-from .common import (obslog_columns, print_wrapper, get_mask,
-                     correct_overscan, parse_bias_frames,
-                     TraceFigure, BackgroudFigure)
+from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
+                     correct_overscan, TraceFigure, BackgroudFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
-def reduce_doublefiber(logtable, config):
+def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
 
     Args:
-        logtable (:class:`astropy.table.Table`): The observing log.
         config (:class:`configparser.ConfigParser`): The configuration of
             reduction.
+        logtable (:class:`astropy.table.Table`): The observing log.
 
     """
 
@@ -74,24 +73,7 @@ def reduce_doublefiber(logtable, config):
     n_fiber = 2
 
     ################################ parse bias ################################
-    bias_file = config['reduce.bias'].get('bias_file')
-
-    if mode=='debug' and os.path.exists(bias_file):
-        # load bias data from existing file
-        bias, head = fits.getdata(bias_file, header=True)
-
-        reobj = re.compile('GAMSE BIAS[\s\S]*')
-        # pack header cards
-        bias_card_lst = []
-        for card in head.cards:
-            if reobj.match(card.keyword):
-                bias_card_lst.append((card.keyword, card.value))
-        # print info
-        message = 'Load bias from image: "{}"'.format(bias_file)
-        logger.info(message)
-        print(message)
-    else:
-        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
+    bias, bias_card_lst = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -127,7 +109,7 @@ def reduce_doublefiber(logtable, config):
                 # find a proper name (flatname) for this flat
                 if objname=='flat':
                     # no special names given, use exptime
-                    flatname = '{[exptime]:g}'.format(logitem)
+                    flatname = '{:g}'.format(logitem['exptime'])
                 else:
                     # flatname is given. replace space with "_"
                     # remove "flat" before the objectname. e.g.,
@@ -216,7 +198,8 @@ def reduce_doublefiber(logtable, config):
                     allmask += sat_mask
 
                     # correct overscan for flat
-                    data, card_lst, overmean = correct_overscan(data, mask)
+                    data, card_lst, overmean, overstd = correct_overscan(
+                                                        data, mask, direction)
                     # head['BLANK'] is only valid for integer arrays.
                     if 'BLANK' in head:
                         del head['BLANK']
@@ -248,7 +231,7 @@ def reduce_doublefiber(logtable, config):
                                     mode       = 'mean',
                                     upper_clip = 10,
                                     maxiter    = 5,
-                                    mask       = (None, 'max')[nflat>3],
+                                    maskmode   = (None, 'max')[nflat>3],
                                     )
                     flat_dsum = combine_images(data_lst,
                                     mode       = 'sum',
@@ -344,7 +327,7 @@ def reduce_doublefiber(logtable, config):
                             fits.ImageHDU(flat_norm),
                             fits.ImageHDU(flat_sens),
                             fits.BinTableHDU(flat_spec),
-                            fits.ImageHDU(flat_dsum)
+                            fits.ImageHDU(flat_dsum),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
@@ -591,23 +574,23 @@ def reduce_doublefiber(logtable, config):
     ############################## Extract ThAr ################################
 
     # get the data shape
-    h, w = flat_sens.shape
+    ny, nx = flat_sens.shape
 
     # define dtype of 1-d spectra for all fibers
     types = [
             ('aperture',     np.int16),
             ('order',        np.int16),
             ('points',       np.int16),
-            ('wavelength',   (np.float64, w)),
-            ('flux',         (np.float32, w)),
-            ('flux_sum_err', (np.float32, w)),
-            ('flux_sum_mask',(np.float32, w)),
-            ('flux_opt',     (np.float32, w)),
-            ('flux_opt_err', (np.float32, w)),
-            ('flux_opt_mask',(np.float32, w)),
-            ('flux_raw',     (np.float32, w)),
-            ('flat',         (np.float32, w)),
-            ('background',   (np.float32, w)),
+            ('wavelength',   (np.float64, nx)),
+            ('flux',         (np.float32, nx)),
+            ('flux_sum_err', (np.float32, nx)),
+            ('flux_sum_mask',(np.float32, nx)),
+            ('flux_opt',     (np.float32, nx)),
+            ('flux_opt_err', (np.float32, nx)),
+            ('flux_opt_mask',(np.float32, nx)),
+            ('flux_raw',     (np.float32, nx)),
+            ('flat',         (np.float32, nx)),
+            ('background',   (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -621,21 +604,28 @@ def reduce_doublefiber(logtable, config):
     #       }
     count_thar = 0
     for logitem in logtable:
-
+        # logitem alias
         frameid = logitem['frameid']
+        fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
         exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
 
         if imgtype != 'cal':
             continue
 
-        fiberobj_lst = [v.strip().lower()
-                        for v in logitem['object'].split('|')]
+        # split the object names and make obj_lst
+        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
+        obj_lst = [s.strip() for s in obj.split('|')]
+        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
 
         # check if there's any other objects
         has_others = False
-        for fiberobj in fiberobj_lst:
-            if len(fiberobj)>0 and fiberobj != 'thar':
+        for ifiber, objname in fiberobj_lst:
+            if objname != 'thar':
                 has_others = True
         if has_others:
             continue
@@ -643,8 +633,10 @@ def reduce_doublefiber(logtable, config):
         # now all objects in fiberobj_lst must be thar
 
         count_thar += 1
-        fileid = logitem['fileid']
-        print('Wavelength Calibration for {}'.format(fileid))
+        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
+                   'identification'.format(fileid, imgtype, '|'.join(obj_lst)))
+        logger.info(message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
@@ -654,20 +646,26 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
         for key, value in card_lst:
             head.append((key, value))
 
+        message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
         # correct bias for ThAr, if has bias
         if bias is None:
-            message = 'No bias. skipped bias correction'
+            message = 'No bias'
         else:
             data = data - bias
-            message = 'Bias corrected'
-        logger.info(message)
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
@@ -676,9 +674,11 @@ def reduce_doublefiber(logtable, config):
         all_cards     = {}
         all_identlist = {}
 
-        for ifiber in range(n_fiber):
+        for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
-            if fiberobj_lst[ifiber] != 'thar':
+            objname = objname.lower()
+
+            if objname != 'thar':
                 continue
 
             section = config['reduce.extract']
@@ -734,7 +734,7 @@ def reduce_doublefiber(logtable, config):
 
                     message = ('Searching for archive wavelength calibration'
                                'file in "{}"'.format(database_path))
-                    logger.info(message)
+                    logger.info(logger_prefix + message)
 
                     ref_spec, ref_calib = select_calib_from_database(
                         database_path, statime_key, head[statime_key])
@@ -743,7 +743,7 @@ def reduce_doublefiber(logtable, config):
 
                         message = ('Did not find any archive wavelength'
                                    'calibration file')
-                        logger.info(message)
+                        logger.info(logger_prefix + message)
 
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
@@ -800,8 +800,8 @@ def reduce_doublefiber(logtable, config):
                         message = 'Aperture offset = {}; Pixel offset = {}'
                         message = message.format(aperture_koffset,
                                                  pixel_koffset)
-                        print(message)
-                        logger.info(message)
+                        logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
 
                         use = section.getboolean('use_prev_fitpar')
                         xorder      = (section.getint('xorder'), None)[use]
@@ -829,7 +829,7 @@ def reduce_doublefiber(logtable, config):
                             )
                 else:
                     message = 'No database searching. Identify lines manually'
-                    logger.info(message)
+                    logger.info(logger_prefix + message)
 
                     # do not search the database
                     calib = wlcalib(spec,
@@ -924,7 +924,7 @@ def reduce_doublefiber(logtable, config):
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
                     ' - fiber {:1s} ({:4g} sec)'
-                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
+                    ' - {:4d}/{:4d} RMS = {:7.5f}')
     for frameid, calib_fiber_lst in sorted(calib_lst.items()):
         for fiber, calib in sorted(calib_fiber_lst.items()):
             print(fmt_string.format(frameid, calib['fileid'], fiber,
@@ -1024,7 +1024,8 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1077,7 +1078,6 @@ def reduce_doublefiber(logtable, config):
                     background.max(), background.mean())
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
-
 
         # get order brightness profile
         result = get_xdisp_profile(data, master_aperset[fiber])
@@ -1289,7 +1289,8 @@ def reduce_doublefiber(logtable, config):
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                            data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -1457,7 +1458,7 @@ def reduce_doublefiber(logtable, config):
                                 )
                 if selected_bkg is None:
                     # not found either in database
-                    message = 'Error: No backgroudn found in the database'
+                    message = 'Error: No background found in the database'
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
                 else:

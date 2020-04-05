@@ -1,9 +1,7 @@
 import os
 import re
 import datetime
-import logging
-logger = logging.getLogger(__name__)
-import dateutil.parser
+import configparser
 
 import numpy as np
 import astropy.io.fits as fits
@@ -11,8 +9,8 @@ from astropy.time import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
+from ..common import load_obslog, load_config, FormattedInfo
 from ...utils.obslog import read_obslog
-from ..common import FormattedInfo
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -188,7 +186,7 @@ def make_obslog(path):
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid', 'S12'),  ('imgtype', 'S3'),
+        ('frameid', 'i2'),  ('fileid', 'S15'),  ('imgtype', 'S3'),
         ('object',  'S12'), ('i2cell', 'bool'), ('exptime', 'f4'),
         ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
         ])

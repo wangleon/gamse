@@ -154,6 +154,11 @@ def make_obslog(path):
         path (str): Path to the raw FITS files.
 
     """
+
+    # load config file
+    config = load_config('FOCES\S*\.cfg$')
+
+    fibermode = config['data']['fibermode']
     
     # standard naming convenction for fileid
     name_pattern1 = '^\d{8}_\d{4}_FOC\d{4}_[A-Za-z0-9]{4}$'
@@ -169,13 +174,13 @@ def make_obslog(path):
             maxlen_fileid = max(maxlen_fileid, len(fileid))
     # now the maxlen_fileid is the maximum length of fileid
 
-
     # prepare infomation to print
     # prepare logtable
     logtable = Table(dtype=[
         ('frameid', 'i2'),  ('fileid', 'S{:d}'.format(maxlen_fileid)),
-        ('imgtype', 'S4'),  ('object', 'S21'),  ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
+        ('imgtype', 'S4'),  ('object', 'S21'),
+        ('exptime', 'f4'),  ('obsdate', Time),
+        ('nsat',   'i4'),   ('q95',     'i4'),
         ])
     display_columns = ['frameid', 'fileid', 'imgtype', 'object',
                         'exptime', 'obsdate', 'nsat', 'q95']
@@ -210,66 +215,89 @@ def make_obslog(path):
 
         if re.match(name_pattern1, fileid):
             # fileid matches the standard FOCES naming convention
-            if fileid[22:25]=='BIA':
-                imgtype = 'cal'
-                object_lst = ['Bias']
-            elif fileid[22:25]=='FLS':
-                imgtype = 'cal'
-                object_lst = ['Flat', '']
-            elif fileid[22:25]=='FLC':
-                imgtype = 'cal'
-                object_lst = ['', 'Flat']
-            elif fileid[22:26]=='COCS':
-                imgtype = 'cal'
-                object_lst = ['Comb', 'Comb']
-            elif fileid[22:26]=='COC0':
-                imgtype = 'cal'
-                object_lst = ['', 'Comb']
-            elif fileid[22:26]=='COS0':
-                imgtype = 'cal'
-                object_lst = ['Comb', '']
-            elif fileid[22:25]=='THS':
-                imgtype = 'cal'
-                object_lst = ['ThAr', 'ThAr']
-            elif fileid[22:25]=='THC':
-                imgtype  = 'cal'
-                object_lst = ['', 'ThAr']
-            elif fileid[22:25]=='THS':
-                imgtype  = 'cal'
-                object_lst = ['ThAr', '']
-            elif fileid[22:26]=='SCI0':
-                imgtype  = 'sci'
-                object_lst = [target, '']
-            elif fileid[22:26]=='SCC2':
-                imgtype  = 'sci'
-                object_lst = [target, 'Comb']
-            elif fileid[22:26]=='SCT2':
-                imgtype  = 'sci'
-                object_lst = [target, 'ThAr']
-  
+            if fibermode == 'single':
+                # in single-fiber mode
+                if fileid[22:25]=='BIA':
+                    imgtype, objectname = 'cal', 'Bias'
+                elif fileid[22:25]=='FLA':
+                    imgtype, objectname = 'cal', 'Flat'
+                elif fileid[22:25]=='THA':
+                    imgtype, objectname = 'cal', 'ThAr'
+                elif fileid[22:25]=='SCI':
+                    imgtype, objectname = 'sci', target
+                else:
+                    imgtype, objectname = 'cal', 'Unknown'
+            elif fibermode == 'double':
+                # in double-fiber mode
+                if fileid[22:25]=='BIA':
+                    imgtype, obj_lst = 'cal', ['Bias']
+                elif fileid[22:25]=='FLS':
+                    imgtype, obj_lst = 'cal', ['Flat', '']
+                elif fileid[22:25]=='FLC':
+                    imgtype, obj_lst = 'cal', ['', 'Flat']
+                elif fileid[22:26]=='COCS':
+                    imgtype, obj_lst = 'cal', ['Comb', 'Comb']
+                elif fileid[22:26]=='COC0':
+                    imgtype, obj_lst = 'cal', ['', 'Comb']
+                elif fileid[22:26]=='COS0':
+                    imgtype, obj_lst = 'cal', ['Comb', '']
+                elif fileid[22:25]=='THS':
+                    imgtype, obj_lst = 'cal', ['ThAr', 'ThAr']
+                elif fileid[22:25]=='THC':
+                    imgtype, obj_lst = 'cal', ['', 'ThAr']
+                elif fileid[22:25]=='THS':
+                    imgtype, obj_lst = 'cal', ['ThAr', '']
+                elif fileid[22:26]=='SCI0':
+                    imgtype, obj_lst = 'sci', [target, '']
+                elif fileid[22:26]=='SCC2':
+                    imgtype, obj_lst = 'sci', [target, 'Comb']
+                elif fileid[22:26]=='SCT2':
+                    imgtype, obj_lst = 'sci', [target, 'ThAr']
+                else:
+                    imgtype, obj_lst = 'cal', ['','']
+            else:
+                print('Unknown fiber mode: {}'.format(fibermode))
+                raise ValueError
+
             frameid = int(fileid[9:13])
             has_frameid = True
         elif re.match(name_pattern2, fileid):
             frameid = prev_frameid + 1
-            imgtype = 'cal'
-            object_lst = ['', '']
+            if fibermode == 'single':
+                imgtype, objectname = 'cal', 'Unknown'
+            elif fibermode == 'double':
+                imgtype, obj_lst = 'cal', ['', '']
+            else:
+                print('Unknown fiber mode: {}'.format(fibermode))
+                raise ValueError
             has_frameid = True
         else:
             # fileid does not follow the naming convetion
-            imgtype = 'cal'
-            object_lst = ['', '']
+            if fibermode == 'single':
+                imgtype, objectname = 'cal', 'Unknown'
+            elif fibermode == 'double':
+                imgtype, obj_lst = 'cal', ['', '']
+            else:
+                print('Unknown fiber mode: {}'.format(fibermode))
+                raise ValueError
             frameid = 0
             has_frameid = False
 
-        if len(object_lst)==1:
-            objectname = '{:^21s}'.format(object_lst[0])
-        elif len(object_lst)==2:
-            objectname = '|'.join(['{:^10s}'.format(v) for v in object_lst])
+        if fibermode == 'single':
+            objectname = '{:21s}'.format(objectname)
+        elif fibermode == 'double':
+            if len(obj_lst)==1:
+                objectname = '{:^21s}'.format(obj_lst[0])
+            elif len(obj_lst)==2:
+                objectname = '|'.join(['{:^10s}'.format(v) for v in obj_lst])
+            else:
+                print('Warning: length of object_lst ({}) excess the maximum '
+                      'number of fibers (2)'.format(len(obj_lst)))
+                objectname = '{:^21s}'.format('Error')
+                pass
         else:
-            print('Warning: length of object_lst ({}) excess the maximum number'
-                  'of fibers (2)'.format(len(object_lst)))
-            objectname = '{:^21s}'.format('Error')
-            pass
+            print('Unknown fiber mode: {}'.format(fibermode))
+            raise ValueError
 
         # determine the total number of saturated pixels
         saturation = (data>=63000).sum()
@@ -335,15 +363,15 @@ def reduce_rawdata():
     """
 
     # read obslog and config
-    logtable = load_obslog('\S*\.obslog$')
     config = load_config('FOCES\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$')
 
     fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
-        reduce_singlefiber(logtable, config)
+        reduce_singlefiber(config, logtable)
     elif fibermode == 'double':
-        reduce_doublefiber(logtable, config)
+        reduce_doublefiber(config, logtable)
     else:
         print('Invalid fibermode:', fibermode)
 

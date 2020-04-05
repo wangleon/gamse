@@ -20,13 +20,14 @@ from ...echelle.trace import TraceFigureCommon
 from ...echelle.background import BackgroundFigureCommon
 from ..reduction     import Reduction
 
-def correct_overscan(data, mask=None):
+def correct_overscan(data, mask=None, direction=None):
     """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
         data (:class:`numpy.ndarray`): Input image data.
         mask (:class:`numpy.ndarray`): Input image mask.
+        direction (str): CCD direction code.
     
     Returns:
         tuple: A tuple containing:
@@ -35,10 +36,11 @@ def correct_overscan(data, mask=None):
               corrected.
             * **card_lst** (*list*) – A new card list for FITS header.
             * **overmean** (*float*) – Mean value of overscan pixels.
+            * **overstd** (*float*) – Standard deviation of overscan pixels.
     """
-    h, w = data.shape
+    ny, nx = data.shape
     overdata1 = data[:, 0:20]
-    overdata2 = data[:, w-18:w]
+    overdata2 = data[:, nx-18:nx]
     overdata_tot = np.hstack((overdata1, overdata2))
 
     # find the overscan level along the y axis
@@ -47,43 +49,101 @@ def correct_overscan(data, mask=None):
     ovr_lst1 = overdata1.mean(dtype=np.float64, axis=1)
     ovr_lst2 = overdata2.mean(dtype=np.float64, axis=1)
     
-    # only used the upper ~1/2 regions for calculating mean of overscan
-    #vy1, vy2 = h//2, h
-    vy1, vy2 = 0, h//2
+    # only used the bluer ~1/2 regions for calculating mean of overscan
+    if direction[1]=='b':
+        vy1, vy2 = 0, ny//2
+    elif direction[1]=='r':
+        vy1, vy2 = ny//2, ny
+    else:
+        print('Unknown direction:', direction)
+        raise ValueError
+
     # find the mean and standard deviation for left & right overscan
+    '''
     ovrmean1 = ovr_lst1[vy1:vy2].mean(dtype=np.float64)
     ovrmean2 = ovr_lst2[vy1:vy2].mean(dtype=np.float64)
     ovrstd1  = ovr_lst1[vy1:vy2].std(dtype=np.float64, ddof=1)
     ovrstd2  = ovr_lst2[vy1:vy2].std(dtype=np.float64, ddof=1)
+    '''
 
+    ovrmean1 = data[vy1:vy2, 0:20].mean(dtype=np.float64)
+    ovrstd1  = data[vy1:vy2, 0:20].std(dtype=np.float64)
     # subtract overscan
-    new_data = data[:,20:2068] - ovrmean1
+    new_data = data[:, 20:2068] - ovrmean1
     
     card_lst = []
     prefix = 'HIERARCH GAMSE OVERSCAN '
     card_lst.append((prefix + 'CORRECTED', True))
     card_lst.append((prefix + 'METHOD',    'mean'))
-    card_lst.append((prefix + 'AXIS-1',    '1:20'))
-    card_lst.append((prefix + 'AXIS-2',    '{}:{}'.format(vy1,vy2)))
+    card_lst.append((prefix + 'AXIS1',     '1:20'))
+    card_lst.append((prefix + 'AXIS2',     '{}:{}'.format(vy1+1,vy2)))
     card_lst.append((prefix + 'MEAN',      ovrmean1))
     card_lst.append((prefix + 'STDEV',     ovrstd1))
 
-    return new_data, card_lst, ovrmean1
+    return new_data, card_lst, ovrmean1, ovrstd1
 
-def parse_bias_frames(logtable, config, pinfo):
-    """Parse the bias images and return the bias as an array.
+def get_bias(config, logtable):
+    """Get bias image.
 
     Args:
-        logtable ():
-        config ():
-        pinfo ():
+        config (:class:`configparser.ConfigParser`): Config object.
+        logtable (:class:`astropy.table.Table`): Table of Observing log.
 
     Returns:
-        bias:
-        bias_card_lst:
+        tuple: A tuple containing:
+
+            * **bias** (:class:`numpy.ndarray`) – Output bias image.
+            * **bias_card_lst** (list) – List of FITS header cards related to
+              the bias correction.
 
     """
-    rawdata = config['data']['rawdata']
+    mode = config['reduce'].get('mode')
+    bias_file = config['reduce.bias'].get('bias_file')
+
+    if mode=='debug' and os.path.exists(bias_file):
+        # load bias data from existing file
+        hdu_lst = fits.open(bias_file)
+        bias = hdu_lst[-1].data
+        head = hdu_lst[0].header
+        hdu_lst.close()
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # filter header cards that match the above pattern
+        bias_card_lst = [(card.keyword, card.value) for card in head.cards
+                            if reobj.match(card.keyword)]
+        # print info
+        message = 'Load bias from image: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
+    else:
+        bias, bias_card_lst = combine_bias(config, logtable)
+
+    return bias, bias_card_lst
+
+def combine_bias(config, logtable):
+    """Combine bias images.
+
+    Args:
+        config (:class:`configparser.ConfigParser`): Config object.
+        logtable (:class:`astropy.table.Table`): Table of Observing log.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **bias** (:class:`numpy.ndarray`) – Output bias image.
+            * **bias_card_lst** (list) – List of FITS header cards related to
+              the bias correction.
+    
+    Combine bias frames found in observing log.
+    The resulting array **bias** is combined using sigma-clipping method with
+    an uppper clipping value given by "cosmic_clip" in "reduce.bias" section in
+    **config**.
+    Meanwhile, a card list containing the method, mean value and standard
+    deviation to be added to the FITS header is also returned.
+
+    """
+    rawdata   = config['data']['rawdata']
+    direction = config['data']['direction']
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -91,19 +151,24 @@ def parse_bias_frames(logtable, config, pinfo):
     bias_data_lst = []
     bias_card_lst = []
 
-    count_file = 0
-    for logitem in logtable:
-        if logitem['object'].lower().strip() != 'bias':
-            continue
+    bias_items = list(filter(lambda item: item['object'].lower()=='bias',
+                             logtable))
+    # get the number of bias images
+    n_bias = len(bias_items)
+
+    if n_bias == 0:
+        # there is no bias frames
+        return None, []
+
+    for ifile, logitem in enumerate(bias_items):
+
         # now filter the bias frames
-        count_file += 1
-        fname = '{[fileid]}.fits'.format(logitem)
-        filename = os.path.join(rawdata, fname)
+        filename = os.path.join(rawdata, logitem['fileid']+'.fits')
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
         mask = get_mask(data)
-        data, card_lst, overmean = correct_overscan(data, mask)
+        data, card_lst, overmean, overstd = correct_overscan(data, mask, direction)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -112,7 +177,7 @@ def parse_bias_frames(logtable, config, pinfo):
         bias_data_lst.append(data)
 
         # append the file information
-        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
+        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
         card = (key_prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
@@ -125,83 +190,87 @@ def parse_bias_frames(logtable, config, pinfo):
                 bias_card_lst.append((newkey, value))
 
         # print info
-        if count_file == 1:
+        if ifile == 0:
             print('* Combine Bias Images: {}'.format(bias_file))
-            print(' '*2 + pinfo.get_separator())
-            print(' '*2 + pinfo.get_title())
-            print(' '*2 + pinfo.get_separator())
-        string = pinfo.get_format().format(logitem, overmean)
-        print(' '*2 + print_wrapper(string, logitem))
-
-    # get the number of bias images
-    n_bias = len(bias_data_lst)
+        print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
+                logitem['fileid'], logitem['exptime'], overmean))
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
 
-    if n_bias == 0:
-        # there is no bias frames
-        bias = None
-    else:
-        # there is bias frames
-        print(' '*2 + pinfo.get_separator())
+    # combine bias images
+    bias_data_lst = np.array(bias_data_lst)
 
-        # combine bias images
-        bias_data_lst = np.array(bias_data_lst)
+    combine_mode = 'mean'
+    cosmic_clip  = section.getfloat('cosmic_clip')
+    maxiter      = section.getint('maxiter')
+    maskmode     = (None, 'max')[n_bias>=3]
 
-        combine_mode = 'mean'
-        cosmic_clip  = section.getfloat('cosmic_clip')
-        maxiter      = section.getint('maxiter')
-        mask_mode    = (None, 'max')[n_bias>=3]
+    bias_combine = combine_images(bias_data_lst,
+            mode       = combine_mode,
+            upper_clip = cosmic_clip,
+            maxiter    = maxiter,
+            maskmode   = maskmode,
+            )
 
-        bias = combine_images(bias_data_lst,
-                mode       = combine_mode,
-                upper_clip = cosmic_clip,
-                maxiter    = maxiter,
-                mask       = mask_mode,
-                )
+    bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+    bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+    bias_card_lst.append((prefix+'MAXITER',      maxiter))
+    bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
 
-        bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
-        bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
-        bias_card_lst.append((prefix+'MAXITER',      maxiter))
-        bias_card_lst.append((prefix+'MASK_MODE',    str(mask_mode)))
+    # create the hdu list to be saved
+    hdu_lst = fits.HDUList()
+    # create new FITS Header for bias
+    head = fits.Header()
+    for card in bias_card_lst:
+        head.append(card)
+    hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
-        ############## bias smooth ##################
-        if section.getboolean('smooth'):
-            # bias needs to be smoothed
-            smooth_method = section.get('smooth_method')
+    ############## bias smooth ##################
+    if section.getboolean('smooth'):
+        # bias needs to be smoothed
+        smooth_method = section.get('smooth_method')
 
-            if smooth_method in ['gauss', 'gaussian']:
-                # perform 2D gaussian smoothing
-                smooth_sigma = section.getint('smooth_sigma')
-                smooth_mode  = section.get('smooth_mode')
+        newcard_lst = []
+        if smooth_method in ['gauss', 'gaussian']:
+            # perform 2D gaussian smoothing
+            smooth_sigma = section.getint('smooth_sigma')
+            smooth_mode  = section.get('smooth_mode')
 
-                bias_smooth = gaussian_filter(bias,
-                                sigma=smooth_sigma, mode=smooth_mode)
+            bias_smooth = gaussian_filter(bias_combine,
+                            sigma=smooth_sigma, mode=smooth_mode)
 
-                # write information to FITS header
-                bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
-                bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-                bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-                bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
-            else:
-                print('Unknown smooth method: ', smooth_method)
-                pass
-
-            bias = bias_smooth
+            # write information to FITS header
+            bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
+            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
         else:
-            # bias not smoothed
-            bias_card_lst.append((prefix+'SMOOTH CORRECTED', False))
+            print('Unknown smooth method: ', smooth_method)
+            pass
 
-        # create new FITS Header for bias
-        head = fits.Header()
-        for card in bias_card_lst:
-            head.append(card)
-        fits.writeto(bias_file, bias, header=head, overwrite=True)
+        # pack the cards to bias_card_lst and also hdu_lst
+        for card in newcard_lst:
+            bias_card_lst.append(card)
+            hdu_lst[0].header.append(card)
+        hdu_lst.append(fits.ImageHDU(data=bias_smooth))
 
-        message = 'Bias image written to "{}"'.format(bias_file)
-        logger.info(message)
-        print(message)
+        # bias is the result array to return
+        bias = bias_smooth
+    else:
+        # bias not smoothed
+        card = (prefix+'SMOOTH CORRECTED', False)
+        bias_card_lst.append(card)
+        hdu_lst[0].heaer.append(card)
+
+        # bias is the result array to return
+        bias = bias_combine
+
+    hdu_lst.writeto(bias_file, overwrite=True)
+
+    message = 'Bias image written to "{}"'.format(bias_file)
+    logger.info(message)
+    print(message)
 
     return bias, bias_card_lst
 
@@ -723,30 +792,30 @@ def print_wrapper(string, item):
         str: The color-coded string.
 
     """
-    imgtype = item['imgtype']
+    imgtype    = item['imgtype']
+    objectname = item['object'].strip().lower()
 
-    if imgtype=='bias':
+    if imgtype=='cal' and objectname=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='science':
+    elif imgtype=='sci':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='calib':
-        if 'object' in item:
-            if item['object'].lower()=='thar':
-                # arc lamp, use light yellow (93)
-                return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
-            else:
-                return string
-        elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
-                                                    ('', 'ThAr'),
-                                                    ('ThAr', 'ThAr')]:
+    elif imgtype=='cal':
+        if objectname == 'thar':
             # arc lamp, use light yellow (93)
             return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
         else:
             return string
+        #elif (item['fiber_A'], item['fiber_B']) in [('ThAr', ''),
+        #                                            ('', 'ThAr'),
+        #                                            ('ThAr', 'ThAr')]:
+        #    # arc lamp, use light yellow (93)
+        #    return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+        #else:
+        #    return string
     else:
         return string
 
