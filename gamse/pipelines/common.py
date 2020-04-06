@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import configparser
 
 import numpy as np
@@ -26,23 +27,62 @@ def load_config(pattern):
 
 def load_obslog(pattern):
     """Find and read the observing log file.
+
+    Args:
+        pattern (str): Pattern of the filename of observing log.
+
+    Returns:
+        :class:`astropy.io.Table`: Observing log table.
     """
 
-    # find obs log
+    # find observing log in the current workin gdirectory
     logname_lst = [fname for fname in os.listdir(os.curdir)
                             if re.match(pattern, fname)]
+
     if len(logname_lst)==0:
         print('No observation log found')
         exit()
+    elif len(logname_lst)==1:
+        select_logname = logname_lst[0]
     elif len(logname_lst)>1:
-        print('Multiple observation log found:')
-        for logname in sorted(logname_lst):
-            print('  '+logname)
+        nlog = len(logname_lst)
+        # maximum length of log filename
+        maxlen = max([len(logname) for logname in logname_lst])
+        # maximum length of log number
+        maxdgt = len(str(nlog))
+        fmt_string = (' - [{{:{:d}d}}] {{:{:d}s}}     '
+                      'Last modified in {{:s}}').format(maxdgt, maxlen)
+
+        # build a list of (filename, modified time)
+        nametime_lst = [(logname, os.path.getmtime(logname))
+                                for logname in logname_lst]
+
+        # sort with last modified time
+        nametime_lst = sorted(nametime_lst, key=lambda v:v[1])
+
+        # print lognames one by one
+        for i, (logname, mtime) in enumerate(nametime_lst):
+            t = time.localtime(mtime)
+            time_str = '{0:02d}-{1:02d}-{2:02d} {3:02d}:{4:02d}:{5:02d}'.format(
+                        *t)
+            print(fmt_string.format(i, logname, time_str))
+
+        # repeat the loop until user give a valid logname ID
+        while(True):
+            string = input('Select an observing log: ')
+            if string.isdigit() and int(string) < nlog:
+                select_logname = nametime_lst[int(string)][0]
+                break
+            elif len(string.strip())==0:
+                print('Warning: no logfile selected')
+            else:
+                print('Warning: {} is not a valid log ID'.format(string))
     else:
         pass
 
-    logfile = logname_lst[0]
-    logtable = read_obslog(logfile)
+    message = 'Load obslog from "{}"'.format(select_logname)
+    print(message)
+    logtable = read_obslog(select_logname)
     return logtable
 
 
