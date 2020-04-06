@@ -111,14 +111,19 @@ def get_bias(config, logtable):
         # filter header cards that match the above pattern
         bias_card_lst = [(card.keyword, card.value) for card in head.cards
                             if reobj.match(card.keyword)]
+
+        n_bias = head['GAMSE BIAS NFILE']
+        bias_ovrstd_lst = [head['GAMSE BIAS FILE {:03d} OVERSCAN STDEV'.format(i+1)]
+                            for i in range(n_bias)]
+        ovrstd = np.mean(bias_ovrstd_lst)
         # print info
         message = 'Load bias from image: "{}"'.format(bias_file)
         logger.info(message)
         print(message)
     else:
-        bias, bias_card_lst = combine_bias(config, logtable)
+        bias, bias_card_lst, n_bias, ovrstd = combine_bias(config, logtable)
 
-    return bias, bias_card_lst
+    return bias, bias_card_lst, n_bias, ovrstd
 
 def combine_bias(config, logtable):
     """Combine bias images.
@@ -150,6 +155,7 @@ def combine_bias(config, logtable):
     # read each individual CCD
     bias_data_lst = []
     bias_card_lst = []
+    bias_overstd_lst = []
 
     bias_items = list(filter(lambda item: item['object'].lower()=='bias',
                              logtable))
@@ -158,7 +164,7 @@ def combine_bias(config, logtable):
 
     if n_bias == 0:
         # there is no bias frames
-        return None, []
+        return None, [], 0, 0.0
 
     for ifile, logitem in enumerate(bias_items):
 
@@ -169,6 +175,7 @@ def combine_bias(config, logtable):
             data = data[0,:,:]
         mask = get_mask(data)
         data, card_lst, overmean, overstd = correct_overscan(data, mask, direction)
+        bias_overstd_lst.append(overstd)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
             del head['BLANK']
@@ -272,7 +279,10 @@ def combine_bias(config, logtable):
     logger.info(message)
     print(message)
 
-    return bias, bias_card_lst
+    # calculate average overstd values for all bias frames
+    bias_meanstd = np.mean(bias_overstd_lst)
+
+    return bias, bias_card_lst, n_bias, bias_meanstd
 
 
 def get_mask(data):
