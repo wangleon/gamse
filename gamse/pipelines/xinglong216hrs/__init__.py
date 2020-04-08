@@ -59,26 +59,47 @@ def make_config():
             print('Invalid input: {}'.format(string))
             continue
 
+    # select readout mode
+    readoutmode_lst = [
+                    'Left Top & Bottom',
+                    ]
+    for i, readoutmode in enumerate(readoutmode_lst):
+        print('{:d} {:s}'.format(i, readoutmode))
+    while(True):
+        string = input('Select CCD Readout Mode: ')
+        if string.isdigit() and int(string)<len(readoutmode_lst):
+            readoutmode = readoutmode_lst[int(string)]
+            break
+        else:
+            print('Invalid selection:', string)
+            continue
+
+
+    direction = {
+            'Left Top & Bottom': 'xr-',
+            }[readoutmode]
+
     # create config object
     config = configparser.ConfigParser()
 
     config.add_section('data')
 
     # determine the time-dependent keywords
-    if input_datetime > datetime.datetime(2009, 1, 1):
+    if input_datetime < datetime.datetime(2019, 1, 1):
+        statime_key = 'DATE-STA'
+        exptime_key = 'EXPTIME'
+    else:
         # since 2019 there's another type of FITS header
         statime_key = 'DATE-OBS'
         exptime_key = 'EXPOSURE'
-    else:
-        statime_key = 'DATE-STA'
-        exptime_key = 'EXPTIME'
 
     config.set('data', 'telescope',   'Xinglong216')
     config.set('data', 'instrument',  'HRS')
     config.set('data', 'rawdata',     'rawdata')
     config.set('data', 'statime_key', statime_key)
     config.set('data', 'exptime_key', exptime_key)
-    config.set('data', 'direction',   'xr-')
+    config.set('data', 'readoutmode', readoutmode)
+    config.set('data', 'direction',   direction)
     config.set('data', 'fibermode',   fibermode)
     if fibermode == 'double':
         config.set('data', 'fiberoffset', str(-12))
@@ -182,15 +203,32 @@ def make_obslog(path):
         real_obsdate_lst = []
         delta_t_lst = []
 
+        # find maximum length of object
+        nobj = max([len(row['object'].split(';')) for row in addinfo_table])
+        maxobjlen_lst = [0]*nobj
+        for row in addinfo_table:
+            obj_lst = row['object'].split(';')
+            for i, obj in enumerate(obj_lst):
+                maxobjlen_lst[i] = max(maxobjlen_lst[i], len(obj.strip()))
+        print(nobj, maxobjlen_lst)
+
+    objlen = sum(maxobjlen_lst) + 2*(len(maxobjlen_lst)-1)
+
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid', 'S15'),  ('imgtype', 'S3'),
-        ('object',  'S12'), ('i2cell', 'bool'), ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
-        ])
+                        ('frameid', 'i2'),
+                        ('fileid', 'S15'),
+                        ('imgtype', 'S3'),
+                        ('object',  'S{:d}'.format(objlen)),
+                        ('i2cell', 'bool'),
+                        ('exptime', 'f4'),
+                        ('obsdate', Time),
+                        ('nsat',    'i4'),
+                        ('q95',     'i4'),
+                ])
 
     # prepare infomation to print
     pinfo = FormattedInfo(obslog_columns,
@@ -264,7 +302,16 @@ def make_obslog(path):
             objectname = ''
         if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
             and addinfo_lst[frameid]['object'] is not np.ma.masked):
-            objectname = addinfo_lst[frameid]['object']
+            obj_lst = addinfo_lst[frameid]['object'].split(';')
+            objname_lst = []
+            for i in range(nobj):
+                objlen = maxobjlen_lst[i]
+                if i < len(obj_lst):
+                    objname_lst.append(obj_lst[i].strip().ljust(objlen))
+                else:
+                    objname_lst.append(''.ljust(objlen))
+            objectname = '; '.join(objname_lst)
+
         # change to regular name
         for regname in regular_names:
             if objectname.lower() == regname.lower():
@@ -331,12 +378,13 @@ def make_obslog(path):
     # save the logtable
     loginfo = FormattedInfo(obslog_columns)
     outfile = open(outfilename, 'w')
-    outfile.write(loginfo.get_title(delimiter='|')+os.linesep)
-    outfile.write(loginfo.get_dtype(delimiter='|')+os.linesep)
-    outfile.write(loginfo.get_separator(delimiter='+')+os.linesep)
-    fmtstr = loginfo.get_format(has_esc=False, delimiter='|')
+    outfile.write(loginfo.get_title()+os.linesep)
+    outfile.write(loginfo.get_dtype()+os.linesep)
+    outfile.write(loginfo.get_separator()+os.linesep)
+    fmtstr = loginfo.get_format()
     for row in logtable:
-        outfile.write(fmtstr.format(row)+os.linesep)
+        #outfile.write(fmtstr.format(row)+os.linesep)
+        outfile.write(str(row)+os.linesep)
     outfile.close()
 
 
