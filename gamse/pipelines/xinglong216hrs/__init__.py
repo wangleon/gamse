@@ -9,8 +9,9 @@ from astropy.time import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
-from ..common import load_obslog, load_config, FormattedInfo
 from ...utils.obslog import read_obslog
+from ..common import load_obslog, load_config, FormattedInfo
+from .common import obslog_columns, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -192,7 +193,7 @@ def make_obslog(path):
         ])
 
     # prepare infomation to print
-    pinfo = FormattedInfo(all_columns,
+    pinfo = FormattedInfo(obslog_columns,
             ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
             'obsdate', 'nsat', 'q95'])
 
@@ -233,7 +234,7 @@ def make_obslog(path):
         data = data[y1:y2,x1:x2]
 
         # find frame-id
-        frameid = int(fileid[8:])
+        frameid = int(fileid[11:])
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
@@ -282,7 +283,7 @@ def make_obslog(path):
         saturation = (data>=65535).sum()
 
         # find the 95% quantile
-        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
+        quantile95 = int(np.round(np.percentile(data, 95)))
 
         item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
                 saturation, quantile95]
@@ -306,41 +307,8 @@ def make_obslog(path):
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
         # plot time offset
-        fig = plt.figure(figsize=(9, 6), dpi=100)
-        ax = fig.add_axes([0.12,0.16,0.83,0.77])
-        xdates = mdates.date2num(real_obsdate_lst)
-        ax.plot_date(xdates, delta_t_lst, 'o-', ms=6)
-        ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
-        ax.set_xlabel('Log Time', fontsize=12)
-        ax.set_ylabel('Log Time - FTIS Time (sec)', fontsize=12)
-        x1, x2 = ax.get_xlim()
-        y1, y2 = ax.get_ylim()
-        ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2,
-                'Time offset = %d seconds'%time_offset, fontsize=14)
-        ax.set_xlim(x1, x2)
-        ax.set_ylim(y1, y2)
-        ax.grid(True, ls='-', color='w')
-        ax.set_facecolor('#eaeaf6')
-        ax.set_axisbelow(True)
-        ax.spines['bottom'].set_color('none')
-        ax.spines['left'].set_color('none')
-        ax.spines['top'].set_color('none')
-        ax.spines['right'].set_color('none')
-        for t in ax.xaxis.get_ticklines():
-            t.set_color('none')
-        for t in ax.yaxis.get_ticklines():
-            t.set_color('none')
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
-        #plt.setp(ax.get_xticklabels(), rotation=30)i
-        fig.autofmt_xdate()
-        for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(10)
-        for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(10)
-        fig.suptitle('Time Offsets Between Log and FITS', fontsize=15)
-        fig.savefig('obsdate_offset.png')
-        plt.close(fig)
-
+        plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset,
+                            'obsdate_offset.png')
         # correct time offset
         for row in logtable:
             row['obsdate'] = row['obsdate'] + time_offset_dt
@@ -361,12 +329,14 @@ def make_obslog(path):
         outfilename = outname
 
     # save the logtable
+    loginfo = FormattedInfo(obslog_columns)
     outfile = open(outfilename, 'w')
-    outfile.write(pinfo.get_title()+os.linesep)
-    outfile.write(pinfo.get_dtype()+os.linesep)
-    outfile.write(pinfo.get_separator()+os.linesep)
+    outfile.write(loginfo.get_title(delimiter='|')+os.linesep)
+    outfile.write(loginfo.get_dtype(delimiter='|')+os.linesep)
+    outfile.write(loginfo.get_separator(delimiter='+')+os.linesep)
+    fmtstr = loginfo.get_format(has_esc=False, delimiter='|')
     for row in logtable:
-        outfile.write(pinfo.get_format().format(row)+os.linesep)
+        outfile.write(fmtstr.format(row)+os.linesep)
     outfile.close()
 
 
@@ -407,8 +377,8 @@ def reduce_rawdata():
     fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
-        reduce_singlefiber(logtable, config)
+        reduce_singlefiber(config, logtable)
     elif fibermode == 'double':
-        reduce_doublefiber(logtable, config)
+        reduce_doublefiber(config, logtable)
     else:
         print('Invalid fibermode:', fibermode)

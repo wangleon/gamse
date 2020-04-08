@@ -362,6 +362,53 @@ def select_calib_from_database(database_path, dateobs):
 
     return spec, calib
 
+def plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset, figname):
+    """Plot the offset between the real observing time and log time.
+
+    Args:
+        real_obsdate_lst (list): List of real observing time.
+        delta_t_lst (list): List of time differences in second between real time
+            and log time
+        time_offset (float): Determined offset in second between real time and
+            log time.
+        figname (str): Filename of output figure.
+    """
+    
+    fig = plt.figure(figsize=(9, 6), dpi=100)
+    ax = fig.add_axes([0.12,0.16,0.83,0.76])
+    xdates = mdates.date2num(real_obsdate_lst)
+    ax.plot_date(xdates, delta_t_lst, 'o-', ms=6)
+    ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
+    ax.set_xlabel('Log Time', fontsize=12)
+    ax.set_ylabel('Log Time - FTIS Time (sec)', fontsize=12)
+    x1, x2 = ax.get_xlim()
+    y1, y2 = ax.get_ylim()
+    ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2,
+            'Time offset = %d seconds'%time_offset, fontsize=14)
+    ax.set_xlim(x1, x2)
+    ax.set_ylim(y1, y2)
+    ax.grid(True, ls='-', color='w')
+    ax.set_facecolor('#eaeaf6')
+    ax.set_axisbelow(True)
+    ax.spines['bottom'].set_color('none')
+    ax.spines['left'].set_color('none')
+    ax.spines['top'].set_color('none')
+    ax.spines['right'].set_color('none')
+    for t in ax.xaxis.get_ticklines():
+        t.set_color('none')
+    for t in ax.yaxis.get_ticklines():
+        t.set_color('none')
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+    #plt.setp(ax.get_xticklabels(), rotation=30)i
+    fig.autofmt_xdate()
+    for tick in ax.xaxis.get_major_ticks():
+        tick.label1.set_fontsize(10)
+    for tick in ax.yaxis.get_major_ticks():
+        tick.label1.set_fontsize(10)
+    fig.suptitle('Time Offsets Between Log and FITS', fontsize=14)
+    fig.savefig(figname)
+    plt.close(fig)
+
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
@@ -741,16 +788,16 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
-all_columns = [
+obslog_columns = [
         ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',  'str',   '{:^12s}', '{0[fileid]:12s}'),
+        ('fileid',  'str',   '{:^15s}', '{0[fileid]:15s}'),
         ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
         ('i2cell',  'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
         ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
         ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',    'int',   '{:^10s}', '{0[nsat]:10d}'),
-        ('q95',     'int',   '{:^10s}', '{0[q95]:10d}'),
+        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
+        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
         ]
 
 def print_wrapper(string, item):
