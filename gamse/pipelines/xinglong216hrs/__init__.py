@@ -64,7 +64,7 @@ def make_config():
                     'Left Top & Bottom',
                     ]
     for i, readoutmode in enumerate(readoutmode_lst):
-        print('{:d} {:s}'.format(i, readoutmode))
+        print(' [{:d}] {:s}'.format(i, readoutmode))
     while(True):
         string = input('Select CCD Readout Mode: ')
         if string.isdigit() and int(string)<len(readoutmode_lst):
@@ -93,14 +93,15 @@ def make_config():
         statime_key = 'DATE-OBS'
         exptime_key = 'EXPOSURE'
 
-    config.set('data', 'telescope',   'Xinglong216')
-    config.set('data', 'instrument',  'HRS')
-    config.set('data', 'rawdata',     'rawdata')
-    config.set('data', 'statime_key', statime_key)
-    config.set('data', 'exptime_key', exptime_key)
-    config.set('data', 'readoutmode', readoutmode)
-    config.set('data', 'direction',   direction)
-    config.set('data', 'fibermode',   fibermode)
+    config.set('data', 'telescope',    'Xinglong216')
+    config.set('data', 'instrument',   'HRS')
+    config.set('data', 'rawdata',      'rawdata')
+    config.set('data', 'statime_key',  statime_key)
+    config.set('data', 'exptime_key',  exptime_key)
+    config.set('data', 'readoutmode',  readoutmode)
+    config.set('data', 'direction',    direction)
+    config.set('data', 'obsinfo_file', 'obsinfo.txt')
+    config.set('data', 'fibermode',    fibermode)
     if fibermode == 'double':
         config.set('data', 'fiberoffset', str(-12))
 
@@ -186,12 +187,15 @@ def make_obslog(path):
         path (str): Path to the raw FITS files.
 
     """
+    # load config file
+    config = load_config('Xinglong216HRS\S*\.cfg$')
+
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
     # if the obsinfo file exists, read and pack the information
     addinfo_lst = {}
-    obsinfo_file = 'obsinfo.txt'
+    obsinfo_file = config['data'].get('obsinfo_file')
     has_obsinfo = os.path.exists(obsinfo_file)
     if has_obsinfo:
         #io_registry.register_reader('obslog', Table, read_obslog)
@@ -221,7 +225,6 @@ def make_obslog(path):
                         ('nsat',    'i4'),
                         ('q95',     'i4'),
                 ])
-    print(logtable.colnames)
 
     # prepare infomation to print
     pinfo = FormattedInfo(obslog_columns,
@@ -270,11 +273,10 @@ def make_obslog(path):
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
 
-        # parse obsdate
-        if 'DATE-STA' in head:
-            obsdate = Time(head['DATE-STA'])
-        else:
-            obsdate = Time(head['DATE-OBS'])
+        # get obsdate from FITS header
+        statime_key = config['data'].get('statime_key')
+        obsdate = Time(head[statime_key])
+        # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
             real_obsdate = addinfo_lst[frameid]['obsdate'].datetime
@@ -283,10 +285,9 @@ def make_obslog(path):
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
 
-        if 'EXPTIME' in head:
-            exptime = head['EXPTIME']
-        else:
-            exptime = head['EXPOSURE']
+        # get exposure time from FITS header
+        exptime_key = config['data'].get('exptime_key')
+        exptime = head[exptime_key]
 
         # parse object name
         if 'OBJECT' in head:
@@ -369,36 +370,9 @@ def reduce_rawdata():
     telescope.
     """
 
-    # find obs log
-    logname_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-7:]=='.obslog']
-    if len(logname_lst)==0:
-        print('No observation log found')
-        exit()
-    elif len(logname_lst)>1:
-        print('Multiple observation log found:')
-        for logname in sorted(logname_lst):
-            print('  '+logname)
-    else:
-        pass
-
-    # read obs log
-    logtable = read_obslog(logname_lst[0])
-
-    print(logtable)
-
-    # load both built-in and local config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation           = configparser.ExtendedInterpolation(),
-                )
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if re.match ('Xinglong216HRS\S*.cfg', fname):
-            config.read(fname)
-            print('Load Congfile File: {}'.format(fname))
-            break
+    # read obslog and config
+    config = load_config('Xinglong216HRS\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$')
 
     fibermode = config['data']['fibermode']
 
