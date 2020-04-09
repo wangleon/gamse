@@ -3,7 +3,7 @@ import re
 import logging
 logger = logging.getLogger(__name__)
 
-from astropy.io import registry as io_registry
+from astropy.io import registry
 from astropy.table import Table, MaskedColumn
 from astropy.time import Time
 
@@ -117,16 +117,80 @@ def read_obslog(filename):
 
     Args:
         filename (str): Filename of the obsereving log file.
-        multi_object (bool): Multi-object if True.
 
     Returns:
         :class:`astropy.table.Table`: An observing log object.
     
     """
-    io_registry.register_reader('obslog', Table, _read_obslog)
+    registry.register_reader('obslog', Table, _read_obslog)
     table = Table.read(filename, format='obslog')
-    io_registry.unregister_reader('obslog', Table)
+    registry.unregister_reader('obslog', Table)
     return table
+
+def _write_obslog(table, filename, overwrite=False):
+    """Write the log table into a file.
+
+    Args:
+        table (:class:`astropy.table.Table`): Observing log table.
+        filename (str): Name of the output ASCII file.
+        overwrite (bool): 
+
+    """
+    pformat_lst = table.pformat_all()
+
+    outfile = open(filename, 'w')
+    outfile.write(pformat_lst[0]+os.linesep)
+
+    item = table[0]
+    separator = pformat_lst[1]
+
+    # find the length of each column
+    collen_lst = [len(string) for string in separator.split()]
+
+    # find a list of datatypes
+    dtype_string_lst = []
+    for (name, dtype) in table.dtype.descr:
+        if dtype in ['<i2', '<i4']:
+            dtype_string = 'int'
+        elif dtype in ['<f4', '<f8']:
+            dtype_string = 'float'
+        elif dtype[0:2] == '|S':
+            dtype_string = 'str'
+        elif dtype == '|O':
+            if isinstance(item[name], Time):
+                dtype_string = 'time'
+            else:
+                dtype_string = ''
+        dtype_string_lst.append(dtype_string)
+
+    # get a list of space-filled datatypes
+    dtypes = ['{{:^{:d}s}}'.format(collen_lst[i]).format(dtype)
+                for i, dtype in enumerate(dtype_string_lst)]
+
+    # write data types
+    outfile.write(' '.join(dtypes)+os.linesep)
+
+    # write the separator
+    outfile.write(separator+os.linesep)
+
+    # write rows
+    for i, row in enumerate(table):
+        outfile.write(pformat_lst[i+2]+os.linesep)
+    outfile.close()
+
+def write_obslog(table, filename):
+    """Write an observing log table to an ASCII file.
+
+    Args:
+        table (:class:`astropy.table.Table`): Observing log table.
+        filename (str): Name of the output ASCII file.
+
+    """
+
+    registry.register_writer('obslog', Table, _write_obslog)
+    table.write(filename, format='obslog')
+    registry.unregister_writer('obslog', Table)
+
 
 class LogItem(object):
     """Class for observing log items
