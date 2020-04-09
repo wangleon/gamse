@@ -9,7 +9,7 @@ from astropy.time import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
-from ...utils.obslog import read_obslog
+from ...utils.obslog import read_obslog, write_obslog
 from ..common import load_obslog, load_config, FormattedInfo
 from .common import obslog_columns, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
@@ -204,15 +204,7 @@ def make_obslog(path):
         delta_t_lst = []
 
         # find maximum length of object
-        nobj = max([len(row['object'].split(';')) for row in addinfo_table])
-        maxobjlen_lst = [0]*nobj
-        for row in addinfo_table:
-            obj_lst = row['object'].split(';')
-            for i, obj in enumerate(obj_lst):
-                maxobjlen_lst[i] = max(maxobjlen_lst[i], len(obj.strip()))
-        print(nobj, maxobjlen_lst)
-
-    objlen = sum(maxobjlen_lst) + 2*(len(maxobjlen_lst)-1)
+        maxobjlen = max([len(row['object']) for row in addinfo_table])
 
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
@@ -220,19 +212,20 @@ def make_obslog(path):
     # prepare logtable
     logtable = Table(dtype=[
                         ('frameid', 'i2'),
-                        ('fileid', 'S15'),
+                        ('fileid',  'S15'),
                         ('imgtype', 'S3'),
-                        ('object',  'S{:d}'.format(objlen)),
-                        ('i2cell', 'bool'),
+                        ('object',  'S{:d}'.format(maxobjlen)),
+                        ('i2',      'S1'),
                         ('exptime', 'f4'),
                         ('obsdate', Time),
                         ('nsat',    'i4'),
                         ('q95',     'i4'),
                 ])
+    print(logtable.colnames)
 
     # prepare infomation to print
     pinfo = FormattedInfo(obslog_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
+            ['frameid', 'fileid', 'imgtype', 'object', 'i2', 'exptime',
             'obsdate', 'nsat', 'q95'])
 
     # print header of logtable
@@ -302,15 +295,7 @@ def make_obslog(path):
             objectname = ''
         if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
             and addinfo_lst[frameid]['object'] is not np.ma.masked):
-            obj_lst = addinfo_lst[frameid]['object'].split(';')
-            objname_lst = []
-            for i in range(nobj):
-                objlen = maxobjlen_lst[i]
-                if i < len(obj_lst):
-                    objname_lst.append(obj_lst[i].strip().ljust(objlen))
-                else:
-                    objname_lst.append(''.ljust(objlen))
-            objectname = '; '.join(objname_lst)
+            objectname = addinfo_lst[frameid]['object']
 
         # change to regular name
         for regname in regular_names:
@@ -319,10 +304,10 @@ def make_obslog(path):
                 break
 
         # parse I2 cell
-        i2cell = objectname.lower()=='i2'
-        if (frameid in addinfo_lst and 'i2cell' in addinfo_table.colnames
-            and addinfo_lst[frameid]['i2cell'] is not np.ma.masked):
-            i2cell = addinfo_lst[frameid]['i2cell']
+        i2 = ('-', '+')[objectname.lower()=='i2']
+        if (frameid in addinfo_lst and 'i2' in addinfo_table.colnames
+            and addinfo_lst[frameid]['i2'] is not np.ma.masked):
+            i2 = addinfo_lst[frameid]['i2']
 
         imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
@@ -332,7 +317,7 @@ def make_obslog(path):
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))
 
-        item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
+        item = [frameid, fileid, imgtype, objectname, i2, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
@@ -344,8 +329,6 @@ def make_obslog(path):
 
         prev_frameid = frameid
 
-    print(pinfo.get_separator())
-    
     # sort by obsdate
     #logtable.sort('obsdate')
 
@@ -375,18 +358,11 @@ def make_obslog(path):
     else:
         outfilename = outname
 
-    # save the logtable
-    loginfo = FormattedInfo(obslog_columns)
-    outfile = open(outfilename, 'w')
-    outfile.write(loginfo.get_title()+os.linesep)
-    outfile.write(loginfo.get_dtype()+os.linesep)
-    outfile.write(loginfo.get_separator()+os.linesep)
-    fmtstr = loginfo.get_format()
-    for row in logtable:
-        #outfile.write(fmtstr.format(row)+os.linesep)
-        outfile.write(str(row)+os.linesep)
-    outfile.close()
+    # set formats
+    logtable['exptime'].info.format = 'g'
 
+    # save the logtable
+    write_obslog(logtable, outfilename)
 
 def reduce_rawdata():
     """2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
@@ -408,6 +384,8 @@ def reduce_rawdata():
 
     # read obs log
     logtable = read_obslog(logname_lst[0])
+
+    print(logtable)
 
     # load both built-in and local config files
     config = configparser.ConfigParser(

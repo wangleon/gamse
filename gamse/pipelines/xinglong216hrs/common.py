@@ -793,7 +793,7 @@ obslog_columns = [
         ('fileid',  'str',   '{:^15s}', '{0[fileid]:15s}'),
         ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
         ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
-        ('i2cell',  'bool',  '{:^6s}',  '{0[i2cell]!s: <6}'),
+        ('i2',      'str',   '{:^3s}',  '{0[i2]:3s}'),
         ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
         ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
         ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
