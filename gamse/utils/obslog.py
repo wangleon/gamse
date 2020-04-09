@@ -136,18 +136,22 @@ def _write_obslog(table, filename, overwrite=False):
         overwrite (bool): 
 
     """
+
+    if not overwrite and os.path.exists(filename):
+        print('Warning: File {} already exists'.format(filename))
+        raise ValueError
+
     pformat_lst = table.pformat_all()
+    separator = pformat_lst[1]
 
     outfile = open(filename, 'w')
     outfile.write(pformat_lst[0]+os.linesep)
-
-    item = table[0]
-    separator = pformat_lst[1]
 
     # find the length of each column
     collen_lst = [len(string) for string in separator.split()]
 
     # find a list of datatypes
+    row = table[0]
     dtype_string_lst = []
     for (name, dtype) in table.dtype.descr:
         if dtype in ['<i2', '<i4']:
@@ -157,7 +161,7 @@ def _write_obslog(table, filename, overwrite=False):
         elif dtype[0:2] == '|S':
             dtype_string = 'str'
         elif dtype == '|O':
-            if isinstance(item[name], Time):
+            if isinstance(row[name], Time):
                 dtype_string = 'time'
             else:
                 dtype_string = ''
@@ -174,8 +178,21 @@ def _write_obslog(table, filename, overwrite=False):
     outfile.write(separator+os.linesep)
 
     # write rows
+    prev_row = row
     for i, row in enumerate(table):
+
+        if 'imgtype' in table.colnames \
+            and row['imgtype'] != prev_row['imgtype']:
+            outfile.write(separator+os.linesep)
+
+        if 'imgtype' in table.colnames \
+            and row['imgtype']=='cal' and prev_row['imgtype']=='cal' \
+            and row['object']!=prev_row['object']:
+            outfile.write(separator+os.linesep)
+
         outfile.write(pformat_lst[i+2]+os.linesep)
+        prev_row = row
+
     outfile.close()
 
 def write_obslog(table, filename):
