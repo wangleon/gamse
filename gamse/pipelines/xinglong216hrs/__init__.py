@@ -11,7 +11,7 @@ from astropy.table import Table
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
 from ..common import load_obslog, load_config
-from .common import print_wrapper, plot_time_offset
+from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -62,14 +62,18 @@ def make_config():
     # select readout mode
     readoutmode_lst = [
                     'Left Top & Bottom',
+                    'Left Bottom & Right Top',
                     ]
+    default_readoutmode = 'Left Top & Bottom'
     for i, readoutmode in enumerate(readoutmode_lst):
         print(' [{:d}] {:s}'.format(i, readoutmode))
     while(True):
-        string = input('Select CCD Readout Mode: ')
+        string = input('Select CCD Readout Mode ({}): '.format(default_readoutmode))
         if string.isdigit() and int(string)<len(readoutmode_lst):
             readoutmode = readoutmode_lst[int(string)]
             break
+        elif len(string.strip())==0:
+            readoutmode = default_readoutmode
         else:
             print('Invalid selection:', string)
             continue
@@ -77,6 +81,7 @@ def make_config():
 
     direction = {
             'Left Top & Bottom': 'xr-',
+            'Left Bottom & Right Top': 'xr-',
             }[readoutmode]
 
     # create config object
@@ -235,26 +240,9 @@ def make_obslog(path):
         filename = os.path.join(path, fname)
         data, head = fits.getdata(filename, header=True)
 
-        # determine the science and overscan regions
-        naxis1 = head['NAXIS1']
-        naxis2 = head['NAXIS2']
-        x1 = head.get('CRVAL1', 0)
-        y1 = head.get('CRVAL2', 0)
-        # get science region along x axis
-        cover = head.get('COVER')
-        if cover is None:
-            if naxis1 >= 4096:
-                cover = naxis1 - 4096
-        # get science region along y axis
-        rover = head.get('ROVER')
-        if rover is None:
-            if naxis2 >= 4136:
-                rover = naxis2 - 4136
-
-        # get start and end indices of science region
-        y2 = y1 + naxis2 - rover
-        x2 = x1 + naxis1 - cover
-        data = data[y1:y2,x1:x2]
+        # get science region
+        y1, y2, x1, x2 = get_sci_region(head)
+        data = data[y1:y2, x1:x2]
 
         # find frame-id
         frameid = int(fileid[11:])

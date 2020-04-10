@@ -18,17 +18,177 @@ from ...echelle.trace import TraceFigureCommon
 from ...utils.obslog import read_obslog
 from ..reduction          import Reduction
 
-def parse_bias_frames(logtable, config, pinfo):
-    """Parse the bias images and return the bias as an array.
+def get_region_lst(header, readout_mode):
+    """Get a list of (science, overscan) rectangles of the CCD regions based on
+    input header and readout mode.
 
     Args:
-        logtable ():
-        config ():
-        pinfo ():
+        header (:class:`astropy.io.fits.Header`): FITS header.
+        readout_mode (str): Readout Mode of CCD.
 
     Returns:
-        bias:
-        bias_card_lst:
+        tuple:
+
+    """
+    naxis1 = header['NAXIS1']     # size along X axis
+    naxis2 = header['NAXIS2']     # size along Y axis
+    x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
+
+    if readoutmode in ['Left Top & Bottom', 'Left Bottom & Right Top']:
+        # 2 regions vertically
+        # science & overscan region
+        sci1 = (y1, y1+(naxis2-rover)//2, x1, x1+(naxis1-cover))
+        ovr1 = (y1, y1+(naxis2-rover)//2, x1+(naxis1-cover), naxis1)
+
+        sci2 = (y1+(naxis2-rover)//2, naxis2-rover, x1, x1+(naxis1-cover))
+        ovr2 = (y1+(naxis2-rover)//2, naxis2-rover, x1+(naxis1-cover), naxis1)
+
+        return ((sci1, ovr1), (sci2, ovr2))
+    else:
+        print('Error: Wrong Readout Mode:', readout_mode)
+        raise ValueError
+
+def get_sci_region(header):
+    """Get over science region rectangle.
+
+    Args:
+        header (:class:`astropy.io.fits.header`): FITS header.
+
+    Returns:
+        tuple:
+
+    See also:
+        
+
+    """
+    naxis1 = header['NAXIS1']     # size along X axis
+    naxis2 = header['NAXIS2']     # size along Y axis
+    x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
+    return (y1, y1+(naxis2-rover), x1, x1+(naxis1-cover))
+
+
+def get_ovr_region(header):
+    """Get over science region rectangle.
+
+    Args:
+        header (:class:`astropy.io.fits.header`): FITS header.
+
+    Returns:
+        tuple:
+
+    See also:
+
+    """
+    naxis1 = header['NAXIS1']     # size along X axis
+    naxis2 = header['NAXIS2']     # size along Y axis
+    x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
+    return (y1, y1+(naxis2-rover), x1+(naxis1-cover), x1+naxis1)
+
+def get_ccd_geometry(header):
+    """Get over science region rectangle.
+
+    Args:
+        header (:class:`astropy.io.fits.header`): FITS header.
+
+    Returns:
+        tuple:
+
+    See also:
+
+    """
+    naxis1 = header['NAXIS1']     # size along X axis
+    naxis2 = header['NAXIS2']     # size along Y axis
+    x1 = header.get('CRVAL1', 0)  # X origin
+    y1 = header.get('CRVAL2', 0)  # Y origin
+
+    # total pixels along Y and X axis
+    ny, nx = 4136, 4096
+
+    # get XBIN
+    if naxis1 >= nx:
+        xbin = 1
+    elif naxis 1 >= nx//2:
+        xbin = 2
+    elif naxis1 >= nx//4:
+        xbin = 4
+    else:
+        raise ValueError
+
+    # get YBIN
+    if naxis2 == ny:
+        ybin = 1
+    elif naxis2 == ny//2:
+        ybin = 2
+    elif naxis2 == ny//4:
+        ybin = 4
+    else:
+        raise ValueError
+
+    # get COVER
+    cover = header.get('COVER')
+    if cover is None:
+        if naxis1 >= nx:
+            cover = naxis1 - nx
+        elif naxis 1 >= nx//2:
+            cover = naxis1 - nx//2
+        elif naxis1 >= nx//4:
+            cover = naxis1 - nx//4
+        else:
+            raise ValueError
+
+
+    # get ROVER
+    rover = header.get('ROVER', 0)
+    # rover should = 0. if not, there must be addtional overscan region along Y
+    if rover != 0:
+        raise ValueError
+    
+    return x1, y1, xbin, ybin, cover, rover
+
+def get_bias(config, logtable):
+    """Get bias image.
+
+    Args:
+        config (:class:`configparser.ConfigParser`): Config object.
+        logtable (:class:`astropy.table.Table`): Table of Observing log.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **bias** (:class:`numpy.ndarray`) – Output bias image.
+
+    """
+    mode = config['reduce'].get('mode')
+    bias_file = config['reduce.bias'].get('bias_file')
+    
+    if mode=='debug' and os.path.exists(bias_file):
+        # load bias data from existing file
+        hdu_lst = fits.open(bias_file)
+        bias = hdu_lst[-1].data
+        head = hdu_lst[0].header
+        hdu_lst.close()
+
+        message = 'Load bias from image: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
+    else:
+        bias, bias_card_lst = combine_bias(config, logtable, config)
+
+    return bias
+
+def combine_bias(config, logtable):
+    """Combine the bias images.
+
+    Args:
+        config (:class:`configparser.ConfigParser`): Config object.
+        logtable (:class:`astropy.table.Table`): Table of Observing log.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **bias** (:class:`numpy.ndarray`) – Output bias image.
+            * **bias_card_lst** (list) – List of FITS header cards related to
+              the bias correction.
 
     """
 
@@ -39,14 +199,19 @@ def parse_bias_frames(logtable, config, pinfo):
     bias_data_lst = []
     bias_card_lst = []
 
-    count_file = 0
-    for logitem in logtable:
-        if logitem['object'].strip().lower()!='bias':
-            continue
+    bias_items = list(filter(lambda item: item['object'].lower()=='bias',
+                             logtable))
+    # get the number of bias images
+    n_bias = len(bias_items)
+
+    if n_bias == 0:
+        # there is no bias frames
+        return None
+
+    for ifile, logitem in enumerate(bias_items):
+
         # now filter the bias frames
-        count_file += 1
-        fname = logitem['fileid']+'.fits'
-        filename = os.path.join(rawdata, fname)
+        filename = os.path.join(rawdata, logitem['fileid']+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
         data, card_lst, overmean = correct_overscan(data, head, mask)
@@ -55,7 +220,7 @@ def parse_bias_frames(logtable, config, pinfo):
         bias_fileid_lst.append(logitem['fileid'])
 
         # append the file information
-        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(count_file)
+        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
         card = (key_prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
@@ -68,88 +233,89 @@ def parse_bias_frames(logtable, config, pinfo):
                 bias_card_lst.append((newkey, value))
 
         # print info
-        if count_file == 1:
-            print('* Combine Bias Images: {}'.format(bias_file))
-            print(' '*2 + pinfo.get_separator())
-            print(' '*2 + pinfo.get_title())
-            print(' '*2 + pinfo.get_separator())
-        string = pinfo.get_format().format(logitem, overmean)
-        print(' '*2 + print_wrapper(string, logitem))
-
-    # get the number of bias images
-    n_bias = len(bias_data_lst)
+        if ifile == 0:
+            print('* Combine Bias Images: "{}"'.format(bias_file))
+        print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
+                logitem['fileid'], logitem['exptime'], overmean))
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
 
-    if n_bias == 0:
-        # there is no bias frames
-        bias = None
-    else:
-        # there is bias frames
-        print(' '*2 + pinfo.get_separator())
+    # combine bias images
+    bias_data_lst = np.array(bias_data_lst)
 
-        # combine bias images
-        bias_data_lst = np.array(bias_data_lst)
+    combine_mode = 'mean'
+    cosmic_clip  = section.getfloat('cosmic_clip')
+    maxiter      = section.getint('maxiter')
+    maskmode    = (None, 'max')[n_bias>=3]
 
-        combine_mode = 'mean'
-        cosmic_clip  = section.getfloat('cosmic_clip')
-        maxiter      = section.getint('maxiter')
-        mask_mode    = (None, 'max')[n_bias>=3]
+    bias = combine_images(bias_data_lst,
+            mode       = combine_mode,
+            upper_clip = cosmic_clip,
+            maxiter    = maxiter,
+            maskmode   = maskmode,
+            )
 
-        bias = combine_images(bias_data_lst,
-                mode       = combine_mode,
-                upper_clip = cosmic_clip,
-                maxiter    = maxiter,
-                mask       = mask_mode,
-                )
+    bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+    bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+    bias_card_lst.append((prefix+'MAXITER',      maxiter))
+    bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
 
-        bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
-        bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
-        bias_card_lst.append((prefix+'MAXITER',      maxiter))
-        bias_card_lst.append((prefix+'MASK_MODE',    str(mask_mode)))
+    # create the hdu list to be saved
+    hdu_lst = fits.HDUList()
+    # create new FITS Header for bias
+    head = fits.Header()
+    for card in bias_card_lst:
+        head.append(card)
+    hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
-        ############## bias smooth ##################
-        if section.getboolean('smooth'):
-            # bias needs to be smoothed
-            smooth_method = section.get('smooth_method')
+    ############## bias smooth ##################
+    if section.getboolean('smooth'):
+        # bias needs to be smoothed
+        smooth_method = section.get('smooth_method')
 
-            h, w = bias.shape
-            if smooth_method in ['gauss','gaussian']:
-                # perform 2D gaussian smoothing
-                smooth_sigma = section.getint('smooth_sigma')
-                smooth_mode  = section.get('smooth_mode')
-                bias_smooth = np.zeros_like(bias, dtype=np.float64)
-                bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
-                                            sigma = smooth_sigma,
-                                            mode  = smooth_mode)
-                bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
-                                            sigma = smooth_sigma,
-                                            mode  = smooth_mode)
+        h, w = bias.shape
+        if smooth_method in ['gauss', 'gaussian']:
+            # perform 2D gaussian smoothing
+            smooth_sigma = section.getint('smooth_sigma')
+            smooth_mode  = section.get('smooth_mode')
+            bias_smooth = np.zeros_like(bias, dtype=np.float64)
+            bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
+                                        sigma = smooth_sigma,
+                                        mode  = smooth_mode)
+            bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
+                                        sigma = smooth_sigma,
+                                        mode  = smooth_mode)
 
-                # write information to FITS header
-                bias_card_lst.append((prefix+'SMOOTH CORRECTED',  True))
-                bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-                bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-                bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
-            else:
-                print('Unknown smooth method: ', smooth_method)
-                pass
-
-            bias = bias_smooth
+            # write information to FITS header
+            bias_card_lst.append((prefix+'SMOOTH CORRECTED',  True))
+            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
         else:
-            # bias not smoothed
-            bias_card_lst.append((prefix + 'SMOOTH CORRECTED', False))
+            print('Unknown smooth method: ', smooth_method)
+            pass
 
-        # create new FITS Header for bias
-        head = fits.Header()
-        for card in bias_card_lst:
-            head.append(card)
-        fits.writeto(bias_file, bias, header=head, overwrite=True)
+        # bias is the result array to return
+        bias = bias_smooth
+    else:
+        # bias not smoothed
+        card = (prefix + 'SMOOTH CORRECTED', False)
+        bias_card_lst.append(card)
+        hdu_lst[0].header.append(card)
 
-        message = 'Bias image written to "{}"'.format(bias_file)
-        logger.info(message)
-        print(message)
+        # bias is the result array to return
+        bias = bias_combine
+
+    # create new FITS Header for bias
+    head = fits.Header()
+    for card in bias_card_lst:
+        head.append(card)
+    fits.writeto(bias_file, bias, header=head, overwrite=True)
+
+    message = 'Bias image written to "{}"'.format(bias_file)
+    logger.info(message)
+    print(message)
 
     return bias, bias_card_lst
 
@@ -242,6 +408,12 @@ def get_mask(data, head):
 
 def fix_cr(data):
     """Cosmic ray fixing function.
+
+    Args:
+        data (): Input image data.
+
+    Returns:
+        :class:`numpy.dtype`: Fixed image data.
     """
     m = data.mean(dtype=np.float64)
     s = data.std(dtype=np.float64)
