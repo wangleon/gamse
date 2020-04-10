@@ -788,18 +788,6 @@ class Xinglong216HRS(Reduction):
         self.input_suffix = self.output_suffix
         return True
 
-obslog_columns = [
-        ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-        ('fileid',  'str',   '{:^15s}', '{0[fileid]:15s}'),
-        ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-        ('object',  'str',   '{:^12s}', '{0[object]:12s}'),
-        ('i2',      'str',   '{:^3s}',  '{0[i2]:3s}'),
-        ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
-        ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-        ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
-        ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-        ]
-
 def print_wrapper(string, item):
     """A wrapper for log printing for Xinglong216HRS pipeline.
 

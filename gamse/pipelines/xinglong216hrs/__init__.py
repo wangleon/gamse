@@ -10,8 +10,8 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
-from ..common import load_obslog, load_config, FormattedInfo
-from .common import obslog_columns, print_wrapper, plot_time_offset
+from ..common import load_obslog, load_config
+from .common import print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -226,17 +226,6 @@ def make_obslog(path):
                         ('q95',     'i4'),
                 ])
 
-    # prepare infomation to print
-    pinfo = FormattedInfo(obslog_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'i2', 'exptime',
-            'obsdate', 'nsat', 'q95'])
-
-    # print header of logtable
-    print(pinfo.get_separator())
-    print(pinfo.get_title())
-    #print(pinfo.get_dtype())
-    print(pinfo.get_separator())
-
     prev_frameid = -1
     # start scanning the raw files
     for fname in fname_lst:
@@ -325,7 +314,15 @@ def make_obslog(path):
         item = logtable[-1]
 
         # print log item with colors
-        string = pinfo.get_format(has_esc=False).format(item)
+        string = (' {:5s} {:15s} ({:3s}) {:s} {:1s}I2'
+                  '    exptime={:4g} s'
+                  '    {:23s}'
+                  '    Nsat={:6d}'
+                  '    Q95={:5d}').format(
+                '[{:d}]'.format(frameid), fileid, imgtype,
+                objectname.ljust(maxobjlen),
+                i2, exptime,
+                obsdate.isot, saturation, quantile95)
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
@@ -338,8 +335,9 @@ def make_obslog(path):
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
         # plot time offset
-        plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset,
-                            'obsdate_offset.png')
+        figname = os.path.join(config['reduce']['report'],
+                                'obsdate_offset.png')
+        plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset, figname)
         # correct time offset
         for row in logtable:
             row['obsdate'] = row['obsdate'] + time_offset_dt
@@ -359,7 +357,10 @@ def make_obslog(path):
     else:
         outfilename = outname
 
-    # set formats
+    # set display formats
+    logtable['imgtype'].info.format = '^s'
+    logtable['object'].info.format = '<s'
+    logtable['i2'].info.format = '^s'
     logtable['exptime'].info.format = 'g'
 
     # save the logtable
