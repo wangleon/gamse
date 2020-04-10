@@ -37,6 +37,7 @@ def _read_obslog(filename):
 
         if count_row == 3:
             # third row: horizontal lines
+            separator_row = row
             row = row.strip()
             index_lst = []
 
@@ -66,6 +67,11 @@ def _read_obslog(filename):
             continue
 
         # row_count > 3: parsing the data
+
+        if row == separator_row:
+            # if this line is a separator, skip
+            continue
+
         g = [row[i1:i2].strip() for (i1, i2) in index_lst]
         if dtypes[0]=='int' and ('-' in g[0] or ',' in g[0]):
             # the first column is an abbreviation
@@ -138,7 +144,7 @@ def _write_obslog(table, filename, overwrite=False):
     """
 
     if not overwrite and os.path.exists(filename):
-        print('Warning: File {} already exists'.format(filename))
+        print('Warning: File "{}" already exists'.format(filename))
         raise ValueError
 
     pformat_lst = table.pformat_all()
@@ -168,7 +174,7 @@ def _write_obslog(table, filename, overwrite=False):
         dtype_string_lst.append(dtype_string)
 
     # get a list of space-filled datatypes
-    dtypes = ['{{:^{:d}s}}'.format(collen_lst[i]).format(dtype)
+    dtypes = [dtype.center(collen_lst[i])
                 for i, dtype in enumerate(dtype_string_lst)]
 
     # write data types
@@ -181,10 +187,12 @@ def _write_obslog(table, filename, overwrite=False):
     prev_row = row
     for i, row in enumerate(table):
 
+        # write a separator between cal and sci
         if 'imgtype' in table.colnames \
             and row['imgtype'] != prev_row['imgtype']:
             outfile.write(separator+os.linesep)
 
+        # write a separator between different cal frames
         if 'imgtype' in table.colnames \
             and row['imgtype']=='cal' and prev_row['imgtype']=='cal' \
             and row['object']!=prev_row['object']:
