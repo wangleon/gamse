@@ -16,6 +16,7 @@ import matplotlib.dates as mdates
 
 from ...echelle.trace import TraceFigureCommon
 from ...utils.obslog import read_obslog
+from ...utils.onedarray import iterative_savgol_filter
 from ..reduction          import Reduction
 
 def get_region_lst(header, readout_mode):
@@ -27,7 +28,15 @@ def get_region_lst(header, readout_mode):
         readout_mode (str): Readout Mode of CCD.
 
     Returns:
-        tuple:
+        tuple: A tuple of region indices ``((sci1, ovr1), (sci2, ovr2), ...)``,
+        where ``sciN`` and ``ovrN`` are indices ``(y1, y2, x1, x2)`` of the N-th
+        science region and overscan region.
+
+    See also:
+
+        * :func:`get_sci_region`
+        * :func:`get_ovr_region`
+        * :func:`get_ccd_geometry`
 
     """
     naxis1 = header['NAXIS1']     # size along X axis
@@ -55,10 +64,14 @@ def get_sci_region(header):
         header (:class:`astropy.io.fits.header`): FITS header.
 
     Returns:
-        tuple:
+        tuple: A tuple of indices ``(y1, y2, x1, x2)``, where the overall
+        science region is ``data[y1:y2, x1:x2]``.
 
     See also:
-        
+
+        * :func:`get_ovr_region`
+        * :func:`get_region_lst`
+        * :func:`get_ccd_geometry`
 
     """
     naxis1 = header['NAXIS1']     # size along X axis
@@ -74,7 +87,14 @@ def get_ovr_region(header):
         header (:class:`astropy.io.fits.header`): FITS header.
 
     Returns:
-        tuple:
+        tuple: A tuple of indices ``(y1, y2, x1, x2)``, where the overall
+        overscan region is ``data[y1:y2, x1:x2]``.
+
+    See also:
+
+        * :func:`get_sci_region`
+        * :func:`get_region_lst`
+        * :func:`get_ccd_geometry`
 
     See also:
 
@@ -85,15 +105,22 @@ def get_ovr_region(header):
     return (y1, y1+(naxis2-rover), x1+(naxis1-cover), x1+naxis1)
 
 def get_ccd_geometry(header):
-    """Get over science region rectangle.
+    """Get basic geometry of CCD.
 
     Args:
         header (:class:`astropy.io.fits.header`): FITS header.
 
     Returns:
-        tuple:
+        tuple: A tuple of ``(x1, y1, xbin, ybin, cover, rover)``, where
+        ``(x1, y1)`` is the starting point of science region,
+        ``(xbin, ybin)`` is the CCD binning along X and Y axes,
+        and ``(cover, rover)`` is the numbers of overscan columns and rows.
 
     See also:
+
+        * :func:`get_region_lst`
+        * :func:`get_sci_region`
+        * :func:`get_ovr_region`
 
     """
     naxis1 = header['NAXIS1']     # size along X axis
@@ -107,7 +134,7 @@ def get_ccd_geometry(header):
     # get XBIN
     if naxis1 >= nx:
         xbin = 1
-    elif naxis 1 >= nx//2:
+    elif naxis1 >= nx//2:
         xbin = 2
     elif naxis1 >= nx//4:
         xbin = 4
@@ -129,7 +156,7 @@ def get_ccd_geometry(header):
     if cover is None:
         if naxis1 >= nx:
             cover = naxis1 - nx
-        elif naxis 1 >= nx//2:
+        elif naxis1 >= nx//2:
             cover = naxis1 - nx//2
         elif naxis1 >= nx//4:
             cover = naxis1 - nx//4
@@ -329,7 +356,7 @@ def get_badpixel_mask(shape, bins):
 
     Returns:
         :class:`numpy.ndarray`: 2D binary mask, where bad pixels are marked with
-            *True*, others *False*.
+        *True*, others *False*.
 
     The bad pixels are found *empirically*.
         
@@ -425,14 +452,13 @@ def fix_cr(data):
     else:
         return data
 
-def correct_overscan(data, head, mask=None):
+def correct_overscan(data, header, readout_mode=None):
     """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
         data (:class:`numpy.ndarray`): Input image data.
-        head (:class:`astropy.io.fits.Header`): Input FITS header.
-        mask (:class:`numpy.ndarray`): Input image mask.
+        header (:class:`astropy.io.fits.Header`): Input FITS header.
     
     Returns:
         tuple: A tuple containing:
@@ -440,61 +466,62 @@ def correct_overscan(data, head, mask=None):
             * **data** (:class:`numpy.ndarray`) – Output image with overscan
               corrected.
             * **card_lst** (*list*) – A new card list for FITS header.
-            * **overmean** (*float) – Mean value of overscan pixels.
     """
+    region_lst = get_region_lst(header, readout_mode)
 
-    h, w = data.shape
-    cover = head.get('COVER', 64)
-    x1, x2 = w-cover, w
+    y1, y2, x1, x2 = get_sci_region(header)
 
-    # find the overscan level along the y-axis
-    ovr_lst1 = data[0:h//2,x1+2:x2].mean(dtype=np.float64, axis=1)
-    ovr_lst2 = data[h//2:h,x1+2:x2].mean(dtype=np.float64, axis=1)
+    newdata = np.zeros((y2-y1, x2-x1), dtype=np.float64)
 
-    ovr_lst1_fix = fix_cr(ovr_lst1)
-    ovr_lst2_fix = fix_cr(ovr_lst2)
-
-    # apply the sav-gol fitler to the mean of overscan
-    winlength = 301
-    polyorder = 3
-    ovrsmooth1 = savgol_filter(ovr_lst1_fix,
-                    window_length=winlength, polyorder=polyorder)
-    ovrsmooth2 = savgol_filter(ovr_lst2_fix,
-                    window_length=winlength, polyorder=polyorder)
-
-    # determine shape of output image (also the shape of science region)
-    y1 = head.get('CRVAL2', 0)
-    rover = head.get('ROVER', 0)
-    y2 = y1 + head['NAXIS2'] - rover
-    ymid = (y1 + y2)//2
-    x1 = head.get('CRVAL1', 0)
-    cover = head.get('COVER', 64)
-    x2 = x1 + head['NAXIS1'] - cover
-    newshape = (y2-y1, x2-x1)
-
-    # subtract overscan
-    new_data = np.zeros(newshape, dtype=np.float64)
-    ovrdata1 = np.repeat([ovrsmooth1],x2-x1,axis=0).T
-    ovrdata2 = np.repeat([ovrsmooth2],x2-x1,axis=0).T
-    new_data[y1:ymid, x1:x2] = data[y1:ymid,x1:x2] - ovrdata1
-    new_data[ymid:y2, x1:x2] = data[ymid:y2,x1:x2] - ovrdata2
-    overmean = (ovrsmooth1.mean() + ovrsmooth2.mean())/2.
-
-    if mask is not None:
-        # fix bad pixels
-        bad_mask = (mask&2 > 0)
-        new_data = fix_pixels(new_data, bad_mask, 'x', 'linear')
-
+    # prepare card list to be returned
     card_lst = []
     prefix = 'HIERARCH GAMSE OVERSCAN '
-    card_lst.append((prefix + 'CORRECTED', True))
-    card_lst.append((prefix + 'METHOD',    'smooth:savgol'))
-    card_lst.append((prefix + 'WINLEN',    winlength))
-    card_lst.append((prefix + 'POLYORDER', polyorder))
-    #card_lst.append((prefix+' AXIS-1',    '{}:{}'.format(x1, x2)))
-    #card_lst.append((prefix+' AXIS-2',    '{}:{}'.format()))
 
-    return new_data, card_lst, overmean
+    for iregion, (sci_region, ovr_region) in enumerate(region_lst):
+
+        sci_y1, sci_y2, sci_x1, sci_x2 = sci_region
+        ovr_y1, ovr_y2, ovr_x1, ovr_x2 = ovr_region
+
+        scidata = data[sci_y1:sci_y2, sci_x1:sci_x2]
+        ovrdata = data[ovr_y1:ovr_y2, ovr_x1+2:ovr_x2]
+
+        # find the overscan level along the y-axis
+        ovr_lst = ovrdata.mean(axis=1)
+        # apply the sav-gol fitler to the mean of overscan
+        winlen = 301
+        order = 3
+        upper_clip = 3.0
+        ovr_smooth = iterative_savgol_filter(ovr_lst,
+                        winlen=winlen, order=order, upper_clip=upper_clip)
+
+        cordata = scidata - np.repeat([ovr_smooth], scidata.shape[1], axis=0).T
+
+        new_y1 = sci_y1 - y1
+        new_y2 = sci_y2 - y1
+        new_x1 = sci_x1 - x1
+        new_x2 = sci_x2 - x1
+        
+        newdata[new_y1:new_y2, new_x1:new_x2] = cordata
+
+        prefix2 = prefix + 'REGION {} '.format(iregion)
+        card_lst.append(prefix2+'SCI AXIS-1', '{}:{}'.format(sci_x1+1, sci_x2))
+        card_lst.append(prefix2+'SCI AXIS-2', '{}:{}'.format(sci_y1+1, sci_y2))
+        card_lst.append(prefix2+'OVR AXIS-1', '{}:{}'.format(ovr_x1+3, ovr_x2))
+        card_lst.append(prefix2+'OVR AXIS-2', '{}:{}'.format(ovr_y1+1, ovr_y2))
+        card_lst.append(prefix2+'COR AXIS-1', '{}:{}'.format(new_x1+1, new_x2))
+        card_lst.append(prefix2+'COR AXIS-2', '{}:{}'.format(new_y1+1, new_y2))
+        card_lst.append(prefix2+'METHOD',     'iterative_savgol')
+        card_lst.append(prefix2+'WINLEN',      winlen)
+        card_lst.append(prefix2+'ORDER',       order)
+        card_lst.append(prefix2+'UPPERCLIP',   upper_clip)
+        card_lst.append(prefix2+'LOWERCLIP',   'None')
+        card_lst.append(prefix2+'OVERMIN',     ovr_smooth.min())
+        card_lst.append(prefix2+'OVERMAX',     ovr_smooth.max())
+        card_lst.append(prefix2+'OVERMEAN',    ovr_smooth.mean())
+
+    card_lst.append((prefix + 'CORRECTED', True))
+
+    return newdata, card_lst
 
 def select_calib_from_database(database_path, dateobs):
     """Select wavelength calibration file in database.
@@ -502,11 +529,12 @@ def select_calib_from_database(database_path, dateobs):
     Args:
         path (str): Path to search for the calibration files.
         dateobs (str): .
+
     Returns:
         tuple: A tuple containing:
 
             * **spec** (:class:`numpy.dtype`): An array of previous calibrated
-                spectra.
+              spectra.
             * **calib** (dict): Previous calibration results.
     """
     
