@@ -9,35 +9,36 @@ import astropy.io.fits as fits
 
 from ...echelle.imageproc import combine_images, array_to_table, fix_pixels
 from ...echelle.trace import find_apertures, load_aperture_set
-from ...echelle.flat  import get_fiber_flat, mosaic_flat_auto, mosaic_images
+from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
+                                mosaic_spec)
 from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 get_time_weight, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength)
-from ..common import plot_background_aspect1, FormattedInfo
-from .common import (get_mask, correct_overscan, parse_bias_frames,
-                     all_columns, TraceFigure,
+from ..common import plot_background_aspect1
+from .common import (get_bias, get_mask, correct_overscan, TraceFigure,
                      select_calib_from_database)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
 
-def reduce_singlefiber(logtable, config):
+def reduce_singlefiber(config, logtable):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
 
     Args:
-        logtable ():
-        config ():
+        config (:class:`configparser.ConfigParser`): Config object.
+        logtable (:class:`astropy.table.Table`): Table of observing log.
 
     """
 
     # extract keywords from config file
-    section     = config['data']
-    rawdata     = section.get('rawdata')
-    statime_key = section.get('statime_key')
-    exptime_key = section.get('exptime_key')
-    direction   = section.get('direction')
+    section      = config['data']
+    rawdata      = section.get('rawdata')
+    statime_key  = section.get('statime_key')
+    exptime_key  = section.get('exptime_key')
+    direction    = section.get('direction')
+    readout_mode = section.get('readout_mode')
 
     section     = config['reduce']
     midproc     = section.get('midproc')
@@ -52,25 +53,11 @@ def reduce_singlefiber(logtable, config):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
-    # initialize printing infomation
-    pinfo1 = FormattedInfo(all_columns, ['frameid', 'fileid', 'imgtype',
-                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
-    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
-
     # initialize general card list
     general_card_lst = {}
     ############################# parse bias ###################################
 
-    bias_file = config['reduce.bias']['bias_file']
-    if mode=='debug' and os.path.exists(bias_file):
-        # load bias data from existing file
-        bias, head = fits.getdata(bias_file, header=True)
-        message = 'Load bias from image: {}'.format(bias_file)
-        logger.info(message)
-        print(message)
-        bias_card_lst = []
-    else:
-        bias, bias_card_lst = parse_bias_frames(logtable, config, pinfo2)
+    bias, bias_card_lst= get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -106,10 +93,12 @@ def reduce_singlefiber(logtable, config):
 
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {}
-    flat_norm_lst = {}
     flat_mask_lst = {}
-    aperset_lst   = {}
+    flat_norm_lst = {}
+    flat_sens_lst = {}
+    flat_spec_lst = {}
     flat_info_lst = {}
+    aperset_lst   = {}
 
     # first combine the flats
     for flatname, item_lst in flat_groups.items():
@@ -130,9 +119,12 @@ def reduce_singlefiber(logtable, config):
             and os.path.exists(aperset_filename):
             # read flat data and mask array
             hdu_lst = fits.open(flat_filename)
-            flat_data  = hdu_lst[0].data
-            exptime    = hdu_lst[0].header[exptime_key]
-            mask_array = hdu_lst[1].data
+            flat_data = hdu_lst[0].data
+            flat_mask = hdu_lst[1].data
+            flat_norm = hdu_lst[2].data
+            flat_sens = hdu_lst[3].data
+            flat_spec = hdu_lst[4].data
+            exptime   = hdu_lst[0].header[exptime_key]
             hdu_lst.close()
             aperset = load_aperture_set(aperset_filename)
         else:
@@ -142,9 +134,6 @@ def reduce_singlefiber(logtable, config):
             exptime_lst = []
 
             print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
-            print(' '*2 + pinfo2.get_separator())
-            print(' '*2 + pinfo2.get_title())
-            print(' '*2 + pinfo2.get_separator())
 
             for i_item, item in enumerate(item_lst):
                 # read each individual flat frame
@@ -159,7 +148,7 @@ def reduce_singlefiber(logtable, config):
                 allmask += sat_mask
 
                 # correct overscan for flat
-                data, card_lst, overmean = correct_overscan(data, head, mask)
+                data, card_lst = correct_overscan(data, head, readout_mode)
                 for key, value in card_lst:
                     head.append((key, value))
 
@@ -170,15 +159,18 @@ def reduce_singlefiber(logtable, config):
                 else:
                     message = 'No bias. skipped bias correction'
                 logger.info(message)
-                print(message)
+                #print(message)
 
                 # print info
-                string = pinfo2.get_format().format(item, overmean)
-                print(' '*2 + print_wrapper(string, logitem))
+                message = ('FileId: {} {}'
+                            '    exptime={:5g} sec'
+                            '    Nsat={:6d}'
+                            '    Q95={:5d}').format(
+                            item['fileid'], item['object'], item['exptime'],
+                            item['nsat'], item['q95'])
+                print(message)
 
                 data_lst.append(data)
-
-            print(' '*2 + pinfo2.get_separator())
 
             if nflat == 1:
                 flat_data = data_lst[0]
@@ -188,7 +180,7 @@ def reduce_singlefiber(logtable, config):
                                 mode       = 'mean',
                                 upper_clip = 10,
                                 maxiter    = 5,
-                                mask       = (None, 'max')[nflat>3],
+                                maskmode   = (None, 'max')[nflat>3],
                                 )
 
             # get mean exposure time and write it to header
@@ -198,22 +190,16 @@ def reduce_singlefiber(logtable, config):
 
             # find saturation mask
             sat_mask = allmask > nflat/2.
-            mask_array = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+            flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
-            # pack results and save to fits
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(flat_data, head),
-                        fits.ImageHDU(mask_array),
-                        ])
-            hdu_lst.writeto(flat_filename, overwrite=True)
-
-            # now flt_data and mask_array are prepared
+            # get exposure time normalized flats
+            flat_norm = flat_data/exptime
 
             # create the trace figure
             tracefig = TraceFigure()
 
             section = config['reduce.trace']
-            aperset = find_apertures(flat_data, mask_array,
+            aperset = find_apertures(flat_data, flat_mask,
                         scan_step  = section.getint('scan_step'),
                         minimum    = section.getfloat('minimum'),
                         separation = section.get('separation'),
@@ -232,46 +218,31 @@ def reduce_singlefiber(logtable, config):
             aperset.save_txt(aperset_filename)
             aperset.save_reg(aperset_regname)
 
-        # append the flat data and mask
-        flat_data_lst[flatname] = flat_data
-        flat_norm_lst[flatname] = flat_data/exptime
-        flat_mask_lst[flatname] = mask_array
-        aperset_lst[flatname]   = aperset
-        flat_info_lst[flatname] = {'exptime': exptime}
+            # do the flat fielding
+            # prepare the output midproc figures in debug mode
+            if mode=='debug':
+                figname = 'flat_aperpar_{}_%03d.{}'.format(
+                            flatname, fig_format)
+                fig_aperpar = os.path.join(report, figname)
+            else:
+                fig_aperpar = None
 
-    ########################### Get flat fielding ##############################
-    flatmap_lst = {}
+            # prepare the name for slit figure
+            figname = 'slit_flat_{}.{}'.format(flatname, fig_format)
+            fig_slit = os.path.join(report, figname)
 
-    for flatname in sorted(flat_groups.keys()):
-
-        flat_filename = os.path.join(midproc,
-                    'flat_{}.fits'.format(flatname))
-
-        hdu_lst = fits.open(flat_filename, mode='update')
-        if len(hdu_lst)>=3:
-            # sensitivity map already exists in fits file
-            flatmap = hdu_lst[2].data
-            hdu_lst.close()
-        else:
-            # do flat fielding
-            print('*** Start parsing flat fielding: %s ***'%flatname)
-            fig_aperpar = {
-                'debug': os.path.join(report,
-                    'flat_aperpar_{}_%03d.{}'.format(flatname, fig_format)),
-                'normal': None,
-                }[mode]
-
-            fig_slit = os.path.join(report,
-                            'slit_{}.{}'.format(flatname, fig_format))
+            # prepare the name for slit file
+            fname = 'slit_flat_{}.dat'.format(flatname)
+            slit_file = os.path.join(midproc, fname)
 
             section = config['reduce.flat']
 
-            flatmap = get_fiber_flat(
-                        data            = flat_data_lst[flatname],
-                        mask            = flat_mask_lst[flatname],
-                        apertureset     = aperset_lst[flatname],
+            flat_sens, flat_spec = get_fiber_flat(
+                        data            = flat_data,
+                        mask            = flat_mask,
+                        apertureset     = aperset,
                         slit_step       = section.getint('slit_step'),
-                        nflat           = len(flat_groups[flatname]),
+                        nflat           = nflat,
                         q_threshold     = section.getfloat('q_threshold'),
                         smooth_A_func   = smooth_aperpar_A,
                         smooth_k_func   = smooth_aperpar_k,
@@ -280,16 +251,29 @@ def reduce_singlefiber(logtable, config):
                         fig_aperpar     = fig_aperpar,
                         fig_overlap     = None,
                         fig_slit        = fig_slit,
-                        slit_file       = None,
+                        slit_file       = slit_file,
                         )
-        
-            # append the sensitity map to fits file
-            hdu_lst.append(fits.ImageHDU(flatmap))
-            # write back to the original file
-            hdu_lst.flush()
 
-        # append the flatmap
-        flatmap_lst[flatname] = flatmap
+            # pack results and save to fits
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data, head),
+                        fits.ImageHDU(flat_mask),
+                        fits.ImageHDU(flat_norm),
+                        fits.ImageHDU(flat_sens),
+                        fits.BinTableHDU(flat_spec),
+                        ])
+            hdu_lst.writeto(flat_filename, overwrite=True)
+
+            # now flt_data and mask_array are prepared
+
+        # append the flat data and mask
+        flat_data_lst[flatname] = flat_data
+        flat_mask_lst[flatname] = flat_mask
+        flat_norm_lst[flatname] = flat_norm
+        flat_sens_lst[flatname] = flat_sens
+        flat_spec_lst[flatname] = flat_spec
+        flat_info_lst[flatname] = {'exptime': exptime}
+        aperset_lst[flatname]   = aperset
 
         # continue to the next colored flat
 
@@ -303,17 +287,21 @@ def reduce_singlefiber(logtable, config):
         flatname = list(flat_groups)[0]
 
         # copy the flat fits
-        oriname = 'flat_{}.fits'.format(flatname)
-        shutil.copyfile(os.path.join(midproc, oriname), flat_file)
+        fname = 'flat_{}.fits'.format(flatname)
+        oriname = os.path.join(midproc, fname)
+        shutil.copyfile(oriname, flat_file)
 
         '''
-        shutil.copyfile(os.path.join(midproc, 'trace_{}.trc'.format(flatname)),
-                        trac_file)
-        shutil.copyfile(os.path.join(midproc, 'trace_{}.reg'.format(flatname)),
-                        treg_file)
+        # copy the trc file
+        oriname = 'trace_flat_{}.trc'.format(flatname)
+        shutil.copyfile(os.path.join(midproc, oriname), trac_file)
+
+        # copy the reg file
+        oriname = 'trace_flat_{}.reg'.format(flatname)
+        shutil.copyfile(os.path.join(midproc, oriname), treg_file)
         '''
 
-        flat_map = flatmap_lst[flatname]
+        flat_sens = flat_sens_lst[flatname]
 
         # no need to aperset mosaic
         master_aperset = list(aperset_lst.values())[0]
@@ -332,69 +320,90 @@ def reduce_singlefiber(logtable, config):
         # mosaic original flat images
         flat_data = mosaic_images(flat_data_lst, master_aperset)
         # mosaic flat mask images
-        mask_data = mosaic_images(flat_mask_lst, master_aperset)
-        # mosaic sensitivity map
-        flat_map = mosaic_images(flatmap_lst, master_aperset)
+        flat_mask = mosaic_images(flat_mask_lst, master_aperset)
         # mosaic exptime-normalized flat images
         flat_norm = mosaic_images(flat_norm_lst, master_aperset)
+        # mosaic sensitivity map
+        flat_sens = mosaic_images(flat_sens_lst, master_aperset)
+        # mosaic 1d spectra of flats
+        flat_spec = mosaic_spec(flat_spec_lst, master_aperset)
 
         # pack and save to fits file
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(flat_data),
-                    fits.ImageHDU(mask_data),
-                    fits.ImageHDU(flat_map),
+                    fits.ImageHDU(flat_mask),
                     fits.ImageHDU(flat_norm),
+                    fits.ImageHDU(flat_sens),
+                    fits.BinTableHDU(flat_spec),
                     ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
-        master_aperset.save_txt(trac_file)
-        master_aperset.save_reg(treg_file)
+        #master_aperset.save_txt(trac_file)
+        #master_aperset.save_reg(treg_file)
 
     ############################## Extract ThAr ################################
 
     # get the data shape
-    h, w = flat_map.shape
+    ny, nx = flat_sens.shape
 
     # define dtype of 1-d spectra
     types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
             ('points',     np.int16),
-            ('wavelength', (np.float64, w)),
-            ('flux',       (np.float32, w)),
+            ('wavelength', (np.float64, nx)),
+            ('flux',       (np.float32, nx)),
+            ('flat',       (np.float32, nx)),
+            ('background', (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
     
     calib_lst = {}
-    count_thar = 0
-    for logitem in logtable:
 
-        if logitem['imgtype'] != 'cal':
-            continue
+    # filter ThAr frames
+    thar_items = list(filter(lambda item: item['object'].lower() == 'thar',
+                             logtable))
 
-        if logitem['object'].strip().lower() != 'thar':
-            continue
-
-        count_thar += 1
+    for ithar, logitem in enumerate(logtable):
+        # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
+        objname = logitem['object']
+        imgtype = logitem['imgtype']
+        exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
+        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
+                   'identification'.format(fileid, imgtype, objname))
+        logger.info(message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
         # correct overscan for ThAr
-        data, card_lst, overmean = correct_overscan(data, head, mask)
+        data, card_lst = correct_overscan(data, head, readout_mode)
         for key, value in card_lst:
             head.append((key, value))
+        message = 'Overscan corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct bias for ThAr, if has bias
         if bias is None:
-            data = data - bias
-            logger.info('Bias corrected')
+            message = 'No bias'
         else:
-            logger.info('No bias. skipped bias correction')
+            data = data - bias
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
         section = config['reduce.extract']
         spectra1d = extract_aperset(data, mask,
@@ -419,7 +428,7 @@ def reduce_singlefiber(logtable, config):
 
         title = fileid+'.fits'
 
-        if count_thar == 1:
+        if ithar == 0:
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
                 # find previouse calibration results
