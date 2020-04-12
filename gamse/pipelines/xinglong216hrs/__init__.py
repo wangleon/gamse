@@ -60,20 +60,21 @@ def make_config():
             continue
 
     # select readout mode
-    readoutmode_lst = [
+    readout_mode_lst = [
                     'Left Top & Bottom',
                     'Left Bottom & Right Top',
                     ]
-    default_readoutmode = 'Left Top & Bottom'
-    for i, readoutmode in enumerate(readoutmode_lst):
-        print(' [{:d}] {:s}'.format(i, readoutmode))
+    default_readout_mode = 'Left Top & Bottom'
+    for i, readout_mode in enumerate(readout_mode_lst):
+        print(' [{:d}] {:s}'.format(i, readout_mode))
     while(True):
-        string = input('Select CCD Readout Mode ({}): '.format(default_readoutmode))
-        if string.isdigit() and int(string)<len(readoutmode_lst):
-            readoutmode = readoutmode_lst[int(string)]
+        string = input('Select CCD Readout Mode ({}): '.format(
+                        default_readout_mode))
+        if string.isdigit() and int(string)<len(readout_mode_lst):
+            readout_mode = readout_mode_lst[int(string)]
             break
         elif len(string.strip())==0:
-            readoutmode = default_readoutmode
+            readout_mode = default_readout_mode
         else:
             print('Invalid selection:', string)
             continue
@@ -82,7 +83,7 @@ def make_config():
     direction = {
             'Left Top & Bottom': 'xr-',
             'Left Bottom & Right Top': 'xr-',
-            }[readoutmode]
+            }[readout_mode]
 
     # create config object
     config = configparser.ConfigParser()
@@ -103,7 +104,7 @@ def make_config():
     config.set('data', 'rawdata',      'rawdata')
     config.set('data', 'statime_key',  statime_key)
     config.set('data', 'exptime_key',  exptime_key)
-    config.set('data', 'readoutmode',  readoutmode)
+    config.set('data', 'readout_mode', readout_mode)
     config.set('data', 'direction',    direction)
     config.set('data', 'obsinfo_file', 'obsinfo.txt')
     config.set('data', 'fibermode',    fibermode)

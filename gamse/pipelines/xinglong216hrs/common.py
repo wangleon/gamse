@@ -183,6 +183,8 @@ def get_bias(config, logtable):
         tuple: A tuple containing:
 
             * **bias** (:class:`numpy.ndarray`) – Output bias image.
+            * **bias_card_lst** (list) – List of FITS header cards related to
+              the bias correction.
 
     """
     mode = config['reduce'].get('mode')
@@ -195,13 +197,18 @@ def get_bias(config, logtable):
         head = hdu_lst[0].header
         hdu_lst.close()
 
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # filter header cards that match the above pattern
+        bias_card_lst = [(card.keyword, card.value) for card in head.cards
+                            if reobj.match(card.keyword)]
+
         message = 'Load bias from image: "{}"'.format(bias_file)
         logger.info(message)
         print(message)
     else:
-        bias, bias_card_lst = combine_bias(config, logtable, config)
+        bias, bias_card_lst = combine_bias(config, logtable)
 
-    return bias
+    return bias, bias_card_lst
 
 def combine_bias(config, logtable):
     """Combine the bias images.
@@ -219,7 +226,8 @@ def combine_bias(config, logtable):
 
     """
 
-    rawdata = config['data']['rawdata']
+    rawdata      = config['data']['rawdata']
+    readout_mode = config['data']['readout_mode']
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -233,7 +241,7 @@ def combine_bias(config, logtable):
 
     if n_bias == 0:
         # there is no bias frames
-        return None
+        return None, []
 
     for ifile, logitem in enumerate(bias_items):
 
@@ -241,14 +249,14 @@ def combine_bias(config, logtable):
         filename = os.path.join(rawdata, logitem['fileid']+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
-        data, card_lst, overmean = correct_overscan(data, head, mask)
+        data, card_lst = correct_overscan(data, head, readout_mode)
 
         # pack the data and fileid list
-        bias_fileid_lst.append(logitem['fileid'])
+        bias_data_lst.append(data)
 
         # append the file information
-        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
-        card = (key_prefix+' FILEID', logitem['fileid'])
+        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
+        card = (prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
         # append the overscan information of each bias frame to
@@ -256,14 +264,14 @@ def combine_bias(config, logtable):
         for keyword, value in card_lst:
             mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
             if mobj:
-                newkey = key_prefix + ' ' + mobj.group(1)
+                newkey = prefix + ' ' + mobj.group(1)
                 bias_card_lst.append((newkey, value))
 
         # print info
         if ifile == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
-                logitem['fileid'], logitem['exptime'], overmean))
+        print('  - FileID: {} exptime={:5g}'.format(
+                logitem['fileid'], logitem['exptime']))
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
@@ -327,18 +335,14 @@ def combine_bias(config, logtable):
         bias = bias_smooth
     else:
         # bias not smoothed
-        card = (prefix + 'SMOOTH CORRECTED', False)
+        card = (prefix+'SMOOTH CORRECTED', False)
         bias_card_lst.append(card)
         hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_combine
 
-    # create new FITS Header for bias
-    head = fits.Header()
-    for card in bias_card_lst:
-        head.append(card)
-    fits.writeto(bias_file, bias, header=head, overwrite=True)
+    hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)
     logger.info(message)
