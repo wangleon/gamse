@@ -131,7 +131,7 @@ def make_config():
     config.add_section('reduce.trace')
     config.set('reduce.trace', 'minimum',    str(8))
     config.set('reduce.trace', 'scan_step',  str(100))
-    config.set('reduce.trace', 'separation', '500:21, 3500:52')
+    config.set('reduce.trace', 'separation', '500:20, 1500:30, 3500:52')
     config.set('reduce.trace', 'filling',    str(0.3))
     config.set('reduce.trace', 'align_deg',  str(2))
     config.set('reduce.trace', 'display',    'no')

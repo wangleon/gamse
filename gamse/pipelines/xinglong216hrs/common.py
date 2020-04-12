@@ -43,7 +43,7 @@ def get_region_lst(header, readout_mode):
     naxis2 = header['NAXIS2']     # size along Y axis
     x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
 
-    if readoutmode in ['Left Top & Bottom', 'Left Bottom & Right Top']:
+    if readout_mode in ['Left Top & Bottom', 'Left Bottom & Right Top']:
         # 2 regions vertically
         # science & overscan region
         sci1 = (y1, y1+(naxis2-rover)//2, x1, x1+(naxis1-cover))
@@ -270,7 +270,7 @@ def combine_bias(config, logtable):
         # print info
         if ifile == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g}'.format(
+        print('  - FileID: {} exptime={:5g} sec'.format(
                 logitem['fileid'], logitem['exptime']))
 
     prefix = 'HIERARCH GAMSE BIAS '
@@ -495,7 +495,7 @@ def correct_overscan(data, header, readout_mode=None):
         winlen = 301
         order = 3
         upper_clip = 3.0
-        ovr_smooth = iterative_savgol_filter(ovr_lst,
+        ovr_smooth, _, _, _ = iterative_savgol_filter(ovr_lst,
                         winlen=winlen, order=order, upper_clip=upper_clip)
 
         cordata = scidata - np.repeat([ovr_smooth], scidata.shape[1], axis=0).T
@@ -508,20 +508,20 @@ def correct_overscan(data, header, readout_mode=None):
         newdata[new_y1:new_y2, new_x1:new_x2] = cordata
 
         prefix2 = prefix + 'REGION {} '.format(iregion)
-        card_lst.append(prefix2+'SCI AXIS-1', '{}:{}'.format(sci_x1+1, sci_x2))
-        card_lst.append(prefix2+'SCI AXIS-2', '{}:{}'.format(sci_y1+1, sci_y2))
-        card_lst.append(prefix2+'OVR AXIS-1', '{}:{}'.format(ovr_x1+3, ovr_x2))
-        card_lst.append(prefix2+'OVR AXIS-2', '{}:{}'.format(ovr_y1+1, ovr_y2))
-        card_lst.append(prefix2+'COR AXIS-1', '{}:{}'.format(new_x1+1, new_x2))
-        card_lst.append(prefix2+'COR AXIS-2', '{}:{}'.format(new_y1+1, new_y2))
-        card_lst.append(prefix2+'METHOD',     'iterative_savgol')
-        card_lst.append(prefix2+'WINLEN',      winlen)
-        card_lst.append(prefix2+'ORDER',       order)
-        card_lst.append(prefix2+'UPPERCLIP',   upper_clip)
-        card_lst.append(prefix2+'LOWERCLIP',   'None')
-        card_lst.append(prefix2+'OVERMIN',     ovr_smooth.min())
-        card_lst.append(prefix2+'OVERMAX',     ovr_smooth.max())
-        card_lst.append(prefix2+'OVERMEAN',    ovr_smooth.mean())
+        card_lst.append((prefix2+'SCI AXIS-1', '{}:{}'.format(sci_x1+1, sci_x2)))
+        card_lst.append((prefix2+'SCI AXIS-2', '{}:{}'.format(sci_y1+1, sci_y2)))
+        card_lst.append((prefix2+'OVR AXIS-1', '{}:{}'.format(ovr_x1+3, ovr_x2)))
+        card_lst.append((prefix2+'OVR AXIS-2', '{}:{}'.format(ovr_y1+1, ovr_y2)))
+        card_lst.append((prefix2+'COR AXIS-1', '{}:{}'.format(new_x1+1, new_x2)))
+        card_lst.append((prefix2+'COR AXIS-2', '{}:{}'.format(new_y1+1, new_y2)))
+        card_lst.append((prefix2+'METHOD',     'iterative_savgol'))
+        card_lst.append((prefix2+'WINLEN',      winlen))
+        card_lst.append((prefix2+'ORDER',       order))
+        card_lst.append((prefix2+'UPPERCLIP',   upper_clip))
+        card_lst.append((prefix2+'LOWERCLIP',   'None'))
+        card_lst.append((prefix2+'OVERMIN',     ovr_smooth.min()))
+        card_lst.append((prefix2+'OVERMAX',     ovr_smooth.max()))
+        card_lst.append((prefix2+'OVERMEAN',    ovr_smooth.mean()))
 
     card_lst.append((prefix + 'CORRECTED', True))
 
