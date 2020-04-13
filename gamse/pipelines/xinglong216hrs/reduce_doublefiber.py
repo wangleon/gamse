@@ -625,11 +625,21 @@ def reduce_doublefiber(config, logtable):
                 if section.getboolean('search_database'):
                     # find previouse calibration results
                     database_path = section.get('database_path')
+                    database_path = os.path.expanduser(database_path)
+
+                    message = ('Searching for archive wavelength calibration'
+                               'file in "{}"'.format(database_path))
+                    logger.info(logger_prefix + message)
 
                     ref_spec, ref_calib = select_calib_from_database(
                             database_path, head[statime_key])
 
                     if ref_spec is None or ref_calib is None:
+
+                        message = ('Did not find any archive wavelength'
+                                   'calibration file')
+                        logger.info(logger_prefix + message)
+
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
                         calib = wlcalib(spec,
@@ -646,19 +656,35 @@ def reduce_doublefiber(config, logtable):
                     else:
                         # if success, run recalib
                         # determine the direction
+                        message = 'Found archive wavelength calibration file'
+                        logger.info(message)
+
                         ref_direction = ref_calib['direction']
-                        aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
-                                        None)[direction[1]=='?']
-                        pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
-                                    None)[direction[2]=='?']
+
+                        if direction[1] == '?':
+                            aperture_k = None
+                        elif direction[1] == ref_direction[1]:
+                            aperture_k = 1
+                        else:
+                            aperture_k = -1
+
+                        if direction[2] == '?':
+                            pixel_k = None
+                        elif direction[2] == ref_direction[2]:
+                            pixel_k = 1
+                        else:
+                            pixel_k = -1
+
                         # determine the name of the output figure during lamp
                         # shift finding.
-                        fig_ccf = {'normal': None,
-                                    'debug': os.path.join(report,
-                                        'lamp_ccf_{:+2d}_{:+03d}.png')}[mode]
-                        fig_scatter = {'normal': None,
-                                        'debug': os.path.join(report,
-                                            'lamp_ccf_scatter.png')}[mode]
+                        if mode == 'debug':
+                            figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
+                            figname2 = 'lamp_ccf_scatter.png'
+                            fig_ccf     = os.path.join(report, figname1)
+                            fig_scatter = os.path.join(report, figname2)
+                        else:
+                            fig_ccf     = None
+                            fig_scatter = None
 
                         result = find_caliblamp_offset(ref_spec, spec,
                                     aperture_k  = aperture_k,
@@ -669,8 +695,10 @@ def reduce_doublefiber(config, logtable):
                         aperture_koffset = (result[0], result[1])
                         pixel_koffset    = (result[2], result[3])
 
-                        print('Aperture offset =', aperture_koffset)
-                        print('Pixel offset =', pixel_koffset)
+                        message = 'Aperture offset = {}; Pixel offset = {}'.format(
+                                    aperture_koffset, pixel_koffset)
+                        logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
 
                         use = section.getboolean('use_prev_fitpar')
                         xorder      = (section.getint('xorder'), None)[use]
@@ -697,6 +725,9 @@ def reduce_doublefiber(config, logtable):
                             direction        = direction,
                             )
                 else:
+                    message = 'No database searching. Identify lines manually'
+                    logger.info(logger_prefix + message)
+
                     # do not search the database
                     calib = wlcalib(spec,
                         figfilename   = wlcalib_fig,
@@ -829,28 +860,27 @@ def reduce_doublefiber(config, logtable):
         mask = get_mask(data, head)
 
         # correct overscan
-        data, card_lst, overmean = correct_overscan(data, head, mask)
+        data, card_lst = correct_overscan(data, head, readout_mode)
         for key, value in card_lst:
             head.append((key, value))
-        message = 'FileID: {} - overscan corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        message = 'Overscan corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct bias
-        if bias is not None:
-            data = data - bias
-            fmt_str = 'FileID: {} - bias corrected. mean value = {}'
-            message = fmt_str.format(fileid, bias.mean())
+        if bias is None:
+            message = 'No bias'
         else:
-            message = 'FileID: {} - no bias'%(fileid)
-        logger.info(message)
-        print(message)
+            data = data - bias
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct flat
-        data = data/flat_map
-        message = 'FileID: {} - flat corrected'.format(fileid)
-        logger.info(message)
-        print(message)
+        data = data/flat_sens
+        message = 'Flat corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # correct background
         fiberobj_lst = [v.strip().lower() for v in logitem['object'].split(';')]
