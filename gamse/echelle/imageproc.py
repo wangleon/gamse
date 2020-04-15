@@ -12,7 +12,7 @@ def combine_images(data,
         mode       = 'mean',  # mode = ['mean'|'sum'|'median']
         upper_clip = None,
         lower_clip = None,
-        maxiter    = None,
+        maxiter    = 10,
         mask       = None,
         maskmode   = None,
         ):
