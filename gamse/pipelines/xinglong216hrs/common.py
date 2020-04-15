@@ -151,6 +151,17 @@ def get_ccd_geometry(header):
     else:
         raise ValueError
 
+    # check if the determined xbin and ybin are consistent with the header
+    if 'CBIN' in header and xbin != header['CBIN']:
+        print('Warning: CBIN ({}) not consistent with XBIN ({})'.format(
+                header['CBIN'], xbin))
+        raise ValueError
+
+    if 'RBIN' in header and ybin != header['RBIN']:
+        print('Warning: RBIN ({}) not consistent with YBIN ({})'.format(
+                header['RBIN'], ybin))
+        raise ValueError
+
     # get COVER
     cover = header.get('COVER')
     if cover is None:
@@ -350,7 +361,6 @@ def combine_bias(config, logtable):
 
     return bias, bias_card_lst
 
-
 def get_badpixel_mask(shape, bins):
     """Get the mask of bad pixels and columns.
 
@@ -367,38 +377,38 @@ def get_badpixel_mask(shape, bins):
     """
     mask = np.zeros(shape, dtype=np.bool)
     if bins == (1, 1) and shape == (4136, 4096):
-        h, w = shape
+        ny, nx = shape
 
         mask[349:352, 627:630] = True
-        mask[349:h//2, 628]    = True
+        mask[349:ny//2, 628]   = True
 
-        mask[1604:h//2, 2452] = True
+        mask[1604:ny//2, 2452] = True
 
-        mask[280:284,3701]   = True
-        mask[274:h//2, 3702] = True
-        mask[272:h//2, 3703] = True
-        mask[274:282, 3704]  = True
+        mask[280:284,3701]    = True
+        mask[274:ny//2, 3702] = True
+        mask[272:ny//2, 3703] = True
+        mask[274:282, 3704]   = True
 
         mask[1720:1722, 3532:3535] = True
         mask[1720, 3535]           = True
         mask[1722, 3532]           = True
-        mask[1720:h//2,3533]       = True
+        mask[1720:ny//2,3533]      = True
 
         mask[347:349, 4082:4084] = True
-        mask[347:h//2,4083]      = True
+        mask[347:ny//2,4083]     = True
 
-        mask[h//2:2631, 1909] = True
+        mask[ny//2:2631, 1909] = True
     else:
         print('No bad pixel information for this CCD size.')
         raise ValueError
     return mask
 
-def get_mask(data, head):
+def get_mask(data, header):
     """Get the mask of input image.
 
     Args:
         data (:class:`numpy.ndarray`): Input image data.
-        head (:class:`astropy.io.fits.Header`): Input FITS header.
+        header (:class:`astropy.io.fits.Header`): Input FITS header.
 
     Returns:
         :class:`numpy.ndarray`: Image mask.
@@ -416,22 +426,15 @@ def get_mask(data, head):
 
     saturation_adu = 65535
 
-    # determine shape of output image (also the shape of science region)
-    y1 = head.get('CRVAL2', 0)
-    rover = head.get('ROVER', 0)
-    y2 = y1 + head['NAXIS2'] - rover
-    x1 = head.get('CRVAL1', 0)
-    cover = head.get('COVER', 64)
-    x2 = x1 + head['NAXIS1'] - cover
-    newshape = (y2-y1, x2-x1)
+    x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
+    sci_y1, sci_y2, sci_x1, sci_x2 = get_sci_region(header)
+    newshape = (sci_y2-sci_y1, sci_x2-sci_x1)
 
     # find the saturation mask
-    mask_sat = (data[y1:y2, x1:x2] >= saturation_adu)
+    mask_sat = (data[sci_y1:sci_y2, sci_x1:sci_x2] >= saturation_adu)
+
     # get bad pixel mask
-    rbin = head.get('RBIN', 1)
-    cbin = head.get('CBIN', 1)
-    bins = (rbin, cbin)
-    mask_bad = get_badpixel_mask(newshape, bins=bins)
+    mask_bad = get_badpixel_mask(newshape, bins=(ybin, xbin))
 
     mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
 
@@ -498,7 +501,10 @@ def correct_overscan(data, header, readout_mode=None):
         ovr_smooth, _, _, _ = iterative_savgol_filter(ovr_lst,
                         winlen=winlen, order=order, upper_clip=upper_clip)
 
-        cordata = scidata - np.repeat([ovr_smooth], scidata.shape[1], axis=0).T
+        # expand the 1d overscan values to 2D image that fits the sci region
+        nysci = scidata.shape[1]
+        ovrimg = np.repeat(ovr_smooth, nysci).reshape(-1, nysci)
+        cordata = scidata - ovrimg
 
         new_y1 = sci_y1 - y1
         new_y2 = sci_y2 - y1
@@ -627,11 +633,6 @@ class Xinglong216HRS(Reduction):
 
     def __init__(self):
         super(Xinglong216HRS, self).__init__(instrument='Xinglong216HRS')
-
-    def config_ccd(self):
-        '''Set CCD images configurations.
-        '''
-        self.ccd_config
 
     def overscan(self):
         '''
@@ -796,50 +797,6 @@ class Xinglong216HRS(Reduction):
         logger.info('Overscan corrected. Change suffix: %s -> %s'%
                     (self.input_suffix, self.output_suffix))
         self.input_suffix = self.output_suffix
-
-    def _get_badpixel_mask(self, shape, bins):
-        '''Get bad-pixel mask.
-
-
-        Args:
-            shape (tuple): Shape of the science data region.
-            bins (tuple): Number of pixel bins of (ROW, COLUMN).
-        Returns:
-            :class:`numpy.array`: Binary mask indicating the bad pixels. The
-                shape of the mask is the same as the input shape.
-
-        The bad pixels are found when readout mode = Left Top & Bottom.
-
-        '''
-        mask = np.zeros(shape, dtype=np.bool)
-        if bins == (1, 1) and shape == (4136, 4096):
-            h, w = shape
-
-            mask[349:352, 627:630] = True
-            mask[349:h//2, 628]    = True
-
-            mask[1604:h//2, 2452] = True
-
-            mask[280:284,3701]   = True
-            mask[274:h//2, 3702] = True
-            mask[272:h//2, 3703] = True
-            mask[274:282, 3704]  = True
-
-            mask[1720:1722, 3532:3535] = True
-            mask[1720, 3535]           = True
-            mask[1722, 3532]           = True
-            mask[1720:h//2,3533]       = True
-
-            mask[347:349, 4082:4084] = True
-            mask[347:h//2,4083]      = True
-
-            mask[h//2:2631, 1909] = True
-        else:
-            print('No bad pixel information for this CCD size.')
-            raise ValueError
-        return mask
-
-
 
     def bias(self):
         '''Bias corrrection for Xinglong 2.16m Telescope HRS.

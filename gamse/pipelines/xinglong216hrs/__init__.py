@@ -196,6 +196,11 @@ def make_obslog(path):
     # load config file
     config = load_config('Xinglong216HRS\S*\.cfg$')
 
+    # scan filenames and determine the maximum length of fileid
+    maxlen_fileid = max([len(fname[0:-5])
+                    for fname in os.listdir(config['data']['rawdata'])
+                    if fname[-5:]=='.fits'])
+
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
@@ -222,7 +227,7 @@ def make_obslog(path):
     # prepare logtable
     logtable = Table(dtype=[
                         ('frameid', 'i2'),
-                        ('fileid',  'S15'),
+                        ('fileid',  'S{:d}'.format(maxlen_fileid)),
                         ('imgtype', 'S3'),
                         ('object',  'S{:d}'.format(maxobjlen)),
                         ('i2',      'S1'),
