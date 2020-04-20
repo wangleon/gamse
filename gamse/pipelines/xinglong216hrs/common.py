@@ -123,11 +123,16 @@ def get_ccd_geometry(header):
 
     Check the information in the FITS header, and determined some important
     geometric parameters of the image.
-    **(cover, rover)** are the numbers of overscan columns and rows.
-    **rover** is always 0 as the readout direction of this CCD is along X axis
-    and the overscan is after the readout of each row.
-    If the ``ROVER`` in the FITS header is not 0, this function will raise an
-    exception.
+    The return values are **(x1, y1, xbin, ybin, cover, rover)**, where
+
+    * **(x1, y1)** is the starting point of science region. Normally
+      **(x1, y1)** = (0, 0).
+    * **(xbin, ybin)** are the CCD binning along X and Y axes.
+    * **(cover, rover)** are the numbers of overscan columns and rows.
+      **rover** is always 0 as the readout direction of this CCD is along X axis
+      and the overscan is after the readout of each row.
+      If the ``ROVER`` in the FITS header is not 0, this function will raise an
+      exception.
     """
     naxis1 = header['NAXIS1']     # size along X axis
     naxis2 = header['NAXIS2']     # size along Y axis
@@ -450,7 +455,7 @@ def fix_cr(data):
     """Cosmic ray fixing function.
 
     Args:
-        data (): Input image data.
+        data (:class:`numpy.ndarray`): Input image data.
 
     Returns:
         :class:`numpy.dtype`: Fixed image data.

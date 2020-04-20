@@ -583,7 +583,7 @@ def reduce_doublefiber(config, logtable):
             head.append((key, value))
 
         # correct bias for ThAr, if has bias
-        if bias not None:
+        if bias is None:
             message = 'No Bias'
         else:
             data = data - bias

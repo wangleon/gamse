@@ -673,7 +673,7 @@ def reduce_singlefiber(config, logtable):
     '''
 
     # filter science items in logtable
-    logitem_lst = 
+    #logitem_lst = 
 
     #################### Extract Science Spectrum ##############################
     for logitem in logtable:
