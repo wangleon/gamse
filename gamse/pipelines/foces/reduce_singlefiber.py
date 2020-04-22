@@ -382,8 +382,8 @@ def reduce_singlefiber(config, logtable):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
-        objname = logitem['object']
         imgtype = logitem['imgtype']
+        objname = logitem['object']
         exptime = logitem['exptime']
 
         # prepare message prefix
@@ -498,10 +498,21 @@ def reduce_singlefiber(config, logtable):
                     logger.info(message)
 
                     ref_direction = ref_calib['direction']
-                    aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
-                                    None)[direction[1]=='?']
-                    pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
-                                None)[direction[2]=='?']
+
+                    if direction[1] == '?':
+                        aperture_k = None
+                    elif direction[1] == ref_direction[1]:
+                        aperture_k = 1
+                    else:
+                        aperture_k = -1
+
+                    if direction[2] == '?':
+                        pixel_k = None
+                    elif direction[2] == ref_direction[2]:
+                        pixel_k = 1
+                    else:
+                        pixel_k = -1
+
                     # determine the name of the output figure during lamp shift
                     # finding.
                     if mode == 'debug':
@@ -510,7 +521,7 @@ def reduce_singlefiber(config, logtable):
                         fig_ccf     = os.path.join(report, figname1)
                         fig_scatter = os.path.join(report, figname2)
                     else:
-                        fig_ccf = None
+                        fig_ccf     = None
                         fig_scatter = None
 
                     result = find_caliblamp_offset(ref_spec, spec,
@@ -522,9 +533,8 @@ def reduce_singlefiber(config, logtable):
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
 
-                    message = 'Aperture offset = {}; Pixel offset = {}'
-                    message = message.format(aperture_koffset,
-                                             pixel_koffset)
+                    message = 'Aperture offset = {}; Pixel offset = {}'.format(
+                                aperture_koffset, pixel_koffset)
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -683,6 +693,7 @@ def reduce_singlefiber(config, logtable):
         mask = get_mask(data)
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
+
         # correct overscan
         data, card_lst, overmean, overstd = correct_overscan(
                                             data, mask, direction)
@@ -691,7 +702,6 @@ def reduce_singlefiber(config, logtable):
             del head['BLANK']
         for key, value in card_lst:
             head.append((key, value))
-
         message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
@@ -707,7 +717,7 @@ def reduce_singlefiber(config, logtable):
 
         # correct flat
         data = data/flat_sens
-        message = 'Flat field corrected'
+        message = 'Flat field corrected.'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 

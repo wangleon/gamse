@@ -70,6 +70,7 @@ def reduce_doublefiber(config, logtable):
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
+    # define a fiber splitting function
     def get_fiberobj_lst(string):
         object_lst = [s.strip() for s in string.split('|')]
         fiberobj_lst = list(filter(lambda v: len(v[1])>0,
