@@ -174,7 +174,8 @@ def combine_bias(config, logtable):
         if data.ndim == 3:
             data = data[0,:,:]
         mask = get_mask(data)
-        data, card_lst, overmean, overstd = correct_overscan(data, mask, direction)
+        data, card_lst, overmean, overstd = correct_overscan(
+                                                data, mask, direction)
         bias_overstd_lst.append(overstd)
         # head['BLANK'] is only valid for integer arrays.
         if 'BLANK' in head:
@@ -184,8 +185,8 @@ def combine_bias(config, logtable):
         bias_data_lst.append(data)
 
         # append the file information
-        key_prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
-        card = (key_prefix+' FILEID', logitem['fileid'])
+        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
+        card = (prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
         # append the overscan information of each bias frame to
@@ -193,12 +194,12 @@ def combine_bias(config, logtable):
         for keyword, value in card_lst:
             mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
             if mobj:
-                newkey = key_prefix + ' ' + mobj.group(1)
+                newkey = prefix + ' ' + mobj.group(1)
                 bias_card_lst.append((newkey, value))
 
         # print info
         if ifile == 0:
-            print('* Combine Bias Images: {}'.format(bias_file))
+            print('* Combine Bias Images: "{}"'.format(bias_file))
         print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
                 logitem['fileid'], logitem['exptime'], overmean))
 
@@ -268,7 +269,7 @@ def combine_bias(config, logtable):
         # bias not smoothed
         card = (prefix+'SMOOTH CORRECTED', False)
         bias_card_lst.append(card)
-        hdu_lst[0].heaer.append(card)
+        hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_combine
