@@ -352,9 +352,14 @@ def reduce_singlefiber(config, logtable):
             ('order',      np.int16),
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
-            ('flux',       (np.float32, nx)),
-            ('flat',       (np.float32, nx)),
-            ('background', (np.float32, nx)),
+            ('flux_sum',     (np.float32, nx)),
+            ('flux_sum_err', (np.float32, nx)),
+            ('flux_sum_mask',(np.float32, nx)),
+            ('flux_opt',     (np.float32, nx)),
+            ('flux_opt_err', (np.float32, nx)),
+            ('flux_opt_mask',(np.float32, nx)),
+            ('flat',         (np.float32, nx)),
+            ('background',   (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -417,8 +422,19 @@ def reduce_singlefiber(config, logtable):
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
-            spec.append((aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            spec.append((
+                aper,
+                0,
+                flux_sum.size,
+                np.zeros(nx, dtype=np.float64),
+                flux_sum,
+                np.zeros(nx, dtype=np.float32), # flux sum error
+                np.zeros(nx, dtype=np.int16),   # flux sum mask
+                np.zeros(nx, dtype=np.float32), # flux opt error
+                np.zeros(nx, dtype=np.int16),   # flux opt mask
+                np.zeros(nx, dtype=np.float32), # flat
+                np.zeros(nx, dtype=np.float32), # background
+                ))
         spec = np.array(spec, dtype=spectype)
     
         wlcalib_fig = os.path.join(report,
