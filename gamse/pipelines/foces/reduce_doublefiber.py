@@ -641,12 +641,12 @@ def reduce_doublefiber(config, logtable):
             ('order',        np.int16),
             ('points',       np.int16),
             ('wavelength',   (np.float64, nx)),
-            ('flux',         (np.float32, nx)),
+            ('flux_sum',     (np.float32, nx)),
             ('flux_sum_err', (np.float32, nx)),
-            ('flux_sum_mask',(np.float32, nx)),
+            ('flux_sum_mask',(np.int16,   nx)),
             ('flux_opt',     (np.float32, nx)),
             ('flux_opt_err', (np.float32, nx)),
-            ('flux_opt_mask',(np.float32, nx)),
+            ('flux_opt_mask',(np.int16,   nx)),
             ('flux_raw',     (np.float32, nx)),
             ('flat',         (np.float32, nx)),
             ('background',   (np.float32, nx)),
@@ -755,16 +755,16 @@ def reduce_doublefiber(config, logtable):
                     aper,          # aperture
                     0,             # order (not determined yet)
                     flux_sum.size, # number of points
-                    np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
-                    flux_sum,      # fluxes
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_sum_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_sum_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt      only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_raw      only placeholder no real meaning                    
-                    flat_flux,     # flat
-                    np.zeros_like(flux_sum, dtype=np.float32), # background only placeholder no real meaning
+                    np.zeros(nx, dtype=np.float64), # wavelengths (0)
+                    flux_sum,                       # fluxes
+                    np.zeros(nx, dtype=np.float32), # flux_sum_err
+                    np.zeros(nx, dtype=np.int16),   # flux_sum_mask
+                    np.zeros(nx, dtype=np.float32), # flux_opt
+                    np.zeros(nx, dtype=np.float32), # flux_opt_err
+                    np.zeros(nx, dtype=np.int16),   # flux_opt_mask
+                    np.zeros(nx, dtype=np.float32), # flux_raw
+                    flat_flux,                      # flat
+                    np.zeros(nx, dtype=np.float32), # background
                     ))
             spec = np.array(spec, dtype=spectype)
 
