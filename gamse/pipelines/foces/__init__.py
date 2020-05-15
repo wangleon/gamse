@@ -149,6 +149,8 @@ def make_obslog(path):
 
     An ascii file will be generated after running. The name of the ascii file is
     `YYYY-MM-DD.log`.
+    If the file name already exists, `YYYY-MM-DD.1.obslog`,
+    `YYYY-MM-DD.2.obslog` ... will be used as substituions.
 
     Args:
         path (str): Path to the raw FITS files.
@@ -303,7 +305,6 @@ def make_obslog(path):
         saturation = (data>=63000).sum()
 
         # find the 95% quantile
-        #quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
         quantile95 = int(np.round(np.percentile(data, 95)))
 
         item = [frameid, fileid, imgtype, objectname, exptime, obsdate,
@@ -351,9 +352,9 @@ def make_obslog(path):
     outfile.write(loginfo.get_title(delimiter='|')+os.linesep)
     outfile.write(loginfo.get_dtype(delimiter='|')+os.linesep)
     outfile.write(loginfo.get_separator(delimiter='+')+os.linesep)
-    fmt_string = loginfo.get_format(has_esc=False, delimiter='|')
+    fmtstr = loginfo.get_format(has_esc=False, delimiter='|')
     for row in logtable:
-        outfile.write(fmt_string.format(row)+os.linesep)
+        outfile.write(fmtstr.format(row)+os.linesep)
     outfile.close()
 
 

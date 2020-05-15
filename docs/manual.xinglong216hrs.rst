@@ -190,23 +190,29 @@ The pipeline accepts the following options in the config file:
 
 APIs
 ----
+
+.. currentmodule:: gamse.pipelines.xinglong216hrs
 .. autosummary::
-   gamse.pipelines.xinglong216hrs.make_config
-   gamse.pipelines.xinglong216hrs.make_obslog
-   gamse.pipelines.xinglong216hrs.reduce_rawdata
-   gamse.pipelines.xinglong216hrs.common.correct_overscan
-   gamse.pipelines.xinglong216hrs.common.parse_bias_frames
-   gamse.pipelines.xinglong216hrs.common.get_mask
-   gamse.pipelines.xinglong216hrs.common.get_badpixel_mask
-   gamse.pipelines.xinglong216hrs.common.fix_cr
-   gamse.pipelines.xinglong216hrs.common.select_calib_from_database
-   gamse.pipelines.xinglong216hrs.common.TraceFigure
-   gamse.pipelines.xinglong216hrs.reduce_singlefiber.reduce_singlefiber
-   gamse.pipelines.xinglong216hrs.reduce_doublefiber.reduce_doublefiber
-   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_A
-   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_k
-   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_c
-   gamse.pipelines.xinglong216hrs.flat.smooth_aperpar_bkg
+   make_config
+   make_obslog
+   reduce_rawdata
+   common.get_ccd_geometry
+   common.get_region_lst
+   common.get_sci_region
+   common.get_ovr_region
+   common.correct_overscan
+   common.get_bias
+   common.get_mask
+   common.get_badpixel_mask
+   common.fix_cr
+   common.select_calib_from_database
+   common.TraceFigure
+   reduce_singlefiber.reduce_singlefiber
+   reduce_doublefiber.reduce_doublefiber
+   flat.smooth_aperpar_A
+   flat.smooth_aperpar_k
+   flat.smooth_aperpar_c
+   flat.smooth_aperpar_bkg
 
 References
 ----------

@@ -70,6 +70,7 @@ def reduce_doublefiber(config, logtable):
                 'object', 'exptime', 'obsdate', 'nsat', 'q95'])
     pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
+    # define a fiber splitting function
     def get_fiberobj_lst(string):
         object_lst = [s.strip() for s in string.split('|')]
         fiberobj_lst = list(filter(lambda v: len(v[1])>0,
@@ -640,12 +641,12 @@ def reduce_doublefiber(config, logtable):
             ('order',        np.int16),
             ('points',       np.int16),
             ('wavelength',   (np.float64, nx)),
-            ('flux',         (np.float32, nx)),
+            ('flux_sum',     (np.float32, nx)),
             ('flux_sum_err', (np.float32, nx)),
-            ('flux_sum_mask',(np.float32, nx)),
+            ('flux_sum_mask',(np.int16,   nx)),
             ('flux_opt',     (np.float32, nx)),
             ('flux_opt_err', (np.float32, nx)),
-            ('flux_opt_mask',(np.float32, nx)),
+            ('flux_opt_mask',(np.int16,   nx)),
             ('flux_raw',     (np.float32, nx)),
             ('flat',         (np.float32, nx)),
             ('background',   (np.float32, nx)),
@@ -745,25 +746,26 @@ def reduce_doublefiber(config, logtable):
             #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                npoints = flux_sum.size
                 # search for flat flux
                 m = flat_spec_lst[fiber]['aperture']==aper
                 flat_flux = flat_spec_lst[fiber][m][0]['flux']
 
                 # pack to table
                 spec.append((
-                    aper,          # aperture
-                    0,             # order (not determined yet)
-                    flux_sum.size, # number of points
-                    np.zeros_like(flux_sum, dtype=np.float64), # wavelengths (0)
-                    flux_sum,      # fluxes
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_sum_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_sum_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt      only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_opt_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float32), # flux_raw      only placeholder no real meaning                    
-                    flat_flux,     # flat
-                    np.zeros_like(flux_sum, dtype=np.float32), # background only placeholder no real meaning
+                    aper,                                   # aperture
+                    0,                                      # order
+                    npoints,                                # npoints
+                    np.zeros(npoints, dtype=np.float64),    # wavelength
+                    flux_sum,                               # flux_sum
+                    np.zeros(npoints, dtype=np.float32),    # flux_sum_err
+                    np.zeros(npoints, dtype=np.int16),      # flux_sum_mask
+                    np.zeros(npoints, dtype=np.float32),    # flux_opt
+                    np.zeros(npoints, dtype=np.float32),    # flux_opt_err
+                    np.zeros(npoints, dtype=np.int16),      # flux_opt_mask
+                    np.zeros(npoints, dtype=np.float32),    # flux_raw
+                    flat_flux,                              # flat
+                    np.zeros(nx, dtype=np.float32),         # background
                     ))
             spec = np.array(spec, dtype=spectype)
 

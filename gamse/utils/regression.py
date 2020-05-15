@@ -137,11 +137,11 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
     function.
 
     Args:
-        x (:class:`numpy.ndarray`): The input X values.
-        y (:class:`numpy.ndarray`): The input Y values.
-        yerr (:class:`numpy.ndarray`): Errors of the Y array.
+        x (:class:`numpy.ndarray`): Input X values.
+        y (:class:`numpy.ndarray`): Input Y values.
+        yerr (:class:`numpy.ndarray`): Errors of **y**.
         deg (int): Degree of polynomial.
-        mask (:class:`numpy.ndarray`): The input mask.
+        mask (:class:`numpy.ndarray`): Input mask.
         maxiter (int): Maximum number of iterations.
         lower_clip (float): Lower sigma-clipping value.
         upper_clip (float): Upper sigma-clipping value.
@@ -150,10 +150,10 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
         tuple: A tuple containing:
 
             * **coeff** (:class:`numpy.ndarray`) – Coefficients of polynomial.
-            * **yfit** (:class:`numpy.ndarray`) – 
-            * **yres** (:class:`numpy.ndarray`) – 
-            * **mask** (:class:`numpy.ndarray`) – 
-            * **std** (float) – 
+            * **yfit** (:class:`numpy.ndarray`) – Fitted y values.
+            * **yres** (:class:`numpy.ndarray`) – Residuals of y values.
+            * **mask** (:class:`numpy.ndarray`) – Mask of y values.
+            * **std** (float) – Standard deviation.
     """
 
     x = np.array(x)

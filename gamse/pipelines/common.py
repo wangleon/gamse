@@ -21,7 +21,8 @@ def load_config(pattern):
     for fname in os.listdir(os.curdir):
         if re.match(pattern, fname):
             config.read(fname)
-            print('Load Congfile File: {}'.format(fname))
+            message = 'Load congfig file: "{}"'.format(fname)
+            print(message)
             break
     return config
 
@@ -80,7 +81,7 @@ def load_obslog(pattern):
     else:
         pass
 
-    message = 'Load obslog from "{}"'.format(select_logname)
+    message = 'Load obslog file: "{}"'.format(select_logname)
     print(message)
     logtable = read_obslog(select_logname)
     return logtable
