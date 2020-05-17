@@ -358,7 +358,7 @@ def reduce_singlefiber(config, logtable):
             ('flux_opt',     (np.float32, nx)),
             ('flux_opt_err', (np.float32, nx)),
             ('flux_opt_mask',(np.int16,   nx)),
-            ('flux_raw',     (np.float32, nx))，
+            ('flux_raw',     (np.float32, nx)),
             ('flat',         (np.float32, nx)),
             ('background',   (np.float32, nx)),
             ]
@@ -371,7 +371,7 @@ def reduce_singlefiber(config, logtable):
     thar_items = list(filter(lambda item: item['object'].lower() == 'thar',
                              logtable))
 
-    for ithar, logitem in enumerate(logtable):
+    for ithar, logitem in enumerate(thar_items):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
@@ -432,6 +432,7 @@ def reduce_singlefiber(config, logtable):
                     flux_sum,                       # flux sum
                     np.zeros(n, dtype=np.float32),  # flux sum error
                     np.zeros(n, dtype=np.int16),    # flux sum mask
+                    np.zeros(n, dtype=np.float32),  # flux opt
                     np.zeros(n, dtype=np.float32),  # flux opt error
                     np.zeros(n, dtype=np.int16),    # flux opt mask
                     np.zeros(n, dtype=np.float32),  # flux raw
