@@ -161,6 +161,8 @@ def make_config():
     config.set('reduce.background', 'yorder',   str(7))
 
     config.add_section('reduce.extract')
+    config.set('reduce.extract', 'extract', 
+            "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
     config.set('reduce.extract', 'upper_limit', str(7))
     config.set('reduce.extract', 'lower_limit', str(7))
 
