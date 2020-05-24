@@ -1207,6 +1207,7 @@ def reduce_doublefiber(config, logtable):
         #print(flat_spec_lst)
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
+            n = flux_sum.size
             # search for flat flux
             m = flat_spec_lst[fiber]['aperture']==aper
             flat_flux = flat_spec_lst[fiber][m][0]['flux']
@@ -1215,17 +1216,17 @@ def reduce_doublefiber(config, logtable):
             #read raw flux
             flux_raw  = specraw1d[aper]['flux_sum'] 
             
-            item = (aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), # wavelength
-                    flux_sum,   # 1d flux summed up
-                    flux_err,   # 1d error of flux summed up
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt      only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask only placeholder no real meaning  
-                    flux_raw,   # 1d flux raw                    
-                    flat_flux,  # 1d spectra of smooth flat
-                    background1d[aper]['flux_sum'],  # 1d sepctra of background
+            item = (aper, 0, n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux_sum
+                    flux_err,                       # flux_sum_err
+                    np.zeros(n, dtype=np.int16),    # flux_sum_mask
+                    np.zeros(n, dtype=np.float32),  # flux_opt
+                    np.zeros(n, dtype=np.float32),  # flux_opt_err
+                    np.zeros(n, dtype=np.int16),    # flux_opt_mask
+                    flux_raw,                       # flux_raw
+                    flat_flux,                      # flat
+                    background1d[aper]['flux_sum'], # background
                     )
             spec.append(item)
         spec = np.array(spec, dtype=spectype)
@@ -1614,6 +1615,7 @@ def reduce_doublefiber(config, logtable):
             #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                n = flux_sum.size
                 # search for flat flux
                 m = flat_spec_lst[fiber]['aperture']==aper
                 flat_flux = flat_spec_lst[fiber][m][0]['flux']
@@ -1622,17 +1624,17 @@ def reduce_doublefiber(config, logtable):
                 #read raw flux
                 flux_raw  = specraw1d[aper]['flux_sum'] 
                 
-                item = (aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), # wavelength
-                        flux_sum,                       # 1d spectra (summed up)
-                        flux_err,                       # 1d error estimation
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask
-                        flux_raw,                       # 1d flux raw
-                        flat_flux,                      # 1d spectra of flat
-                        background1d[aper]['flux_sum'], # 1d sepctra of background
+                item = (aper, 0, n,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux_sum
+                        flux_err,                       # flux_sum_err
+                        np.zeros(n, dtype=np.int16),    # flux_sum_mask
+                        np.zeros(n, dtype=np.float32),  # flux_opt
+                        np.zeros(n, dtype=np.float32),  # flux_opt_err
+                        np.zeros(n, dtype=np.int16),    # flux_opt_mask
+                        flux_raw,                       # flux_raw
+                        flat_flux,                      # flat
+                        background1d[aper]['flux_sum'], # background
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=spectype)
