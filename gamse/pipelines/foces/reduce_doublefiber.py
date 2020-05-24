@@ -228,7 +228,7 @@ def reduce_doublefiber(config, logtable):
                     data_lst.append(data)
 
                 print(' '*2 + pinfo2.get_separator())
-                
+
                 if nflat == 1:
                     flat_data = data_lst[0]
                     flat_dsum = data_lst[0]
@@ -250,10 +250,7 @@ def reduce_doublefiber(config, logtable):
                 # get mean exposure time and write it to header
                 head = fits.Header()
                 exptime = np.array(exptime_lst).mean()
-                head[exptime_key]                         = exptime
-                head['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise MEAN of all files'
-                head['HIERARCH GAMSE FLAT FIBER']         = fiber
-                head['HIERARCH GAMSE FLAT NFILE']         = int(nflat)   
+                head[exptime_key] = exptime
 
                 # find saturation mask
                 sat_mask = allmask > nflat/2.
@@ -329,26 +326,15 @@ def reduce_doublefiber(config, logtable):
                             fig_slit        = fig_slit,
                             slit_file       = slit_file,
                             )
-                            
-                head1 = fits.Header()
-                head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mask'
-                head2 = fits.Header()      
-                head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Normalised pixelwise MEAN of all files'
-                head3 = fits.Header()      
-                head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Sensitivity map'
-                head4 = fits.Header()      
-                head4['HIERARCH GAMSE FLAT CONTENT TABLE'] = 'Extracted flux per order'
-                head5 = fits.Header()      
-                head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise SUM of all files'
-                
+
                 # pack results and save to fits
                 hdu_lst = fits.HDUList([
-                            fits.PrimaryHDU(flat_data, head ),
-                            fits.ImageHDU(flat_mask,   head1),
-                            fits.ImageHDU(flat_norm,   head2),
-                            fits.ImageHDU(flat_sens,   head3),
-                            fits.BinTableHDU(flat_spec,head4),
-                            fits.ImageHDU(flat_dsum,   head5),
+                            fits.PrimaryHDU(flat_data, head),
+                            fits.ImageHDU(flat_mask),
+                            fits.ImageHDU(flat_norm),
+                            fits.ImageHDU(flat_sens),
+                            fits.BinTableHDU(flat_spec),
+                            fits.ImageHDU(flat_dsum),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
@@ -481,25 +467,7 @@ def reduce_doublefiber(config, logtable):
             flat_sens_lst[fiber] = flat_sens
             flat_spec_lst[fiber] = flat_spec
             flat_dsum_lst[fiber] = flat_dsum
-    
-            head  = fits.Header()
-            head ['HIERARCH GAMSE CONTENT IMAGE'] = 'Pixelwise MEAN of all files'
-            head ['HIERARCH GAMSE FLAT FIBER']         = fiber
-            for expt in fiber_flat_lst.keys():
-                keyword = 'HIERARCH GAMSE FLAT ' + str(expt)+'s ' + 'NFILE'
-                head [keyword]         = len(fiber_flat_lst[expt])  
-                
-            head1 = fits.Header()
-            head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mask'
-            head2 = fits.Header()      
-            head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Normalised pixelwise MEAN of all files'
-            head3 = fits.Header()      
-            head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Sensitivity map'
-            head4 = fits.Header()      
-            head4['HIERARCH GAMSE FLAT CONTENT TABLE'] = 'Extracted flux per order'
-            head5 = fits.Header()      
-            head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise SUM of all files'
-    
+
             # pack and save to fits file
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(flat_data, head ),
@@ -609,23 +577,12 @@ def reduce_doublefiber(config, logtable):
             keyword = 'HIERARCH GAMSE FLAT FIBER ' +fiber+' '+str(expt)+'s '+'NFILE'
             head [keyword]         = len(fiber_flat_lst[expt])  
 
-    head1 = fits.Header()  
-    head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic Mask'
-    head2 = fits.Header()  
-    head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic norm. pixelwise MEAN of all files'
-    head3 = fits.Header()  
-    head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic sensitivity map'
-    head4 = fits.Header()  
-    head4['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic sensitivity map'
-    head5 = fits.Header()  
-    head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic pixelwise SUM of all files'
-
     hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(master_flatdata,  head ),
-                fits.ImageHDU(master_flatmask,    head1),
-                fits.ImageHDU(master_flatnorm,    head2),
-                fits.ImageHDU(master_flatsens,    head3),
-                fits.ImageHDU(master_flatdsum,    head4),
+                fits.PrimaryHDU(master_flatdata),
+                fits.ImageHDU(master_flatmask),
+                fits.ImageHDU(master_flatnorm),
+                fits.ImageHDU(master_flatsens),
+                fits.ImageHDU(master_flatdsum),
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
@@ -691,7 +648,7 @@ def reduce_doublefiber(config, logtable):
         message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
                    'identification'.format(fileid, imgtype, '|'.join(obj_lst)))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
@@ -1065,7 +1022,7 @@ def reduce_doublefiber(config, logtable):
         message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
                     fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -1339,7 +1296,7 @@ def reduce_doublefiber(config, logtable):
         message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
                     fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -1596,19 +1553,19 @@ def reduce_doublefiber(config, logtable):
                             lower_limit = lower_limit,
                             upper_limit = upper_limit,
                         )
-            message   = '1D spectra of {} orders in fiber {} extracted'.format(
+            message = '1D spectra of {} orders in fiber {} extracted'.format(
                         len(spectra1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
             
             # extract 1d error of the object
-            error1d   = extract_aperset(variance_map, mask,
+            error1d = extract_aperset(variance_map, mask,
                         apertureset = apertureset,
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                         variance    = True
                         )
-            message   = '1D error sum of {} orders in fiber {} extracted'.format(
+            message = '1D error sum of {} orders in fiber {} extracted'.format(
                        len(error1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
@@ -1619,7 +1576,7 @@ def reduce_doublefiber(config, logtable):
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                         )
-            message   = '1D raw spectra of {} orders in fiber {} extracted'.format(
+            message = '1D raw spectra of {} orders in fiber {} extracted'.format(
                        len(error1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
@@ -1668,12 +1625,12 @@ def reduce_doublefiber(config, logtable):
                 item = (aper, 0, flux_sum.size,
                         np.zeros_like(flux_sum, dtype=np.float64), # wavelength
                         flux_sum,                       # 1d spectra (summed up)
-                        flux_err,                       # 1d error estimation   
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt      only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err  only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask only placeholder no real meaning  
-                        flux_raw,                       # 1d flux raw   
+                        flux_err,                       # 1d error estimation
+                        np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask
+                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt
+                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err
+                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask
+                        flux_raw,                       # 1d flux raw
                         flat_flux,                      # 1d spectra of flat
                         background1d[aper]['flux_sum'], # 1d sepctra of background
                         )
