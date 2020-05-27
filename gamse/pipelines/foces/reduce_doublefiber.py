@@ -36,6 +36,7 @@ from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
 
 def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
+    
     Args:
         config (:class:`configparser.ConfigParser`): The configuration of
             reduction.

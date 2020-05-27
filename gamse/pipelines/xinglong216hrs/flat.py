@@ -1,10 +1,11 @@
 import numpy as np
+from scipy.signal import savgol_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 
 from ...utils.onedarray import get_local_minima
 from ...utils.regression import iterative_polyfit
 
-def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
+def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -14,7 +15,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Length of flat.
 
     Returns:
         tuple: A tuple containing:
@@ -38,11 +39,11 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
     """
 
     has_fringe_lst = []
-    aperpar = np.array([np.nan]*w)
+    aperpar = np.array([np.nan]*npoints)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
     ypiece_res_lst = np.array([np.nan]*newx_lst.size)
     mask_rej_lst   = np.array([np.nan]*newx_lst.size)
-    allx = np.arange(w)
+    allx = np.arange(npoints)
     # the dtype of xpiece_lst and ypiece_lst is np.float64
 
     # first try, scan every segment. find fringe by checking the local maximum
@@ -99,15 +100,15 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
             x = []
         # determine how many pixels in each bin.
         # if w=4000, then 500 pix. if w=2000, then 250 pix.
-        npixbin = w//8
+        npixbin = npoints//8
         bins = np.linspace(p1, p2, int(p2-p1)/npixbin+2)
         hist, _ = np.histogram(x, bins)
 
         n_nonzerobins = np.nonzero(hist)[0].size
         n_zerobins = hist.size - n_nonzerobins
 
-        if p2-p1<w/8 or n_zerobins<=1 or \
-            n_zerobins<n_nonzerobins or n_nonzerobins>=3:
+        if p2-p1 < npoints/8 or n_zerobins <= 1 or \
+            n_zerobins < n_nonzerobins or n_nonzerobins >= 3:
             # there's fringe
             has_fringe = True
         else:
@@ -117,23 +118,28 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
 
     # use global polynomial fitting if this order is affected by fringe and the
     # following conditions are satisified
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2 and \
-        has_fringe_lst.count(True) == len(has_fringe_lst):
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2 \
+        and has_fringe_lst.count(True) == len(has_fringe_lst):
         # fit polynomial over the whole order
 
         # prepare xpiece and y piece
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
-        # fit with poly
         # determine the polynomial degree
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
+
+        # fit with polynomial
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-            upper_clip=3)
-        aperpar = np.polyval(coeff, allx/w)
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst = ~_m
@@ -145,24 +151,27 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, w):
             ypiece = ypara[group]
             xspan = xpiece[-1] - xpiece[0]
             if has_fringe:
-                deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+                if   xspan > npoints/2: deg = 4
+                elif xspan > npoints/4: deg = 3
+                elif xspan > npoints/8: deg = 2
+                else:                   deg = 1
             else:
                 deg = 7
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, np.log(ypiece), deg=deg, maxiter=10,
+                xpiece/npoints, np.log(ypiece), deg=deg, maxiter=10,
                 lower_clip=3, upper_clip=3)
             ypiece_fit = np.exp(ypiece_fit)
             ypiece_res = ypiece - ypiece_fit
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.exp(np.polyval(coeff, ii/w))
+            aperpar[ii] = np.exp(np.polyval(coeff, ii/npoints))
             xpiece_lst[group]     = xpiece
             ypiece_res_lst[group] = ypiece_res
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
+def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -172,7 +181,7 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Length of flat.
 
     Returns:
         tuple: A tuple containing:
@@ -194,50 +203,63 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_bkg`
     """
 
-    allx = np.arange(w)
+    allx = np.arange(npoints)
 
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2:
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2:
+
         # fit polynomial over the whole order
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
+        # determine the polynomial degree
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
 
+        # fit with polynomial
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10,
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
             lower_clip=3, upper_clip=3)
 
-        aperpar = np.polyval(coeff, allx/w)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst     = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst   = ~_m
     else:
         # fit polynomial for every segment
-        aperpar = np.array([np.nan]*w)
+        aperpar = np.array([np.nan]*npoints)
         xpiece_lst     = np.array([np.nan]*newx_lst.size)
         ypiece_res_lst = np.array([np.nan]*newx_lst.size)
         mask_rej_lst   = np.array([np.nan]*newx_lst.size)
         for group in group_lst:
             xpiece = newx_lst[group]
             ypiece = ypara[group]
-            xspan = xpiece[-1] - xpiece[0]
-            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
 
+            # determine the polynomial degree
+            xspan = xpiece[-1] - xpiece[0]
+            if   xspan > npoints/2: deg = 4
+            elif xspan > npoints/4: deg = 3
+            elif xspan > npoints/8: deg = 2
+            else:                   deg = 1
+
+            # fit with polynomial
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
+                xpiece/npoints, ypiece, deg=deg, maxiter=10, lower_clip=3,
                 upper_clip=3)
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.polyval(coeff, ii/w)
+            aperpar[ii] = np.polyval(coeff, ii/npoints)
             xpiece_lst[group]     = xpiece
             ypiece_res_lst[group] = ypiece_res
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
+def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -247,7 +269,7 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Length of flat.
 
     Returns:
         tuple: A tuple containing:
@@ -268,9 +290,9 @@ def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_k`
         * :func:`smooth_aperpar_bkg`
     """
-    return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, w)
+    return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints)
 
-def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
+def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -280,7 +302,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
         group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
             in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        w (int): Length of flat.
+        npoints (int): Length of flat.
 
     Returns:
         tuple: A tuple containing:
@@ -302,45 +324,56 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
         * :func:`smooth_aperpar_c`
     """
 
-    allx = np.arange(w)
+    allx = np.arange(npoints)
 
     # fit for bkg
-    if len(group_lst) > 1 and newx_lst[group_lst[0][0]] < w/2 and \
-        newx_lst[group_lst[-1][-1]] > w/2:
+    if len(group_lst) > 1 \
+        and newx_lst[group_lst[0][0]] < npoints/2 \
+        and newx_lst[group_lst[-1][-1]] > npoints/2:
         # fit polynomial over the whole order
         xpiece = np.concatenate([newx_lst[group] for group in group_lst])
         ypiece = np.concatenate([ypara[group] for group in group_lst])
 
+        # determine the degree of polynomial
         xspan = xpiece[-1] - xpiece[0]
-        deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 4)[xspan>w/2]
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
 
+        # polynomial fitting
         coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-            xpiece/w, ypiece, deg=deg, maxiter=10,
+            xpiece/npoints, ypiece, deg=deg, maxiter=10,
             lower_clip=3, upper_clip=3)
 
-        aperpar = np.polyval(coeff, allx/w)
+        aperpar = np.polyval(coeff, allx/npoints)
         xpiece_lst     = xpiece
         ypiece_res_lst = ypiece_res
         mask_rej_lst   = ~_m
     else:
         # fit polynomial for every segment
-        aperpar = np.array([np.nan]*w)
+        aperpar = np.array([np.nan]*npoints)
         xpiece_lst     = np.array([np.nan]*newx_lst.size)
         ypiece_res_lst = np.array([np.nan]*newx_lst.size)
         mask_rej_lst   = np.array([np.nan]*newx_lst.size)
         for group in group_lst:
             xpiece = newx_lst[group]
             ypiece = ypara[group]
+
+            # determine the degree of polynomial
             xspan = xpiece[-1] - xpiece[0]
-            deg = (((1, 2)[xspan>w/8], 3)[xspan>w/4], 7)[xspan>w/2]
+            if   xspan > npoints/2: deg = 4
+            elif xspan > npoints/4: deg = 3
+            elif xspan > npoints/8: deg = 2
+            else:                   deg = 1
 
             scale = ('linear','log')[(ypiece<=0).sum()==0]
             if scale=='log':
                 ypiece = np.log(ypiece)
 
             coeff, ypiece_fit, ypiece_res, _m, std = iterative_polyfit(
-                xpiece/w, ypiece, deg=deg, maxiter=10, lower_clip=3,
-                upper_clip=3)
+                xpiece/npoints, ypiece, deg=deg, maxiter=10,
+                lower_clip=3, upper_clip=3)
 
             if scale=='log':
                 ypiece = np.exp(ypiece)
@@ -348,7 +381,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, w):
                 ypiece_res = ypiece - ypiece_fit
 
             ii = np.arange(xpiece[0], xpiece[-1]+1)
-            aperpar[ii] = np.polyval(coeff, ii/w)
+            aperpar[ii] = np.polyval(coeff, ii/npoints)
             if scale=='log':
                 aperpar[ii] = np.exp(aperpar[ii])
             xpiece_lst[group]     = xpiece

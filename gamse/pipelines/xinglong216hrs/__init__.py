@@ -1,9 +1,7 @@
 import os
 import re
 import datetime
-import logging
-logger = logging.getLogger(__name__)
-import dateutil.parser
+import configparser
 
 import numpy as np
 import astropy.io.fits as fits
@@ -11,8 +9,9 @@ from astropy.time import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
-from ...utils.obslog import read_obslog
-from ..common import FormattedInfo
+from ...utils.obslog import read_obslog, write_obslog
+from ..common import load_obslog, load_config
+from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 
@@ -60,27 +59,55 @@ def make_config():
             print('Invalid input: {}'.format(string))
             continue
 
+    # select readout mode
+    readout_mode_lst = [
+                    'Left Top & Bottom',
+                    'Left Bottom & Right Top',
+                    ]
+    default_readout_mode = 'Left Top & Bottom'
+    for i, readout_mode in enumerate(readout_mode_lst):
+        print(' [{:d}] {:s}'.format(i, readout_mode))
+    while(True):
+        string = input('Select CCD Readout Mode ({}): '.format(
+                        default_readout_mode))
+        if string.isdigit() and int(string)<len(readout_mode_lst):
+            readout_mode = readout_mode_lst[int(string)]
+            break
+        elif len(string.strip())==0:
+            readout_mode = default_readout_mode
+        else:
+            print('Invalid selection:', string)
+            continue
+
+
+    direction = {
+            'Left Top & Bottom': 'xr-',
+            'Left Bottom & Right Top': 'xr-',
+            }[readout_mode]
+
     # create config object
     config = configparser.ConfigParser()
 
     config.add_section('data')
 
     # determine the time-dependent keywords
-    if input_datetime > datetime.datetime(2009, 1, 1):
+    if input_datetime < datetime.datetime(2019, 1, 1):
+        statime_key = 'DATE-STA'
+        exptime_key = 'EXPTIME'
+    else:
         # since 2019 there's another type of FITS header
         statime_key = 'DATE-OBS'
         exptime_key = 'EXPOSURE'
-    else:
-        statime_key = 'DATE-STA'
-        exptime_key = 'EXPTIME'
 
-    config.set('data', 'telescope',   'Xinglong216')
-    config.set('data', 'instrument',  'HRS')
-    config.set('data', 'rawdata',     'rawdata')
-    config.set('data', 'statime_key', statime_key)
-    config.set('data', 'exptime_key', exptime_key)
-    config.set('data', 'direction',   'xr-')
-    config.set('data', 'fibermode',   fibermode)
+    config.set('data', 'telescope',    'Xinglong216')
+    config.set('data', 'instrument',   'HRS')
+    config.set('data', 'rawdata',      'rawdata')
+    config.set('data', 'statime_key',  statime_key)
+    config.set('data', 'exptime_key',  exptime_key)
+    config.set('data', 'readout_mode', readout_mode)
+    config.set('data', 'direction',    direction)
+    config.set('data', 'obsinfo_file', 'obsinfo.txt')
+    config.set('data', 'fibermode',    fibermode)
     if fibermode == 'double':
         config.set('data', 'fiberoffset', str(-12))
 
@@ -104,7 +131,7 @@ def make_config():
     config.add_section('reduce.trace')
     config.set('reduce.trace', 'minimum',    str(8))
     config.set('reduce.trace', 'scan_step',  str(100))
-    config.set('reduce.trace', 'separation', '500:21, 3500:52')
+    config.set('reduce.trace', 'separation', '500:20, 1500:30, 3500:52')
     config.set('reduce.trace', 'filling',    str(0.3))
     config.set('reduce.trace', 'align_deg',  str(2))
     config.set('reduce.trace', 'display',    'no')
@@ -166,12 +193,20 @@ def make_obslog(path):
         path (str): Path to the raw FITS files.
 
     """
+    # load config file
+    config = load_config('Xinglong216HRS\S*\.cfg$')
+
+    # scan filenames and determine the maximum length of fileid
+    maxlen_fileid = max([len(fname[0:-5])
+                    for fname in os.listdir(config['data']['rawdata'])
+                    if fname[-5:]=='.fits'])
+
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
     # if the obsinfo file exists, read and pack the information
     addinfo_lst = {}
-    obsinfo_file = 'obsinfo.txt'
+    obsinfo_file = config['data'].get('obsinfo_file')
     has_obsinfo = os.path.exists(obsinfo_file)
     if has_obsinfo:
         #io_registry.register_reader('obslog', Table, read_obslog)
@@ -183,26 +218,24 @@ def make_obslog(path):
         real_obsdate_lst = []
         delta_t_lst = []
 
+        # find maximum length of object
+        maxobjlen = max([len(row['object']) for row in addinfo_table])
+
     # scan the raw files
     fname_lst = sorted(os.listdir(path))
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid', 'S12'),  ('imgtype', 'S3'),
-        ('object',  'S12'), ('i2cell', 'bool'), ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
-        ])
-
-    # prepare infomation to print
-    pinfo = FormattedInfo(all_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
-            'obsdate', 'nsat', 'q95'])
-
-    # print header of logtable
-    print(pinfo.get_separator())
-    print(pinfo.get_title())
-    #print(pinfo.get_dtype())
-    print(pinfo.get_separator())
+                        ('frameid', 'i2'),
+                        ('fileid',  'S{:d}'.format(maxlen_fileid)),
+                        ('imgtype', 'S3'),
+                        ('object',  'S{:d}'.format(maxobjlen)),
+                        ('i2',      'S1'),
+                        ('exptime', 'f4'),
+                        ('obsdate', Time),
+                        ('nsat',    'i4'),
+                        ('q95',     'i4'),
+                ])
 
     prev_frameid = -1
     # start scanning the raw files
@@ -213,38 +246,20 @@ def make_obslog(path):
         filename = os.path.join(path, fname)
         data, head = fits.getdata(filename, header=True)
 
-        # determine the science and overscan regions
-        naxis1 = head['NAXIS1']
-        naxis2 = head['NAXIS2']
-        x1 = head.get('CRVAL1', 0)
-        y1 = head.get('CRVAL2', 0)
-        # get science region along x axis
-        cover = head.get('COVER')
-        if cover is None:
-            if naxis1 >= 4096:
-                cover = naxis1 - 4096
-        # get science region along y axis
-        rover = head.get('ROVER')
-        if rover is None:
-            if naxis2 >= 4136:
-                rover = naxis2 - 4136
-
-        # get start and end indices of science region
-        y2 = y1 + naxis2 - rover
-        x2 = x1 + naxis1 - cover
-        data = data[y1:y2,x1:x2]
+        # get science region
+        y1, y2, x1, x2 = get_sci_region(head)
+        data = data[y1:y2, x1:x2]
 
         # find frame-id
-        frameid = int(fileid[8:])
+        frameid = int(fileid[11:])
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
 
-        # parse obsdate
-        if 'DATE-STA' in head:
-            obsdate = Time(head['DATE-STA'])
-        else:
-            obsdate = Time(head['DATE-OBS'])
+        # get obsdate from FITS header
+        statime_key = config['data'].get('statime_key')
+        obsdate = Time(head[statime_key])
+        # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
             real_obsdate = addinfo_lst[frameid]['obsdate'].datetime
@@ -253,10 +268,9 @@ def make_obslog(path):
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
 
-        if 'EXPTIME' in head:
-            exptime = head['EXPTIME']
-        else:
-            exptime = head['EXPOSURE']
+        # get exposure time from FITS header
+        exptime_key = config['data'].get('exptime_key')
+        exptime = head[exptime_key]
 
         # parse object name
         if 'OBJECT' in head:
@@ -266,6 +280,7 @@ def make_obslog(path):
         if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
             and addinfo_lst[frameid]['object'] is not np.ma.masked):
             objectname = addinfo_lst[frameid]['object']
+
         # change to regular name
         for regname in regular_names:
             if objectname.lower() == regname.lower():
@@ -273,10 +288,10 @@ def make_obslog(path):
                 break
 
         # parse I2 cell
-        i2cell = objectname.lower()=='i2'
-        if (frameid in addinfo_lst and 'i2cell' in addinfo_table.colnames
-            and addinfo_lst[frameid]['i2cell'] is not np.ma.masked):
-            i2cell = addinfo_lst[frameid]['i2cell']
+        i2 = ('-', '+')[objectname.lower()=='i2']
+        if (frameid in addinfo_lst and 'i2' in addinfo_table.colnames
+            and addinfo_lst[frameid]['i2'] is not np.ma.masked):
+            i2 = addinfo_lst[frameid]['i2']
 
         imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
@@ -284,22 +299,28 @@ def make_obslog(path):
         saturation = (data>=65535).sum()
 
         # find the 95% quantile
-        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
+        quantile95 = int(np.round(np.percentile(data, 95)))
 
-        item = [frameid, fileid, imgtype, objectname, i2cell, exptime, obsdate,
+        item = [frameid, fileid, imgtype, objectname, i2, exptime, obsdate,
                 saturation, quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
 
         # print log item with colors
-        string = pinfo.get_format(has_esc=False).format(item)
+        string = (' {:5s} {:15s} ({:3s}) {:s} {:1s}I2'
+                  '    exptime={:4g} s'
+                  '    {:23s}'
+                  '    Nsat={:6d}'
+                  '    Q95={:5d}').format(
+                '[{:d}]'.format(frameid), fileid, imgtype,
+                objectname.ljust(maxobjlen),
+                i2, exptime,
+                obsdate.isot, saturation, quantile95)
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
 
-    print(pinfo.get_separator())
-    
     # sort by obsdate
     #logtable.sort('obsdate')
 
@@ -308,41 +329,9 @@ def make_obslog(path):
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
         # plot time offset
-        fig = plt.figure(figsize=(9, 6), dpi=100)
-        ax = fig.add_axes([0.12,0.16,0.83,0.77])
-        xdates = mdates.date2num(real_obsdate_lst)
-        ax.plot_date(xdates, delta_t_lst, 'o-', ms=6)
-        ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
-        ax.set_xlabel('Log Time', fontsize=12)
-        ax.set_ylabel('Log Time - FTIS Time (sec)', fontsize=12)
-        x1, x2 = ax.get_xlim()
-        y1, y2 = ax.get_ylim()
-        ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2,
-                'Time offset = %d seconds'%time_offset, fontsize=14)
-        ax.set_xlim(x1, x2)
-        ax.set_ylim(y1, y2)
-        ax.grid(True, ls='-', color='w')
-        ax.set_facecolor('#eaeaf6')
-        ax.set_axisbelow(True)
-        ax.spines['bottom'].set_color('none')
-        ax.spines['left'].set_color('none')
-        ax.spines['top'].set_color('none')
-        ax.spines['right'].set_color('none')
-        for t in ax.xaxis.get_ticklines():
-            t.set_color('none')
-        for t in ax.yaxis.get_ticklines():
-            t.set_color('none')
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
-        #plt.setp(ax.get_xticklabels(), rotation=30)i
-        fig.autofmt_xdate()
-        for tick in ax.xaxis.get_major_ticks():
-            tick.label1.set_fontsize(10)
-        for tick in ax.yaxis.get_major_ticks():
-            tick.label1.set_fontsize(10)
-        fig.suptitle('Time Offsets Between Log and FITS', fontsize=15)
-        fig.savefig('obsdate_offset.png')
-        plt.close(fig)
-
+        figname = os.path.join(config['reduce']['report'],
+                                'obsdate_offset.png')
+        plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset, figname)
         # correct time offset
         for row in logtable:
             row['obsdate'] = row['obsdate'] + time_offset_dt
@@ -362,55 +351,29 @@ def make_obslog(path):
     else:
         outfilename = outname
 
-    # save the logtable
-    outfile = open(outfilename, 'w')
-    outfile.write(pinfo.get_title()+os.linesep)
-    outfile.write(pinfo.get_dtype()+os.linesep)
-    outfile.write(pinfo.get_separator()+os.linesep)
-    for row in logtable:
-        outfile.write(pinfo.get_format().format(row)+os.linesep)
-    outfile.close()
+    # set display formats
+    logtable['imgtype'].info.format = '^s'
+    logtable['object'].info.format = '<s'
+    logtable['i2'].info.format = '^s'
+    logtable['exptime'].info.format = 'g'
 
+    # save the logtable
+    write_obslog(logtable, outfilename)
 
 def reduce_rawdata():
     """2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
     telescope.
     """
 
-    # find obs log
-    logname_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-7:]=='.obslog']
-    if len(logname_lst)==0:
-        print('No observation log found')
-        exit()
-    elif len(logname_lst)>1:
-        print('Multiple observation log found:')
-        for logname in sorted(logname_lst):
-            print('  '+logname)
-    else:
-        pass
-
-    # read obs log
-    logtable = read_obslog(logname_lst[0])
-
-    # load both built-in and local config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation           = configparser.ExtendedInterpolation(),
-                )
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if re.match ('Xinglong216HRS\S*.cfg', fname):
-            config.read(fname)
-            print('Load Congfile File: {}'.format(fname))
-            break
+    # read obslog and config
+    config = load_config('Xinglong216HRS\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$')
 
     fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
-        reduce_singlefiber(logtable, config)
+        reduce_singlefiber(config, logtable)
     elif fibermode == 'double':
-        reduce_doublefiber(logtable, config)
+        reduce_doublefiber(config, logtable)
     else:
         print('Invalid fibermode:', fibermode)

@@ -722,6 +722,8 @@ def mosaic_spec(spec_lst, mosaic_aperset):
         spec1 = spec_lst[tracename]
         mask = spec1['aperture'] == ori_aper
         row = spec1[mask][0]
+        # udpate aperture number
+        row['aperture'] = aper
         spec.append(tuple(row))
 
     spec = np.array(spec, dtype=spec1.dtype)

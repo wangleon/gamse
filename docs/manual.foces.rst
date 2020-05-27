@@ -377,12 +377,14 @@ Format of Output Spectra
 APIs
 ----
 .. autosummary::
-
    gamse.pipelines.foces.make_config
    gamse.pipelines.foces.make_obslog
    gamse.pipelines.foces.reduce_rawdata
    gamse.pipelines.foces.common.correct_overscan
-   gamse.pipelines.foces.common.parse_bias_frames
+   gamse.pipelines.foces.common.combine_bias
+   gamse.pipelines.foces.common.get_bias
+   gamse.pipelines.foces.common.get_mask
+   gamse.pipelines.foces.common.print_wrapper
    gamse.pipelines.foces.common.get_primary_header
    gamse.pipelines.foces.plot_overscan_variation
    gamse.pipelines.foces.plot_bias_smooth
