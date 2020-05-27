@@ -225,13 +225,13 @@ class InfoFrame(tk.Frame):
         mode = self.master.param['mode']
         if mode == 'ident':
             aperture = self.master.param['aperture']
-        
+
             if aperture == self.master.spec['aperture'].min():
                 state = tk.DISABLED
             else:
                 state = tk.NORMAL
             self.prev_button.config(state=state)
-            
+
             if aperture == self.master.spec['aperture'].max():
                 state = tk.DISABLED
             else:
@@ -266,7 +266,7 @@ class InfoFrame(tk.Frame):
 
 class LineTable(tk.Frame):
     """A table for the input spectral lines embedded in the :class:`InfoFrame`.
-    
+
     Args:
         master (Tkinter widget): Parent widget.
         width (int): Width of line table.
@@ -381,7 +381,7 @@ class LineTable(tk.Frame):
 
         # set focus to canvas
         self.master.master.plot_frame.canvas.get_tk_widget().focus()
-        
+
     def on_click_item(self, event):
         """Event response function for clicking lines.
         """
@@ -406,7 +406,7 @@ class LineTable(tk.Frame):
         if aperture in identlist:
 
             list1 = identlist[aperture]
-        
+
             wl_diff = np.abs(list1['wavelength'] - float(values[0]))
             mindiff = wl_diff.min()
             argmin  = wl_diff.argmin()
@@ -429,7 +429,7 @@ class LineTable(tk.Frame):
                     plt.setp(text, color='k')
                 # update the status of del button
                 self.del_button.config(state=tk.DISABLED)
-            
+
             self.master.master.plot_frame.canvas.draw()
 
         else:
@@ -438,7 +438,7 @@ class LineTable(tk.Frame):
 
 class FitparaFrame(tk.Frame):
     """Frame for the fitting parameters embedded in the :class:`InfoFrame`.
-    
+
     Args:
         master (Tkinter widget): Parent widget.
         width (int): Width of frame.
@@ -578,7 +578,7 @@ class CalibWindow(tk.Frame):
             q_threshold):
         """Constructor of :class:`CalibWindow`.
         """
-        
+
         self.master    = master
         self.spec      = spec
         self.identlist = identlist
@@ -655,12 +655,13 @@ class CalibWindow(tk.Frame):
         """
 
         coeff, std, k, offset, nuse, ntot = fit_wavelength(
-                identlist = self.identlist, 
+                identlist = self.identlist,
                 npixel    = self.param['npixel'],
                 xorder    = self.param['xorder'],
                 yorder    = self.param['yorder'],
                 maxiter   = self.param['maxiter'],
                 clipping  = self.param['clipping'],
+                fit_filter= self.param['fit_filter'],
                 )
 
         self.param['coeff']  = coeff
@@ -723,7 +724,7 @@ class CalibWindow(tk.Frame):
 
         # replot
         self.plot_aperture()
-        
+
     def auto_identify(self):
         """Identify all lines in the wavelength standard list automatically.
         """
@@ -770,7 +771,7 @@ class CalibWindow(tk.Frame):
                 if q < self.param['q_threshold']:
                     continue
                 peak_x = param[1]
-                
+
                 '''
                 fig = plt.figure(figsize=(6,4),tight_layout=True)
                 ax = fig.gca()
@@ -918,7 +919,7 @@ class CalibWindow(tk.Frame):
     def plot_wavelength(self):
         """A wrap for plotting the wavelength solution."""
 
-        aperture_lst = np.arange(self.param['aperture_min'], 
+        aperture_lst = np.arange(self.param['aperture_min'],
                                  self.param['aperture_max']+1)
 
         kwargs = {
@@ -944,7 +945,7 @@ class CalibWindow(tk.Frame):
 
     def on_click(self, event):
         """Response function of clicking the axes.
-        
+
         Double click means find the local peak and prepare to add a new
         identified line.
         """
@@ -1098,7 +1099,7 @@ class CalibWindow(tk.Frame):
         offset   = self.param['offset']
 
         line_frame = self.info_frame.line_frame
-        
+
         if aperture not in self.identlist:
             self.identlist[aperture] = np.array([], dtype=identlinetype)
 
@@ -1109,7 +1110,7 @@ class CalibWindow(tk.Frame):
         iid = selected_iid_lst[0]
         wavelength = float(line_frame.line_tree.item(iid, 'values')[0])
         line_frame.line_tree.selection_remove(selected_iid_lst)
-        
+
         # find the insert position
         insert_pos = np.searchsorted(list1['pixel'], pixel)
 
@@ -1130,7 +1131,7 @@ class CalibWindow(tk.Frame):
 
         # reset the line table
         line_frame.search_text.set('')
-        
+
         # update the status of 3 buttons
         line_frame.clr_button.config(state=tk.NORMAL)
         line_frame.add_button.config(state=tk.DISABLED)
@@ -1226,7 +1227,7 @@ class CalibWindow(tk.Frame):
             info_frame.clearall_button.config(state=tk.DISABLED)
 
 
-def wlcalib(spec, figfilename, title, linelist, identfilename=None, 
+def wlcalib(spec, figfilename, title, linelist, identfilename=None,
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
     q_threshold=10):
     """Identify the wavelengths of emission lines in the spectrum of a
@@ -1281,7 +1282,7 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
         from this ASCII file, and display them in the calibration window. If not
         exist, save the identified list into **identfilename** with ASCII
         format.
-        
+
     See also:
         :func:`recalib`
     """
@@ -1386,9 +1387,9 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
 
     return result
 
-def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
+def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,fit_filter=None):
     """Fit the wavelength using 2-D polynomial.
-    
+
     Args:
         identlist (dict): Dict of identification lines for different apertures.
         npixel (int): Number of pixels for each order.
@@ -1397,10 +1398,12 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
         maxiter (int): Maximim number of iterations in the polynomial
             fitting.
         clipping (float): Threshold of sigma-clipping.
+        fit_filter (function): Function checking if a pixel/oder combination is
+            within the accepted range.
 
     Returns:
         tuple: A tuple containing:
-        
+
             * **coeff** (:class:`numpy.ndarray`) – Coefficients array.
             * **std** (*float*) – Standard deviation.
             * **k** (*int*) – *k* in the relationship between aperture
@@ -1413,7 +1416,6 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
 
     See also:
         :func:`get_wavelength`
-
     """
     # find physical order
     k, offset = find_order(identlist, npixel)
@@ -1440,7 +1442,14 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
     fit_w_lst = np.array(fit_w_lst)
 
     # sigma clipping fitting
-    mask = np.ones_like(fit_p_lst, dtype=np.bool)
+    if fit_filter is None:
+        mask = np.ones_like(fit_p_lst, dtype=np.bool)
+    else:
+        real_pix = (fit_p_lst+1)/2*(npixel-1)
+        real_ord = fit_o_lst
+        mask_fix = fit_filter(real_pix,real_ord)
+        mask = mask_fix
+
     for nite in range(maxiter):
         coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask], fit_w_lst[mask],
                           xorder=xorder, yorder=yorder)
@@ -1451,7 +1460,7 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
         std  = res_lst[mask].std(dtype=np.float64)
         m1 = res_lst > mean - clipping*std
         m2 = res_lst < mean + clipping*std
-        new_mask = m1*m2
+        new_mask = m1*m2*mask_fix
         if new_mask.sum() == mask.sum():
             break
         else:
@@ -1470,7 +1479,7 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping):
 
 def get_wavelength(coeff, npixel, pixel, order):
     """Get wavelength.
-    
+
     Args:
         coeff (:class:`numpy.ndarray`): 2-D Coefficient array.
         npixel (int): Number of pixels along the main dispersion direction.
@@ -1483,7 +1492,6 @@ def get_wavelength(coeff, npixel, pixel, order):
 
     See also:
         :func:`fit_wavelength`
-
     """
     # convert aperture to order
     norm_pixel = pixel*2./(npixel-1) - 1
@@ -1507,7 +1515,6 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
 
     Returns:
         float: Guessed wavelength. If failed, return *None*.
-        
     """
     rough_wl = None
 
@@ -1544,7 +1551,6 @@ def is_identified(wavelength, identlist, aperture):
 
     Returns:
         bool: *True* if **wavelength** and **aperture** in **identlist**.
-    
     """
     if aperture in identlist:
         list1 = identlist[aperture]
@@ -1576,7 +1582,6 @@ def find_order(identlist, npixel):
               `order = k*aperture + offset`.
             * **offset** (*int*) – Coefficient in the relationship
               `order = k*aperture + offset`.
-
     """
     aper_lst, wlc_lst = [], []
     for aperture, list1 in sorted(identlist.items()):
@@ -1632,7 +1637,6 @@ def save_ident(identlist, coeff, filename, channel):
 
     See also:
         :func:`load_ident`
-
     """
     if channel is None:
         outfile = open(filename, 'w')
@@ -1649,9 +1653,9 @@ def save_ident(identlist, coeff, filename, channel):
                 if g[0] != channel:
                     exist_row_lst.append(row)
             infile.close()
-    
+
         outfile = open(filename, 'w')
-    
+
         # write other channels
         if len(exist_row_lst)>0:
             outfile.write(os.linesep.join(exist_row_lst))
@@ -1689,6 +1693,7 @@ def load_ident(filename):
 
     Args:
         filename (str): Name of the identification file.
+
     Returns:
         tuple: A tuple containing:
 
@@ -1697,7 +1702,6 @@ def load_ident(filename):
 
     See also:
         :func:`save_ident`
-    
     """
     identlist = {}
     coeff = []
@@ -1768,7 +1772,6 @@ def find_local_peak(flux, x, width):
             * **i2** (*int*) – Index of the right side.
             * **p1** (*list*) – List of fitting parameters.
             * **std** (*float*) – Standard devation of the fitting.
-        
     """
     width = int(round(width))
     if width%2 != 1:
@@ -1796,10 +1799,11 @@ def find_local_peak(flux, x, width):
 
 def recenter(flux, center):
     """Relocate the profile center of the lines.
-    
+
     Args:
         flux (:class:`numpy.ndarray`): Flux array.
         center (float): Center of the line.
+
     Returns:
         float: The new center of the line profile.
     """
@@ -1809,7 +1813,7 @@ def recenter(flux, center):
     p0 = [ydata.min(), ydata.max()-ydata.min(), ydata.argmax()+y1, 2.5]
     p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
     return p1[2]
-    
+
 def search_linelist(linelistname):
     """Search the line list file and load the list.
 
@@ -1927,7 +1931,6 @@ def get_simple_ccf(flux1, flux2, shift_lst):
 
     Returns:
         :class:`numpy.ndarray`: Cross-correlation function
-
     """
 
     n = flux1.size
@@ -2051,7 +2054,7 @@ class CalibFigure(Figure):
 
         #wave_scale = 'linear'
         wave_scale = 'reciprocal'
-        
+
         #colors = 'rgbcmyk'
 
         self._ax2.cla()
@@ -2190,7 +2193,6 @@ def select_calib_from_database(path, time_key, current_time):
             * **spec** (:class:`numpy.dtype`): An array of previous calibrated
                 spectra.
             * **calib** (dict): Previous calibration results.
-        
     """
     if not os.path.exists(path):
         return None, None
@@ -2229,7 +2231,7 @@ def select_calib_from_database(path, time_key, current_time):
 def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         aperture_koffset=(1, 0), pixel_koffset=(1, None),
         xorder=None, yorder=None, maxiter=None, clipping=None, window_size=None,
-        q_threshold=None, direction=None,
+        q_threshold=None, direction=None,fit_filter=None
         ):
     """Re-calibrate the wavelength of an input spectra file using another
     spectra as the reference.
@@ -2255,6 +2257,8 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         clipping (float): Threshold of sigma-clipping.
         q_threshold (float): Minimum *Q*-factor of the spectral lines to be
             accepted in the wavelength fitting.
+        fit_filter (function): Function checking if a pixel/oder combination is
+            within the accepted range.
 
     Returns:
         dict: A dict containing:
@@ -2286,7 +2290,6 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
 
     See also:
         :func:`wlcalib`
-        
     """
 
     aperture_k, aperture_offset = aperture_koffset
@@ -2377,16 +2380,17 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
 
         if has_insert:
             identlist[aperture] = np.sort(identlist[aperture], order='pixel')
-        
+
     new_coeff, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
-        identlist = identlist, 
+        identlist = identlist,
         npixel    = npixel,
         xorder    = xorder,
         yorder    = yorder,
         maxiter   = maxiter,
         clipping  = clipping,
+        fit_filter= fit_filter,
         )
-    
+
     fig_width  = 2500
     fig_height = 1500
     fig_dpi    = 150
@@ -2446,12 +2450,12 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
 def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
         fig_ccf=None, fig_scatter=None):
     """Find the offset between two spectra.
-    
+
     The aperture offset is defined as:
 
     of the same echelle order, `aperture1` in spec1 is marked as
     `k*aperture1 + offset` in spec2.
-    
+
     Args:
         spec1 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
         spec2 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
@@ -2464,9 +2468,9 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
 
     Returns:
         tuple: A tuple containing:
+
             * **offset** (*int*): Aperture offset between the two spectra.
             * **shift** (*float*): Pixel shift between the two spectra.
-
     """
 
     pixel_shift_lst = np.arange(-100, 100)
@@ -2638,7 +2642,6 @@ def save_calibrated_thar(head, spec, calib, channel):
         spec (:class:`numpy.dtype`):
         calib (tuple):
         channel (str):
-
     """
     k      = calib['k']
     offset = calib['offset']
@@ -2751,7 +2754,6 @@ def get_time_weight(datetime_lst, datetime):
 
     Returns:
         list: A list of floats as the weights.
-
     """
     input_datetime = dateutil.parser.parse(datetime)
     dt_lst = [(dateutil.parser.parse(dt) - input_datetime).total_seconds()
@@ -2789,7 +2791,6 @@ def combine_calib(calib_lst, weight_lst):
 
     Return:
         dict: The combined wavelength claibration result
-
     """
 
     k      = calib_lst[0]['k']
@@ -2826,7 +2827,6 @@ def get_calib_from_header(header):
 
     Returns:
         tuple: A tuple containing calib results.
-
     """
 
     prefix = 'HIERARCH GAMSE WLCALIB'
@@ -2838,7 +2838,7 @@ def get_calib_from_header(header):
     coeff = np.zeros((yorder+1, xorder+1))
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
         coeff[j,i] = header[prefix+' COEFF %d %d'%(j, i)]
-    
+
     calib = {
               'coeff':         coeff,
               'npixel':        header[prefix+' NPIXEL'],
@@ -2863,7 +2863,7 @@ def get_calib_from_header(header):
 
 def auto_line_fitting_filter(param, i1, i2):
     """A filter function for fitting of a single calibration line.
-    
+
     Args:
         param ():
         i1 (int):
@@ -2895,8 +2895,6 @@ def reference_self_wavelength(spec, calib):
 
     Returns:
         tuple: A tuple containing:
-
-
     """
 
     # calculate the wavelength for each aperture
@@ -2993,7 +2991,6 @@ def combine_fiber_identlist(identlist_lst):
 
     Returns:
         numpy.dtype
-
     """
     identlist1 = list(identlist_lst.values())[0]
     newdescr = [descr for descr in identlist1.dtype.descr]
@@ -3013,7 +3010,7 @@ def combine_fiber_identlist(identlist_lst):
 def reference_spec_wavelength(spec, calib_lst, weight_lst):
     """Calculate the wavelength of a spectrum with given calibration list and
     weights.
-    
+
     Args:
         spec (class:`numpy.dtype`):
         calib_lst (list):
@@ -3022,9 +3019,8 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     Returns:
         tuple:
 
-    See Also:
+    See also:
         :func:`reference_pixel_wavelength`
-        
     """
     combined_calib = combine_calib(calib_lst, weight_lst)
 
@@ -3087,9 +3083,8 @@ def reference_pixel_wavelength(pixels, apertures, calib_lst, weight_lst):
     Returns:
         tuple:
 
-    See Also:
+    See also:
         :func:`reference_spec_wavelength`
-        
     """
     pixels    = np.array(pixels)
     apertures = np.array(apertures)
@@ -3122,7 +3117,6 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
 
     See also:
         :func:`wlcalib`
-
     """
     data, head = fits.getdata(infilename, header=True)
 
@@ -3149,7 +3143,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
 
     # find aperture locations
     aperture_coeffs = get_aperture_coeffs_in_header(head)
-    
+
     # loop all channels
     for channel in sorted(channel_lst):
 
@@ -3234,7 +3228,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
             npixel   = row['points']
             order = aperture*k + offset
             wl = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
-            
+
             # add wavelength into FITS table
             item = list(row)
             item.append(order)
@@ -3338,7 +3332,7 @@ def get_aperture_coeffs_in_header(head):
     Returns:
         *dict*: A dict containing coefficients for each aperture and each channel.
     """
-    
+
     coeffs = {}
     for key, value in head.items():
         exp = '^GAMSE TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
@@ -3352,4 +3346,3 @@ def get_aperture_coeffs_in_header(head):
             if len(coeffs[(channel, aperture)]) == icoeff:
                 coeffs[(channel, aperture)].append(value)
     return coeffs
-

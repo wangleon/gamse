@@ -36,12 +36,11 @@ from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
 
 def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
-
+    
     Args:
         config (:class:`configparser.ConfigParser`): The configuration of
             reduction.
         logtable (:class:`astropy.table.Table`): The observing log.
-
     """
 
     # extract keywords from config file
@@ -365,13 +364,11 @@ def reduce_doublefiber(config, logtable):
                     fig_section  = fig_sec,
                     )
             flat_dbkg = flat_data - stray
-
             # plot stray light of flat
             fig_stray = os.path.join(report,
                         'bkg_flat_{}_{}_stray.{}'.format(
                         fiber, flatname, fig_format))
             plot_background_aspect1(flat_data, stray, fig_stray)
-
             # extract 1d spectrum of flat
             section = config['reduce.extract']
             spectra1d = extract_aperset(flat_dbkg, mask,
@@ -430,7 +427,6 @@ def reduce_doublefiber(config, logtable):
             else:
                 oriname = 'trace_flat_{}.trc'.format(flatname)
             shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
-
             # copy the reg file
             if multi_fiber:
                 oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
@@ -728,6 +724,7 @@ def reduce_doublefiber(config, logtable):
         all_spec      = {}
         all_cards     = {}
         all_identlist = {}
+        fit_filter = lambda pix,order : (pix > 130) & (pix < 1950) & (order > 60) & (order < 150)
 
         for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
@@ -877,6 +874,7 @@ def reduce_doublefiber(config, logtable):
                             window_size      = window_size,
                             q_threshold      = q_threshold,
                             direction        = direction,
+                            fit_filter       = fit_filter,
                             )
                 else:
                     message = 'No database searching. Identify lines manually'
@@ -916,6 +914,7 @@ def reduce_doublefiber(config, logtable):
                     window_size      = ref_calib['window_size'],
                     q_threshold      = ref_calib['q_threshold'],
                     direction        = direction,
+                    fit_filter       = fit_filter,
                     )
 
             # add more infos in calib
