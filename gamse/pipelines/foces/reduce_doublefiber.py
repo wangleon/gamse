@@ -227,7 +227,7 @@ def reduce_doublefiber(config, logtable):
                     data_lst.append(data)
 
                 print(' '*2 + pinfo2.get_separator())
-                
+
                 if nflat == 1:
                     flat_data = data_lst[0]
                     flat_dsum = data_lst[0]
@@ -249,10 +249,7 @@ def reduce_doublefiber(config, logtable):
                 # get mean exposure time and write it to header
                 head = fits.Header()
                 exptime = np.array(exptime_lst).mean()
-                head[exptime_key]                         = exptime
-                head['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise MEAN of all files'
-                head['HIERARCH GAMSE FLAT FIBER']         = fiber
-                head['HIERARCH GAMSE FLAT NFILE']         = int(nflat)   
+                head[exptime_key] = exptime
 
                 # find saturation mask
                 sat_mask = allmask > nflat/2.
@@ -328,26 +325,15 @@ def reduce_doublefiber(config, logtable):
                             fig_slit        = fig_slit,
                             slit_file       = slit_file,
                             )
-                            
-                head1 = fits.Header()
-                head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mask'
-                head2 = fits.Header()      
-                head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Normalised pixelwise MEAN of all files'
-                head3 = fits.Header()      
-                head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Sensitivity map'
-                head4 = fits.Header()      
-                head4['HIERARCH GAMSE FLAT CONTENT TABLE'] = 'Extracted flux per order'
-                head5 = fits.Header()      
-                head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise SUM of all files'
-                
+
                 # pack results and save to fits
                 hdu_lst = fits.HDUList([
-                            fits.PrimaryHDU(flat_data, head ),
-                            fits.ImageHDU(flat_mask,   head1),
-                            fits.ImageHDU(flat_norm,   head2),
-                            fits.ImageHDU(flat_sens,   head3),
-                            fits.BinTableHDU(flat_spec,head4),
-                            fits.ImageHDU(flat_dsum,   head5),
+                            fits.PrimaryHDU(flat_data, head),
+                            fits.ImageHDU(flat_mask),
+                            fits.ImageHDU(flat_norm),
+                            fits.ImageHDU(flat_sens),
+                            fits.BinTableHDU(flat_spec),
+                            fits.ImageHDU(flat_dsum),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
@@ -477,33 +463,15 @@ def reduce_doublefiber(config, logtable):
             flat_sens_lst[fiber] = flat_sens
             flat_spec_lst[fiber] = flat_spec
             flat_dsum_lst[fiber] = flat_dsum
-    
-            head  = fits.Header()
-            head ['HIERARCH GAMSE CONTENT IMAGE'] = 'Pixelwise MEAN of all files'
-            head ['HIERARCH GAMSE FLAT FIBER']         = fiber
-            for expt in fiber_flat_lst.keys():
-                keyword = 'HIERARCH GAMSE FLAT ' + str(expt)+'s ' + 'NFILE'
-                head [keyword]         = len(fiber_flat_lst[expt])  
-                
-            head1 = fits.Header()
-            head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mask'
-            head2 = fits.Header()      
-            head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Normalised pixelwise MEAN of all files'
-            head3 = fits.Header()      
-            head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Sensitivity map'
-            head4 = fits.Header()      
-            head4['HIERARCH GAMSE FLAT CONTENT TABLE'] = 'Extracted flux per order'
-            head5 = fits.Header()      
-            head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Pixelwise SUM of all files'
-    
+
             # pack and save to fits file
             hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(flat_data, head ),
-                        fits.ImageHDU(flat_mask,   head1),
-                        fits.ImageHDU(flat_norm,   head2),
-                        fits.ImageHDU(flat_sens,   head3),
-                        fits.BinTableHDU(flat_spec,head4),
-                        fits.ImageHDU(flat_dsum,   head5),
+                        fits.PrimaryHDU(flat_data),
+                        fits.ImageHDU(flat_mask),
+                        fits.ImageHDU(flat_norm),
+                        fits.ImageHDU(flat_sens),
+                        fits.BinTableHDU(flat_spec),
+                        fits.ImageHDU(flat_dsum),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
@@ -596,32 +564,12 @@ def reduce_doublefiber(config, logtable):
     master_flatsens[mask] = flat_sens_lst[next_fiber][mask]
     master_flatdsum[mask] = flat_dsum_lst[next_fiber][mask]
 
-    head  = fits.Header()
-    head ['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic pixelwise MEAN of all files'
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
-        fiber_flat_lst = flat_groups[fiber]
-        for expt in fiber_flat_lst.keys():
-            keyword = 'HIERARCH GAMSE FLAT FIBER ' +fiber+' '+str(expt)+'s '+'NFILE'
-            head [keyword]         = len(fiber_flat_lst[expt])  
-
-    head1 = fits.Header()  
-    head1['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic Mask'
-    head2 = fits.Header()  
-    head2['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic norm. pixelwise MEAN of all files'
-    head3 = fits.Header()  
-    head3['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic sensitivity map'
-    head4 = fits.Header()  
-    head4['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic sensitivity map'
-    head5 = fits.Header()  
-    head5['HIERARCH GAMSE FLAT CONTENT IMAGE'] = 'Mosaic pixelwise SUM of all files'
-
     hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(master_flatdata,  head ),
-                fits.ImageHDU(master_flatmask,    head1),
-                fits.ImageHDU(master_flatnorm,    head2),
-                fits.ImageHDU(master_flatsens,    head3),
-                fits.ImageHDU(master_flatdsum,    head4),
+                fits.PrimaryHDU(master_flatdata),
+                fits.ImageHDU(master_flatmask),
+                fits.ImageHDU(master_flatnorm),
+                fits.ImageHDU(master_flatsens),
+                fits.ImageHDU(master_flatdsum),
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
@@ -631,24 +579,16 @@ def reduce_doublefiber(config, logtable):
     # get the data shape
     ny, nx = flat_sens.shape
 
-    # define dtype of 1-d spectra for all fibers
+    # define dtype of 1-d spectra for wlcalib files
     types = [
-            ('aperture',     np.int16),
-            ('order',        np.int16),
-            ('points',       np.int16),
-            ('wavelength',   (np.float64, nx)),
-            ('flux_sum',     (np.float32, nx)),
-            ('flux_sum_err', (np.float32, nx)),
-            ('flux_sum_mask',(np.int16,   nx)),
-            ('flux_opt',     (np.float32, nx)),
-            ('flux_opt_err', (np.float32, nx)),
-            ('flux_opt_mask',(np.int16,   nx)),
-            ('flux_raw',     (np.float32, nx)),
-            ('flat',         (np.float32, nx)),
-            ('background',   (np.float32, nx)),
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('points',     np.int16),
+            ('wavelength', (np.float64, nx)),
+            ('flux',       (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
-    spectype = np.dtype({'names': names, 'formats': formats})
+    wlcalib_spectype = np.dtype({'names': names, 'formats': formats})
 
     calib_lst = {}
     # calib_lst is a hierarchical dict of calibration results
@@ -687,7 +627,7 @@ def reduce_doublefiber(config, logtable):
         message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
                    'identification'.format(fileid, imgtype, '|'.join(obj_lst)))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         filename = os.path.join(rawdata, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
@@ -743,28 +683,18 @@ def reduce_doublefiber(config, logtable):
             #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
-                npoints = flux_sum.size
+                n = flux_sum.size
                 # search for flat flux
                 m = flat_spec_lst[fiber]['aperture']==aper
                 flat_flux = flat_spec_lst[fiber][m][0]['flux']
 
                 # pack to table
-                spec.append((
-                    aper,                                   # aperture
-                    0,                                      # order
-                    npoints,                                # npoints
-                    np.zeros(npoints, dtype=np.float64),    # wavelength
-                    flux_sum,                               # flux_sum
-                    np.zeros(npoints, dtype=np.float32),    # flux_sum_err
-                    np.zeros(npoints, dtype=np.int16),      # flux_sum_mask
-                    np.zeros(npoints, dtype=np.float32),    # flux_opt
-                    np.zeros(npoints, dtype=np.float32),    # flux_opt_err
-                    np.zeros(npoints, dtype=np.int16),      # flux_opt_mask
-                    np.zeros(npoints, dtype=np.float32),    # flux_raw
-                    flat_flux,                              # flat
-                    np.zeros(nx, dtype=np.float32),         # background
-                    ))
-            spec = np.array(spec, dtype=spectype)
+                item = (aper, 0, n,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux
+                        )
+                spec.append(item)
+            spec = np.array(spec, dtype=wlcalib_spectype)
 
             figname = 'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format)
             wlcalib_fig = os.path.join(report, figname)
@@ -783,6 +713,7 @@ def reduce_doublefiber(config, logtable):
                     message = ('Searching for archive wavelength calibration'
                                'file in "{}"'.format(database_path))
                     logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
 
                     ref_spec, ref_calib = select_calib_from_database(
                         database_path, statime_key, head[statime_key])
@@ -792,6 +723,7 @@ def reduce_doublefiber(config, logtable):
                         message = ('Did not find any archive wavelength'
                                    'calibration file')
                         logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
 
                         # if failed, pop up a calibration window and
                         # identify the wavelengths manually
@@ -810,7 +742,8 @@ def reduce_doublefiber(config, logtable):
                         # if success, run recalib
                         # determine the direction
                         message = 'Found archive wavelength calibration file'
-                        logger.info(message)
+                        logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
 
                         ref_direction = ref_calib['direction']
                         aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
@@ -879,6 +812,7 @@ def reduce_doublefiber(config, logtable):
                 else:
                     message = 'No database searching. Identify lines manually'
                     logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
 
                     # do not search the database
                     calib = wlcalib(spec,
@@ -989,13 +923,11 @@ def reduce_doublefiber(config, logtable):
 
         while(True):
             string = input('Select References for fiber {}: '.format(fiber))
-            print(string)
             ref_frameid_lst[fiber]  = []
             ref_calib_lst[fiber]    = []
             ref_datetime_lst[fiber] = []
             succ = True
             for s in string.split(','):
-                print(s)
                 s = s.strip()
                 if len(s)>0 and s.isdigit() and int(s) in calib_lst:
                     frameid = int(s)
@@ -1018,6 +950,26 @@ def reduce_doublefiber(config, logtable):
                 break
             else:
                 continue
+
+    # define dtype of 1-d spectra for all fibers
+    types = [
+            ('aperture',     np.int16),
+            ('order',        np.int16),
+            ('points',       np.int16),
+            ('wavelength',   (np.float64, nx)),
+            ('flux_sum',     (np.float32, nx)),
+            ('flux_sum_err', (np.float32, nx)),
+            ('flux_sum_mask',(np.int16,   nx)),
+            ('flux_opt',     (np.float32, nx)),
+            ('flux_opt_err', (np.float32, nx)),
+            ('flux_opt_mask',(np.int16,   nx)),
+            ('flux_raw',     (np.float32, nx)),
+            ('flat',         (np.float32, nx)),
+            ('background',   (np.float32, nx)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+
 
     extracted_fileid_lst = []
     #################### Extract Spectra with Single Objects ###################
@@ -1064,7 +1016,7 @@ def reduce_doublefiber(config, logtable):
         message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
                     fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -1249,6 +1201,7 @@ def reduce_doublefiber(config, logtable):
         #print(flat_spec_lst)
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
+            n = flux_sum.size
             # search for flat flux
             m = flat_spec_lst[fiber]['aperture']==aper
             flat_flux = flat_spec_lst[fiber][m][0]['flux']
@@ -1257,17 +1210,17 @@ def reduce_doublefiber(config, logtable):
             #read raw flux
             flux_raw  = specraw1d[aper]['flux_sum'] 
             
-            item = (aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), # wavelength
-                    flux_sum,   # 1d flux summed up
-                    flux_err,   # 1d error of flux summed up
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt      only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err  only placeholder no real meaning
-                    np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask only placeholder no real meaning  
-                    flux_raw,   # 1d flux raw                    
-                    flat_flux,  # 1d spectra of smooth flat
-                    background1d[aper]['flux_sum'],  # 1d sepctra of background
+            item = (aper, 0, n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux_sum
+                    flux_err,                       # flux_sum_err
+                    np.zeros(n, dtype=np.int16),    # flux_sum_mask
+                    np.zeros(n, dtype=np.float32),  # flux_opt
+                    np.zeros(n, dtype=np.float32),  # flux_opt_err
+                    np.zeros(n, dtype=np.int16),    # flux_opt_mask
+                    flux_raw,                       # flux_raw
+                    flat_flux,                      # flat
+                    background1d[aper]['flux_sum'], # background
                     )
             spec.append(item)
         spec = np.array(spec, dtype=spectype)
@@ -1338,7 +1291,7 @@ def reduce_doublefiber(config, logtable):
         message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
                     fileid, imgtype, '|'.join(obj_lst))
         logger.info(message)
-        print('\n'+message)
+        print(message)
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -1595,19 +1548,19 @@ def reduce_doublefiber(config, logtable):
                             lower_limit = lower_limit,
                             upper_limit = upper_limit,
                         )
-            message   = '1D spectra of {} orders in fiber {} extracted'.format(
+            message = '1D spectra of {} orders in fiber {} extracted'.format(
                         len(spectra1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
             
             # extract 1d error of the object
-            error1d   = extract_aperset(variance_map, mask,
+            error1d = extract_aperset(variance_map, mask,
                         apertureset = apertureset,
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                         variance    = True
                         )
-            message   = '1D error sum of {} orders in fiber {} extracted'.format(
+            message = '1D error sum of {} orders in fiber {} extracted'.format(
                        len(error1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
@@ -1618,7 +1571,7 @@ def reduce_doublefiber(config, logtable):
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                         )
-            message   = '1D raw spectra of {} orders in fiber {} extracted'.format(
+            message = '1D raw spectra of {} orders in fiber {} extracted'.format(
                        len(error1d), fiber)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
@@ -1656,6 +1609,7 @@ def reduce_doublefiber(config, logtable):
             #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
+                n = flux_sum.size
                 # search for flat flux
                 m = flat_spec_lst[fiber]['aperture']==aper
                 flat_flux = flat_spec_lst[fiber][m][0]['flux']
@@ -1664,17 +1618,17 @@ def reduce_doublefiber(config, logtable):
                 #read raw flux
                 flux_raw  = specraw1d[aper]['flux_sum'] 
                 
-                item = (aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), # wavelength
-                        flux_sum,                       # 1d spectra (summed up)
-                        flux_err,                       # 1d error estimation   
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_sum_mask only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt      only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_err  only placeholder no real meaning
-                        np.zeros_like(flux_sum, dtype=np.float64), # flux_opt_mask only placeholder no real meaning  
-                        flux_raw,                       # 1d flux raw   
-                        flat_flux,                      # 1d spectra of flat
-                        background1d[aper]['flux_sum'], # 1d sepctra of background
+                item = (aper, 0, n,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux_sum
+                        flux_err,                       # flux_sum_err
+                        np.zeros(n, dtype=np.int16),    # flux_sum_mask
+                        np.zeros(n, dtype=np.float32),  # flux_opt
+                        np.zeros(n, dtype=np.float32),  # flux_opt_err
+                        np.zeros(n, dtype=np.int16),    # flux_opt_mask
+                        flux_raw,                       # flux_raw
+                        flat_flux,                      # flat
+                        background1d[aper]['flux_sum'], # background
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=spectype)

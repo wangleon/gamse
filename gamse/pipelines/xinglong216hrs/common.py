@@ -15,6 +15,7 @@ import matplotlib.ticker as tck
 import matplotlib.dates as mdates
 
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.wlcalib import get_calib_from_header
 from ...utils.obslog import read_obslog
 from ...utils.onedarray import iterative_savgol_filter
 
@@ -565,9 +566,11 @@ def select_calib_from_database(database_path, dateobs):
 
     input_date = dateutil.parser.parse(dateobs)
     if input_date > datetime.datetime(2019, 1, 1):
-        mask = calibtable['obsdate'] > datetime.datetime(2019, 1, 1)
+        mask = [t.datetime > datetime.datetime(2019, 1, 1)
+                for t in calibtable['obsdate']]
     else:                         
-        mask = calibtable['obsdate'] < datetime.datetime(2019, 1, 1)
+        mask = [t.datetime < datetime.datetime(2019, 1, 1)
+                for t in calibtable['obsdate']]
     
     fileid = calibtable[mask][-1]['fileid']
 

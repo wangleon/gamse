@@ -787,14 +787,15 @@ def reduce_singlefiber(config, logtable):
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
+            n = flux_sum.size
             # seach for flat flux
             m = flat_spec['aperture']==aper
             flat_flux = flat_spec[m][0]['flux']
-            item = (aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), # wavelength
-                    flux_sum,
-                    flat_flux,                 # 1d spectra of flat
-                    stray1d[aper]['flux_sum'], # 1d spectra of background
+            item = (aper, 0, n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux_sum
+                    flat_flux,                      # 1d spectra of flat
+                    stray1d[aper]['flux_sum'],      # 1d spectra of background
                     )
             spec.append(item)
         spec = np.array(spec, dtype=spectype)

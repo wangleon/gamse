@@ -13,7 +13,7 @@ from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)
 from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
-from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
+from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_time_weight, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength)
@@ -352,14 +352,11 @@ def reduce_singlefiber(config, logtable):
             ('order',      np.int16),
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
-            ('flux_sum',     (np.float32, nx)),
-            ('flux_sum_err', (np.float32, nx)),
-            ('flux_sum_mask',(np.float32, nx)),
-            ('flux_opt',     (np.float32, nx)),
-            ('flux_opt_err', (np.float32, nx)),
-            ('flux_opt_mask',(np.float32, nx)),
-            ('flat',         (np.float32, nx)),
-            ('background',   (np.float32, nx)),
+            ('flux',       (np.float32, nx)),
+            ('flux_err',   (np.float32, nx)),
+            ('flux_mask',  (np.int16,   nx)),
+            ('flat',       (np.float32, nx)),
+            ('background', (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -370,7 +367,7 @@ def reduce_singlefiber(config, logtable):
     thar_items = list(filter(lambda item: item['object'].lower() == 'thar',
                              logtable))
 
-    for ithar, logitem in enumerate(logtable):
+    for ithar, logitem in enumerate(thar_items):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
@@ -410,6 +407,7 @@ def reduce_singlefiber(config, logtable):
 
         head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
+        # extract ThAr spectra
         section = config['reduce.extract']
         spectra1d = extract_aperset(data, mask,
                     apertureset = master_aperset,
@@ -417,24 +415,27 @@ def reduce_singlefiber(config, logtable):
                     upper_limit = section.getfloat('upper_limit'),
                     )
         head = master_aperset.to_fitsheader(head)
+        message = '1D spectra extracted for {:d} orders'.format(len(spectra1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
     
         # pack to a structured array
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
-            spec.append((
-                aper,
-                0,
-                flux_sum.size,
-                np.zeros(nx, dtype=np.float64),
-                flux_sum,
-                np.zeros(nx, dtype=np.float32), # flux sum error
-                np.zeros(nx, dtype=np.int16),   # flux sum mask
-                np.zeros(nx, dtype=np.float32), # flux opt error
-                np.zeros(nx, dtype=np.int16),   # flux opt mask
-                np.zeros(nx, dtype=np.float32), # flat
-                np.zeros(nx, dtype=np.float32), # background
-                ))
+            n = flux_sum.size
+            row = (
+                    aper,
+                    0,
+                    n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux
+                    np.zeros(n, dtype=np.float32),  # flux error
+                    np.zeros(n, dtype=np.int16),    # flux mask
+                    np.zeros(n, dtype=np.float32),  # flat
+                    np.zeros(n, dtype=np.float32),  # background
+                    )
+            spec.append(row)
         spec = np.array(spec, dtype=spectype)
     
         wlcalib_fig = os.path.join(report,
@@ -454,15 +455,16 @@ def reduce_singlefiber(config, logtable):
                 message = ('Searching for archive wavelength calibration'
                            'file in "{}"'.format(database_path))
                 logger.info(logger_prefix + message)
+                print(screen_prefix + message)
 
                 ref_spec, ref_calib = select_calib_from_database(
                             database_path, head[statime_key])
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = ('Did not find any archive wavelength'
-                               'calibration file')
+                    message = 'Archive wavelength calibration not found'
                     logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
 
                     # if failed, pop up a calibration window and identify
                     # the wavelengths manually
@@ -482,6 +484,7 @@ def reduce_singlefiber(config, logtable):
                     # determien the direction
                     message = 'Found archive wavelength calibration file'
                     logger.info(message)
+                    print(screen_prefix + message)
 
                     ref_direction = ref_calib['direction']
 
@@ -551,6 +554,7 @@ def reduce_singlefiber(config, logtable):
             else:
                 message = 'No database searching. Identify lines manually'
                 logger.info(logger_prefix + message)
+                print(screen_prefix + message)
 
                 # do not search the database
                 calib = wlcalib(spec,
@@ -570,6 +574,7 @@ def reduce_singlefiber(config, logtable):
             ref_calib = calib
             ref_spec  = spec
         else:
+            message = 'Use ref_calib'
             # for other ThArs, no aperture offset
             calib = recalib(spec,
                 figfilename      = wlcalib_fig,
@@ -624,7 +629,6 @@ def reduce_singlefiber(config, logtable):
         if frameid not in calib_lst:
             calib[frameid] = calib
 
-    
     # print fitting summary
     fmt_string = (' [{:3d}] {}'
                     ' - ({:4g} sec)'
@@ -689,10 +693,13 @@ def reduce_singlefiber(config, logtable):
     '''
 
     # filter science items in logtable
-    #logitem_lst = 
+    extr_filter = config['reduce.extract'].get('extract',
+                        'lambda row: row["imgtype"]=="sci"')
+    extr_filter = eval(extr_filter)
+    extr_items = list(filter(extr_filter, logtable))
 
     #################### Extract Science Spectrum ##############################
-    for logitem in logtable:
+    for iextr, logitem in extr_items:
 
         # logitem alias
         frameid = logitem['frameid']
@@ -709,10 +716,6 @@ def reduce_singlefiber(config, logtable):
                     fileid, imgtype, objname)
         logger.info(message)
         print(message)
-
-        #if (imgtype == 'cal' and objname == 'i2') or imgtype == 'sci':
-        if imgtype != 'sci' and objname != 'i2':
-            continue
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
@@ -765,8 +768,9 @@ def reduce_singlefiber(config, logtable):
         fig_stray = os.path.join(report,
                     'bkg_{}_stray.{}'.format(fileid, fig_format))
         plot_background_aspect1(data+stray, stray, fig_stray)
-
-        logger.info('FileID: {} - background corrected'.format(fileid))
+        message = 'Background corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -775,15 +779,27 @@ def reduce_singlefiber(config, logtable):
                     lower_limit = section.getfloat('lower_limit'),
                     upper_limit = section.getfloat('upper_limit'),
                     )
-        logger.info('FileID: {} - 1D spectra of {} orders are extracted'.format(
-            fileid, len(spectra1d)))
+        message = '1D spectra extracted for {:d} '.format(len(spectra1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         # pack spectrum
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
-            spec.append((aper, 0, flux_sum.size,
-                    np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+            n = flux_sum.size
+            row = (
+                    aper,
+                    0,
+                    n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux
+                    np.zeros(n, dtype=np.float32),  # flux error
+                    np.zeros(n, dtype=np.int16),    # flux mask
+                    np.zeros(n, dtype=np.float32),  # flat
+                    np.zeros(n, dtype=np.float32),  # background
+                    )
+            spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration

@@ -2447,7 +2447,8 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             'direction':   new_direction,
             }
 
-def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
+def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
+        aperture_k=None, pixel_k=None,
         fig_ccf=None, fig_scatter=None):
     """Find the offset between two spectra.
 
@@ -2459,6 +2460,8 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
     Args:
         spec1 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
         spec2 (:class:`numpy.dtype`): Input spectra as a numpy structrued array.
+        colname1 (str): Name of flux column in **spec1**.
+        colname2 (str): Name of flux column in **spec2**.
         aperture_k (int): Aperture direction code (1 or -1) between **spec1**
             and **spec2**.
         pixel_k (int): Pixel direction code (1 or -1) between **spec1** and
@@ -2541,8 +2544,8 @@ def find_caliblamp_offset(spec1, spec2, aperture_k=None, pixel_k=None,
                 if m.sum()==0:
                     continue
                 row2 = spec2[m][0]
-                flux1 = row1['flux']
-                flux2 = row2['flux']
+                flux1 = row1[colname1]
+                flux2 = row2[colname2]
                 for pixel_k in search_pixel_k_lst:
                     '''
                     if aperture_k == -1 and pixel_k == -1:
