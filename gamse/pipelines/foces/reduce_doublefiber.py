@@ -28,11 +28,25 @@ from ...echelle.background import (find_background, simple_debackground,
                                    find_best_background,
                                    select_background_from_database)
 from ...utils.obslog import parse_num_seq
-from ..common import FormattedInfo
-from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
+from .common import (print_wrapper, get_mask, get_bias,
                      correct_overscan, TraceFigure, BackgroudFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
+
+def get_fiberobj_lst(string, delimiter='|'):
+    """Split the object names for multiple fibers.
+
+    Args:
+        string (str): Input object string.
+        delimiter (str): Delimiter of different fibers.
+    Returns:
+        list: a list consist of (ifiber, objname), where **ifiber** is an
+            integer, and **objname** is a string.
+    """
+    object_lst = [s.strip() for s in string.split(delimiter)]
+    fiberobj_lst = list(filter(lambda v: len(v[1])>0,
+                                enumerate(object_lst)))
+    return fiberobj_lst
 
 def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
@@ -64,17 +78,6 @@ def reduce_doublefiber(config, logtable):
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
-    # initialize printing infomation
-    pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
-                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
-    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
-
-    # define a fiber splitting function
-    def get_fiberobj_lst(string):
-        object_lst = [s.strip() for s in string.split('|')]
-        fiberobj_lst = list(filter(lambda v: len(v[1])>0,
-                                    enumerate(object_lst)))
-        return fiberobj_lst
 
     n_fiber = 2
 
@@ -92,41 +95,33 @@ def reduce_doublefiber(config, logtable):
     #                     'flat_N': [fileid1, fileid2, ...]}}
 
     for logitem in logtable:
-        fiberobj_lst = [v.strip() for v in logitem['object'].split('|')]
+        fiberobj_lst = get_fiberobj_lst(logitem['object'])
 
-        if n_fiber > len(fiberobj_lst):
+        if len(fiberobj_lst)>1:
             continue
 
-        for ifiber in range(n_fiber):
-            fiber = chr(ifiber+65)
-            objname = fiberobj_lst[ifiber].lower().strip()
-            if re.match('^flat[\s\S]*', objname):
-                # the object name of the channel matches "flat ???"
-            
-                # check the lengthes of names for other channels
-                # if this list has no elements (only one fiber) or has no
-                # names, this frame is a single-channel flat
-                other_lst = [name for i, name in enumerate(fiberobj_lst)
-                                    if i != ifiber and len(name)>0]
-                if len(other_lst)>0:
-                    # this frame is not a single chanel flat. Skip
-                    continue
+        ifiber, objname = fiberobj_lst[0]
+        fiber = chr(ifiber+65)
+        objname = objname.lower()
 
-                # find a proper name (flatname) for this flat
-                if objname=='flat':
-                    # no special names given, use exptime
-                    flatname = '{:g}'.format(logitem['exptime'])
-                else:
-                    # flatname is given. replace space with "_"
-                    # remove "flat" before the objectname. e.g.,
-                    # "Flat Red" becomes "Red" 
-                    char = objname[4:].strip()
-                    flatname = char.replace(' ','_')
-            
-                # add flatname to flat_groups
-                if flatname not in flat_groups[fiber]:
-                    flat_groups[fiber][flatname] = []
-                flat_groups[fiber][flatname].append(logitem)
+        if re.match('^flat[\s\S]*', objname):
+            # the object name of the channel matches "flat ???"
+
+            # find a proper name (flatname) for this flat
+            if objname=='flat':
+                # no special names given, use exptime
+                flatname = '{:g}'.format(logitem['exptime'])
+            else:
+                # flatname is given. replace space with "_"
+                # remove "flat" before the objectname. e.g.,
+                # "Flat Red" becomes "Red" 
+                char = objname[4:].strip()
+                flatname = char.replace(' ','_')
+
+            # add flatname to flat_groups
+            if flatname not in flat_groups[fiber]:
+                flat_groups[fiber][flatname] = []
+            flat_groups[fiber][flatname].append(logitem)
 
     '''
     # print the flat_groups
@@ -138,6 +133,7 @@ def reduce_doublefiber(config, logtable):
             for item in item_lst:
                 print(fiber, flatname, item['fileid'], item['exptime'])
     '''
+
     ################# Combine the flats and trace the orders ###################
     flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
