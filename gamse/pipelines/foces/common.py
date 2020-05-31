@@ -779,19 +779,6 @@ class FOCES(Reduction):
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
 
-
-
-obslog_columns = [
-    ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-    ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
-    ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-    ('object',  'str',   '{:^21s}', '{0[object]:21s}'),
-    ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
-    ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-    ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
-    ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-    ]
-
 def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.
 
