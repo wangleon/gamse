@@ -48,6 +48,21 @@ def get_fiberobj_lst(string, delimiter='|'):
                                 enumerate(object_lst)))
     return fiberobj_lst
 
+def get_fiberobj_string(fiberobj_lst, nfiber):
+    result = ''
+    for ifiber in range(nfiber):
+        fiber = chr(ifiber+65)
+        found = False
+        for fiberobj in fiberobj_lst:
+            if fiberobj[0]==ifiber:
+                result += '({:s}) {:s}'.format(fiber, fiberobj[1])
+                foudn = True
+                break
+        if not founc:
+            result += '({:s}) ---- '.format(fiber)
+    return result
+
+
 def reduce_doublefiber(config, logtable):
     """Data reduction for multiple-fiber configuration.
     
@@ -178,10 +193,8 @@ def reduce_doublefiber(config, logtable):
                 head_lst = []
                 exptime_lst = []
 
-                print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
-                print(' '*2 + pinfo2.get_separator())
-                print(' '*2 + pinfo2.get_title())
-                print(' '*2 + pinfo2.get_separator())
+                print('* Combine {} Flat Images: {}'.format(
+                        nflat, flat_filename))
 
                 for i_item, logitem in enumerate(item_lst):
                     # read each individual flat frame
@@ -217,12 +230,16 @@ def reduce_doublefiber(config, logtable):
                     logger.info(message)
 
                     # print info
-                    string = pinfo2.get_format().format(logitem, overmean)
-                    print(' '*2 + print_wrapper(string, logitem))
+                    message = ('  - FileID: {} {}'
+                                '    exptime={:5g} sec'
+                                '    Nsat={:6d}'
+                                '    Q95={:5d}').format(
+                                logitem['fileid'], logitem['object'],
+                                logitem['exptime'],
+                                logitem['nsat'], logitem['q95'])
+                    print(message)
 
                     data_lst.append(data)
-
-                print(' '*2 + pinfo2.get_separator())
 
                 if nflat == 1:
                     flat_data = data_lst[0]
@@ -483,7 +500,7 @@ def reduce_doublefiber(config, logtable):
                         ref_aperset, yshift=yshift)
 
             # print and logging
-            message = 'fiber {}, aperture offset = {}'.format(fiber, offset)
+            message = 'Fiber {}, aperture offset = {}'.format(fiber, offset)
             print(message)
             logger.info(message)
 
