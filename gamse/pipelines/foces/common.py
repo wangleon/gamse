@@ -200,8 +200,12 @@ def combine_bias(config, logtable):
         # print info
         if ifile == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
-                logitem['fileid'], logitem['exptime'], overmean))
+        message_lst = [
+                '  - FileID: {}'.format(logitem['fileid']),
+                'exptime = {:<5g}'.format(logitem['exptime']),
+                'mean = {:<7.2f}'.format(overmean),
+                ]
+        print('    '.join(message_lst))
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))

@@ -18,8 +18,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 reference_self_wavelength)
 from ...echelle.background import find_background, simple_debackground
 from ...utils.obslog import parse_num_seq
-from ..common import plot_background_aspect1, FormattedInfo
-from .common import (obslog_columns, print_wrapper, get_mask, get_bias,
+from ..common import plot_background_aspect1
+from .common import (print_wrapper, get_mask, get_bias,
                     correct_overscan, TraceFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
@@ -52,11 +52,6 @@ def reduce_singlefiber(config, logtable):
     if not os.path.exists(report):   os.mkdir(report)
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
-
-    # initialize printing infomation
-    pinfo1 = FormattedInfo(obslog_columns, ['frameid', 'fileid', 'imgtype',
-                'object', 'exptime', 'obsdate', 'nsat', 'q95'])
-    pinfo2 = pinfo1.add_columns([('overscan', 'float', '{:^8s}', '{1:8.2f}')])
 
     ################################ parse bias ################################
     bias, bias_card_lst = get_bias(config, logtable)
@@ -133,10 +128,8 @@ def reduce_singlefiber(config, logtable):
             head_lst = []
             exptime_lst = []
 
-            print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
-            print(' '*2 + pinfo2.get_separator())
-            print(' '*2 + pinfo2.get_title())
-            print(' '*2 + pinfo2.get_separator())
+            print('* Combine {} Flat Images: {}'.format(
+                    nflat, flat_filename))
 
             for i_item, logitem in enumerate(item_lst):
                 # read each individual flat frame
@@ -172,12 +165,16 @@ def reduce_singlefiber(config, logtable):
                 logger.info(message)
 
                 # print info
-                string = pinfo2.get_format().format(logitem, overmean)
-                print(' '*2 + print_wrapper(string, logitem))
+                message_lst = [
+                        '  - FileID: {}'.format(logitem['fileid']),
+                        logitem['object'],
+                        'exptime = {:<5g}'.format(logitem['exptime']),
+                        'Nsat = {:<6d}'.format(logitem['nsat']),
+                        'Q95 = {:<5d}'.format(logitem['q95']),
+                        ]
+                print('    '.join(message_lst))
 
                 data_lst.append(data)
-
-            print(' '*2 + pinfo2.get_separator())
 
             if nflat == 1:
                 flat_data = data_lst[0]
@@ -242,7 +239,8 @@ def reduce_singlefiber(config, logtable):
                 fig_aperpar = None
 
             # prepare the name for slit figure
-            figname = 'slit_flat_{}.{}'.format(flatname, fig_format)
+            figname = 'slit_flat_{}.{}'.format(
+                        flatname, fig_format)
             fig_slit = os.path.join(report, figname)
 
             # prepare the name for slit file

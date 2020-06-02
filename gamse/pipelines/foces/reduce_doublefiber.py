@@ -49,18 +49,20 @@ def get_fiberobj_lst(string, delimiter='|'):
     return fiberobj_lst
 
 def get_fiberobj_string(fiberobj_lst, nfiber):
-    result = ''
+    result_lst = []
     for ifiber in range(nfiber):
         fiber = chr(ifiber+65)
         found = False
         for fiberobj in fiberobj_lst:
             if fiberobj[0]==ifiber:
-                result += '({:s}) {:s}'.format(fiber, fiberobj[1])
-                foudn = True
+                string = '({:s}) {:s}'.format(fiber, fiberobj[1])
+                result_lst.append(string)
+                found = True
                 break
-        if not founc:
-            result += '({:s}) ---- '.format(fiber)
-    return result
+        if not found:
+            string = '({:s}) ---- '.format(fiber)
+            result_lst.append(string)
+    return ' '.join(result_lst)
 
 
 def reduce_doublefiber(config, logtable):
@@ -92,7 +94,6 @@ def reduce_doublefiber(config, logtable):
     if not os.path.exists(report):   os.mkdir(report)
     if not os.path.exists(onedspec): os.mkdir(onedspec)
     if not os.path.exists(midproc):  os.mkdir(midproc)
-
 
     n_fiber = 2
 
@@ -230,14 +231,16 @@ def reduce_doublefiber(config, logtable):
                     logger.info(message)
 
                     # print info
-                    message = ('  - FileID: {} {}'
-                                '    exptime={:5g} sec'
-                                '    Nsat={:6d}'
-                                '    Q95={:5d}').format(
-                                logitem['fileid'], logitem['object'],
-                                logitem['exptime'],
-                                logitem['nsat'], logitem['q95'])
-                    print(message)
+                    fiberobj_lst = get_fiberobj_lst(logitem['object'], '|')
+                    fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
+                    message_lst = [
+                            '  - FileID: {}'.format(logitem['fileid']),
+                            fiberobj_str,
+                            'exptime = {:<5g}'.format(logitem['exptime']),
+                            'Nsat = {:<6d}'.format(logitem['nsat']),
+                            'Q95 = {:<5d}'.format(logitem['q95']),
+                            ]
+                    print('    '.join(message_lst))
 
                     data_lst.append(data)
 
