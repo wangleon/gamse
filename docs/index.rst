@@ -55,15 +55,50 @@ The reduction procedure and the input parameters are controlled by an
 user-defined ASCII configuration file.
 It consists of a series of key/values delimited by the equal signs.
 Comments prefixed by hash (#) or semicolons (;) symbols are supported,
-for example::
 
+
+
+
+.. _getting_started:
+
+Getting Started with GAMSE
+--------------------------
+Extracting one-dimensional spectra from raw images using `GAMSE` is simple.
+Basically there are only 4 steps
+
+#. Prepare a working directory and link the raw data.
+#. Create an ASCII config file by running
+
+   .. code-block:: bash
+
+      gamse config
+
+#. Generate an observing log file by running
+  
+   .. code-block:: bash
+
+      gamse list
+
+#. Calibrate the data and extract the spectra by running
+  
+   .. code-block:: bash
+
+      gamse reduce
+
+However, the config and observing log files for a specific instrument might be
+slightly different with others, as every spectrograph is different with others.
+We recommend the users to reduce their data following the guide of individual
+spectrograph.
 
 Supported Spectrographs
 -----------------------
-* :ref:`FOCES<pipeline_foces>` on 2m Fraunhofer Telescope in Wendelstein Observatory
-* :ref:`HRS<pipeline_xinglong216hrs>` on 2.16m telescope in Xinglong Observatory
-* :ref:`Levy<>` on APF
+* :ref:`FOCES<manual_foces>` on 2m Fraunhofer Telescope in Wendelstein
+  Observatory
+* :ref:`HRS<manual_xinglong216hrs>` on 2.16m telescope in Xinglong
+  Observatory
+.. * :ref:`Levy<>` on APF
 .. * :ref:`HIRES<pipeline_hires>` on 10m Keck II Telescope in  W. M. Keck Observatory
+
 
 Spectral Reduction Process
 --------------------------
