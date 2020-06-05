@@ -154,16 +154,17 @@ def reduce_doublefiber(config, logtable):
     flat_data_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_mask_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_norm_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_dsum_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_sens_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
-    flat_dsum_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
     # first combine the flats
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
         for flatname, item_lst in sorted(fiber_flat_lst.items()):
-            nflat = len(item_lst)       # number of flat fieldings
+            # number of flat fieldings
+            nflat = len(item_lst)
 
             flat_filename = os.path.join(midproc,
                     'flat_{}_{}.fits'.format(fiber, flatname))
@@ -182,9 +183,9 @@ def reduce_doublefiber(config, logtable):
                 flat_data = hdu_lst[0].data
                 flat_mask = hdu_lst[1].data
                 flat_norm = hdu_lst[2].data
-                flat_sens = hdu_lst[3].data
-                flat_spec = hdu_lst[4].data
-                flat_dsum = hdu_lst[5].data
+                flat_dsum = hdu_lst[3].data
+                flat_sens = hdu_lst[4].data
+                flat_spec = hdu_lst[5].data
                 exptime   = hdu_lst[0].header[exptime_key]
                 hdu_lst.close()
                 aperset = load_aperture_set(aperset_filename)
@@ -255,12 +256,7 @@ def reduce_doublefiber(config, logtable):
                                     maxiter    = 5,
                                     maskmode   = (None, 'max')[nflat>3],
                                     )
-                    flat_dsum = combine_images(data_lst,
-                                    mode       = 'sum',
-                                    upper_clip = 10,
-                                    maxiter    = 5,
-                                    maskmode   = (None, 'max')[nflat>3],
-                                    )
+                    flat_dsum = flat_data*nflat
 
                 # get mean exposure time and write it to header
                 head = fits.Header()
@@ -347,9 +343,9 @@ def reduce_doublefiber(config, logtable):
                             fits.PrimaryHDU(flat_data, head),
                             fits.ImageHDU(flat_mask),
                             fits.ImageHDU(flat_norm),
+                            fits.ImageHDU(flat_dsum),
                             fits.ImageHDU(flat_sens),
                             fits.BinTableHDU(flat_spec),
-                            fits.ImageHDU(flat_dsum),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
@@ -384,9 +380,9 @@ def reduce_doublefiber(config, logtable):
             flat_data_lst[fiber][flatname] = flat_data
             flat_mask_lst[fiber][flatname] = flat_mask
             flat_norm_lst[fiber][flatname] = flat_norm
+            flat_dsum_lst[fiber][flatname] = flat_dsum
             flat_sens_lst[fiber][flatname] = flat_sens
             flat_spec_lst[fiber][flatname] = flat_spec
-            flat_dsum_lst[fiber][flatname] = flat_dsum
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
             aperset_lst[fiber][flatname]   = aperset
 
@@ -462,32 +458,32 @@ def reduce_doublefiber(config, logtable):
             # mosaic exptime-normalized flat images
             flat_norm = mosaic_images(flat_norm_lst[fiber],
                                         master_aperset[fiber])
+            # mosaic summed flat images
+            flat_dsum = mosaic_images(flat_dsum_lst[fiber],
+                                        master_aperset[fiber])
             # mosaic sensitivity map
             flat_sens = mosaic_images(flat_sens_lst[fiber],
                                         master_aperset[fiber])
             # mosaic 1d spectra of flats
             flat_spec = mosaic_spec(flat_spec_lst[fiber],
                                         master_aperset[fiber])
-            # mosaic summed flat images
-            flat_dsum = mosaic_images(flat_dsum_lst[fiber],
-                                        master_aperset[fiber])
 
             # change contents of several lists
             flat_data_lst[fiber] = flat_data
             flat_mask_lst[fiber] = flat_mask
             flat_norm_lst[fiber] = flat_norm
+            flat_dsum_lst[fiber] = flat_dsum
             flat_sens_lst[fiber] = flat_sens
             flat_spec_lst[fiber] = flat_spec
-            flat_dsum_lst[fiber] = flat_dsum
 
             # pack and save to fits file
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(flat_data),
                         fits.ImageHDU(flat_mask),
                         fits.ImageHDU(flat_norm),
+                        fits.ImageHDU(flat_dsum),
                         fits.ImageHDU(flat_sens),
                         fits.BinTableHDU(flat_spec),
-                        fits.ImageHDU(flat_dsum),
                         ])
             hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
@@ -550,14 +546,14 @@ def reduce_doublefiber(config, logtable):
 
     # mosaic flat map
     sorted_aperloc_lst = sorted(all_aperloc_lst, key=lambda x:x[3])
-    h, w = flat_data.shape
-    master_flatdata = np.ones_like(flat_data)
-    master_flatmask = np.ones_like(flat_mask)
-    master_flatnorm = np.ones_like(flat_norm)
-    master_flatsens = np.ones_like(flat_sens)
-    master_flatdsum = np.zeros_like(flat_dsum)
-    yy, xx = np.mgrid[:h, :w]
-    prev_line = np.zeros(w)
+    ny, nx = flat_data.shape
+    master_flatdata = np.empty((ny, nx))
+    master_flatmask = np.empty((ny, nx))
+    master_flatnorm = np.empty((ny, nx))
+    master_flatdsum = np.empty((ny, nx))
+    master_flatsens = np.empty((ny, nx))
+    yy, xx = np.mgrid[:ny, :nx]
+    prev_line = np.zeros(nx)
     for i in np.arange(len(sorted_aperloc_lst)-1):
         fiber, aper, aperloc, center = sorted_aperloc_lst[i]
         x, y = aperloc.get_position()
@@ -569,26 +565,25 @@ def reduce_doublefiber(config, logtable):
         master_flatdata[mask] = flat_data_lst[fiber][mask]
         master_flatmask[mask] = flat_mask_lst[fiber][mask]
         master_flatnorm[mask] = flat_norm_lst[fiber][mask]
-        master_flatsens[mask] = flat_sens_lst[fiber][mask]
         master_flatdsum[mask] = flat_dsum_lst[fiber][mask]
+        master_flatsens[mask] = flat_sens_lst[fiber][mask]
         prev_line = next_line
     # parse the last order
     mask = yy >= prev_line
     master_flatdata[mask] = flat_data_lst[next_fiber][mask]
     master_flatmask[mask] = flat_mask_lst[next_fiber][mask]
     master_flatnorm[mask] = flat_norm_lst[next_fiber][mask]
-    master_flatsens[mask] = flat_sens_lst[next_fiber][mask]
     master_flatdsum[mask] = flat_dsum_lst[next_fiber][mask]
+    master_flatsens[mask] = flat_sens_lst[next_fiber][mask]
 
     hdu_lst = fits.HDUList([
                 fits.PrimaryHDU(master_flatdata),
                 fits.ImageHDU(master_flatmask),
                 fits.ImageHDU(master_flatnorm),
-                fits.ImageHDU(master_flatsens),
                 fits.ImageHDU(master_flatdsum),
+                fits.ImageHDU(master_flatsens),
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
-
 
     ############################## Extract ThAr ################################
 
@@ -602,6 +597,7 @@ def reduce_doublefiber(config, logtable):
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
             ('flux',       (np.float32, nx)),
+            ('mask',       (np.int32, nx)),
             ]
     names, formats = list(zip(*types))
     wlcalib_spectype = np.dtype({'names': names, 'formats': formats})
@@ -708,6 +704,7 @@ def reduce_doublefiber(config, logtable):
                 item = (aper, 0, n,
                         np.zeros(n, dtype=np.float64),  # wavelength
                         flux_sum,                       # flux
+                        np.zeros(n),                    # mask
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=wlcalib_spectype)
@@ -762,10 +759,21 @@ def reduce_doublefiber(config, logtable):
                         print(screen_prefix + message)
 
                         ref_direction = ref_calib['direction']
-                        aperture_k = ((-1, 1)[direction[1]==ref_direction[1]],
-                                        None)[direction[1]=='?']
-                        pixel_k = ((-1, 1)[direction[2]==ref_direction[2]],
-                                    None)[direction[2]=='?']
+
+                        if direction[1] == '?':
+                            aperture_k = None
+                        elif direction[1]==ref_direction[1]:
+                            aperture_k = 1
+                        else:
+                            aperture_k = -1
+
+                        if direction[2] == '?':
+                            pixel_k = None
+                        elif direction[2]==ref_direction[2]:
+                            pixel_k = 1
+                        else:
+                            pixel_k = -1
+
                         # determine the name of the output figure during lamp
                         # shift finding.
                         if mode == 'debug':
