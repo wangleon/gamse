@@ -1,7 +1,7 @@
-.. _manual_foces:
+.. _guide_foces:
 
-Reduction Manual for FOCES
-==========================
+Reduction Guide for FOCES
+=========================
 
 Introduction to the Instrument
 ------------------------------
@@ -11,7 +11,7 @@ telescope in Calar Alto Observatory, Spain.
 After 15 years of operation, the spectrograph was brought back to `University
 Observatory Munich (USM) <http://www.usm.uni-muenchen.de/>`_ for a major
 upgrade (Grupp et al. 2009 [#Grupp2009]_, 2010 [#Grupp2010]_) to meet the
-requirements for precision spectroscopy, such as searching for extra-solar
+requirements for precise spectroscopy, such as searching for extra-solar
 planets with the Doppler method.
 In the summer of 2017, FOCES was successfully mounted on the 2m Fraunhofer
 Telescope (Hopp et al. 2014 [#Hopp2014]_) at the `Wendelstein Observatory
@@ -19,7 +19,7 @@ Telescope (Hopp et al. 2014 [#Hopp2014]_) at the `Wendelstein Observatory
 Bavaria, Germany.
 FOCES is connected to a Nasmyth focus of the telescope via an octagonal
 multi-mode optical fiber.
-FOCES has a resolving power (*R*) of ~ 70,000, and covers the wavelength range
+FOCES has a resolving power (*R*) of ~70,000, and covers the wavelength range
 of 390–900 nm.
 
 The characteristics of FOCES are summarised as below:
@@ -47,59 +47,52 @@ The characteristics of FOCES are summarised as below:
 +---------------------+---------------------------------+---------------------------------------+
 
 
-Preparing Data & Config File
-----------------------------
-The first step is to create a new working directory in a place where the user
-has full read/write permissions.
-All the steps performed by `GAMSE` will be done in this directory.
-For example, the following commands create a new working directory called
-``foces.2018-07-18``, where the FOCES data taken on July 18, 2018, will be
-reduced here.
 
-.. code-block:: bash
+Getting Started
+---------------
+Extracting one-dimensional spectra for FOCESis basically the same as the
+:ref:`general procedure<getting_started>` of `GAMSE`. In brief,
 
-   mkdir foces.2018-07-18
-   cd foces.2018-07-18
+#. :code:`gamse config`
+#. :code:`gamse list`
+#. :code:`gamse reduce`
 
-Then, a text file containing the necessary information is required to tell
-`GAMSE` which instrument the data is obtained with, and the path to raw data.
-The name of the text file is arbitrary, but the suffix must be ``.cfg``.
-The user must make sure there is only one ``.cfg`` file in the working
-directory.
-For example, a text file called ``foces-2018-07-18.cfg`` with the following
-content is created:
-::
+Since FOCES is a double-fiber spectrograph, there are two fiber modes, i.e.,
+the "single" mode and "double" mode.
+When running :code:`gamse config`, the program asks the user which mode the data
+is obtained with.
+The "single" mode means ALL the raw images in the observing run are taken with
+only the science fiber (Fiber A), and the calibration fiber (Fiber B) is not
+used during the observing run.
+While the "double" mode means at least one of the raw images in that night is
+taken with both the science and calibration fibers.
+In this case, the data shall contain calibration frames (flat field and Th-Ar
+hollow cathren lamp) for each fiber *individually*.
 
-    [data]
-    telescope  = Fraunhofer
-    instrument = FOCES
-    rawdata    = rawdata
+The Config File
+---------------
+The entries in the config file for FOCES data reduction is basically the same as
+the :ref:`general list of accepted entries<config_entries>` of `GAMSE`.
+However, there are a few entries to be paid attention to:
 
-With the first two keywords `GAMSE` will call the FOCES pipeline to reduce the
-data.
-The third keyword ``rawdata`` tells the software the path to the raw images.
-The default value is a sub-directory called ``rawdata`` in the working
-directory.
-The user may want to keep the raw data in their original places, but to use a
-soft link to the actual data path, instead.
-For example, the raw images taken on July 18, 2018, are in
-``/data/foces/rawdata/2018/0718/``, and the following command is to create a
-soft link called ``rawdata`` in the working directory:
 
-.. code-block:: bash
+* **[data]** section
 
-   ln -s /data/foces/rawdata/2018/0718 rawdata
+  * **fibermode**: Optional values are "single" and "double". As FOCES has
+    ability of double-fiber simultaneous observation, :code:`fibermode = double`
+    is necessary to reduce the data taken under double-fiber mode.
+    `GAMSE` always ask the user which mode is in when running
+    :code:`gamse config`.
 
-Alternatively, one can use the actual data path in the configuration file:
-::
 
-    [data]
-    telescope  = Fraunhofer
-    instrument = FOCES
-    rawdata    = /data/foces/rawdata/2018/0718
+The Observing Log
+-----------------
 
-In this case, the soft link to the data path is not necessary anymore.
+Flat Field Correction
+---------------------
 
+Others
+------
 The ``data`` section in the configuration file accepts the following entries:
 
 .. list-table:: Accepted entries in ``data`` section

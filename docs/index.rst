@@ -92,9 +92,9 @@ spectrograph.
 
 Supported Spectrographs
 -----------------------
-* :ref:`FOCES<manual_foces>` on 2m Fraunhofer Telescope in Wendelstein
+* :ref:`FOCES<guide_foces>` on 2m Fraunhofer Telescope in Wendelstein
   Observatory
-* :ref:`HRS<manual_xinglong216hrs>` on 2.16m telescope in Xinglong
+* :ref:`HRS<guide_xinglong216hrs>` on 2.16m telescope in Xinglong
   Observatory
 .. * :ref:`Levy<>` on APF
 .. * :ref:`HIRES<pipeline_hires>` on 10m Keck II Telescope in  W. M. Keck Observatory
