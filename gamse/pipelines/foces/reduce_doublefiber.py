@@ -617,9 +617,9 @@ def reduce_doublefiber(config, logtable):
 
     # start and end point in pixel and order for the 2d thar fit
     start_pix = 101
-    end_pix   = 2006
+    end_pixel = 2006
     start_ord = 61
-    end_ord   = 149
+    end_order = 149
 
     # range in which the 2d thar fit is performed 
     def wlfit_filter(item):
@@ -901,8 +901,8 @@ def reduce_doublefiber(config, logtable):
             spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
             # add the fit_filter keywords to card_lst
-            card_lst['PIXEL_RANGE'] = '{:d}:{:d}'.format(start_pix, end_pix)
-            card_lst['ORDER_RANGE'] = '{:d}:{:d}'.format(start_ord, end_ord)
+            card_lst.append(('PIXEL_RANGE',      '{:d}:{:d}'.format(start_pix, end_pixel)))
+            card_lst.append(('ORDER_RANGE',      '{:d}:{:d}'.format(start_ord, end_order)))
 
             # append all spec, card list and ident lists
             all_spec[fiber]      = spec
@@ -1286,9 +1286,9 @@ def reduce_doublefiber(config, logtable):
         for key, value in card_lst:
             head.append((prefix + key, value))
         head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
-                    str(start_pix)+' - '+str(end_pix)))
+                    str(start_pix)+' - '+str(end_pixel)))
         head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
-                    str(start_ord)+' - '+str(end_ord)))
+                    str(start_ord)+' - '+str(end_order)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
@@ -1701,9 +1701,9 @@ def reduce_doublefiber(config, logtable):
                 head.append((prefix + key, value))
                 
         head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
-                    str(start_pix)+' - '+str(end_pix)))
+                    str(start_pix)+' - '+str(end_pixel)))
         head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
-                    str(start_ord)+' - '+str(end_ord)))
+                    str(start_ord)+' - '+str(end_order)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
