@@ -657,7 +657,13 @@ def reduce_doublefiber(config, logtable):
     #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
     #       ... ...
     #       }
-
+    
+    # start and end point in pixel and order for the 2d thar fit
+    start_pix = 100
+    end_pix   = 2007
+    start_ord = 60
+    end_ord   = 150
+    
     def filter_thar(logitem):
         fiberobj_lst = get_fiberobj_lst(logitem['object'])
         newlst = list(filter(lambda v: v[1].lower()=='thar', fiberobj_lst))
@@ -724,8 +730,15 @@ def reduce_doublefiber(config, logtable):
         all_spec      = {}
         all_cards     = {}
         all_identlist = {}
-        fit_filter = lambda pix,order : (pix > 130) & (pix < 1950) & (order > 60) & (order < 150)
-
+        
+        # range in which the 2d thar fit is performed 
+        fit_filter = lambda pix,order : ((pix > start_pix) & (pix < end_pix) &
+                    (order > start_ord) & (order < end_ord))
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
+                    str(start_pix)+' - '+str(end_pix)))
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
+                    str(start_ord)+' - '+str(end_ord)))
+                    
         for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
             objname = objname.lower()
@@ -1287,7 +1300,10 @@ def reduce_doublefiber(config, logtable):
         prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
         for key, value in card_lst:
             head.append((prefix + key, value))
-
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
+                    str(start_pix)+' - '+str(end_pix)))
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
+                    str(start_ord)+' - '+str(end_ord)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
@@ -1697,7 +1713,11 @@ def reduce_doublefiber(config, logtable):
             prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
             for key, value in card_lst:
                 head.append((prefix + key, value))
-
+                
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
+                    str(start_pix)+' - '+str(end_pix)))
+        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
+                    str(start_ord)+' - '+str(end_ord)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
