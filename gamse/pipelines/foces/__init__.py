@@ -106,13 +106,13 @@ def make_config():
     config.set('reduce.wlcalib', 'database_path',
                                     '~/.gamse/FOCES/wlcalib')
     config.set('reduce.wlcalib', 'linelist',        'thar.dat')
-    config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
+    config.set('reduce.wlcalib', 'use_prev_fitpar', 'no')
     config.set('reduce.wlcalib', 'window_size',     str(13))
     config.set('reduce.wlcalib', 'xorder',          str(3))
-    config.set('reduce.wlcalib', 'yorder',          str(3))
+    config.set('reduce.wlcalib', 'yorder',          str(4))
     # in previous single fiber data, yorder = 4
-    config.set('reduce.wlcalib', 'maxiter',         str(5))
-    config.set('reduce.wlcalib', 'clipping',        str(3))
+    config.set('reduce.wlcalib', 'maxiter',         str(6))
+    config.set('reduce.wlcalib', 'clipping',        str(2.3))
     config.set('reduce.wlcalib', 'q_threshold',     str(10))
 
     config.add_section('reduce.background')
