@@ -609,17 +609,27 @@ def reduce_doublefiber(config, logtable):
     #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
     #       ... ...
     #       }
-    
-    # start and end point in pixel and order for the 2d thar fit
-    start_pix = 100
-    end_pix   = 2007
-    start_ord = 60
-    end_ord   = 150
-    
+
     def filter_thar(logitem):
         fiberobj_lst = get_fiberobj_lst(logitem['object'])
         newlst = list(filter(lambda v: v[1].lower()=='thar', fiberobj_lst))
         return len(newlst) == len(fiberobj_lst)
+
+    # start and end point in pixel and order for the 2d thar fit
+    start_pix = 101
+    end_pix   = 2006
+    start_ord = 61
+    end_ord   = 149
+
+    # range in which the 2d thar fit is performed 
+    def wlfit_filter(item):
+        if item['pixel'] >= start_pix \
+            and item['pixel'] <= end_pixel \
+            and item['order'] >= start_ord \
+            and item['order'] <= end_order:
+            return True
+        else:
+            return False
 
     thar_items = list(filter(filter_thar, logtable))
 
@@ -682,15 +692,7 @@ def reduce_doublefiber(config, logtable):
         all_spec      = {}
         all_cards     = {}
         all_identlist = {}
-        
-        # range in which the 2d thar fit is performed 
-        fit_filter = lambda pix,order : ((pix > start_pix) & (pix < end_pix) &
-                    (order > start_ord) & (order < end_ord))
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
-                    str(start_pix)+' - '+str(end_pix)))
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
-                    str(start_ord)+' - '+str(end_ord)))
-                    
+
         for ifiber, objname in fiberobj_lst:
             fiber = chr(ifiber+65)
             objname = objname.lower()
@@ -763,6 +765,7 @@ def reduce_doublefiber(config, logtable):
                             maxiter     = section.getint('maxiter'),
                             clipping    = section.getfloat('clipping'),
                             q_threshold = section.getfloat('q_threshold'),
+                            fit_filter  = wlfit_filter,
                             )
                     else:
                         # if success, run recalib
@@ -844,7 +847,7 @@ def reduce_doublefiber(config, logtable):
                             window_size      = window_size,
                             q_threshold      = q_threshold,
                             direction        = direction,
-                            fit_filter       = fit_filter,
+                            fit_filter       = wlfit_filter,
                             )
                 else:
                     message = 'No database searching. Identify lines manually'
@@ -863,6 +866,7 @@ def reduce_doublefiber(config, logtable):
                         maxiter       = section.getint('maxiter'),
                         clipping      = section.getfloat('clipping'),
                         q_threshold   = section.getfloat('q_threshold'),
+                        fit_filter    = wlfit_filter,
                         )
 
                 # then use this ThAr as the reference
@@ -885,7 +889,7 @@ def reduce_doublefiber(config, logtable):
                     window_size      = ref_calib['window_size'],
                     q_threshold      = ref_calib['q_threshold'],
                     direction        = direction,
-                    fit_filter       = fit_filter,
+                    fit_filter       = wlfit_filter,
                     )
 
             # add more infos in calib
@@ -895,6 +899,10 @@ def reduce_doublefiber(config, logtable):
 
             # reference the ThAr spectra
             spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+
+            # add the fit_filter keywords to card_lst
+            card_lst['PIXEL_RANGE'] = '{:d}:{:d}'.format(start_pix, end_pix)
+            card_lst['ORDER_RANGE'] = '{:d}:{:d}'.format(start_ord, end_ord)
 
             # append all spec, card list and ident lists
             all_spec[fiber]      = spec
