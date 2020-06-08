@@ -9,8 +9,8 @@ from astropy.time  import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
-from ..common import load_obslog, load_config, FormattedInfo
-from .common import obslog_columns, print_wrapper
+from ..common import load_obslog, load_config
+from .common import print_wrapper
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 

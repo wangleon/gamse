@@ -13,5 +13,5 @@ Table of Contents
    background
    extraction
    wlcalib
-   manual.*
+   guide.*
    faq

@@ -1,9 +1,9 @@
 .. |e| replace:: e\ :sup:`−`
 
-.. _manual_xinglong216hrs:
+.. _guide_xinglong216hrs:
 
-Reduction Manual for Xinglong HRS
-=================================
+Reduction Guide for Xinglong HRS
+================================
 
 Introduction to Instrument
 --------------------------

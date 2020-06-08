@@ -1,5 +1,8 @@
-Configuration File
-==================
+
+.. _config:
+
+Config File
+===========
 `GAMSE` uses configuration files to control the input parameters and the
 procedures performed during the data reduction.
 A configuration file is a plain text file with the name of ``XXX.cfg``.
@@ -68,17 +71,37 @@ For example, a user-created ``.cfg`` file with:
 will only override the value of ``fig_format`` in the ``reduce`` section in the
 built-in configuration files.
 
-General Descriptors
--------------------
+.. _config_entries:
+
+List of Accepted Entries
+------------------------
 `Gamse` uses a set of general keywords in the config file to descrip the data
 formats.
 They are in the ``[data]`` section of the config files.
 
-* **telescope**: Name of the telescope.
+* **telescope** and **instrumen**: Name of the telescope and the instrument.
 
-* **instrument**: Name of the instrument used to obtain the data.
+* **rawdata**: Path to the folder for the raw data.
+  It tells the software where to find the raw images.
+  The default value is a sub-directory called ``rawdata`` in the working
+  directory.
+  The user may want to keep the raw data in their original places, but to use a
+  soft link to the actual data path, instead.
+  For example, the raw images taken on July 18, 2018, are in
+  ``/data/foces/rawdata/2018/0718/``, and the following command is to create a
+  soft link called ``rawdata`` in the working directory:
 
-* **rawdata**: Path to the folder that is used to put the raw data.
+  .. code-block:: bash
+
+     ln -s /data/foces/rawdata/2018/0718 rawdata
+
+  Alternatively, one can use the actual data path in the configuration file:
+
+  .. code-block:: ini
+
+    rawdata    = /data/foces/rawdata/2018/0718
+
+  In this case, the soft link to the data path is not necessary anymore.
 
 * **statime_key**: Key of the starting time in the FITS header.
 

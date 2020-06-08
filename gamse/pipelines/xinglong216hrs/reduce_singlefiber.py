@@ -71,8 +71,7 @@ def reduce_singlefiber(config, logtable):
         objname = logitem['object'].lower().strip()
         # above only valid for single fiber
 
-        mobj = re.match('^flat[\s\S]*', objname)
-        if mobj is not None:
+        if re.match('^flat[\s\S]*', objname):
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
@@ -153,15 +152,15 @@ def reduce_singlefiber(config, logtable):
                     head.append((key, value))
 
                 # correct bias for flat, if has bias
-                if bias is not None:
+                if bias is None:
+                    message = 'No bias. skipped bias correction'
+                else:
                     data = data - bias
                     message = 'Bias corrected'
-                else:
-                    message = 'No bias. skipped bias correction'
                 logger.info(message)
 
                 # print info
-                message = ('FileId: {} {}'
+                message = ('FileID: {} {}'
                             '    exptime={:5g} sec'
                             '    Nsat={:6d}'
                             '    Q95={:5d}').format(

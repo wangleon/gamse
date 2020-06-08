@@ -200,8 +200,12 @@ def combine_bias(config, logtable):
         # print info
         if ifile == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g} mean={:7.2f}'.format(
-                logitem['fileid'], logitem['exptime'], overmean))
+        message_lst = [
+                '  - FileID: {}'.format(logitem['fileid']),
+                'exptime = {:<5g}'.format(logitem['exptime']),
+                'mean = {:<7.2f}'.format(overmean),
+                ]
+        print('    '.join(message_lst))
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
@@ -778,19 +782,6 @@ class FOCES(Reduction):
         fig.savefig(figfile)
         logger.info('Plot variation of bias with time in figure: "%s"'%figfile)
         plt.close(fig)
-
-
-
-obslog_columns = [
-    ('frameid', 'int',   '{:^7s}',  '{0[frameid]:7d}'),
-    ('fileid',  'str',   '{:^26s}', '{0[fileid]:26s}'),
-    ('imgtype', 'str',   '{:^7s}',  '{0[imgtype]:^7s}'),
-    ('object',  'str',   '{:^21s}', '{0[object]:21s}'),
-    ('exptime', 'float', '{:^7s}',  '{0[exptime]:7g}'),
-    ('obsdate', 'time',  '{:^23s}', '{0[obsdate]:}'),
-    ('nsat',    'int',   '{:^7s}',  '{0[nsat]:7d}'),
-    ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
-    ]
 
 def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.
