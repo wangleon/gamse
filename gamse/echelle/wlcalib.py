@@ -575,7 +575,7 @@ class CalibWindow(tk.Frame):
     """
     def __init__(self, master, width, height, dpi, spec, figfilename, title,
             identlist, linelist, window_size, xorder, yorder, maxiter, clipping,
-            q_threshold):
+            q_threshold, fit_filter):
         """Constructor of :class:`CalibWindow`.
         """
 
@@ -587,33 +587,34 @@ class CalibWindow(tk.Frame):
         tk.Frame.__init__(self, master, width=width, height=height)
 
         self.param = {
-            'mode':          'ident',
-            'aperture':      self.spec['aperture'].min(),
-            'figfilename':   figfilename,
-            'title':         title,
-            'aperture_min':  self.spec['aperture'].min(),
-            'aperture_max':  self.spec['aperture'].max(),
-            'npixel':        self.spec['points'].max(),
+            'mode':         'ident',
+            'aperture':     self.spec['aperture'].min(),
+            'figfilename':  figfilename,
+            'title':        title,
+            'aperture_min': self.spec['aperture'].min(),
+            'aperture_max': self.spec['aperture'].max(),
+            'npixel':       self.spec['points'].max(),
             # parameters of displaying
-            'xlim':          {},
-            'ylim':          {},
-            'ident':         None,
+            'xlim':         {},
+            'ylim':         {},
+            'ident':        None,
             # parameters of converting aperture and order
-            'k':             None,
-            'offset':        None,
+            'k':            None,
+            'offset':       None,
             # wavelength fitting parameters
-            'window_size':   window_size,
-            'xorder':        xorder,
-            'yorder':        yorder,
-            'maxiter':       maxiter,
-            'clipping':      clipping,
-            'q_threshold':   q_threshold,
+            'window_size':  window_size,
+            'xorder':       xorder,
+            'yorder':       yorder,
+            'maxiter':      maxiter,
+            'clipping':     clipping,
+            'q_threshold':  q_threshold,
             # wavelength fitting results
-            'std':           0,
-            'coeff':         np.array([]),
-            'nuse':          0,
-            'ntot':          0,
-            'direction':     '',
+            'std':          0,
+            'coeff':        np.array([]),
+            'nuse':         0,
+            'ntot':         0,
+            'direction':    '',
+            'fit_filter':   fit_filter,
             }
 
         for row in self.spec:
@@ -655,13 +656,13 @@ class CalibWindow(tk.Frame):
         """
 
         coeff, std, k, offset, nuse, ntot = fit_wavelength(
-                identlist = self.identlist,
-                npixel    = self.param['npixel'],
-                xorder    = self.param['xorder'],
-                yorder    = self.param['yorder'],
-                maxiter   = self.param['maxiter'],
-                clipping  = self.param['clipping'],
-                fit_filter= self.param['fit_filter'],
+                identlist   = self.identlist,
+                npixel      = self.param['npixel'],
+                xorder      = self.param['xorder'],
+                yorder      = self.param['yorder'],
+                maxiter     = self.param['maxiter'],
+                clipping    = self.param['clipping'],
+                fit_filter  = self.param['fit_filter'],
                 )
 
         self.param['coeff']  = coeff
@@ -1229,7 +1230,8 @@ class CalibWindow(tk.Frame):
 
 def wlcalib(spec, figfilename, title, linelist, identfilename=None,
     window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
-    q_threshold=10):
+    q_threshold=10, fit_filter=None
+    ):
     """Identify the wavelengths of emission lines in the spectrum of a
     hollow-cathode lamp.
 
@@ -1248,6 +1250,8 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
         clipping (float): Threshold of sigma-clipping.
         q_threshold (float): Minimum *Q*-factor of the spectral lines to be
             accepted in the wavelength fitting.
+        fit_filter (function): Function checking if a pixel/oder combination is
+            within the accepted range.
 
     Returns:
         dict: A dict containing:
@@ -1344,6 +1348,7 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
                               maxiter     = maxiter,
                               clipping    = clipping,
                               q_threshold = q_threshold,
+                              fit_filter  = fit_filter,
                               )
 
     master.mainloop()
@@ -1387,7 +1392,8 @@ def wlcalib(spec, figfilename, title, linelist, identfilename=None,
 
     return result
 
-def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,fit_filter=None):
+def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
+        fit_filter=None):
     """Fit the wavelength using 2-D polynomial.
 
     Args:
@@ -1420,9 +1426,17 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,fit_filt
     # find physical order
     k, offset = find_order(identlist, npixel)
 
+    # parse the fit_filter=None
+    if fit_filter is None:
+        fit_filter = lambda item: True
+
     # convert indent_line_lst into fitting inputs
-    fit_p_lst, fit_o_lst, fit_w_lst = [], [], []
-    # this list is used to find the position (aperture, no) of each line
+    fit_p_lst = []  # normalized pixel
+    fit_o_lst = []  # diffraction order
+    fit_w_lst = []  # order*wavelength
+    fit_m_lst = []  # initial mask
+    # the following list is used to find the position (aperture, no)
+    # of each line
     lineid_lst = []
     for aperture, list1 in sorted(identlist.items()):
         order = k*aperture + offset
@@ -1436,19 +1450,14 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,fit_filt
             #fit_o_lst.append(norm_order)
             #fit_w_lst.append(item['wavelength'])
             fit_w_lst.append(item['wavelength']*order)
+            fit_m_lst.append(fit_filter(item))
             lineid_lst.append((aperture, iline))
     fit_p_lst = np.array(fit_p_lst)
     fit_o_lst = np.array(fit_o_lst)
     fit_w_lst = np.array(fit_w_lst)
+    fit_m_lst = np.array(fit_m_lst)
 
-    # sigma clipping fitting
-    if fit_filter is None:
-        mask = np.ones_like(fit_p_lst, dtype=np.bool)
-    else:
-        real_pix = (fit_p_lst+1)/2*(npixel-1)
-        real_ord = fit_o_lst
-        mask_fix = fit_filter(real_pix,real_ord)
-        mask = mask_fix
+    mask = fit_m_lst
 
     for nite in range(maxiter):
         coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask], fit_w_lst[mask],
@@ -1460,7 +1469,7 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,fit_filt
         std  = res_lst[mask].std(dtype=np.float64)
         m1 = res_lst > mean - clipping*std
         m2 = res_lst < mean + clipping*std
-        new_mask = m1*m2*mask_fix
+        new_mask = m1*m2*mask
         if new_mask.sum() == mask.sum():
             break
         else:
@@ -2231,7 +2240,7 @@ def select_calib_from_database(path, time_key, current_time):
 def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         aperture_koffset=(1, 0), pixel_koffset=(1, None),
         xorder=None, yorder=None, maxiter=None, clipping=None, window_size=None,
-        q_threshold=None, direction=None,fit_filter=None
+        q_threshold=None, direction=None, fit_filter=None
         ):
     """Re-calibrate the wavelength of an input spectra file using another
     spectra as the reference.
