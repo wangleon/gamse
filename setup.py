@@ -3,7 +3,7 @@ from distutils.core import setup
 
 setup(
     name         = 'gamse',
-    version      = '0.9',
+    version      = '0.92',
     description  = 'Data Reduction Software for High-resolution Echelle Spectrographs',
     author       = 'Liang Wang',
     author_email = 'lwang@mpe.mpg.de',
