@@ -615,18 +615,14 @@ def reduce_doublefiber(config, logtable):
         newlst = list(filter(lambda v: v[1].lower()=='thar', fiberobj_lst))
         return len(newlst) == len(fiberobj_lst)
 
-    # start and end point in pixel and order for the 2d thar fit
-    start_pix = 101
-    end_pixel = 2006
-    start_ord = 61
-    end_order = 149
+    # start and end point in pixel and order for the 2d ThAr fit
+    pixel_range(101, 2006)
+    order_range(61, 149)
 
     # range in which the 2d thar fit is performed 
     def wlfit_filter(item):
-        if item['pixel'] >= start_pix \
-            and item['pixel'] <= end_pixel \
-            and item['order'] >= start_ord \
-            and item['order'] <= end_order:
+        if pixel_range[0] <= item['pixel'] <= pixel_range[1] and
+           order_range[0] <= item['order'] >= order_range[1]:
             return True
         else:
             return False
@@ -901,8 +897,8 @@ def reduce_doublefiber(config, logtable):
             spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
             # add the fit_filter keywords to card_lst
-            card_lst.append(('PIXEL_RANGE',      '{:d}:{:d}'.format(start_pix, end_pixel)))
-            card_lst.append(('ORDER_RANGE',      '{:d}:{:d}'.format(start_ord, end_order)))
+            card_lst.append(('PIXEL_RANGE', str(pixel_range)))
+            card_lst.append(('ORDER_RANGE', str(order_range)))
 
             # append all spec, card list and ident lists
             all_spec[fiber]      = spec
@@ -1014,7 +1010,6 @@ def reduce_doublefiber(config, logtable):
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
-
 
     extracted_fileid_lst = []
     #################### Extract Spectra with Single Objects ###################
@@ -1280,15 +1275,16 @@ def reduce_doublefiber(config, logtable):
 
         spec, card_lst = reference_spec_wavelength(spec,
                             ref_calib_lst[fiber], weight_lst)
+
+        # add the fit_filter keywords to card_lst
+        card_lst.append(('PIXEL_RANGE', str(pixel_range)))
+        card_lst.append(('ORDER_RANGE', str(order_range)))
+
         all_spec[fiber] = spec
         #all_cards[fiber] = card_lst
         prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
         for key, value in card_lst:
             head.append((prefix + key, value))
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
-                    str(start_pix)+' - '+str(end_pixel)))
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
-                    str(start_ord)+' - '+str(end_order)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
@@ -1694,16 +1690,17 @@ def reduce_doublefiber(config, logtable):
 
             spec, card_lst = reference_spec_wavelength(spec,
                                 ref_calib_lst[fiber], weight_lst)
+
+            # add the fit_filter keywords to card_lst
+            card_lst.append(('PIXEL_RANGE', str(pixel_range)))
+            card_lst.append(('ORDER_RANGE', str(order_range)))
+
             all_spec[fiber] = spec
             #all_cards[fiber] = card_lst
             prefix = 'HIERARCH GAMSE WLCALIB FIBER {} '.format(fiber)
             for key, value in card_lst:
                 head.append((prefix + key, value))
                 
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL RANGE START', 
-                    str(start_pix)+' - '+str(end_pixel)))
-        head.append(('HIERARCH GAMSE 2d WL FIT PIXEL ORDER START', 
-                    str(start_ord)+' - '+str(end_order)))
         #newcards = combine_fiber_cards(all_cards)
         newspec = combine_fiber_spec(all_spec)
         #for key, value in newcards:
