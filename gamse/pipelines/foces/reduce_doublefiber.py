@@ -616,13 +616,13 @@ def reduce_doublefiber(config, logtable):
         return len(newlst) == len(fiberobj_lst)
 
     # start and end point in pixel and order for the 2d ThAr fit
-    pixel_range(101, 2006)
-    order_range(61, 149)
+    pixel_range = (101, 2006)
+    order_range = (61, 149)
 
     # range in which the 2d thar fit is performed 
     def wlfit_filter(item):
-        if pixel_range[0] <= item['pixel'] <= pixel_range[1] and
-           order_range[0] <= item['order'] >= order_range[1]:
+        if pixel_range[0] <= item['pixel'] <= pixel_range[1] and \
+           order_range[0] <= item['order'] <= order_range[1]:
             return True
         else:
             return False
