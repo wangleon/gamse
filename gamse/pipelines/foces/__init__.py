@@ -9,6 +9,7 @@ from astropy.time  import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
+from ...utils.obslog import write_obslog
 from ..common import load_obslog, load_config
 from .common import print_wrapper
 from .reduce_singlefiber import reduce_singlefiber
@@ -184,15 +185,6 @@ def make_obslog(path):
         ('exptime', 'f4'),  ('obsdate', Time),
         ('nsat',   'i4'),   ('q95',     'i4'),
         ])
-    display_columns = ['frameid', 'fileid', 'imgtype', 'object',
-                        'exptime', 'obsdate', 'nsat', 'q95']
-    pinfo = FormattedInfo(obslog_columns, display_columns)
-            
-    # print header of logtable
-    print(pinfo.get_separator())
-    print(pinfo.get_title())
-    #print(pinfo.get_dtype())
-    print(pinfo.get_separator())
 
     # start scanning the raw files
     prev_frameid = 0
@@ -286,16 +278,31 @@ def make_obslog(path):
             has_frameid = False
 
         if fibermode == 'single':
-            objectname = '{:21s}'.format(objectname)
+            objectname = '{:23s}'.format(objectname)
         elif fibermode == 'double':
             if len(obj_lst)==1:
-                objectname = '{:^21s}'.format(obj_lst[0])
+                objectname = '{:^23s}'.format(obj_lst[0])
+                screen_objectname = objectname
             elif len(obj_lst)==2:
-                objectname = '|'.join(['{:^10s}'.format(v) for v in obj_lst])
+                objstr_lst = ['{:^10s}'.format(obj_lst[i]) for i in range(2)]
+                objectname = '|'.join(objstr_lst)
+
+                objstr_lst = []
+                for ifiber in range(2):
+                    fiber = chr(ifiber+65)
+                    if len(obj_lst[ifiber])==0:
+                        objstr = '-'*7
+                    else:
+                        objstr = '{:7s}'.format(obj_lst[ifiber])
+                    objstr = '({:s}) '.format(fiber) + objstr
+                    objstr_lst.append(objstr)
+                screen_objectname = ' '.join(objstr_lst)
+
             else:
                 print('Warning: length of object_lst ({}) excess the maximum '
                       'number of fibers (2)'.format(len(obj_lst)))
-                objectname = '{:^21s}'.format('Error')
+                objectname = '{:^23s}'.format('Error')
+                screen_objectnae = objectname
                 pass
         else:
             print('Unknown fiber mode: {}'.format(fibermode))
@@ -314,12 +321,20 @@ def make_obslog(path):
         item = logtable[-1]
 
         # print log item with colors
-        string = pinfo.get_format(has_esc=False).format(item)
+        string_lst = [
+                '{:3d}'.format(frameid),
+                '{:15s}'.format(fileid),
+                '({:3s})'.format(imgtype),
+                '{:s}'.format(screen_objectname),
+                'Texp = {:5g}'.format(exptime),
+                '{:23s}'.format(obsdate.isot),
+                'Nsat = {:7d}'.format(saturation),
+                'Q95 = {:5d}'.format(quantile95),
+                ]
+        string = '    '.join(string_lst)
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
-
-    print(pinfo.get_separator())
 
     logtable.sort('obsdate')
 
@@ -346,17 +361,12 @@ def make_obslog(path):
     else:
         outfilename = outname
 
+    logtable['imgtype'].info.format = '^s'
+    logtable['exptime'].info.format = 'g'
     # save the logtable
-    loginfo = FormattedInfo(obslog_columns)
-    outfile = open(outfilename, 'w')
-    outfile.write(loginfo.get_title(delimiter='|')+os.linesep)
-    outfile.write(loginfo.get_dtype(delimiter='|')+os.linesep)
-    outfile.write(loginfo.get_separator(delimiter='+')+os.linesep)
-    fmtstr = loginfo.get_format(has_esc=False, delimiter='|')
-    for row in logtable:
-        outfile.write(fmtstr.format(row)+os.linesep)
-    outfile.close()
-
+    #logtable.write(filename=outfilename, format='ascii.fixed_width_two_line',
+    #                delimiter='|')
+    write_obslog(logtable, outfilename, delimiter='|')
 
 def reduce_rawdata():
     """2D to 1D pipeline for FOCES on the 2m Fraunhofer Telescope in Wendelstein

@@ -787,7 +787,7 @@ def print_wrapper(string, item):
     """A wrapper for log printing for FOCES pipeline.
 
     Args:
-        string (str): The output string for wrapping.
+        string (str): The string for wrapping.
         item (:class:`astropy.table.Row`): The log item.
 
     Returns:

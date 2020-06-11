@@ -133,13 +133,14 @@ def read_obslog(filename):
     registry.unregister_reader('obslog', Table)
     return table
 
-def _write_obslog(table, filename, overwrite=False):
+def _write_obslog(table, filename, overwrite=False, delimiter=' '):
     """Write the log table into a file.
 
     Args:
         table (:class:`astropy.table.Table`): Observing log table.
         filename (str): Name of the output ASCII file.
         overwrite (bool): 
+        delimiter (str):
 
     """
 
@@ -150,11 +151,29 @@ def _write_obslog(table, filename, overwrite=False):
     pformat_lst = table.pformat_all()
     separator = pformat_lst[1]
 
-    outfile = open(filename, 'w')
-    outfile.write(pformat_lst[0]+os.linesep)
-
     # find the length of each column
     collen_lst = [len(string) for string in separator.split()]
+
+    def replace_delimiter(string, new_delimiter, length_lst):
+        strlst = list(string)
+        newlst = []
+        count = 0
+        for i in length_lst:
+            for j in range(i):
+                newlst.append(strlst[count+j])
+            count += i
+            newlst.append(new_delimiter)
+            count += 1
+        return ''.join(newlst)
+
+    if delimiter!=' ':
+        separator = replace_delimiter(separator, delimiter, collen_lst)
+
+    outfile = open(filename, 'w')
+    string = pformat_lst[0]
+    if delimiter!=' ':
+        string = replace_delimiter(string, delimiter, collen_lst)
+    outfile.write(string+os.linesep)
 
     # find a list of datatypes
     row = table[0]
@@ -176,9 +195,12 @@ def _write_obslog(table, filename, overwrite=False):
     # get a list of space-filled datatypes
     dtypes = [dtype.center(collen_lst[i])
                 for i, dtype in enumerate(dtype_string_lst)]
+    string = ' '.join(dtypes)
+    if delimiter!=' ':
+        string = replace_delimiter(string, delimiter, collen_lst)
 
     # write data types
-    outfile.write(' '.join(dtypes)+os.linesep)
+    outfile.write(string+os.linesep)
 
     # write the separator
     outfile.write(separator+os.linesep)
@@ -198,12 +220,15 @@ def _write_obslog(table, filename, overwrite=False):
             and row['object']!=prev_row['object']:
             outfile.write(separator+os.linesep)
 
-        outfile.write(pformat_lst[i+2]+os.linesep)
+        string = pformat_lst[i+2]
+        if delimiter!=' ':
+            string = replace_delimiter(string, delimiter, collen_lst)
+        outfile.write(string+os.linesep)
         prev_row = row
 
     outfile.close()
 
-def write_obslog(table, filename):
+def write_obslog(table, filename, delimiter=' '):
     """Write an observing log table to an ASCII file.
 
     Args:
@@ -213,7 +238,7 @@ def write_obslog(table, filename):
     """
 
     registry.register_writer('obslog', Table, _write_obslog)
-    table.write(filename, format='obslog')
+    table.write(filename, format='obslog', delimiter=delimiter)
     registry.unregister_writer('obslog', Table)
 
 
