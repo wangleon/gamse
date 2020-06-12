@@ -155,6 +155,8 @@ def _write_obslog(table, filename, overwrite=False, delimiter=' '):
     collen_lst = [len(string) for string in separator.split()]
 
     def replace_delimiter(string, new_delimiter, length_lst):
+        # replace the default " " as the delimiter between columnns
+        # in the output strings of pformat_all() method of astropy table
         strlst = list(string)
         newlst = []
         count = 0
@@ -234,6 +236,7 @@ def write_obslog(table, filename, delimiter=' '):
     Args:
         table (:class:`astropy.table.Table`): Observing log table.
         filename (str): Name of the output ASCII file.
+        delimiter (str): A character as the delimiter between columns.
 
     """
 
