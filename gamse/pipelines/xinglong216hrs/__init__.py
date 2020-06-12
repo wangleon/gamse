@@ -252,8 +252,15 @@ def make_obslog(path):
         y1, y2, x1, x2 = get_sci_region(head)
         data = data[y1:y2, x1:x2]
 
-        # find frame-id
-        frameid = int(fileid[11:])
+        # find frameid for different name conventions
+        if re.match('^\d{11}$', fileid):
+            frameid = int(fileid[8:])
+        elif re.match('^\d{12}$', fileid):
+            frameid = int(fileid[8:])
+        elif re.match('^HRS\d{11}$', fileid):
+            frameid = int(fileid[11:])
+        else:
+            print('Error: unknown FileID: {}'.format(fileid))
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(
                     frameid, prev_frameid))
@@ -310,15 +317,18 @@ def make_obslog(path):
         item = logtable[-1]
 
         # print log item with colors
-        string = (' {:5s} {:15s} ({:3s}) {:s} {:1s}I2'
-                  '    exptime={:4g} s'
-                  '    {:23s}'
-                  '    Nsat={:6d}'
-                  '    Q95={:5d}').format(
-                '[{:d}]'.format(frameid), fileid, imgtype,
-                objectname.ljust(maxobjlen),
-                i2, exptime,
-                obsdate.isot, saturation, quantile95)
+        string_lst = [
+                '  {:>5s}'.format('[{:d}]'.format(frameid)),
+                '  {:11s}'.format(fileid),
+                '  ({:3s})'.format(imgtype),
+                '  {:s}'.format(objectname.ljust(maxobjlen)),
+                '  {:1s}I2'.format(i2),
+                '  Texp = {:4g}'.format(exptime),
+                '  {:23s}'.format(obsdate.isot),
+                '  Nsat = {:6d}'.format(saturation),
+                '  Q95 = {:5d}'.format(quantile95),
+                ]
+        string = ''.join(string_lst)
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
@@ -360,7 +370,7 @@ def make_obslog(path):
     logtable['exptime'].info.format = 'g'
 
     # save the logtable
-    write_obslog(logtable, outfilename)
+    write_obslog(logtable, outfilename, delimiter='|')
 
 def reduce_rawdata():
     """2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m

@@ -277,16 +277,25 @@ def make_obslog(path):
             frameid = 0
             has_frameid = False
 
+        # generate the objectname
+        # objectname is the string written in the .obslog file
+        # screen_objectname is the string displayed in the terminal
         if fibermode == 'single':
             objectname = '{:23s}'.format(objectname)
+            screen_objectname = objectname
         elif fibermode == 'double':
+
             if len(obj_lst)==1:
+                # double fiber mode but BIAS
                 objectname = '{:^23s}'.format(obj_lst[0])
                 screen_objectname = objectname
+
             elif len(obj_lst)==2:
                 objstr_lst = ['{:^10s}'.format(obj_lst[i]) for i in range(2)]
                 objectname = '|'.join(objstr_lst)
 
+                # generate the screen_objectname with style of
+                # (A) XXXXXXX (B) -------
                 objstr_lst = []
                 for ifiber in range(2):
                     fiber = chr(ifiber+65)
