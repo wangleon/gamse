@@ -6,8 +6,16 @@ import getpass
 import platform
 import subprocess
 
+import numpy
+import scipy
+import astropy
+import matplotlib
+
+from .. import __version__
+
 def write_system_info():
-    """Get system information, and write them into running log."""
+    """Get system information, and write them into running log.
+    """
 
     # get system information, and write them into the log file
     system, node, release, version, machine, processor = platform.uname()
@@ -39,7 +47,10 @@ def write_system_info():
                              stderr=subprocess.STDOUT)
         row = p.stdout.readlines()[1]
         info = row.split()
-        memory = '%s (total); %s (used); %s (free)'%(info[1],info[2],info[3])
+        memory = '{:s} (total); {:s} (used); {:s} (free)'.format(
+                    info[1].decode('ascii'),
+                    info[2].decode('ascii'),
+                    info[3].decode('ascii'))
     else:
         processor_number = 0
         processor        = processor
@@ -54,14 +65,21 @@ def write_system_info():
     python_version = platform.python_version()
 
     info = ['Start reduction.',
-            'Node:              %s'%node,
-            'Processor:         %d x %s (%d cores)'%(processor_number, processor, cores),
-            'System:            %s %s %s'%(system, release, machine),
-            'Distribution:      %s'%distribution,
-            'Memory:            %s'%memory,
-            'Username:          %s'%username,
-            'Python version:    %s'%python_version,
-            'Working directory: %s'%abspath,
+            'Node:                  {:s}'.format(node),
+            'Processor:             {:d} x {:s} ({:d} cores)'.format(
+                                    processor_number, processor, cores),
+            'System:                {:s} {:s} {:s}'.format(
+                                    system, release, machine),
+            'Distribution:          {:s}'.format(distribution),
+            'Memory:                {:s}'.format(memory),
+            'Username:              {:s}'.format(username),
+            'Python version:        {:s}'.format(python_version),
+            'Numpy version:         {:s}'.format(numpy.__version__),
+            'Scipy version:         {:s}'.format(scipy.__version__),
+            'Astropy version:       {:s}'.format(astropy.__version__),
+            'Matplotlib version:    {:s}'.format(matplotlib.__version__),
+            'Gamse version:         {:s}'.format(__version__),
+            'Working directory:     {:s}'.format(abspath),
             ]
     separator = os.linesep + '  '
     logger.info(separator.join(info))
