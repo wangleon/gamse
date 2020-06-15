@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import logging
 logger = logging.getLogger(__name__)
 import getpass
@@ -10,6 +11,13 @@ import numpy
 import scipy
 import astropy
 import matplotlib
+
+if sys.version_info[0] < 3:
+    import Tkinter as tk
+    import ttk
+else:
+    import tkinter as tk
+    import tkinter.ttk as ttk
 
 from .. import __version__
 
@@ -78,6 +86,7 @@ def write_system_info():
             'Scipy version:         {:s}'.format(scipy.__version__),
             'Astropy version:       {:s}'.format(astropy.__version__),
             'Matplotlib version:    {:s}'.format(matplotlib.__version__),
+            'Tkinter.ttk version:   {:s}'.format(ttk.__version__),
             'Gamse version:         {:s}'.format(__version__),
             'Working directory:     {:s}'.format(abspath),
             ]
