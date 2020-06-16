@@ -599,8 +599,8 @@ def plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset, figname):
         figname (str): Filename of output figure.
     """
     
-    fig = plt.figure(figsize=(9, 6), dpi=100)
-    ax = fig.add_axes([0.12,0.16,0.83,0.76])
+    fig = plt.figure(figsize=(9, 6), dpi=200)
+    ax = fig.add_axes([0.12, 0.16, 0.83, 0.76])
     xdates = mdates.date2num(real_obsdate_lst)
     ax.plot_date(xdates, delta_t_lst, 'o-', ms=6)
     ax.axhline(y=time_offset, color='k', ls='--', alpha=0.6)
