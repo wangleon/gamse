@@ -79,7 +79,40 @@ List of Accepted Entries
 formats.
 They are in the ``[data]`` section of the config files.
 
-* **telescope** and **instrumen**: Name of the telescope and the instrument.
+.. list-table:: Accepted entries in ``[data]`` section
+   :widths: 18, 10, 18, 60
+   :header-rows: 1
+
+   * - Key
+     - Type
+     - Default Value
+     - Description
+   * - **telescope**
+     - *str*
+     - Fraunhofer
+     - Name of the telescope (Fixed).
+   * - **instrument**
+     - *str*
+     - FOCES
+     - Name of the instrument (Fixed).
+   * - **rawdata**
+     - *str*
+     - rawdata
+     - Path to the rawdata.
+   * - **statime_key**
+     - *str*
+     - FRAME
+     - Key of starting time of exposure in FITS header.
+   * - **exptime_key**
+     - *str*
+     - EXPOSURE
+     - key of exposure time in FITS header.
+   * - **direction**
+     - **str**
+     -
+     - Direction of the echelle spectrum on the CCD.
+
+* **telescope** and **instrument**: Name of the telescope and the instrument.
 
 * **rawdata**: Path to the folder for the raw data.
   It tells the software where to find the raw images.
