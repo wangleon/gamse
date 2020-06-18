@@ -120,6 +120,7 @@ Where
      THS1, ThAr,                ---,
      THC0, ---,                 ThAr,
      THC1, ---,                 ThAr,
+     THCS, ThAr,                ThAr,
      COS0, Astro Comb,          ---,
      COC0, ---,                 Astro Comb,
      COCS, Astro Comb,          Astro Comb,
