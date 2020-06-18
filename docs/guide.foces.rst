@@ -20,7 +20,7 @@ Bavaria, Germany.
 FOCES is connected to a Nasmyth focus of the telescope via an octagonal
 multi-mode optical fiber.
 FOCES has a resolving power (*R*) of ~70,000, and covers the wavelength range
-of 390–900 nm.
+of 390---900 nm.
 
 The characteristics of FOCES are summarised as below:
 
@@ -33,7 +33,7 @@ The characteristics of FOCES are summarised as below:
 +---------------------+---------------------------------+---------------------------------------+
 | **Corss-disperser** | A pair of prisms                                                        |
 +---------------------+---------------------------------+---------------------------------------+
-| **CCD Detector**    | Wavelength coverage             | 390 - 900 nm                          |
+| **CCD Detector**    | Wavelength coverage             | 390 --- 900 nm                        |
 |                     +---------------------------------+---------------------------------------+
 |                     | Number of pixels                | 2048 x 2048                           |
 |                     +---------------------------------+---------------------------------------+
@@ -57,8 +57,8 @@ Extracting one-dimensional spectra for FOCESis basically the same as the
 #. :code:`gamse list`
 #. :code:`gamse reduce`
 
-Since FOCES is a double-fiber spectrograph, there are two fiber modes, i.e.,
-the "single" mode and "double" mode.
+FOCES is a double-fiber spectrograph.
+There are two different fiber modes: "single" and "double".
 When running :code:`gamse config`, the program asks the user which mode the data
 is obtained with.
 The "single" mode means ALL the raw images in the observing run are taken with
@@ -69,8 +69,8 @@ taken with both the science and calibration fibers.
 In this case, the data shall contain calibration frames (flat field and Th-Ar
 hollow cathren lamp) for each fiber *individually*.
 
-The Config File
----------------
+Config File
+-----------
 The entries in the config file for FOCES data reduction is basically the same as
 the :ref:`general list of accepted entries<config_entries>` of `GAMSE`.
 However, there are a few entries to be paid attention to:
@@ -84,49 +84,53 @@ However, there are a few entries to be paid attention to:
     `GAMSE` always ask the user which mode is in when running
     :code:`gamse config`.
 
-
-The Observing Log
+Naming Convention
 -----------------
 
-Flat Field Correction
----------------------
+The filenames of FOCES raw images follow the convention below::
 
-Others
-------
-The ``data`` section in the configuration file accepts the following entries:
+   YYYYMMDD_NNNN_XXXYYZZ_AAAA.fits
 
-.. list-table:: Accepted entries in ``data`` section
-   :widths: 18, 10, 18, 60
-   :header-rows: 1
+Where
 
-   * - Key
-     - Type
-     - Default Value
-     - Description
-   * - **telescope**
-     - *str*
-     - Fraunhofer
-     - Name of the telescope (Fixed).
-   * - **instrument**
-     - *str*
-     - FOCES
-     - Name of the instrument (Fixed).
-   * - **rawdata**
-     - *str*
-     - rawdata
-     - Path to the rawdata.
-   * - **statime_key**
-     - *str*
-     - FRAME
-     - Key of starting time of exposure in FITS header.
-   * - **exptime_key**
-     - *str*
-     - EXPOSURE
-     - key of exposure time in FITS header.
+* ``YYYYMMDD``: Year, month and day of the observing run. For example,
+  ``20150730`` is July 30th. 2015;
+* ``NNNN``: An *unique* daily exposure number from 0001 to 9999;
+* ``XXXYYZZ``: Instrument code and config number.
 
+  * ``XXX`` is the instrument descriptor (``FOC`` stands for FOCES);
+  * ``YYZZ`` is the year and instrument config number. For example, ``1501`` for
+    setup 01 of the year of 2015. Config number counts up with hardware changes,
+    such as new fibers, changed alignments, and new calibration lamps.
+* ``AAAA``: The 4-letter code for object type. The codes and objects are listed
+  below:
 
-Generating the Observing Log
-----------------------------
+  .. csv-table::
+     :header: "Code", "Object in Fiber A", "Object in Fiber B", "Typical exposure time (sec)"
+     :widths: 5, 10, 10, 10
+
+     BIAS, ---,                 ---,                 0.00002
+     FLS0, Flat for red band,   ---,                 30
+     FLS1, Flat for green band, ---,                 120
+     FLS2, Flat for blue band,  ---,                 480
+     FLC0, ---,                 Flat for red band,   0.3
+     FLC1, ---,                 Flat for green band, 1.2
+     FLC2, ---,                 Flat for blue band,  4.8
+     THS0, ThAr,                ---,
+     THS1, ThAr,                ---,
+     THC0, ---,                 ThAr,
+     THC1, ---,                 ThAr,
+     COS0, Astro Comb,          ---,
+     COC0, ---,                 Astro Comb,
+     COCS, Astro Comb,          Astro Comb,
+     SCI0, Star,                ---,
+     SCI1, Star,                ,
+     SCC2, Star,                Astro Comb,
+     SCT2, Star,                ThAr,
+
+Observing Log
+-------------
+
 The following command scans all the FITS files in the data path as specified
 in the configure file:
 
@@ -308,7 +312,6 @@ It accepts the following entries:
      - nearest
      - Mode of smoothing at the edges. Only valid if
        **smooth_method** = Gaussian.
-
 
 Order Tracing
 -------------
