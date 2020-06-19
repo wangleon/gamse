@@ -1,5 +1,6 @@
 import os
 import re
+import math
 import logging
 logger = logging.getLogger(__name__)
 
@@ -113,7 +114,7 @@ def reduce_doublefiber(config, logtable):
     for logitem in logtable:
         fiberobj_lst = get_fiberobj_lst(logitem['object'])
 
-        if len(fiberobj_lst)>1:
+        if len(fiberobj_lst) != 1:
             continue
 
         ifiber, objname = fiberobj_lst[0]
@@ -642,14 +643,15 @@ def reduce_doublefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        fiberobj_lst = get_fiberobj_lst(logitem['object'])
-        obj_lst = list(map(lambda s:s.strip(), obj.split('|')))
+        fiberobj_lst = get_fiberobj_lst(logitem['object'], '|')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
-        # now all objects in fiberobj_lst must be thar
+        # now all objects in fiberobj_lst must be ThAr
 
         count_thar += 1
-        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
-                   'identification'.format(fileid, imgtype, '|'.join(obj_lst)))
+        message = ('FileID: {:s} ({:s}) OBJECT: {:s}'
+                   ' - wavelength identification'.format(
+                    fileid, imgtype, fiberobj_str))
         logger.info(message)
         print(message)
 
@@ -1023,38 +1025,36 @@ def reduce_doublefiber(config, logtable):
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
-        obj     = logitem['object']
+        objects = logitem['object']
         exptime = logitem['exptime']
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        # remove the single objects but bias and dark. because they are also
+        # filter out the single objects but bias and dark. because they are also
         # appear to be "single" objects
-        if obj.strip().lower() in ['bias', 'dark']:
+        if objects.strip().lower() in ['bias', 'dark']:
             continue
 
         # split the object names and make obj_lst
-        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
-        obj_lst = [s.strip() for s in obj.split('|')]
+        fiberobj_lst = get_fiberobj_lst(objects, '|')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
-        # remove images with multi-fibers
-        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
+        # filter out images with multi-fibers
         if len(fiberobj_lst) != 1:
             continue
         ifiber, objname = fiberobj_lst[0]
         fiber = chr(ifiber+65)
-        objname = objname.lower()
 
-        # remove Flat and ThAr
-        if objname in ['flat', 'thar']:
+        # filter out Flat and ThAr
+        if objname.lower()[0:4] in ['flat', 'thar']:
             continue
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
-                    fileid, imgtype, '|'.join(obj_lst))
+        message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
+                    fileid, imgtype, fiberobj_str)
         logger.info(message)
         print(message)
 
@@ -1090,24 +1090,19 @@ def reduce_doublefiber(config, logtable):
         # 2d image to extract the raw flux from 
         raw_data = 1.0 * data #to ensure that python really does a copy
 
-        # creating the variance map to track the errors
-        rons = overstd
-        ronb = bias_overstd
-        #print('rons: ',rons, 'ronb: ', ronb)
-        bias_nfiles  = n_bias
-        
-        # Purley errors of the science frame
-        variance_map = np.maximum(data,0) + rons**2
-        
         # Adding the errors of the bias subtraction
         if config['reduce.bias'].getboolean('smooth'): 
             bias_smooth  = config['reduce.bias'].getfloat('smooth_sigma')
             # 2*np.pi*bias_smooth**2 -> is taking into account 
             # that the bias smoothing is a gaussian smoothing
-            variance_map = variance_map + (ronb/np.sqrt(bias_nfiles* 2*np.pi*bias_smooth**2))**2
+            factor = 2*math.pi*bias_smooth**2
         else:
-            variance_map = variance_map + (ronb/np.sqrt(bias_nfiles))**2
-            
+            factor = 1
+        ronb = bias_overstd/np.sqrt(n_bias*factor)
+
+        # creating the variance map to track the errors
+        variance_map = np.maximum(data, 0) + overstd**2 + ronb**2
+
         # correct flat
         data = data/master_flatsens
         variance_map = variance_map/master_flatsens**2
@@ -1193,31 +1188,31 @@ def reduce_doublefiber(config, logtable):
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
                     )
-        message = '1D spectra of {} orders in fiber {} extracted'.format(
-                   len(spectra1d), fiber)
+        message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
+                   fiber, len(spectra1d), fiber)
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
         
         # extract 1d error of the object
-        error1d      = extract_aperset(variance_map, mask,
+        error1d = extract_aperset(variance_map, mask,
                         apertureset = apertureset,
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
-                        variance    = True
-                        )
-        message = '1D error sum of {} orders in fiber {} extracted'.format(
-                   len(error1d), fiber)
+                        variance    = True,
+                    )
+        message = 'Fiber {}: 1D error sum of {} orders extracted'.format(
+                   fiber, len(error1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)   
         
         # extract 1d raw flux summed up
         specraw1d = extract_aperset(raw_data, mask,
-                    apertureset = apertureset,
-                    lower_limit = lower_limit,
-                    upper_limit = upper_limit,
+                        apertureset = apertureset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
                     )
-        message   = '1D raw spectra of {} orders in fiber {} extracted'.format(
-                   len(error1d), fiber)
+        message = 'Fiber {}: 1D raw spectra of {} orders extracted'.format(
+                    fiber, len(specraw1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)   
             
@@ -1226,9 +1221,9 @@ def reduce_doublefiber(config, logtable):
                         apertureset = apertureset,
                         lower_limit = lower_limit,
                         upper_limit = upper_limit,
-                        )
-        message = '1D straylight of {} orders in fiber {} extracted'.format(
-                   len(background1d), fiber)
+                    )
+        message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
+                    fiber, len(background1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
@@ -1266,7 +1261,7 @@ def reduce_doublefiber(config, logtable):
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        message = ('Wavelength calibration of fiber {}: weights={}').format(
+        message = ('Fiber {}: Wavelength calibration weights={}').format(
                     fiber,
                     ','.join(['{:8.4f}'.format(w) for w in weight_lst])
                     )
@@ -1312,28 +1307,36 @@ def reduce_doublefiber(config, logtable):
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
         imgtype = logitem['imgtype']
-        obj     = logitem['object']
+        objects = logitem['object']
         exptime = logitem['exptime']
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
+        # filter out already extracted files
         if fileid in extracted_fileid_lst:
             continue
 
-        # obj_lst = ['hdxxx', 'comb'] or ['hd xxx', 'thar']
-        obj_lst = [s.strip() for s in obj.split('|')]
+        fiberobj_lst = get_fiberobj_lst(objects, '|')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
-        fiberobj_lst = list(filter(lambda v: len(v[1])>0, enumerate(obj_lst)))
-
-        if imgtype != 'sci' and obj_lst != ['comb', 'comb']:
-            continue
+        # filter out non-sci but not Comb/Comb files
+        if imgtype != 'sci':
+            if len(fiberobj_lst) != 2:
+                continue
+            elif len(list(
+                filter(lambda v:v.lower()=='comb', objects)
+                )) != 2:
+                # filter out when objects != Comb/Comb
+                continue
+            else:
+                pass
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
-                    fileid, imgtype, '|'.join(obj_lst))
+        message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
+                    fileid, imgtype, fiberobj_str)
         logger.info(message)
         print(message)
 
@@ -1369,24 +1372,19 @@ def reduce_doublefiber(config, logtable):
         # 2d image to extract the raw flux from 
         raw_data = 1.0 * data #to ensure that python really does a copy
 
-        # creating the variance map to track the errors
-        rons = overstd
-        ronb = bias_overstd
-        #print('rons: ',rons, 'ronb: ', ronb)
-        bias_nfiles  = n_bias
-        
-        # Purley errors of the science frame
-        variance_map = np.maximum(data,0) + rons**2
-        
         # Adding the errors of the bias subtraction
         if config['reduce.bias'].getboolean('smooth'): 
             bias_smooth  = config['reduce.bias'].getfloat('smooth_sigma')
             # 2*np.pi*bias_smooth**2 -> is taking into account 
             # that the bias smoothing is a gaussian smoothing
-            variance_map = variance_map + (ronb/np.sqrt(bias_nfiles* 2*np.pi*bias_smooth**2))**2
+            factor = 2*math.pi*bias_smooth**2
         else:
-            variance_map = variance_map + (ronb/np.sqrt(bias_nfiles))**2
-        
+            factor = 1
+        ronb = bias_overstd/np.sqrt(n_bias*factor)
+
+        # creating the variance map to track the errors
+        variance_map = np.maximum(data, 0) + overstd**2 + ronb**2
+
         # correct flat
         data = data/master_flatsens
         variance_map = variance_map/master_flatsens**2
@@ -1400,13 +1398,6 @@ def reduce_doublefiber(config, logtable):
         # have no impact on the total error
         master_flatdsum_0[np.where(master_flatsens == 1.0)] = 1e99 
         variance_map = variance_map + data**2/master_flatdsum_0
-
-        # for DEBUG use
-        '''
-        fname = '{}_flt.fits'.format(fileid)
-        filename = os.path.join(midproc, fname)
-        fits.writeto(filename, data, overwrite=True)
-        '''
 
         # background correction
 
@@ -1482,7 +1473,6 @@ def reduce_doublefiber(config, logtable):
         
         for (ifiber, objname) in fiberobj_lst:
             fiber = chr(ifiber+65)
-            objname = objname.lower()
             result = get_xdisp_profile(data, master_aperset[fiber])
             aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
@@ -1503,8 +1493,9 @@ def reduce_doublefiber(config, logtable):
                             aper_wav_lst = aper_wav_lst,
                             )
 
-            if objname == 'comb':
-                objtype = 'comb'
+            # find objtype to search for the same kind of background light
+            if objname.lower() in ['comb', 'fp']:
+                objtype = objname.lower()
             else:
                 objtype = 'star'
 
@@ -1586,61 +1577,48 @@ def reduce_doublefiber(config, logtable):
             upper_limit = upper_limits[fiber]
             apertureset = master_aperset[fiber]
             
-            # extract 1d flux summed up
+            # extract 1d spectra of the object
             spectra1d = extract_aperset(data, mask,
                             apertureset = apertureset,
                             lower_limit = lower_limit,
                             upper_limit = upper_limit,
                         )
-            message = '1D spectra of {} orders in fiber {} extracted'.format(
-                        len(spectra1d), fiber)
+            message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
+                        fiber, len(spectra1d))
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
             
             # extract 1d error of the object
             error1d = extract_aperset(variance_map, mask,
-                        apertureset = apertureset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
-                        variance    = True
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                            variance    = True,
                         )
-            message = '1D error sum of {} orders in fiber {} extracted'.format(
-                       len(error1d), fiber)
+            message = 'Fiber {}: 1D error sum of {} orders extracted'.format(
+                       fiber, len(error1d))
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
             
             # extract 1d raw flux summed up
             specraw1d = extract_aperset(raw_data, mask,
-                        apertureset = apertureset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
                         )
-            message = '1D raw spectra of {} orders in fiber {} extracted'.format(
-                       len(error1d), fiber)
+            message = 'Fiber {}: 1D raw spectra of {} orders extracted'.format(
+                        fiber, len(specraw1d))
             logger.info(logger_prefix + message)
             print(screen_prefix + message)  
             
-            if background is None:
-                # background is not subtracted
-                background1d = {aper: {'flux_sum':
-                                  np.zeros_like(spectra1d[aper]['flux_sum'],
-                                                dtype=np.float32)
-                                 }
-                            for aper in apertureset}
-            else:
-                # extract 1d spectra for stray light
-                background1d = extract_aperset(background, mask,
-                                apertureset = apertureset,
-                                lower_limit = lower_limit,
-                                upper_limit = upper_limit,
-                            )
-                message = '1D straylight of {} orders in fiber {} extracted'.format(
-                           len(background1d), fiber)
-                logger.info(logger_prefix + message)
-                print(screen_prefix + message)
-
-            message = '1D spectra of {} orders in fiber {} extracted'.format(
-                        len(spectra1d), fiber)
+            # extract 1d spectra for stray light
+            background1d = extract_aperset(background, mask,
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
+                        fiber, len(background1d))
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
 
@@ -1681,7 +1659,7 @@ def reduce_doublefiber(config, logtable):
             weight_lst = get_time_weight(ref_datetime_lst[fiber],
                                         head[statime_key])
 
-            message = ('Wavelength calibration of fiber {}: weights={}').format(
+            message = ('Fiber {}: Wavelength calibration weights={}').format(
                         fiber,
                         ','.join(['{:8.4f}'.format(w) for w in weight_lst])
                         )
