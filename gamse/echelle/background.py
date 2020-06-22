@@ -1188,14 +1188,41 @@ class BackgroundFigureCommon(Figure):
 
 def find_best_background(background_lst, background, fiber, objname, time,
         objtype):
+    """Find the best pre-saved background light from a list of backgrounds.
 
-    if objname == 'comb':
+    Args:
+        background_lst (list):
+        background ():
+        fiber (str):
+        objname (str):
+        time ():
+        objtype (str):
+
+    """
+
+    if objname.lower() in ['comb', 'fp']:
         candidate_lst = []
         shift_lst = []
         scale_lst = []
+
+        # first round, seach for the same object in the SAME fiber
         for bkg_obj in background_lst:
-            if bkg_obj.info['object'] == 'comb' \
-                and  bkg_obj.info['fiber'] == fiber:
+            if bkg_obj.info['object'].lower() == objname.lower() \
+                and bkg_obj.info['fiber'] == fiber:
+                shift = background.find_xdisp_shift(bkg_obj)
+                scale = background.find_brightness_scale(bkg_obj)
+                shift_lst.append(shift)
+                scale_lst.append(scale)
+                candidate_lst.append(bkg_obj)
+
+        if len(candidate_lst)>0:
+            index = np.array(scale_lst).argmin()
+            # the minimum scale guarantees that the template has the best SNR
+            return candidate_lst[index]
+
+        # second round, search for the SAME object
+        for bkg_obj in background_lst:
+            if bkg_obj.info['object'].lower() == objname.lower():
                 shift = background.find_xdisp_shift(bkg_obj)
                 scale = background.find_brightness_scale(bkg_obj)
                 shift_lst.append(shift)
@@ -1204,47 +1231,43 @@ def find_best_background(background_lst, background, fiber, objname, time,
 
         if len(candidate_lst)>0:
             index= np.array(scale_lst).argmin()
+            # the minimum scale guarantees that the template has the best SNR
             return candidate_lst[index]
 
-        for bkg_obj in background_lst:
-            if bkg_obj.info['object'] == 'comb':
-                shift = background.find_xdisp_shift(bkg_obj)
-                scale = background.find_brightness_scale(bkg_obj)
-                shift_lst.append(shift)
-                scale_lst.append(scale)
-                candidate_lst.append(bkg_obj)
-
-        if len(candidate_lst)>0:
-            index= np.array(scale_lst).argmin()
-            return candidate_lst[index]
+        return None
 
     elif objtype == 'star':
         candidate_lst = []
         scale_lst = []
 
-        # check the same star
+        # first round, seach for the SAME object in the same fiber
         for bkg_obj in background_lst:
-            if bkg_obj.info['object'] != objname \
-                or bkg_obj.info['fiber'] != fiber:
-                continue
-            scale = background.find_brightness_scale(bkg_obj)
-            scale_lst.append(scale)
-            candidate_lst.append(bkg_obj)
+            if bkg_obj.info['object'].lower() == objname.lower() \
+                and bkg_obj.info['fiber'] == fiber:
+                scale = background.find_brightness_scale(bkg_obj)
+                scale_lst.append(scale)
+                candidate_lst.append(bkg_obj)
 
         if len(candidate_lst)>0:
             index = np.array(scale_lst).argmin()
             return candidate_lst[index]
 
+        # second round, search for objects in the same fiber
         for bkg_obj in background_lst:
-            if bkg_obj.info['fiber'] != fiber:
-                continue
-            scale = background.find_brightness_scale(bkg_obj)
-            scale_lst.append(scale)
-            candidate_lst.append(bkg_obj)
+            if bkg_obj.info['objtype'] == objtype \
+                and bkg_obj.info['fiber'] == fiber:
+                scale = background.find_brightness_scale(bkg_obj)
+                scale_lst.append(scale)
+                candidate_lst.append(bkg_obj)
 
         if len(candidate_lst)>0:
             index = np.array(scale_lst).argmin()
             return candidate_lst[index]
+
+        return None
+    else:
+        print('Warning: Unknow object type:', objtype)
+        return None
 
 def select_background_from_database(path, **args):
     # find the index file
