@@ -1162,35 +1162,42 @@ class TraceFigure(TraceFigureCommon):
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
 
-class BackgroudFigure(BackgroundFigureCommon):
+class BackgroundFigure(BackgroundFigureCommon):
     """Figure to plot the background correction.
     """
-    def __init__(self):
-        BackgroundFigureCommon.__init__(self, figsize=(16, 7), dpi=150)
-        _width = 0.37
-        _height = _width*16/7
-        self.ax1  = self.add_axes([0.06, 0.1, _width, _height])
-        self.ax2  = self.add_axes([0.55, 0.1, _width, _height])
-        self.ax1c = self.add_axes([0.06+_width+0.01, 0.1, 0.015, _height])
-        self.ax2c = self.add_axes([0.55+_width+0.01, 0.1, 0.015, _height])
+    def __init__(self, dpi=300, figsize=(12, 5.5)):
+        BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
+        width = 0.36
+        height = width*figsize[0]/figsize[1]
+        self.ax1  = self.add_axes([0.06, 0.1, width, height])
+        self.ax2  = self.add_axes([0.55, 0.1, width, height])
+        self.ax1c = self.add_axes([0.06+width+0.01, 0.1, 0.015, height])
+        self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
 
-    def plot_background(self, data, stray):
+    def plot(self, data, background, scale=(5, 99)):
+        """Plot the image data with background and the subtracted background
+        light.
+
+        Args:
+            data (:class:`numpy.ndarray`): Image data to be background
+                subtracted.
+            background (:class:`numpy.ndarray`): Background light as a 2D array.
+        """
         # find the minimum and maximum value of plotting
-        #s = np.sort(oridata.flatten())
-        #vmin = s[int(0.05*data.size)]
-        #vmax = s[int(0.95*data.size)]
-        vmin = np.percentile(data, 5)
-        vmax = np.percentile(data, 95)
+        vmin = np.percentile(data, scale[0])
+        vmax = np.percentile(data, scale[1])
 
-        cax_data  = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax)
-        cax_stray = self.ax2.imshow(stray, cmap='viridis')
-        cs = self.ax2.contour(stray, colors='r', linewidths=0.5)
-        self.ax2.clabel(cs, inline=1, fontsize=9, use_clabeltext=True)
-        self.colorbar(cax_data, cax=self.ax1c)
-        self.colorbar(cax_stray, cax=self.ax2c)
+        cax1 = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax,
+                origin='lower')
+        cax2 = self.ax2.imshow(background, cmap='viridis',
+                origin='lower')
+        cs = self.ax2.contour(background, colors='r', linewidths=0.5)
+        self.ax2.clabel(cs, inline=1, fontsize=7, use_clabeltext=True)
+        self.colorbar(cax1, cax=self.ax1c)
+        self.colorbar(cax2, cax=self.ax2c)
         for ax in [self.ax1, self.ax2]:
-            ax.set_xlabel('X')
-            ax.set_ylabel('Y')
+            ax.set_xlabel('X (pixel)')
+            ax.set_ylabel('Y (pixel)')
             ax.xaxis.set_major_locator(tck.MultipleLocator(500))
             ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
             ax.yaxis.set_major_locator(tck.MultipleLocator(500))

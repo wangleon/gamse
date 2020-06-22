@@ -223,24 +223,29 @@ def make_obslog(path):
                     imgtype, objectname = 'cal', 'Unknown'
             elif fibermode == 'double':
                 # in double-fiber mode
+                # for Bias
                 if fileid[22:25]=='BIA':
                     imgtype, obj_lst = 'cal', ['Bias']
+                # for Flats:
                 elif fileid[22:25]=='FLS':
                     imgtype, obj_lst = 'cal', ['Flat', '']
                 elif fileid[22:25]=='FLC':
                     imgtype, obj_lst = 'cal', ['', 'Flat']
-                elif fileid[22:26]=='COCS':
-                    imgtype, obj_lst = 'cal', ['Comb', 'Comb']
-                elif fileid[22:26]=='COC0':
-                    imgtype, obj_lst = 'cal', ['', 'Comb']
-                elif fileid[22:26]=='COS0':
-                    imgtype, obj_lst = 'cal', ['Comb', '']
-                elif fileid[22:25]=='THS':
+                # for ThAr:
+                elif fileid[22:26]=='THCS':
                     imgtype, obj_lst = 'cal', ['ThAr', 'ThAr']
-                elif fileid[22:25]=='THC':
-                    imgtype, obj_lst = 'cal', ['', 'ThAr']
                 elif fileid[22:25]=='THS':
                     imgtype, obj_lst = 'cal', ['ThAr', '']
+                elif fileid[22:25]=='THC':
+                    imgtype, obj_lst = 'cal', ['', 'ThAr']
+                # for Comb:
+                elif fileid[22:26]=='COS0':
+                    imgtype, obj_lst = 'cal', ['Comb', '']
+                elif fileid[22:26]=='COC0':
+                    imgtype, obj_lst = 'cal', ['', 'Comb']
+                elif fileid[22:26]=='COCS':
+                    imgtype, obj_lst = 'cal', ['Comb', 'Comb']
+                # for Science:
                 elif fileid[22:26]=='SCI0':
                     imgtype, obj_lst = 'sci', [target, '']
                 elif fileid[22:26]=='SCC2':
