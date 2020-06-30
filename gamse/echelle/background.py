@@ -1288,7 +1288,7 @@ def select_background_from_database(path, **args):
     table = table[mask]
     logger.info('mask={}'.format(mask))
 
-    if obj == 'comb':
+    if obj.lower().strip() == 'comb':
         mask = table['object']=='comb'
         table = table[mask]
         m1 = table['shape']==str(shape)[1:-1]
@@ -1318,7 +1318,7 @@ def select_background_from_database(path, **args):
         logger.debug('selected {} (obj={}, fiber={})'.format(
                       row['fileid'], row['object'], row['fiber']))
     else:
-        pass
+        return None
 
     selected_fileid = row['fileid']
     filename = os.path.join(path, 'bkg.{}.fits'.format(selected_fileid))
