@@ -1128,11 +1128,11 @@ class BackgroundLight(object):
                     info         = info,
                     header       = head,
                     data         = data,
-                    aper_num_lst = aper_num_lst,
-                    aper_ord_lst = aper_ord_lst,
-                    aper_pos_lst = aper_pos_lst,
-                    aper_brt_lst = aper_brt_lst,
-                    aper_wav_lst = aper_wav_lst,
+                    aper_num_lst = np.array(aper_num_lst),
+                    aper_ord_lst = np.array(aper_ord_lst),
+                    aper_pos_lst = np.array(aper_pos_lst),
+                    aper_brt_lst = np.array(aper_brt_lst),
+                    aper_wav_lst = np.array(aper_wav_lst),
                 )
         return bkg_obj
 
