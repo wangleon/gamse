@@ -1,6 +1,7 @@
 import os
 import re
 import math
+import shutil
 import logging
 logger = logging.getLogger(__name__)
 
@@ -1451,7 +1452,7 @@ def reduce_doublefiber(config, logtable):
             if len(fiberobj_lst) != 2:
                 continue
             elif len(list(
-                filter(lambda v:v.lower()=='comb', objects)
+                filter(lambda v:v[1].lower()=='comb', fiberobj_lst)
                 )) != 2:
                 # filter out when objects != Comb/Comb
                 continue

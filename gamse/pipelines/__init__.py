@@ -221,6 +221,16 @@ def show_onedspec():
     spec_lst = []
     for filename in filename_lst:
         data = fits.getdata(filename)
+
+        # determine the column name of flux that will be shown
+        if 'flux' in data.dtype.names:
+            flux_key = 'flux'
+        elif 'flux_sum' in data.dtype.names:
+            flux_key = 'flux_sum'
+        else:
+            flux_key = ''
+            pass
+
         if 'fiber' in data.dtype.names:
             # multi fiber
             for fiber in np.unique(data['fiber']):
@@ -229,7 +239,7 @@ def show_onedspec():
                 for row in data[mask]:
                     order = row['order']
                     wave  = row['wavelength']
-                    flux  = row['flux']
+                    flux  = row[flux_key]
                     spec[order] = (wave, flux)
                 label = os.path.basename(filename) + ' Fiber {}'.format(fiber)
                 spec_lst.append((spec, label))
@@ -238,7 +248,7 @@ def show_onedspec():
             for row in data:
                 order = row['order']
                 wave  = row['wavelength']
-                flux  = row['flux']
+                flux  = row[flux_key]
                 spec[order] = (wave, flux)
             label = os.path.basename(filename)
             spec_lst.append((spec, label))
