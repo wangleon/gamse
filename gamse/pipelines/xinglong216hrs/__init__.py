@@ -201,7 +201,7 @@ def make_obslog(path):
     # scan filenames and determine the maximum length of fileid
     maxlen_fileid = max([len(fname[0:-5])
                     for fname in os.listdir(config['data']['rawdata'])
-                    if fname[-5:]=='.fits'])
+                    if fname.endswith('.fits')])
 
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
@@ -242,7 +242,7 @@ def make_obslog(path):
     prev_frameid = -1
     # start scanning the raw files
     for fname in fname_lst:
-        if fname[-5:] != '.fits':
+        if not fname.endswith('.fits'):
             continue
         fileid  = fname[0:-5]
         filename = os.path.join(path, fname)

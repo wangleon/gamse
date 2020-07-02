@@ -172,7 +172,7 @@ def make_obslog(path):
     # find the maximum length of fileid
     maxlen_fileid = 0
     for fname in fname_lst:
-        if fname[-5:] == '.fits':
+        if fname.endswith('.fits'):
             fileid = fname[0:-5]
             maxlen_fileid = max(maxlen_fileid, len(fileid))
     # now the maxlen_fileid is the maximum length of fileid
@@ -189,7 +189,7 @@ def make_obslog(path):
     # start scanning the raw files
     prev_frameid = 0
     for fname in fname_lst:
-        if fname[-5:] != '.fits':
+        if not fname.endswith('.fits'):
             continue
         fileid = fname[0:-5]
         filename = os.path.join(path, fname)

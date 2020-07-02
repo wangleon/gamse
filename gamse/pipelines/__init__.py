@@ -9,7 +9,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ..utils.obslog import read_obslog, find_log
+from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
@@ -64,60 +64,77 @@ def reduce_echelle():
 
     logger.info('Start reducing %s, %s data'%(telescope, instrument))
 
-    if telescope == 'Fraunhofer' and instrument == 'FOCES':
+    key = (telescope, instrument)
+
+    if key == ('Fraunhofer', 'FOCES'):
         foces.reduce_rawdata()
-    elif telescope == 'Xinglong216' and instrument == 'HRS':
+
+    elif key == ('Xinglong216', 'HRS'):
         xinglong216hrs.reduce_rawdata()
-    elif telescope == 'APF' and instrument == 'Levy':
+
+    elif key == ('APF', 'Levy'):
         levy.reduce()
-    elif (telescope == 'Keck' or telescope == 'Keck-I') and \
-        (instrument == 'HIRES'):
+
+    elif key == ('Keck-I', 'HIRES'):
         hires.reduce()
+
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
 def make_obslog():
     """Scan the path to the raw FITS files and generate an observing log.
+
+    Before generating the observing log file, this function will scan the local
+    directory and look for *all* files with their names ending with ".cfg", and
+    read them as config files.
+    The config files are used to find the name of the instrument that the data
+    was obtained with.
     """
     config_file_lst = []
 
     # find local config file
     for fname in os.listdir(os.curdir):
-        if fname[-4:]=='.cfg':
+        if fname.endswith('.cfg'):
             config_file_lst.append(fname)
 
-    # load both built-in and local config files
+    # load ALL local config files
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
     config.read(config_file_lst)
 
+    # find the telescope and instrument name
     section = config['data']
     telescope  = section['telescope']
     instrument = section['instrument']
-    rawdata    = 'rawdata'
-    if not os.path.exists(rawdata):
-        rawdata = section['rawdata']
+    rawdata    = section['rawdata']
 
-    if telescope == 'Fraunhofer' and instrument == 'FOCES':
+    key = (telescope, instrument)
+
+    # call the make_obslog() function in corresponding modules
+    if key == ('Fraunhofer', 'FOCES'):
         foces.make_obslog(rawdata)
-    elif telescope == 'Xinglong216' and instrument == 'HRS':
+
+    elif key == ('Xinglong216', 'HRS'):
         xinglong216hrs.make_obslog(rawdata)
-    elif telescope == 'APF' and instrument == 'Levy':
+
+    elif key == ('APF', 'Levy'):
         levy.make_obslog(rawdata)
-    elif (telescope == 'Keck' or telescope == 'Keck-I') and \
-        (instrument == 'HIRES'):
+
+    elif key == ('Keck-I', 'HIRES'):
         hires.make_obslog(rawdata)
-    elif (telescope, instrument) == ('MPG/ESO-220' 'FEROS'):
+
+    elif key == ('MPG/ESO-220', 'FEROS'):
         feros.make_obslog(rawdata)
+
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
 
 def make_config():
-    """Make config file
+    """Generate a config file.
     
     """
 
@@ -156,7 +173,7 @@ def show_onedspec():
 
     # try to load obslog
     logname_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-7:]=='.obslog']
+                        if fname.endswith('.obslog')]
     if len(logname_lst)==0:
         logtable = None
     else:
@@ -166,7 +183,7 @@ def show_onedspec():
     # find local config file
     config_file_lst = []
     for fname in os.listdir(os.curdir):
-        if fname[-4:]=='.cfg':
+        if fname.endswith('.cfg'):
             config_file_lst.append(fname)
 
     # load both built-in and local config files
@@ -183,10 +200,13 @@ def show_onedspec():
             arg = int(arg)
             for logitem in logtable:
                 if arg == logitem['frameid']:
-                    rawdata     = config['reduce'].get('onedspec', 'onedspec')
+                    # get the path to the 1d spectra
+                    oned_path   = config['reduce'].get('onedspec', 'onedspec')
+                    # get the filename suffix for 1d spectra
                     oned_suffix = config['reduce'].get('oned_suffix', 'ods')
+
                     fname = '{}_{}.fits'.format(logitem['fileid'], oned_suffix)
-                    filename = os.path.join(rawdata, fname)
+                    filename = os.path.join(oned_path, fname)
                     if os.path.exists(filename):
                         filename_lst.append(filename)
                     break
