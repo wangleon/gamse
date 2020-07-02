@@ -55,7 +55,8 @@ def reduce_singlefiber(config, logtable):
     if not os.path.exists(midproc):  os.mkdir(midproc)
 
     ################################ parse bias ################################
-    bias, bias_card_lst = get_bias(config, logtable)
+    result = get_bias(config, logtable)
+    bias, bias_card_lst, n_bias, bias_overstd, ron_bias = result
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -695,7 +696,7 @@ def reduce_singlefiber(config, logtable):
 
         filename = os.path.join(rawdata, fileid+'.fits')
 
-        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
+        message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, objname)
         logger.info(message)
         print(message)
@@ -716,6 +717,7 @@ def reduce_singlefiber(config, logtable):
             del head['BLANK']
         for key, value in card_lst:
             head.append((key, value))
+
         message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
@@ -729,11 +731,33 @@ def reduce_singlefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
+        # 2d image to extract the raw flux
+        raw_data = data.copy()
+
+        # Adding the errors of the bias subtraction
+        if config['reduce.bias'].getboolean('smooth'): 
+            bias_smooth  = config['reduce.bias'].getfloat('smooth_sigma')
+            # 2*np.pi*bias_smooth**2 -> is taking into account 
+            # that the bias smoothing is a gaussian smoothing
+            factor = 2*math.pi*bias_smooth**2
+        else:
+            factor = 1
+        ronb = bias_overstd/np.sqrt(n_bias*factor)
+
+        # creating the variance map to track the errors
+        variance_map = np.maximum(data, 0) + overstd**2 + ronb**2
+
         # correct flat
         data = data/flat_sens
+        variance_map = variance_map/flatsens**2
         message = 'Flat field corrected.'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
+
+
+        # get background lights
+        background = get_single_background(data, master_aperset)
+
 
         # background correction
         section = config['reduce.background']

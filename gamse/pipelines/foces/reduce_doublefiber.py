@@ -212,7 +212,8 @@ def reduce_doublefiber(config, logtable):
     n_fiber = 2
 
     ################################ parse bias ################################
-    bias, bias_card_lst, n_bias, bias_overstd = get_bias(config, logtable)
+    result = get_bias(config, logtable)
+    bias, bias_card_lst, n_bias, bias_overstd, ron_bias = result
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -1200,21 +1201,11 @@ def reduce_doublefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
-        # 2d image to extract the raw flux from 
-        raw_data = 1.0 * data #to ensure that python really does a copy
-
-        # Adding the errors of the bias subtraction
-        if config['reduce.bias'].getboolean('smooth'): 
-            bias_smooth  = config['reduce.bias'].getfloat('smooth_sigma')
-            # 2*np.pi*bias_smooth**2 -> is taking into account 
-            # that the bias smoothing is a gaussian smoothing
-            factor = 2*math.pi*bias_smooth**2
-        else:
-            factor = 1
-        ronb = bias_overstd/np.sqrt(n_bias*factor)
+        # 2d image to extract the raw flux
+        raw_data = data.copy()
 
         # creating the variance map to track the errors
-        variance_map = np.maximum(data, 0) + overstd**2 + ronb**2
+        variance_map = np.maximum(data, 0) + overstd**2 + ron_bias**2
 
         # correct flat
         data = data/master_flatsens
@@ -1495,21 +1486,11 @@ def reduce_doublefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
-        # 2d image to extract the raw flux from 
-        raw_data = 1.0 * data #to ensure that python really does a copy
-
-        # Adding the errors of the bias subtraction
-        if config['reduce.bias'].getboolean('smooth'): 
-            bias_smooth  = config['reduce.bias'].getfloat('smooth_sigma')
-            # 2*np.pi*bias_smooth**2 -> is taking into account 
-            # that the bias smoothing is a gaussian smoothing
-            factor = 2*math.pi*bias_smooth**2
-        else:
-            factor = 1
-        ronb = bias_overstd/np.sqrt(n_bias*factor)
+        # 2d image to extract the raw flux
+        raw_data = data.copy()
 
         # creating the variance map to track the errors
-        variance_map = np.maximum(data, 0) + overstd**2 + ronb**2
+        variance_map = np.maximum(data, 0) + overstd**2 + ron_bias**2
 
         # correct flat
         data = data/master_flatsens
