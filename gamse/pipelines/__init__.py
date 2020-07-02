@@ -1,5 +1,7 @@
 import os
+import re
 import sys
+import shutil
 import logging
 logger = logging.getLogger(__name__)
 import configparser
@@ -34,6 +36,7 @@ def reduce_echelle():
 
     """
 
+    log_filename = 'gamse.log'
     # initialize running log
     log_fmt = ' '.join(['*',
                         '%(asctime)s.%(msecs)03d',
@@ -41,8 +44,44 @@ def reduce_echelle():
                         '%(name)s - %(lineno)d - %(funcName)s():'+os.linesep,
                         ' %(message)s'+os.linesep+'-'*80,
                         ])
-    logging.basicConfig(filename='gamse.log',level=logging.DEBUG,
-            format=log_fmt, datefmt='%Y-%m-%dT%H:%M:%S')
+    # check if there's already an existing log file
+    if os.path.exists(log_filename):
+        # if logfile already exists, rename it with its creation time
+        time_str = None
+        file1 = open(log_filename)
+        for row in file1:
+            # find the first time string in the contents
+            mobj = re.search('(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', row)
+            if mobj:
+                time_str = mobj.group()
+                break
+        file1.close()
+
+        if time_str is None:
+            # time string not found
+            # rename it to gamse.DDDD.log, where DDD is an increasing number
+            i = 1
+            while(True):
+                newfilename = 'gamse.{}.log'.format(i)
+                if os.path.exists(newfilename):
+                    i += 1
+                    continue
+                else:
+                    break
+        else:
+            # time string is found, rename it to gamse.YYYY-MM-DDTHH-MM-SS.log
+            newfilename = 'gamse.{}.log'.format(time_str.replace(':', '-'))
+
+        # rename the existing gamse.log file
+        shutil.move(log_filename, newfilename)
+
+
+    logging.basicConfig(
+            filename = log_filename,
+            level    = logging.DEBUG,
+            format   = log_fmt,
+            datefmt  = '%Y-%m-%dT%H:%M:%S',
+            )
     logger = logging.getLogger(__name__)
 
     # write system info
@@ -50,7 +89,7 @@ def reduce_echelle():
 
     # load config file in current directory
     config_file_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-4:]=='.cfg']
+                        if fname.endswith('.cfg')]
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
                 interpolation           = configparser.ExtendedInterpolation(),
@@ -66,6 +105,7 @@ def reduce_echelle():
 
     key = (telescope, instrument)
 
+    # call the corresponding data reduction functions
     if key == ('Fraunhofer', 'FOCES'):
         foces.reduce_rawdata()
 
