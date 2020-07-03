@@ -691,6 +691,7 @@ def reduce_doublefiber(config, logtable):
     master_flatdsum[mask] = flat_dsum_lst[next_fiber][mask]
     master_flatsens[mask] = flat_sens_lst[next_fiber][mask]
 
+    # pack and save to fits file
     hdu_lst = fits.HDUList([
                 fits.PrimaryHDU(master_flatdata),
                 fits.ImageHDU(master_flatmask),
@@ -763,7 +764,7 @@ def reduce_doublefiber(config, logtable):
         # now all objects in fiberobj_lst must be ThAr
 
         count_thar += 1
-        message = ('FileID: {:s} ({:s}) OBJECT: {:s}'
+        message = ('FileID: {} ({}) OBJECT: {}'
                    ' - wavelength identification'.format(
                     fileid, imgtype, fiberobj_str))
         logger.info(message)
@@ -1023,9 +1024,10 @@ def reduce_doublefiber(config, logtable):
 
             # save calib results and the oned spec for this fiber
             head_fiber = head.copy()
+            prefix = 'HIERARCH GAMSE WLCALIB '
             for key,value in card_lst:
-                key = 'HIERARCH GAMSE WLCALIB '+key
-                head_fiber.append((key, value))
+                head_fiber.append((prefix+key, value))
+
             hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(header=head_fiber),
                         fits.BinTableHDU(spec),
@@ -1048,10 +1050,12 @@ def reduce_doublefiber(config, logtable):
         newspec = combine_fiber_spec(all_spec)
         # combine ident line list
         newidentlist = combine_fiber_identlist(all_identlist)
+
         # append cards to fits header
+        prefix = 'HIERARCH GAMSE WLCALIB '
         for key, value in newcards:
-            key = 'HIERARCH GAMSE WLCALIB '+key
-            head.append((key, value))
+            head.append((prefix+key, value))
+
         # pack and save to fits
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
@@ -1063,9 +1067,8 @@ def reduce_doublefiber(config, logtable):
         hdu_lst.writeto(filename, overwrite=True)
 
     # print fitting summary
-    fmt_string = (' [{:3d}] {}'
-                    ' - fiber {:1s} ({:4g} sec)'
-                    ' - {:4d}/{:4d} RMS = {:7.5f}')
+    fmt_string = (
+        ' [{:3d}] {} - fiber {:1s} ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}')
     for frameid, calib_fiber_lst in sorted(calib_lst.items()):
         for fiber, calib in sorted(calib_fiber_lst.items()):
             print(fmt_string.format(frameid, calib['fileid'], fiber,
@@ -1306,7 +1309,7 @@ def reduce_doublefiber(config, logtable):
                         upper_limit = upper_limit,
                     )
         message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
-                   fiber, len(spectra1d), fiber)
+                   fiber, len(spectra1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
         
@@ -1350,17 +1353,18 @@ def reduce_doublefiber(config, logtable):
 
         # pack spectrum
         spec = []
-        #print(flat_spec_lst)
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
             n = flux_sum.size
             # search for flat flux
             m = flat_spec_lst[fiber]['aperture']==aper
             flat_flux = flat_spec_lst[fiber][m][0]['flux']
-            #read error/varriance and calc. error
+            # read error/varriance and calc. error
             flux_err  = np.sqrt(error1d[aper]['flux_sum'])
-            #read raw flux
+            # read raw flux
             flux_raw  = specraw1d[aper]['flux_sum'] 
+            # background 1d flux
+            back_flux = background1d[aper]['flux_sum']
             
             item = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
@@ -1372,15 +1376,15 @@ def reduce_doublefiber(config, logtable):
                     np.zeros(n, dtype=np.int16),    # flux_opt_mask
                     flux_raw,                       # flux_raw
                     flat_flux,                      # flat
-                    background1d[aper]['flux_sum'], # background
+                    back_flux,                      # background
                     )
             spec.append(item)
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        message = ('Fiber {}: Wavelength calibration weights={}').format(
+        message = ('Fiber {}: Wavelength calibration weights = {}').format(
                     fiber,
-                    ','.join(['{:8.4f}'.format(w) for w in weight_lst])
+                    ','.join(['{:6.3f}'.format(w) for w in weight_lst])
                     )
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
@@ -1769,9 +1773,9 @@ def reduce_doublefiber(config, logtable):
             weight_lst = get_time_weight(ref_datetime_lst[fiber],
                                         head[statime_key])
 
-            message = ('Fiber {}: Wavelength calibration weights={}').format(
+            message = ('Fiber {}: Wavelength calibration weights = {}').format(
                         fiber,
-                        ','.join(['{:8.4f}'.format(w) for w in weight_lst])
+                        ','.join(['{:6.3f}'.format(w) for w in weight_lst])
                         )
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
