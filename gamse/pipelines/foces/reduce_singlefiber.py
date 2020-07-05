@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+from astropy.time import TimeDelta
 import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
@@ -653,32 +654,85 @@ def reduce_singlefiber(config, logtable):
     for frameid, calib in sorted(calib_lst.items()):
         print(fmt_string.format(frameid, calib['fileid'], logitem['exptime'],
             calib['nuse'], calib['ntot'], calib['std']))
-    
-    # print promotion and read input frameid list
-    while(True):
-        string = input('Select References: ')
+
+    if True:
+        # select reference ThAr automatically
+
+        # first, separate the calib items into several groups.
+        # each group shall contain adjacent calib exposures.
+        calib_groups = []
+
+        # initialize previous
+        prev_i = -100
+        # first logtiem
+        logitem0 = logtable[0]
+        prev_t = logitem0['obsdate'] + \
+                    TimeDelta(logitem0['exptime']/2, format='sec')
+
+        for i, logitem in enumerate(logtable):
+
+            if logitem['frameid'] in calib_lst \
+                and calib_lst[logitem['frameid']]['std'] < 0.01:
+
+                # if this logitem is in calib_lst, it must be put into the
+                # calib_groups, either in an existing group, or a new group
+                this_t = logitem['obsdate'] + \
+                            TimeDelta(logitem['exptime']/2, format='sec')
+                delta_t = this_t - prev_t
+
+                if i == prev_i+1 and delta_t.sec < 3*3600:
+                    # in an existing group
+                    calib_groups[-1].append(logitem['frameid'])
+                else:
+                    # in a new group
+                    calib_groups.append([logitem['frameid']])
+
+                prev_i = i
+                prev_t = this_t
+
+        # find the best calib in each group
         ref_frameid_lst  = []
         ref_calib_lst    = []
         ref_datetime_lst = []
-        succ = True
-        for s in string.split(','):
-            s = s.strip()
-            if len(s)>0 and s.isdigit() and int(s) in calib_lst:
-                frameid = int(s)
-                calib   = calib_lst[frameid]
-                ref_frameid_lst.append(frameid)
-                ref_calib_lst.append(calib)
-                ref_datetime_lst.append(calib['date-obs'])
-            else:
-                print('Warning: "{}" is an invalid calib frame'.format(s))
-                succ = False
-                break
-        if succ:
-            break
-        else:
-            continue
+        for group in calib_groups:
+            std_lst = np.array([calib_lst[frameid]['std'] for frameid in group])
+            imin = std_lst.argmin()
+            frameid = group[imin]
+            calib   = calib_lst[frameid]
+            ref_frameid_lst.append(frameid)
+            ref_calib_lst.append(calib)
+            ref_datetime_lst.append(calib['date-obs'])
 
-    # define dtype of 1-d spectra for all fibers
+    else:
+        # print promotion and read input frameid list
+        while(True):
+            string = input('Select References: ')
+            ref_frameid_lst  = []
+            ref_calib_lst    = []
+            ref_datetime_lst = []
+            succ = True
+            for s in string.split(','):
+                s = s.strip()
+                if len(s)>0 and s.isdigit() and int(s) in calib_lst:
+                    frameid = int(s)
+                    calib   = calib_lst[frameid]
+                    ref_frameid_lst.append(frameid)
+                    ref_calib_lst.append(calib)
+                    ref_datetime_lst.append(calib['date-obs'])
+                else:
+                    print('Warning: "{}" is an invalid calib frame'.format(s))
+                    succ = False
+                    break
+            if succ:
+                break
+            else:
+                continue
+
+    print('Selected Calib References:')
+    for calib in ref_calib_lst:
+        print('{}, RMS={:7.5f}'.format(calib['fileid'], calib['std']))
+
+    # define dtype of 1-d spectra
     types = [
             ('aperture',     np.int16),
             ('order',        np.int16),
@@ -908,8 +962,18 @@ def reduce_singlefiber(config, logtable):
         # wavelength calibration
         weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
 
-        message = 'Wavelength calibration: weights = {}'.format(
-                    ','.join(['{:6.3f}'.format(w) for w in weight_lst]))
+        #message = 'Wavelength calibration: weights = {}'.format(
+        #            ','.join(['{:6.3f}'.format(w) for w in weight_lst]))
+        message_lst = ['Wavelength calibration:']
+        for i in range(len(weight_lst)):
+            string = ' '*len(screen_prefix)
+            string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        ref_calib_lst[i]['fileid'],
+                        ref_calib_lst[i]['exptime'],
+                        ref_datetime_lst[i],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
