@@ -3377,6 +3377,8 @@ def select_calib_auto(calib_lst, rms_threshold=1e9, group_continuous=True,
         time_diff (float): Time difference of continuous exposures in minutes.
     Return:
         list: A list of calib dicts.
+    See Also:
+        :func:`select_calib_manu`
     """
 
     if group_continuous:
@@ -3425,27 +3427,42 @@ def select_calib_auto(calib_lst, rms_threshold=1e9, group_continuous=True,
     return ref_calib_lst
 
 
-def select_calib_manu(calib_lst):
-    """
+def select_calib_manu(calib_lst, promotion,
+        error_message='Warning: "{}" is not a valid calib object',
+        ):
+    """Select a calib dict manually.
 
     Args:
         calib_lst (dict): A dict of calib dicts.
+        promotion (str): A promotion string.
+        error_message (str): Message to be shown if user input is not found.
     Return:
         list: A list of calib dicts.
+
+    See Also:
+        :func:`select_calib_auto`
     """
     # print promotion and read input frameid list
     while(True):
-        string = input('Select References: ')
+        string = input(promotion)
         ref_calib_lst = []
         succ = True
         for s in string.split(','):
             s = s.strip()
-            if len(s)>0 and s.isdigit() and int(s) in calib_lst:
+            if len(s)>0 and s.isdigit():
                 frameid = int(s)
-                calib   = calib_lst[frameid]
-                ref_calib_lst.append(calib)
+                if frameid in calib_lst:
+                    # user input is found in calib_lst
+                    calib = calib_lst[frameid]
+                    ref_calib_lst.append(calib)
+                else:
+                    # user input is not found in calib_lst
+                    print(error_message.format(s))
+                    succ = False
+                    break
+
             else:
-                print('Warning: "{}" is an invalid calib frame'.format(s))
+                print(error_messag.format(s))
                 succ = False
                 break
         if succ:
