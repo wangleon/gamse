@@ -18,10 +18,11 @@ from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                              mosaic_spec)
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                                get_time_weight, find_caliblamp_offset,
+                                get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_pixel_wavelength,
                                 reference_self_wavelength,
+                                select_calib_auto, select_calib_manu,
                                 combine_fiber_cards,
                                 combine_fiber_spec,
                                 combine_fiber_identlist,
@@ -721,8 +722,8 @@ def reduce_doublefiber(config, logtable):
     calib_lst = {}
     # calib_lst is a hierarchical dict of calibration results
     # calib_lst = {
-    #       'frameid1': {'A': calib_dict1, 'B': calib_dict2, ...},
-    #       'frameid2': {'A': calib_dict1, 'B': calib_dict2, ...},
+    #       'A': {'frameid1': calib_dict1, 'frameid2': calib_dict2, ...}
+    #       'B': {'frameid1': calib_dict3, 'frameid2': calib_dict4, ...}
     #       ... ...
     #       }
 
@@ -1038,9 +1039,9 @@ def reduce_doublefiber(config, logtable):
             hdu_lst.writeto(filename, overwrite=True)
 
             # pack to calib_lst
-            if frameid not in calib_lst:
-                calib_lst[frameid] = {}
-            calib_lst[frameid][fiber] = calib
+            if fiber not in calib_lst:
+                calib_lst[fiber] = {}
+            calib_lst[fiber][frameid] = calib
 
         # fiber loop ends here
         # combine different fibers
@@ -1069,47 +1070,106 @@ def reduce_doublefiber(config, logtable):
     # print fitting summary
     fmt_string = (
         ' [{:3d}] {} - fiber {:1s} ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}')
-    for frameid, calib_fiber_lst in sorted(calib_lst.items()):
-        for fiber, calib in sorted(calib_fiber_lst.items()):
-            print(fmt_string.format(frameid, calib['fileid'], fiber,
-                calib['exptime'], calib['nuse'], calib['ntot'], calib['std']))
+    section = config['reduce.wlcalib']
+    auto_selection = section.getboolean('auto_selection')
 
-    # print promotion and read input frameid list
-    ref_frameid_lst  = {}
-    ref_calib_lst    = {}
-    ref_datetime_lst = {}
-    for ifiber in range(n_fiber):
-        fiber = chr(ifiber+65)
+    if auto_selection:
+        rms_threshold    = section.getfloat('rms_threshold', 0.005)
+        group_continuous = section.getboolean('group_continuous', True)
+        time_diff        = section.getfloat('time_diff', 120)
 
-        while(True):
-            string = input('Select References for fiber {}: '.format(fiber))
-            ref_frameid_lst[fiber]  = []
-            ref_calib_lst[fiber]    = []
-            ref_datetime_lst[fiber] = []
-            succ = True
-            for s in string.split(','):
-                s = s.strip()
-                if len(s)>0 and s.isdigit() and int(s) in calib_lst:
-                    frameid = int(s)
-                    calib   = calib_lst[frameid]
-                    ref_frameid_lst[fiber].append(frameid)
-                    if fiber in calib:
-                        usefiber = fiber
-                    else:
-                        usefiber = list(calib.keys())[0]
-                        print(('Warning: no ThAr for fiber {}. '
-                                'Use fiber {} instead').format(fiber, usefiber))
-                    use_calib = calib[usefiber]
-                    ref_calib_lst[fiber].append(use_calib)
-                    ref_datetime_lst[fiber].append(use_calib['date-obs'])
-                else:
-                    print('Warning: "{}" is an invalid calib frame'.format(s))
-                    succ = False
-                    break
-            if succ:
-                break
+        ref_calib_lst = {}
+
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            if fiber in calib_lst and len(calib_lst[fiber])>0:
+                ref_calib_lst[fiber] = select_calib_auto(calib_lst[fiber],
+                                            rms_threshold    = rms_threshold,
+                                            group_continuous = group_continuous,
+                                            time_diff        = time_diff,
+                                        )
             else:
-                continue
+                # because n_fiber = 2, ifiber = 0, 1.
+                # the other fiber is 1-ifiber
+                other_fiber = chr((1-ifiber)+65)
+
+                ref_calib_lst[fiber] = select_calib_auto(
+                                        calib_lst[other_fiber],
+                                        rms_threshold    = rms_threshold,
+                                        group_continuous = group_continuous,
+                                        time_diff        = time_diff,
+                                    )
+
+            if len(ref_calib_lst[fiber])==0:
+                # if no proper calib found for this fiber.
+                # then change another fiber
+                other_fiber = chr((1-ifiber)+65)
+
+                ref_calib_lst[fiber] = select_calib_auto(
+                                        calib_lst[other_fiber],
+                                        rms_threshold    = rms_threshold,
+                                        group_continuous = group_continuous,
+                                        time_diff        = time_diff,
+                                    )
+
+            if len(ref_calib_lst[fiber])==0:
+                # if still cannnot find a calib for this fiber
+                pass
+
+        # print ThAr summary and selected calib
+        mix_calib_lst = {}
+        for fiber, fiber_calib_lst in sorted(calib_lst.items()):
+            for frameid, calib in sorted(fiber_calib_lst.items()):
+                mix_calib_lst[(frameid, fiber)] = calib
+
+        ref_fileid_lst = {}
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            ref_fileid_lst[fiber] = [calib['fileid']
+                                        for calib in ref_calib_lst[fiber]]
+
+        for key, calib in sorted(mix_calib_lst.items()):
+            frameid, fiber = key
+            string = fmt_string.format(frameid, calib['fileid'], fiber,
+                            calib['exptime'], calib['nuse'], calib['ntot'],
+                            calib['std'])
+            sel_fibers = []
+            for ifiber in range(n_fiber):
+                fiber = chr(ifiber+65)
+                if calib['fileid'] in ref_fileid_lst[fiber]:
+                    sel_fibers.append(fiber)
+            if len(sel_fibers)>0:
+                string = '\033[91m{} [selected for fiber {}]\033[0m'.format(
+                            string, ','.join(sel_fibers))
+            print(string)
+
+    else:
+        # print the fitting summary
+        mix_calib_lst = {}
+        for fiber, fiber_calib_lst in sorted(calib_lst.items()):
+            for frameid, calib in sorted(fiber_calib_lst.items()):
+                mix_calib_lst[(frameid, fiber)] = calib
+        for key, calib in sorted(mix_calib_lst.items()):
+            frameid, fiber = key
+            string = fmt_string.format(frameid, calib['fileid'], fiber,
+                            calib['exptime'], calib['nuse'], calib['ntot'],
+                            calib['std'])
+            print(string)
+
+        ref_calib_lst = {}
+        for ifiber in range(n_fiber):
+            fiber = chr(ifiber+65)
+            promotion = 'Select References for fiber {}: '.format(fiber)
+
+            if fiber in calib_lst and len(calib_lst[fiber])>0:
+                ref_calib_lst[fiber] = select_calib_manu(calib_lst[fiber],
+                                        promotion = promotion,
+                                        )
+            else:
+                other_fiber = chr((1-ifiber)+65)
+                ref_calib_lst[fiber] = select_calib_manu(calib_lst[other_fiber],
+                                        promotion = promotion,
+                                        )
 
     # define dtype of 1-d spectra for all fibers
     types = [
@@ -1251,7 +1311,7 @@ def reduce_doublefiber(config, logtable):
 
         # calibrate the wavelength of background
         # get weights for calib list
-        weight_lst = get_time_weight(ref_datetime_lst[fiber], head[statime_key])
+        weight_lst = get_calib_weight_lst(ref_datetime_lst[fiber], head[statime_key])
 
         ny, nx = data.shape
         pixel_lst = np.repeat(nx//2, aper_num_lst.size)
