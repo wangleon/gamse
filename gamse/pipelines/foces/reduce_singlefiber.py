@@ -18,8 +18,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
-                                select_calib_auto,
-                                select_calib_manu)
+                                select_calib_auto, select_calib_manu,
+                                )
 from ...echelle.background import (find_background, simple_debackground,
                                    get_single_background)
 from ...utils.obslog import parse_num_seq
@@ -655,12 +655,13 @@ def reduce_singlefiber(config, logtable):
     # format for print fitting summary
     fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
     section = config['reduce.wlcalib']
-    auto_select = section.getboolean('auto_select')
+    auto_selection = section.getboolean('auto_selection')
 
-    if auto_select:
-        rms_threshold    = section.getfloat('rms_threshold')
-        group_continuous = section.getboolean('group_continuous')
-        time_diff        = section.getfloat('time_diff')
+    if auto_selection:
+        rms_threshold    = section.getfloat('rms_threshold', 0.005)
+        group_continuous = section.getboolean('group_continuous', True)
+        time_diff        = section.getfloat('time_diff', 120)
+
         ref_calib_lst = select_calib_auto(calib_lst,
                             rms_threshold    = rms_threshold,
                             group_continuous = group_continuous,
@@ -684,7 +685,9 @@ def reduce_singlefiber(config, logtable):
                         calib['std'])
             print(string)
 
-        ref_calib_lst = select_calib_manu(calib_lst)
+        promotion = 'Select References: '
+        ref_calib_lst = select_calib_manu(calib_lst,
+                            promotion = promotion)
 
     # define dtype of 1-d spectra
     types = [
