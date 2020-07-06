@@ -15,9 +15,11 @@ from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                             mosaic_spec)
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
-                                get_time_weight, find_caliblamp_offset,
+                                get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
-                                reference_self_wavelength)
+                                reference_self_wavelength,
+                                select_calib_auto,
+                                select_calib_manu)
 from ...echelle.background import (find_background, simple_debackground,
                                    get_single_background)
 from ...utils.obslog import parse_num_seq
@@ -649,88 +651,40 @@ def reduce_singlefiber(config, logtable):
         # pack to calib_lst
         calib_lst[frameid] = calib
 
-    # print fitting summary
+
+    # format for print fitting summary
     fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
-    for frameid, calib in sorted(calib_lst.items()):
-        print(fmt_string.format(frameid, calib['fileid'], logitem['exptime'],
-            calib['nuse'], calib['ntot'], calib['std']))
+    section = config['reduce.wlcalib']
+    auto_select = section.getboolean('auto_select')
 
-    if True:
-        # select reference ThAr automatically
-
-        # first, separate the calib items into several groups.
-        # each group shall contain adjacent calib exposures.
-        calib_groups = []
-
-        # initialize previous
-        prev_i = -100
-        # first logtiem
-        logitem0 = logtable[0]
-        prev_t = logitem0['obsdate'] + \
-                    TimeDelta(logitem0['exptime']/2, format='sec')
-
-        for i, logitem in enumerate(logtable):
-
-            if logitem['frameid'] in calib_lst \
-                and calib_lst[logitem['frameid']]['std'] < 0.01:
-
-                # if this logitem is in calib_lst, it must be put into the
-                # calib_groups, either in an existing group, or a new group
-                this_t = logitem['obsdate'] + \
-                            TimeDelta(logitem['exptime']/2, format='sec')
-                delta_t = this_t - prev_t
-
-                if i == prev_i+1 and delta_t.sec < 3*3600:
-                    # in an existing group
-                    calib_groups[-1].append(logitem['frameid'])
-                else:
-                    # in a new group
-                    calib_groups.append([logitem['frameid']])
-
-                prev_i = i
-                prev_t = this_t
-
-        # find the best calib in each group
-        ref_frameid_lst  = []
-        ref_calib_lst    = []
-        ref_datetime_lst = []
-        for group in calib_groups:
-            std_lst = np.array([calib_lst[frameid]['std'] for frameid in group])
-            imin = std_lst.argmin()
-            frameid = group[imin]
-            calib   = calib_lst[frameid]
-            ref_frameid_lst.append(frameid)
-            ref_calib_lst.append(calib)
-            ref_datetime_lst.append(calib['date-obs'])
+    if auto_select:
+        rms_threshold    = section.getfloat('rms_threshold')
+        group_continuous = section.getboolean('group_continuous')
+        time_diff        = section.getfloat('time_diff')
+        ref_calib_lst = select_calib_auto(calib_lst,
+                            rms_threshold    = rms_threshold,
+                            group_continuous = group_continuous,
+                            time_diff        = time_diff,
+                        )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+        # print ThAr summary and selected calib
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            if calib['fileid'] in ref_fileid_lst:
+                string = '\033[91m{} [selected]\033[0m'.format(string)
+            print(string)
 
     else:
-        # print promotion and read input frameid list
-        while(True):
-            string = input('Select References: ')
-            ref_frameid_lst  = []
-            ref_calib_lst    = []
-            ref_datetime_lst = []
-            succ = True
-            for s in string.split(','):
-                s = s.strip()
-                if len(s)>0 and s.isdigit() and int(s) in calib_lst:
-                    frameid = int(s)
-                    calib   = calib_lst[frameid]
-                    ref_frameid_lst.append(frameid)
-                    ref_calib_lst.append(calib)
-                    ref_datetime_lst.append(calib['date-obs'])
-                else:
-                    print('Warning: "{}" is an invalid calib frame'.format(s))
-                    succ = False
-                    break
-            if succ:
-                break
-            else:
-                continue
+        # print the fitting summary
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            print(string)
 
-    print('Selected Calib References:')
-    for calib in ref_calib_lst:
-        print('{}, RMS={:7.5f}'.format(calib['fileid'], calib['std']))
+        ref_calib_lst = select_calib_manu(calib_lst)
 
     # define dtype of 1-d spectra
     types = [
@@ -960,17 +914,20 @@ def reduce_singlefiber(config, logtable):
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                        obsdate = head[statime_key],
+                        exptime = head[exptime_key],
+                        )
 
         #message = 'Wavelength calibration: weights = {}'.format(
         #            ','.join(['{:6.3f}'.format(w) for w in weight_lst]))
         message_lst = ['Wavelength calibration:']
-        for i in range(len(weight_lst)):
+        for i, calib in enumerate(ref_calib_lst):
             string = ' '*len(screen_prefix)
             string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
-                        ref_calib_lst[i]['fileid'],
-                        ref_calib_lst[i]['exptime'],
-                        ref_datetime_lst[i],
+                        calib['fileid'],
+                        calib['exptime'],
+                        calib['date-obs'],
                         weight_lst[i])
             message_lst.append(string)
         message = os.linesep.join(message_lst)
