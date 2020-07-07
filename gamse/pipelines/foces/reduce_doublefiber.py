@@ -1311,7 +1311,20 @@ def reduce_doublefiber(config, logtable):
 
         # calibrate the wavelength of background
         # get weights for calib list
-        weight_lst = get_calib_weight_lst(ref_datetime_lst[fiber], head[statime_key])
+        weight_lst = get_calib_weight_lst(ref_calib_lst[fiber],
+                        obsdate = head[statime_key],
+                        exptime = head[exptime_key],
+                        )
+        message_lst = ['Fiber {}: Wavelength calibration:'.format(fiber)]
+        for i, calib in enumerate(ref_calib_lst[fiber]):
+            string = ' '*len(screen_prefix)
+            string = string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['date-obs'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         ny, nx = data.shape
         pixel_lst = np.repeat(nx//2, aper_num_lst.size)
@@ -1442,13 +1455,7 @@ def reduce_doublefiber(config, logtable):
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        message = ('Fiber {}: Wavelength calibration weights = {}').format(
-                    fiber,
-                    ','.join(['{:6.3f}'.format(w) for w in weight_lst])
-                    )
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
-
+        # weight_lst has already been determined when doing the background
         spec, card_lst = reference_spec_wavelength(spec,
                             ref_calib_lst[fiber], weight_lst)
 
@@ -1643,8 +1650,10 @@ def reduce_doublefiber(config, logtable):
             result = get_xdisp_profile(data, master_aperset[fiber])
             aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
-            weight_lst = get_time_weight(ref_datetime_lst[fiber],
-                                        head[statime_key])
+            weight_lst = get_calib_weight_lst(ref_calib_lst[fiber],
+                            obsdate = head[statime_key],
+                            exptime = head[exptime_key],
+                            )
             ny, nx = data.shape
             pixel_lst = np.repeat(nx//2, aper_num_lst.size)
             aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
@@ -1812,7 +1821,9 @@ def reduce_doublefiber(config, logtable):
                 #read error/varriance and calc. error
                 flux_err  = np.sqrt(error1d[aper]['flux_sum'])
                 #read raw flux
-                flux_raw  = specraw1d[aper]['flux_sum'] 
+                flux_raw  = specraw1d[aper]['flux_sum']
+                # background 1d flux
+                back_flux = background1d[aper]['flux_sum']
                 
                 item = (aper, 0, n,
                         np.zeros(n, dtype=np.float64),  # wavelength
@@ -1824,19 +1835,24 @@ def reduce_doublefiber(config, logtable):
                         np.zeros(n, dtype=np.int16),    # flux_opt_mask
                         flux_raw,                       # flux_raw
                         flat_flux,                      # flat
-                        background1d[aper]['flux_sum'], # background
+                        back_flux,                      # background
                         )
                 spec.append(item)
             spec = np.array(spec, dtype=spectype)
 
             # wavelength calibration
-            weight_lst = get_time_weight(ref_datetime_lst[fiber],
-                                        head[statime_key])
-
-            message = ('Fiber {}: Wavelength calibration weights = {}').format(
-                        fiber,
-                        ','.join(['{:6.3f}'.format(w) for w in weight_lst])
-                        )
+            weight_lst = get_calib_weight_lst(ref_calib_lst[fiber],
+                            obsdate = head[statime_key],
+                            exptime = head[exptime_key],
+                            )
+            message_lst = ['Fiber {}: Wavelength calibration:']
+            for i, calib in enumerate(ref_calib_lst[fiber]):
+                string = ' '*len(screen_prefix)
+                string = string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                            calib['fileid'], calib['exptime'],
+                            calib['date-obs'], weight_lst[i])
+                message_lst.append(string)
+            message = os.linesep.join(message_lst)
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
 
