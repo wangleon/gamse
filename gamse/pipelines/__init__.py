@@ -70,22 +70,11 @@ def reduce_echelle():
                     break
         else:
             # time string is found, rename it to gamse.YYYY-MM-DDTHH-MM-SS.log
-            newfilename = 'gamse.{}.log'.format(time_str.replace(':', '-'))
+            time_str = time_str.replace(':', '-')
+            newfilename = 'gamse.{}.log'.format(time_str)
 
         # rename the existing gamse.log file
         shutil.move(log_filename, newfilename)
-
-
-    logging.basicConfig(
-            filename = log_filename,
-            level    = logging.DEBUG,
-            format   = log_fmt,
-            datefmt  = '%Y-%m-%dT%H:%M:%S',
-            )
-    logger = logging.getLogger(__name__)
-
-    # write system info
-    write_system_info()
 
     # load config file in current directory
     config_file_lst = [fname for fname in os.listdir(os.curdir)
@@ -95,6 +84,27 @@ def reduce_echelle():
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
     config.read(config_file_lst)
+
+    # the level of running log depends on the mode in the config
+    modee = config['reduce']['mode']
+    if mode == 'normal':
+        level = logging.INFO
+    elif mode == 'debug':
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    # initialize running log
+    logging.basicConfig(
+            filename = log_filename,
+            level    = level,
+            format   = log_fmt,
+            datefmt  = '%Y-%m-%dT%H:%M:%S',
+            )
+    logger = logging.getLogger(__name__)
+
+    # write some system info into the running log
+    write_system_info()
 
     # find telescope and instrument from config file
     section = config['data']
