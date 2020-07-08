@@ -14,7 +14,7 @@ from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
 from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
-                                get_time_weight, find_caliblamp_offset,
+                                get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength)
 from ..common import plot_background_aspect1
@@ -34,30 +34,31 @@ def reduce_singlefiber(config, logtable):
 
     # extract keywords from config file
     section      = config['data']
-    rawdata      = section.get('rawdata')
+    rawpath      = section.get('rawdata')
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
     readout_mode = section.get('readout_mode')
 
     section     = config['reduce']
-    midproc     = section.get('midproc')
-    onedspec    = section.get('onedspec')
-    report      = section.get('report')
+    midpath     = section.get('midproc')
+    odspath     = section.get('onedspec')
+    figpath     = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):   os.mkdir(report)
-    if not os.path.exists(onedspec): os.mkdir(onedspec)
-    if not os.path.exists(midproc):  os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
 
     # initialize general card list
     general_card_lst = {}
     ############################# parse bias ###################################
 
-    bias, bias_card_lst= get_bias(config, logtable)
+    result = get_bias(config, logtable)
+    bias, bias_card_lst, n_bias, bias_overstd, ron_bias = result
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -104,13 +105,13 @@ def reduce_singlefiber(config, logtable):
         nflat = len(item_lst)       # number of flat fieldings
 
         # single-fiber
-        flat_filename    = os.path.join(midproc,
+        flat_filename    = os.path.join(midpath,
                             'flat_{}.fits'.format(flatname))
-        aperset_filename = os.path.join(midproc,
+        aperset_filename = os.path.join(midpath,
                             'trace_flat_{}.trc'.format(flatname))
-        aperset_regname  = os.path.join(midproc,
+        aperset_regname  = os.path.join(midpath,
                             'trace_flat_{}.reg'.format(flatname))
-        trace_figname = os.path.join(report,
+        trace_figname = os.path.join(figpath,
                         'trace_flat_{}.{}'.format(flatname, fig_format))
 
         # get flat_data and mask_array
@@ -136,7 +137,7 @@ def reduce_singlefiber(config, logtable):
 
             for i_item, item in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+                filename = os.path.join(rawpath, item['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 mask = get_mask(data, head)
@@ -218,21 +219,21 @@ def reduce_singlefiber(config, logtable):
             aperset.save_reg(aperset_regname)
 
             # do the flat fielding
-            # prepare the output midproc figures in debug mode
+            # prepare the output mid-prococess figures in debug mode
             if mode=='debug':
                 figname = 'flat_aperpar_{}_%03d.{}'.format(
                             flatname, fig_format)
-                fig_aperpar = os.path.join(report, figname)
+                fig_aperpar = os.path.join(figpath, figname)
             else:
                 fig_aperpar = None
 
             # prepare the name for slit figure
             figname = 'slit_flat_{}.{}'.format(flatname, fig_format)
-            fig_slit = os.path.join(report, figname)
+            fig_slit = os.path.join(figpath, figname)
 
             # prepare the name for slit file
             fname = 'slit_flat_{}.dat'.format(flatname)
-            slit_file = os.path.join(midproc, fname)
+            slit_file = os.path.join(midpath, fname)
 
             section = config['reduce.flat']
 
@@ -277,9 +278,9 @@ def reduce_singlefiber(config, logtable):
         # continue to the next colored flat
 
     ############################# Mosaic Flats #################################
-    flat_file = os.path.join(midproc, 'flat.fits')
-    trac_file = os.path.join(midproc, 'trace.trc')
-    treg_file = os.path.join(midproc, 'trace.reg')
+    flat_file = os.path.join(midpath, 'flat.fits')
+    trac_file = os.path.join(midpath, 'trace.trc')
+    treg_file = os.path.join(midpath, 'trace.reg')
 
     if len(flat_groups) == 1:
         # there's only ONE "color" of flat
@@ -287,17 +288,17 @@ def reduce_singlefiber(config, logtable):
 
         # copy the flat fits
         fname = 'flat_{}.fits'.format(flatname)
-        oriname = os.path.join(midproc, fname)
+        oriname = os.path.join(midpath, fname)
         shutil.copyfile(oriname, flat_file)
 
         '''
         # copy the trc file
         oriname = 'trace_flat_{}.trc'.format(flatname)
-        shutil.copyfile(os.path.join(midproc, oriname), trac_file)
+        shutil.copyfile(os.path.join(midpath, oriname), trac_file)
 
         # copy the reg file
         oriname = 'trace_flat_{}.reg'.format(flatname)
-        shutil.copyfile(os.path.join(midproc, oriname), treg_file)
+        shutil.copyfile(os.path.join(midpath, oriname), treg_file)
         '''
 
         flat_sens = flat_sens_lst[flatname]
@@ -383,7 +384,7 @@ def reduce_singlefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
@@ -437,7 +438,7 @@ def reduce_singlefiber(config, logtable):
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
     
-        wlcalib_fig = os.path.join(report,
+        wlcalib_fig = os.path.join(figpath,
                 'wlcalib_{}.{}'.format(fileid, fig_format))
 
         section = config['reduce.wlcalib']
@@ -506,8 +507,8 @@ def reduce_singlefiber(config, logtable):
                     if mode == 'debug':
                         figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
                         figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(report, figname1)
-                        fig_scatter = os.path.join(report, figname2)
+                        fig_ccf     = os.path.join(figpath, figname1)
+                        fig_scatter = os.path.join(figpath, figname2)
                     else:
                         fig_ccf     = None
                         fig_scatter = None
@@ -593,7 +594,7 @@ def reduce_singlefiber(config, logtable):
                 )
                 
         #hdu_lst = self_reference_singlefiber(spec, head, calib)
-        filename = os.path.join(onedspec,
+        filename = os.path.join(odspath,
                                 '{}_{}.fits'.format(fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
     
@@ -617,10 +618,10 @@ def reduce_singlefiber(config, logtable):
                     fits.BinTableHDU(spec),
                     fits.BinTableHDU(identlist),
                     ])
-        filename = os.path.join(midproc, 'wlcalib.{}.fits'.format(fileid))
+        filename = os.path.join(midpath, 'wlcalib.{}.fits'.format(fileid))
         hdu_lst.writeto(filename, overwrite=True)
 
-        filename = os.path.join(onedspec,
+        filename = os.path.join(odspath,
                                 '{}_{}.fits'.format(fileid, oned_suffix))
         hdu_lst.writeto(filename, overwrite=True)
 
@@ -629,9 +630,7 @@ def reduce_singlefiber(config, logtable):
             calib[frameid] = calib
 
     # print fitting summary
-    fmt_string = (' [{:3d}] {}'
-                    ' - ({:4g} sec)'
-                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
+    fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
     for frameid, calib in sorted(calib_lst.items()):
         print(fmt_string.format(frameid, calib['fileid'], calib['exptime'],
             calib['nuse'], calib['ntot'], calib['std']))
@@ -687,7 +686,7 @@ def reduce_singlefiber(config, logtable):
                 fits.PrimaryHDU(header=head),
                 fits.BinTableHDU(spec),
                 ])
-    filename = os.path.join(onedspec, 'flat'+oned_suffix+'.fits')
+    filename = os.path.join(odspath, 'flat'+oned_suffix+'.fits')
     hdu_lst.writeto(filename, overwrite=True)
     '''
 
@@ -716,7 +715,7 @@ def reduce_singlefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -747,7 +746,7 @@ def reduce_singlefiber(config, logtable):
 
         # correct background
         section = config['reduce.background']
-        fig_sec = os.path.join(report,
+        fig_sec = os.path.join(figpath,
                     'bkg_{}_sec.{}'.format(fileid, fig_format))
 
         stray = find_background(data, mask,
@@ -760,11 +759,11 @@ def reduce_singlefiber(config, logtable):
         data = data - stray
 
         ####
-        #outfilename = os.path.join(midproc, '%s_bkg.fits'%fileid)
+        #outfilename = os.path.join(midpath, '%s_bkg.fits'%fileid)
         #fits.writeto(outfilename, data)
 
         # plot stray light
-        fig_stray = os.path.join(report,
+        fig_stray = os.path.join(figpath,
                     'bkg_{}_stray.{}'.format(fileid, fig_format))
         plot_background_aspect1(data+stray, stray, fig_stray)
         message = 'Background corrected.'
@@ -822,7 +821,7 @@ def reduce_singlefiber(config, logtable):
                     fits.BinTableHDU(spec),
                     ])
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
-        filename = os.path.join(onedspec, fname)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
         message = 'FileID: {} - Spectra written to {}'.format(

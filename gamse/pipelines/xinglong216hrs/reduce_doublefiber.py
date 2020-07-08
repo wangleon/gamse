@@ -14,7 +14,7 @@ from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
 from ...echelle.background import find_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
-                                get_time_weight, find_caliblamp_offset,
+                                get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength)
 from ..common import plot_background_aspect1, FormattedInfo
@@ -34,7 +34,7 @@ def reduce_doublefiber(config, logtable):
 
     # extract keywords from config file
     section      = config['data']
-    rawdata      = section.get('rawdata')
+    rawpath      = section.get('rawdata')
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
@@ -43,17 +43,17 @@ def reduce_doublefiber(config, logtable):
     fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
 
     section     = config['reduce']
-    midproc     = section.get('midproc')
-    onedspec    = section.get('onedspec')
-    report      = section.get('report')
+    midpath     = section.get('midproc')
+    odspath     = section.get('onedspec')
+    figpath     = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):   os.mkdir(report)
-    if not os.path.exists(onedspec): os.mkdir(onedspec)
-    if not os.path.exists(midproc):  os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
 
     # define a fiber splitting function
     def get_fiberobj_lst(string):
@@ -140,13 +140,13 @@ def reduce_doublefiber(config, logtable):
         for flatname, item_lst in sorted(fiber_flat_lst.items()):
             nflat = len(item_lst)       # number of flat fieldings
 
-            flat_filename = os.path.join(midproc,
+            flat_filename = os.path.join(midpath,
                     'flat_{}_{}.fits'.format(fiber, flatname))
-            aperset_filename = os.path.join(midproc,
+            aperset_filename = os.path.join(midpath,
                     'trace_flat_{}_{}.trc'.format(fiber, flatname))
-            aperset_regname = os.path.join(midproc,
+            aperset_regname = os.path.join(midpath,
                     'trace_flat_{}_{}.reg'.format(fiber, flatname))
-            trace_figname = os.path.join(report,
+            trace_figname = os.path.join(figpath,
                     'trace_flat_{}_{}.{}'.format(fiber, flatname, fig_format))
 
             # get flat_data and mask_array for each flat group
@@ -172,7 +172,7 @@ def reduce_doublefiber(config, logtable):
 
                 for i_item, logitem in enumerate(item_lst):
                     # read each individual flat frame
-                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
                     data, head = fits.getdata(filename, header=True)
                     exptime_lst.append(head[exptime_key])
                     mask = get_mask(data, head)
@@ -263,21 +263,21 @@ def reduce_doublefiber(config, logtable):
                                 color={'A':'green','B':'yellow'}[fiber])
 
                 # do the flat fielding
-                # prepare the output midproc figures in debug mode
+                # prepare the output mid-process figures in debug mode
                 if mode=='debug':
                     figname = 'flat_aperpar_{}_{}_%03d.{}'.format(
                                 fiber, flatname, fig_format)
-                    fig_aperpar = os.path.join(report, figname)
+                    fig_aperpar = os.path.join(figpath, figname)
                 else:
                     fig_aperpar = None
                             
                 # prepare the name for slit figure
                 figname = 'slit_flat_{}_{}.{}'.format(fiber, flatname, fig_format)
-                fig_slit = os.path.join(report, figname)
+                fig_slit = os.path.join(figpath, figname)
 
                 # prepare the name for slit file
                 fname = 'slit_flat_{}_{}.dat'.format(fiber, flatname)
-                slit_file = os.path.join(midproc, fname)
+                slit_file = os.path.join(midpath, fname)
 
                 section = config['reduce.flat']
 
@@ -323,9 +323,9 @@ def reduce_doublefiber(config, logtable):
         # continue to the next fiber
 
     ############################# Mosaic Flats #################################
-    flat_file = os.path.join(midproc, 'flat.fits')
-    trac_file = os.path.join(midproc, 'trace.trc')
-    treg_file = os.path.join(midproc, 'trace.reg')
+    flat_file = os.path.join(midpath, 'flat.fits')
+    trac_file = os.path.join(midpath, 'trace.trc')
+    treg_file = os.path.join(midpath, 'trace.reg')
 
     master_aperset = {}
 
@@ -336,11 +336,11 @@ def reduce_doublefiber(config, logtable):
         fiber_flat_lst = flat_groups[fiber]
 
         # determine the mosaiced flat filename
-        flat_fiber_file = os.path.join(midproc,
+        flat_fiber_file = os.path.join(midpath,
                             'flat_{}.fits'.format(fiber))
-        trac_fiber_file = os.path.join(midproc,
+        trac_fiber_file = os.path.join(midpath,
                             'trace_{}.trc'.format(fiber))
-        treg_fiber_file = os.path.join(midproc,
+        treg_fiber_file = os.path.join(midpath,
                             'trace_{}.reg'.format(fiber))
 
         if len(fiber_flat_lst) == 1:
@@ -349,7 +349,7 @@ def reduce_doublefiber(config, logtable):
 
             # copy the flat fits
             oriname = 'flat_{}_{}.fits'.format(fiber, flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), flat_fiber_file)
+            shutil.copyfile(os.path.join(midpath, oriname), flat_fiber_file)
 
             '''
             # copy the trc file
@@ -357,14 +357,14 @@ def reduce_doublefiber(config, logtable):
                 oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
             else:
                 oriname = 'trace_flat_{}.trc'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
+            shutil.copyfile(os.path.join(midpath, oriname), trac_fiber_file)
 
             # copy the reg file
             if multi_fiber:
                 oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
             else:
                 oriname = 'trace_flat_{}.reg'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
+            shutil.copyfile(os.path.join(midpath, oriname), treg_fiber_file)
             '''
 
             flat_map = flatmap_lst[fiber][flatname]
@@ -573,7 +573,7 @@ def reduce_doublefiber(config, logtable):
         count_thar += 1
         print('Wavelength Calibration for {}'.format(fileid))
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
@@ -613,7 +613,7 @@ def reduce_doublefiber(config, logtable):
                         np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
             spec = np.array(spec, dtype=spectype)
 
-            wlcalib_fig = os.path.join(report,
+            wlcalib_fig = os.path.join(figpath,
                     'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format))
 
             section = config['reduce.wlcalib']
@@ -680,8 +680,8 @@ def reduce_doublefiber(config, logtable):
                         if mode == 'debug':
                             figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
                             figname2 = 'lamp_ccf_scatter.png'
-                            fig_ccf     = os.path.join(report, figname1)
-                            fig_scatter = os.path.join(report, figname2)
+                            fig_ccf     = os.path.join(figpath, figname1)
+                            fig_scatter = os.path.join(figpath, figname2)
                         else:
                             fig_ccf     = None
                             fig_scatter = None
@@ -783,7 +783,7 @@ def reduce_doublefiber(config, logtable):
                         fits.BinTableHDU(spec),
                         fits.BinTableHDU(identlist),
                         ])
-            filename = os.path.join(midproc,
+            filename = os.path.join(midpath,
                                     'wlcalib.{}.{}.fits'.format(fileid, fiber))
             hdu_lst.writeto(filename, overwrite=True)
 
@@ -850,7 +850,7 @@ def reduce_doublefiber(config, logtable):
         if imgtype != 'sci':
             continue
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
 
         logger.info('FileID: {} ({}) - start reduction: {}'.format(
             fileid, imgtype, filename))
@@ -884,7 +884,7 @@ def reduce_doublefiber(config, logtable):
 
         # correct background
         fiberobj_lst = [v.strip().lower() for v in logitem['object'].split(';')]
-        fig_sec = os.path.join(report,
+        fig_sec = os.path.join(figpath,
                   'bkg_{}_sec.{}'.format(fileid, fig_format))
 
         # find apertureset list for this item
@@ -905,7 +905,7 @@ def reduce_doublefiber(config, logtable):
         data = data - stray
 
         # plot stray light
-        fig_stray = os.path.join(report,
+        fig_stray = os.path.join(figpath,
                     'bkg_{}_stray.{}'.format(fileid, fig_format))
         plot_background_aspect1(data+stray, stray, fig_stray)
 
@@ -973,7 +973,7 @@ def reduce_doublefiber(config, logtable):
                         fits.BinTableHDU(spec),
                         ])
             fname = '{}_{}_{}.fits'.format(fileid, fiber, oned_suffix)
-            filename = os.path.join(onedspec, fname)
+            filename = os.path.join(odspath, fname)
             hdu_lst.writeto(filename, overwrite=True)
 
             message = 'FileID: {} - Spectra written to {}'.format(
