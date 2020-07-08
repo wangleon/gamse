@@ -191,24 +191,24 @@ def reduce_doublefiber(config, logtable):
 
     # extract keywords from config file
     section = config['data']
-    rawdata     = section.get('rawdata')
+    rawpath     = section.get('rawdata')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
     # if mulit-fiber, get fiber offset list from config file
     fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
     section = config['reduce']
-    midproc     = section.get('midproc')
-    onedspec    = section.get('onedspec')
-    report      = section.get('report')
+    midpath     = section.get('midproc')
+    odspath     = section.get('onedspec')
+    figpath     = section.get('report')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):   os.mkdir(report)
-    if not os.path.exists(onedspec): os.mkdir(onedspec)
-    if not os.path.exists(midproc):  os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
 
     n_fiber = 2
 
@@ -282,13 +282,13 @@ def reduce_doublefiber(config, logtable):
             # number of flat fieldings
             nflat = len(item_lst)
 
-            flat_filename = os.path.join(midproc,
+            flat_filename = os.path.join(midpath,
                     'flat_{}_{}.fits'.format(fiber, flatname))
-            aperset_filename = os.path.join(midproc,
+            aperset_filename = os.path.join(midpath,
                     'trace_flat_{}_{}.trc'.format(fiber, flatname))
-            aperset_regname = os.path.join(midproc,
+            aperset_regname = os.path.join(midpath,
                     'trace_flat_{}_{}.reg'.format(fiber, flatname))
-            trace_figname = os.path.join(report,
+            trace_figname = os.path.join(figpath,
                     'trace_flat_{}_{}.{}'.format(fiber, flatname, fig_format))
 
             # get flat_data and mask_array for each flat group
@@ -316,7 +316,7 @@ def reduce_doublefiber(config, logtable):
 
                 for i_item, logitem in enumerate(item_lst):
                     # read each individual flat frame
-                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
                     data, head = fits.getdata(filename, header=True)
                     exptime_lst.append(head[exptime_key])
                     if data.ndim == 3:
@@ -418,22 +418,22 @@ def reduce_doublefiber(config, logtable):
                 aperset.save_reg(aperset_regname, fiber=fiber, color=color)
 
                 # do flat fielding
-                # prepare the output midproc figures in debug mode
+                # prepare the output mid-process figures in debug mode
                 if mode=='debug':
                     figname = 'flat_aperpar_{}_{}_%03d.{}'.format(
                                 fiber, flatname, fig_format)
-                    fig_aperpar = os.path.join(report, figname)
+                    fig_aperpar = os.path.join(figpath, figname)
                 else:
                     fig_aperpar = None
 
                 # prepare the name for slit figure
                 figname = 'slit_flat_{}_{}.{}'.format(
                             fiber, flatname, fig_format)
-                fig_slit = os.path.join(report, figname)
+                fig_slit = os.path.join(figpath, figname)
 
                 # prepare the name for slit file
                 fname = 'slit_flat_{}_{}.dat'.format(fiber, flatname)
-                slit_file = os.path.join(midproc, fname)
+                slit_file = os.path.join(midpath, fname)
 
                 section = config['reduce.flat']
 
@@ -467,7 +467,7 @@ def reduce_doublefiber(config, logtable):
 
             '''
             # correct background for flat
-            fig_sec = os.path.join(report,
+            fig_sec = os.path.join(figpath,
                     'bkg_flat_{}_{}_sec.{}'.format(fiber, flatname, fig_format))
             section = config['reduce.background']
             stray = find_background(data, mask,
@@ -479,7 +479,7 @@ def reduce_doublefiber(config, logtable):
                     )
             flat_dbkg = flat_data - stray
             # plot stray light of flat
-            fig_stray = os.path.join(report,
+            fig_stray = os.path.join(figpath,
                         'bkg_flat_{}_{}_stray.{}'.format(
                         fiber, flatname, fig_format))
             plot_background_aspect1(flat_data, stray, fig_stray)
@@ -506,9 +506,9 @@ def reduce_doublefiber(config, logtable):
         # continue to the next fiber
 
     ############################# Mosaic Flats #################################
-    flat_file = os.path.join(midproc, 'flat.fits')
-    trac_file = os.path.join(midproc, 'trace.trc')
-    treg_file = os.path.join(midproc, 'trace.reg')
+    flat_file = os.path.join(midpath, 'flat.fits')
+    trac_file = os.path.join(midpath, 'trace.trc')
+    treg_file = os.path.join(midpath, 'trace.reg')
 
     # master aperset is a dict of {fiber: aperset}.
     master_aperset = {}
@@ -518,11 +518,11 @@ def reduce_doublefiber(config, logtable):
         fiber_flat_lst = flat_groups[fiber]
 
         # determine the mosaiced flat filename
-        flat_fiber_file = os.path.join(midproc,
+        flat_fiber_file = os.path.join(midpath,
                             'flat_{}.fits'.format(fiber))
-        trac_fiber_file = os.path.join(midproc,
+        trac_fiber_file = os.path.join(midpath,
                             'trace_{}.trc'.format(fiber))
-        treg_fiber_file = os.path.join(midproc,
+        treg_fiber_file = os.path.join(midpath,
                             'trace_{}.reg'.format(fiber))
 
         if len(fiber_flat_lst) == 1:
@@ -531,7 +531,7 @@ def reduce_doublefiber(config, logtable):
 
             # copy the flat fits
             fname = 'flat_{}_{}.fits'.format(fiber, flatname)
-            oriname = os.path.join(midproc, fname)
+            oriname = os.path.join(midpath, fname)
             shutil.copyfile(oriname, flat_fiber_file)
 
             '''
@@ -540,13 +540,13 @@ def reduce_doublefiber(config, logtable):
                 oriname = 'trace_flat_{}_{}.trc'.format(fiber, flatname)
             else:
                 oriname = 'trace_flat_{}.trc'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), trac_fiber_file)
+            shutil.copyfile(os.path.join(midpath, oriname), trac_fiber_file)
             # copy the reg file
             if multi_fiber:
                 oriname = 'trace_flat_{}_{}.reg'.format(fiber, flatname)
             else:
                 oriname = 'trace_flat_{}.reg'.format(flatname)
-            shutil.copyfile(os.path.join(midproc, oriname), treg_fiber_file)
+            shutil.copyfile(os.path.join(midpath, oriname), treg_fiber_file)
             '''
 
             flat_sens = flat_sens_lst[fiber][flatname]
@@ -629,7 +629,7 @@ def reduce_doublefiber(config, logtable):
     for fiber, aperset in sorted(master_aperset.items()):
         # save as .trc file
         fname = 'trace_{}.trc'.format(fiber)
-        outfilename = os.path.join(midproc, fname)
+        outfilename = os.path.join(midpath, fname)
         aperset.save_txt(outfilename)
         message = '{} Apertures for fiber {} saved to "{}"'.format(
                     len(aperset), fiber, outfilename)
@@ -638,7 +638,7 @@ def reduce_doublefiber(config, logtable):
 
         # save as .reg file
         fname = 'trace_{}.reg'.format(fiber)
-        outfilename = os.path.join(midproc, fname)
+        outfilename = os.path.join(midpath, fname)
         color = {'A': 'green', 'B': 'yellow'}[fiber]
         aperset.save_reg(outfilename, fiber=fiber, color=color)
 
@@ -771,7 +771,7 @@ def reduce_doublefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
@@ -839,7 +839,7 @@ def reduce_doublefiber(config, logtable):
             spec = np.array(spec, dtype=wlcalib_spectype)
 
             figname = 'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format)
-            wlcalib_fig = os.path.join(report, figname)
+            wlcalib_fig = os.path.join(figpath, figname)
 
             section = config['reduce.wlcalib']
 
@@ -909,8 +909,8 @@ def reduce_doublefiber(config, logtable):
                         if mode == 'debug':
                             figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
                             figname2 = 'lamp_ccf_scatter.png'
-                            fig_ccf     = os.path.join(report, figname1)
-                            fig_scatter = os.path.join(report, figname2)
+                            fig_ccf     = os.path.join(figpath, figname1)
+                            fig_scatter = os.path.join(figpath, figname2)
                         else:
                             fig_ccf = None
                             fig_scatter = None
@@ -1035,7 +1035,7 @@ def reduce_doublefiber(config, logtable):
                         fits.BinTableHDU(identlist),
                         ])
             fname = 'wlcalib.{}.{}.fits'.format(fileid, fiber)
-            filename = os.path.join(midproc, fname)
+            filename = os.path.join(midpath, fname)
             hdu_lst.writeto(filename, overwrite=True)
 
             # pack to calib_lst
@@ -1064,7 +1064,7 @@ def reduce_doublefiber(config, logtable):
                     fits.BinTableHDU(newidentlist),
                     ])
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
-        filename = os.path.join(onedspec, fname)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
     # print fitting summary
@@ -1228,7 +1228,7 @@ def reduce_doublefiber(config, logtable):
         if objname.lower()[0:4] in ['flat', 'thar']:
             continue
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
 
         message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
                     fileid, imgtype, fiberobj_str)
@@ -1295,7 +1295,7 @@ def reduce_doublefiber(config, logtable):
         fig_bkg.suptitle(title)
         # save figure
         figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
-        figfilename = os.path.join(report, figname)
+        figfilename = os.path.join(figpath, figname)
         fig_bkg.savefig(figfilename)
         plt.close(fig_bkg)
 
@@ -1360,7 +1360,7 @@ def reduce_doublefiber(config, logtable):
                     aper_wav_lst = aper_wav_lst,
                     )
         # save to fits
-        outfilename = os.path.join(midproc, 'bkg.{}.fits'.format(fileid))
+        outfilename = os.path.join(midpath, 'bkg.{}.fits'.format(fileid))
         bkg_obj.savefits(outfilename)
         # pack to saved_bkg_lst
         saved_bkg_lst.append(bkg_obj)
@@ -1479,7 +1479,7 @@ def reduce_doublefiber(config, logtable):
                     fits.BinTableHDU(newspec),
                     ])
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
-        filename = os.path.join(onedspec, fname)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
         message = '1D spectra written to "{}"'.format(filename)
@@ -1521,7 +1521,7 @@ def reduce_doublefiber(config, logtable):
             else:
                 pass
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        filename = os.path.join(rawpath, fileid+'.fits')
 
         message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
                     fileid, imgtype, fiberobj_str)
@@ -1599,7 +1599,7 @@ def reduce_doublefiber(config, logtable):
                     apersets[fiber] = master_aperset[fiber]
             
                 figname = 'bkg_{}_sec.{}'.format(fileid, fig_format)
-                fig_sec = os.path.join(report, figname)
+                fig_sec = os.path.join(figpath, figname)
             
                 stray = find_background(data, mask,
                                 aperturesets = apersets,
@@ -1624,7 +1624,7 @@ def reduce_doublefiber(config, logtable):
                 bkgfig.plot_background(data+stray, stray)
                 bkgfig.suptitle('Background Correction for {}'.format(fileid))
                 figname = 'bkg_{}_stray.{}'.format(fileid, fig_format)
-                fig_stray = os.path.join(report, figname)
+                fig_stray = os.path.join(figpath, figname)
                 bkgfig.savefig(fig_stray)
             
                 message = 'FileID: {} - background corrected. max value = {}'.format(
@@ -1723,7 +1723,7 @@ def reduce_doublefiber(config, logtable):
         title = 'Brightness Profile of {}'.format(fileid)
         fig_bp.suptitle(title)
         figname = 'bkgbrt_{}.png'.format(fileid)
-        figfile = os.path.join(report, figname)
+        figfile = os.path.join(figpath, figname)
         fig_bp.savefig(figfile)
         plt.close(fig_bp)
 
@@ -1735,7 +1735,7 @@ def reduce_doublefiber(config, logtable):
         fig_bkg.suptitle(title)
         # save figure
         figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
-        figfilename = os.path.join(report, figname)
+        figfilename = os.path.join(figpath, figname)
         fig_bkg.savefig(figfilename)
         plt.close(fig_bkg)
 
@@ -1880,7 +1880,7 @@ def reduce_doublefiber(config, logtable):
                     fits.BinTableHDU(newspec),
                     ])
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
-        filename = os.path.join(onedspec, fname)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
         message = '1D spectra written to "{}"'.format(filename)
