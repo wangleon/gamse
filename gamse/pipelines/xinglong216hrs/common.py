@@ -249,7 +249,7 @@ def combine_bias(config, logtable):
 
     """
 
-    rawdata      = config['data']['rawdata']
+    rawpath      = config['data']['rawpath']
     readout_mode = config['data']['readout_mode']
     section = config['reduce.bias']
     bias_file = section['bias_file']
@@ -269,7 +269,7 @@ def combine_bias(config, logtable):
     for ifile, logitem in enumerate(bias_items):
 
         # now filter the bias frames
-        filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+        filename = os.path.join(rawpath, logitem['fileid']+'.fits')
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
         data, card_lst = correct_overscan(data, head, readout_mode)
