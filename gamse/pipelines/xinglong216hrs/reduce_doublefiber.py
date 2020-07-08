@@ -34,7 +34,7 @@ def reduce_doublefiber(config, logtable):
 
     # extract keywords from config file
     section      = config['data']
-    rawpath      = section.get('rawdata')
+    rawpath      = section.get('rawpath')
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
@@ -43,9 +43,9 @@ def reduce_doublefiber(config, logtable):
     fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
 
     section     = config['reduce']
-    midpath     = section.get('midproc')
-    odspath     = section.get('onedspec')
-    figpath     = section.get('report')
+    midpath     = section.get('midpath')
+    odspath     = section.get('odspath')
+    figpath     = section.get('figpath')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
@@ -172,12 +172,11 @@ def reduce_doublefiber(config, logtable):
 
                 for i_item, logitem in enumerate(item_lst):
                     # read each individual flat frame
-                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
+                    fname = '{}.fits'.format(logitem['fileid'])
+                    filename = os.path.join(rawpath, fname)
                     data, head = fits.getdata(filename, header=True)
                     exptime_lst.append(head[exptime_key])
                     mask = get_mask(data, head)
-
-                    # generate the mask for all images
                     sat_mask = (mask&4>0)
                     bad_mask = (mask&2>0)
                     if i_item == 0:

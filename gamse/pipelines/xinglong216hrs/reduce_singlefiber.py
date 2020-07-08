@@ -34,16 +34,16 @@ def reduce_singlefiber(config, logtable):
 
     # extract keywords from config file
     section      = config['data']
-    rawpath      = section.get('rawdata')
+    rawpath      = section.get('rawpath')
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
     readout_mode = section.get('readout_mode')
 
     section     = config['reduce']
-    midpath     = section.get('midproc')
-    odspath     = section.get('onedspec')
-    figpath     = section.get('report')
+    midpath     = section.get('midpath')
+    odspath     = section.get('odspath')
+    figpath     = section.get('figpath')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
@@ -57,8 +57,7 @@ def reduce_singlefiber(config, logtable):
     general_card_lst = {}
     ############################# parse bias ###################################
 
-    result = get_bias(config, logtable)
-    bias, bias_card_lst, n_bias, bias_overstd, ron_bias = result
+    bias, bias_card_lst = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -137,7 +136,8 @@ def reduce_singlefiber(config, logtable):
 
             for i_item, item in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawpath, item['fileid']+'.fits')
+                fname = '{}.fits'.format(item['fileid'])
+                filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 mask = get_mask(data, head)
@@ -341,6 +341,7 @@ def reduce_singlefiber(config, logtable):
         #master_aperset.save_txt(trac_file)
         #master_aperset.save_reg(treg_file)
 
+    exit()
     ############################## Extract ThAr ################################
 
     # get the data shape
@@ -353,10 +354,7 @@ def reduce_singlefiber(config, logtable):
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
             ('flux',       (np.float32, nx)),
-            ('flux_err',   (np.float32, nx)),
-            ('flux_mask',  (np.int16,   nx)),
-            ('flat',       (np.float32, nx)),
-            ('background', (np.float32, nx)),
+            ('mask',       (np.int32,   nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -376,15 +374,16 @@ def reduce_singlefiber(config, logtable):
         exptime = logitem['exptime']
 
         # prepare message prefix
-        logger_prefix = 'FileID: {} - '.format(fileid)
+        logger_prefix = 'FileID: {} - '.format(logitem['fileid'])
         screen_prefix = '    - '
 
-        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
-                   'identification'.format(fileid, imgtype, objname))
+        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmt_str.format(fileid, imgtype, objname)
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
