@@ -118,7 +118,7 @@ def _read_obslog(filename):
     return logtable
 
 
-def read_obslog(filename):
+def read_obslog(filename, format='obslog'):
     """Read the observing log.
 
     Args:
@@ -128,9 +128,12 @@ def read_obslog(filename):
         :class:`astropy.table.Table`: An observing log object.
     
     """
-    registry.register_reader('obslog', Table, _read_obslog)
-    table = Table.read(filename, format='obslog')
-    registry.unregister_reader('obslog', Table)
+    if format=='obslog':
+        registry.register_reader('obslog', Table, _read_obslog)
+        table = Table.read(filename, format='obslog')
+        registry.unregister_reader('obslog', Table)
+    elif format=='astropy':
+        table = Table.read(filename, format='ascii.fixed_width_two_line')
     return table
 
 def _write_obslog(table, filename, overwrite=False, delimiter=' '):

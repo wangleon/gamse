@@ -86,7 +86,7 @@ def reduce_echelle():
     config.read(config_file_lst)
 
     # the level of running log depends on the mode in the config
-    modee = config['reduce']['mode']
+    mode = config['reduce']['mode']
     if mode == 'normal':
         level = logging.INFO
     elif mode == 'debug':
@@ -159,16 +159,15 @@ def make_obslog():
     section = config['data']
     telescope  = section['telescope']
     instrument = section['instrument']
-    rawdata    = section['rawdata']
 
     key = (telescope, instrument)
 
     # call the make_obslog() function in corresponding modules
     if key == ('Fraunhofer', 'FOCES'):
-        foces.make_obslog(rawdata)
+        foces.make_obslog()
 
     elif key == ('Xinglong216', 'HRS'):
-        xinglong216hrs.make_obslog(rawdata)
+        xinglong216hrs.make_obslog()
 
     elif key == ('APF', 'Levy'):
         levy.make_obslog(rawdata)
