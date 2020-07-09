@@ -45,6 +45,7 @@ def reduce_singlefiber(config, logtable):
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     direction   = section.get('direction')
+
     section = config['reduce']
     midpath     = section.get('midproc')
     odspath     = section.get('onedspec')
@@ -52,11 +53,18 @@ def reduce_singlefiber(config, logtable):
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
+    ncores      = section.get('ncores')
 
     # create folders if not exist
     if not os.path.exists(figpath): os.mkdir(figpath)
     if not os.path.exists(odspath): os.mkdir(odspath)
     if not os.path.exists(midpath): os.mkdir(midpath)
+
+    # determine number of cores to be used
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
 
     ################################ parse bias ################################
     result = get_bias(config, logtable)
@@ -191,10 +199,11 @@ def reduce_singlefiber(config, logtable):
             else:
                 data_lst = np.array(data_lst)
                 flat_data = combine_images(data_lst,
-                                mode       = 'mean',
-                                upper_clip = 10,
-                                maxiter    = 5,
-                                maskmode   = (None, 'max')[nflat>3],
+                                mode        = 'mean',
+                                upper_clip  = 10,
+                                maxiter     = 5,
+                                maskmode    = (None, 'max')[nflat>3],
+                                ncores      = ncores,
                                 )
                 flat_dsum = flat_data*nflat
 
@@ -404,12 +413,13 @@ def reduce_singlefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        message = ('FileID: {} ({}) OBJECT: {} - wavelength '
-                   'identification'.format(fileid, imgtype, objname))
+        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmt_str.format(fileid, imgtype, objname)
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
@@ -659,12 +669,12 @@ def reduce_singlefiber(config, logtable):
 
     if auto_selection:
         rms_threshold    = section.getfloat('rms_threshold', 0.005)
-        group_continuous = section.getboolean('group_continuous', True)
+        group_contiguous = section.getboolean('group_contiguous', True)
         time_diff        = section.getfloat('time_diff', 120)
 
         ref_calib_lst = select_calib_auto(calib_lst,
                             rms_threshold    = rms_threshold,
-                            group_continuous = group_continuous,
+                            group_contiguous = group_contiguous,
                             time_diff        = time_diff,
                         )
         ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]

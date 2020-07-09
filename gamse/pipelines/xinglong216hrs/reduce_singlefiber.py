@@ -47,11 +47,18 @@ def reduce_singlefiber(config, logtable):
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
+    ncores      = section.get('ncores')
 
     # create folders if not exist
     if not os.path.exists(figpath): os.mkdir(figpath)
     if not os.path.exists(odspath): os.mkdir(odspath)
     if not os.path.exists(midpath): os.mkdir(midpath)
+
+    # determine number of cores to be used
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
 
     # initialize general card list
     general_card_lst = {}
@@ -176,10 +183,11 @@ def reduce_singlefiber(config, logtable):
             else:
                 data_lst = np.array(data_lst)
                 flat_data = combine_images(data_lst,
-                                mode       = 'mean',
-                                upper_clip = 10,
-                                maxiter    = 5,
-                                maskmode   = (None, 'max')[nflat>3],
+                                mode        = 'mean',
+                                upper_clip  = 10,
+                                maxiter     = 5,
+                                maskmode    = (None, 'max')[nflat>3],
+                                ncores      = ncores,
                                 )
 
             # get mean exposure time and write it to header

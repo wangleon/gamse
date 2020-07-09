@@ -204,11 +204,18 @@ def reduce_doublefiber(config, logtable):
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
+    ncores      = section.get('ncores')
 
     # create folders if not exist
     if not os.path.exists(figpath): os.mkdir(figpath)
     if not os.path.exists(odspath): os.mkdir(odspath)
     if not os.path.exists(midpath): os.mkdir(midpath)
+
+    # determine number of cores to be used
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
 
     n_fiber = 2
 
@@ -367,10 +374,11 @@ def reduce_doublefiber(config, logtable):
                 else:
                     data_lst = np.array(data_lst)
                     flat_data = combine_images(data_lst,
-                                    mode       = 'mean',
-                                    upper_clip = 10,
-                                    maxiter    = 5,
-                                    maskmode   = (None, 'max')[nflat>3],
+                                    mode        = 'mean',
+                                    upper_clip  = 10,
+                                    maxiter     = 5,
+                                    maskmode    = (None, 'max')[nflat>3],
+                                    ncores      = ncores,
                                     )
                     flat_dsum = flat_data*nflat
 
@@ -1075,7 +1083,7 @@ def reduce_doublefiber(config, logtable):
 
     if auto_selection:
         rms_threshold    = section.getfloat('rms_threshold', 0.005)
-        group_continuous = section.getboolean('group_continuous', True)
+        group_contiguous = section.getboolean('group_contiguous', True)
         time_diff        = section.getfloat('time_diff', 120)
 
         ref_calib_lst = {}
@@ -1085,7 +1093,7 @@ def reduce_doublefiber(config, logtable):
             if fiber in calib_lst and len(calib_lst[fiber])>0:
                 ref_calib_lst[fiber] = select_calib_auto(calib_lst[fiber],
                                             rms_threshold    = rms_threshold,
-                                            group_continuous = group_continuous,
+                                            group_contiguous = group_contiguous,
                                             time_diff        = time_diff,
                                         )
             else:
@@ -1096,7 +1104,7 @@ def reduce_doublefiber(config, logtable):
                 ref_calib_lst[fiber] = select_calib_auto(
                                         calib_lst[other_fiber],
                                         rms_threshold    = rms_threshold,
-                                        group_continuous = group_continuous,
+                                        group_contiguous = group_contiguous,
                                         time_diff        = time_diff,
                                     )
 
@@ -1108,7 +1116,7 @@ def reduce_doublefiber(config, logtable):
                 ref_calib_lst[fiber] = select_calib_auto(
                                         calib_lst[other_fiber],
                                         rms_threshold    = rms_threshold,
-                                        group_continuous = group_continuous,
+                                        group_contiguous = group_contiguous,
                                         time_diff        = time_diff,
                                     )
 
