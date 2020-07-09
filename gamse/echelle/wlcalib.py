@@ -3366,14 +3366,14 @@ def get_aperture_coeffs_in_header(head):
     return coeffs
 
 
-def select_calib_auto(calib_lst, rms_threshold=1e9, group_continuous=True,
+def select_calib_auto(calib_lst, rms_threshold=1e9, group_contiguous=True,
         time_diff=120):
     """Select calib as references from a list of calib objects.
 
     Args:
         calib_lst (dict): A dict of calib dicts.
         rms_threshold (float): Threshold of fitting RMS.
-        group_continuous (bool): Whether group continuous exposures.
+        group_contiguous (bool): Whether to group contiguous exposures.
         time_diff (float): Time difference of continuous exposures in minutes.
     Return:
         list: A list of calib dicts.
@@ -3381,7 +3381,7 @@ def select_calib_auto(calib_lst, rms_threshold=1e9, group_continuous=True,
         :func:`select_calib_manu`
     """
 
-    if group_continuous:
+    if group_contiguous:
         calib_groups = []
 
         # initialize previous
