@@ -156,6 +156,14 @@ def combine_bias(config, logtable):
     """
     rawdata   = config['data']['rawdata']
     direction = config['data']['direction']
+
+    # determine number of cores to be used
+    ncores = config['reduce'].get('ncores')
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
+
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -226,10 +234,11 @@ def combine_bias(config, logtable):
     maskmode     = (None, 'max')[n_bias>=3]
 
     bias_combine = combine_images(bias_data_lst,
-            mode       = combine_mode,
-            upper_clip = cosmic_clip,
-            maxiter    = maxiter,
-            maskmode   = maskmode,
+            mode        = combine_mode,
+            upper_clip  = cosmic_clip,
+            maxiter     = maxiter,
+            maskmode    = maskmode,
+            ncores      = ncores,
             )
 
     bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))

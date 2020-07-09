@@ -85,6 +85,9 @@ def make_config():
             'Left Bottom & Right Top': 'xr-',
             }[readout_mode]
 
+    # general database path for this instrument
+    dbpath = '~/.gamse/Xinglong216.HRS'
+
     # create config object
     config = configparser.ConfigParser()
 
@@ -120,6 +123,7 @@ def make_config():
     config.set('reduce', 'fig_format',  'png')
     config.set('reduce', 'ncores',      'max')
 
+    # section of bias correction
     sectname = 'reduce.bias'
     config.add_section(sectname)
     config.set(sectname, 'bias_file',     '${reduce:midpath}/bias.fits')
@@ -141,17 +145,18 @@ def make_config():
     config.set(sectname, 'display',    'no')
     config.set(sectname, 'degree',     str(3))
 
-    config.add_section('reduce.flat')
-    config.set('reduce.flat', 'slit_step',       str(256))
-    config.set('reduce.flat', 'q_threshold',     str(50))
-    config.set('reduce.flat', 'mosaic_maxcount', str(50000))
+    # section of flat field correction
+    sectname = 'reduce.flat'
+    config.add_section(sectname)
+    config.set(sectname, 'slit_step',       str(256))
+    config.set(sectname, 'q_threshold',     str(50))
+    config.set(sectname, 'mosaic_maxcount', str(50000))
 
     # section of wavelength calibration
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',
-                                    '~/.gamse/Xinglong216.HRS/wlcalib')
+    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'yes')
     config.set(sectname, 'window_size',      str(13))
@@ -162,19 +167,23 @@ def make_config():
     config.set(sectname, 'q_threshold',      str(10))
     config.set(sectname, 'auto_selection',   'yes')
     config.set(sectname, 'rms_threshold',    str(0.006))
-    config.set(sectname, 'group_continuous', 'yes')
+    config.set(sectname, 'group_contiguous', 'yes')
     config.set(sectname, 'time_diff',        str(120))
 
-    config.add_section('reduce.background')
-    config.set('reduce.background', 'ncols',    str(9))
-    config.set('reduce.background', 'distance', str(7))
-    config.set('reduce.background', 'yorder',   str(7))
+    # section of background correction
+    sectname = 'reduce.background'
+    config.add_section(sectname)
+    config.set(sectname, 'ncols',    str(9))
+    config.set(sectname, 'distance', str(7))
+    config.set(sectname, 'yorder',   str(7))
 
-    config.add_section('reduce.extract')
-    config.set('reduce.extract', 'extract', 
+    # section of spectra extraction
+    sectname = 'reduce.extract'
+    config.add_section(sectname)
+    config.set(sectname, 'extract', 
             "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
-    config.set('reduce.extract', 'upper_limit', str(7))
-    config.set('reduce.extract', 'lower_limit', str(7))
+    config.set(sectname, 'upper_limit', str(7))
+    config.set(sectname, 'lower_limit', str(7))
 
     # write to config file
     filename = 'Xinglong216HRS.{}.cfg'.format(input_date)
