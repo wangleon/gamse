@@ -1,4 +1,5 @@
 import os
+import multiprocessing as mp
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,27 +9,105 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 import scipy.signal
 
-def combine_images(data,
-        mode       = 'mean',  # mode = ['mean'|'sum'|'median']
-        upper_clip = None,
-        lower_clip = None,
-        maxiter    = 10,
-        mask       = None,
-        maskmode   = None,
-        ):
-    """Combine multiple FITS images.
+def _combine_clipdata(data, mask=None, mode='mean', upper_clip=None,
+        lower_clip=None, maxiter=10, maskmode=None):
+    """Combine a clip data.
 
     Args:
         data (:class:`numpy.ndarray`): Datacube of input images.
+        mask (:class:`numpy.ndarray`): Initial mask with the same shape with
+            **data**.
         mode (str): Combine mode. Either "mean" or "sum".
         upper_clip (float): Upper threshold of the sigma-clipping. Default is
             *None*.
         lower_clip (float): Lower threshold of the sigma-clipping. Default is
             *None*.
         maxiter (int): Maximum number of iterations.
-        mask (:class:`numpy.ndarray`): Initial mask.
         maskmode (str): Mode of initial mask. Optional values are "min" and
             "max".
+        nprocessors (int): Number of processors.
+
+    Returns:
+        :class:`numpy.ndarray`: Combined image array.
+
+    See Also:
+        :func:`combine_images`
+    """
+
+    nz, ny, nx = data.shape
+    # generate a mask containing the positions of maximum pixel
+    # along the first dimension
+
+    if maskmode is None:
+        mask2 = np.zeros_like(data, dtype=np.bool)
+    elif maskmode == 'max':
+        mask2 = (np.mgrid[0:nz,0:ny,0:nx][0] == data.argmax(axis=0))
+    elif maskmode == 'min':
+        mask2 = (np.mgrid[0:nz,0:ny,0:nx][0] == data.argmin(axis=0))
+    else:
+        print('Unknown maskmode:', maskmode)
+        raise ValueError
+
+    mask = np.logical_or(mask, mask2)
+
+    # iteration begins
+    for niter in range(maxiter):
+        mdata = np.ma.masked_array(data, mask=mask)
+        mean = mdata.mean(axis=0, dtype=np.float64).data
+        std  = mdata.std(axis=0, dtype=np.float64).data
+        new_mask = np.ones_like(mask, dtype=np.bool)
+        for i in np.arange(nz):
+            chunk = data[i,:,:]
+    
+            # parse upper clipping
+            if upper_clip is None:
+                # mask1 = [False....]
+                mask1 = np.zeros_like(chunk, dtype=np.bool)
+            else:
+                mask1 = chunk > mean + abs(upper_clip)*std
+    
+            # parse lower clipping
+            if lower_clip is None:
+                # mask2 = [False....]
+                mask2 = np.zeros_like(chunk, dtype=np.bool)
+            else:
+                mask2 = chunk < mean - abs(lower_clip)*std
+    
+            new_mask[i,:,:] = np.logical_or(mask1, mask2)
+
+        if new_mask.sum() == mask.sum():
+            break
+        mask = new_mask
+    
+    mdata = np.ma.masked_array(data, mask=mask)
+
+    if mode == 'mean':
+        return mdata.mean(axis=0).data
+    elif mode == 'sum':
+        return mdata.mean(axis=0).data*nz
+    elif mode == 'median':
+        return np.median(mdata, axis=0).data
+    else:
+        return None
+
+
+def combine_images(data, mask=None, mode='mean', upper_clip=None,
+        lower_clip=None, maxiter=10, maskmode=None, ncores=1):
+    """Combine multiple FITS images.
+
+    Args:
+        data (:class:`numpy.ndarray`): Datacube of input images.
+        mask (:class:`numpy.ndarray`): Initial mask with the same shape with
+            **data**.
+        mode (str): Combine mode. Either "mean" or "sum".
+        upper_clip (float): Upper threshold of the sigma-clipping. Default is
+            *None*.
+        lower_clip (float): Lower threshold of the sigma-clipping. Default is
+            *None*.
+        maxiter (int): Maximum number of iterations.
+        maskmode (str): Mode of initial mask. Optional values are "min" and
+            "max".
+        ncores (int): Number of cores.
 
     Returns:
         :class:`numpy.ndarray`: Combined image array.
@@ -36,6 +115,9 @@ def combine_images(data,
     Raises:
         TypeError: Dimension of **data** not equal to 3.
         ValueError: Unknown **mode** or **maskmode**.
+
+    See Also:
+        :func:`_combine_clipdata`
 
     This function can be used to calculate the median, mean, or sum of a list of
     FITS images.
@@ -61,14 +143,34 @@ def combine_images(data,
         # initialize the final result array
         final_array = np.zeros((nY, nX))
 
-        # split the image into small segmentations
-        if   nY>4000 and nY%4==0: dy = nY//4
-        elif nY>2000 and nY%2==0: dy = nY//2
-        else:                     dy = nY
+        def get_fraction(N):
+            if N > 8000:
+                for i in [32, 16, 8, 4, 2, 1]:
+                    if N%i==0: return N//i
+            elif N > 4000:
+                for i in [16, 8, 4, 2, 1]:
+                    if N%i==0: return N//i
+            elif N > 2000:
+                for i in [8, 4, 2, 1]:
+                    if N%i==0: return N//i
+            elif N > 1000:
+                for i in [4, 2, 1]:
+                    if N%i==0: return N//i
+            elif N > 500:
+                for i in [2, 1]:
+                    if N%i==0: return N//i
+            else:
+                return N
 
-        if   nX>4000 and nX%4==0: dx = nX//4
-        elif nX>2000 and nX%2==0: dx = nX//2
-        else:                     dx = nX
+        # split the image into small segmentations
+        dy = get_fraction(nY)
+        dx = get_fraction(nX)
+
+        pool = mp.Pool(ncores)
+        async_result_lst = {}
+
+        if mask is None:
+            mask = np.zeros_like(data, dtype=np.bool)
 
         # segmentation loop starts here
         for y1 in np.arange(0, nY, dy):
@@ -76,71 +178,21 @@ def combine_images(data,
             for x1 in np.arange(0, nX, dx):
                 x2 = x1 + dx
 
-                clipdata = data[:,y1:y2,x1:x2]
-                nz, ny, nx = clipdata.shape
-                # generate a mask containing the positions of maximum pixel
-                # along the first dimension
-                if mask is None:
-                    clipmask1 = np.zeros_like(clipdata, dtype=np.bool)
-                else:
-                    clipmask1 = mask[:,y1:y2,x1:x2]
-
-                if maskmode is None:
-                    clipmask2 = np.zeros_like(clipdata, dtype=np.bool)
-                elif maskmode == 'max':
-                    clipmask2 = (np.mgrid[0:nz,0:ny,0:nx][0]
-                                == clipdata.argmax(axis=0))
-                elif maskmode == 'min':
-                    clipmask2 = (np.mgrid[0:nz,0:ny,0:nx][0]
-                                == clipdata.argmin(axis=0))
-                else:
-                    print('Unknown maskmode:', maskmode)
-                    raise ValueError
-
-                clipmask = np.logical_or(clipmask1, clipmask2)
-
-                # iteration begins
-                for niter in range(maxiter):
-                    mdata = np.ma.masked_array(clipdata, mask=clipmask)
-                    mean = mdata.mean(axis=0, dtype=np.float64).data
-                    std  = mdata.std(axis=0, dtype=np.float64).data
-                    new_clipmask = np.ones_like(clipmask, dtype=np.bool)
-                    for i in np.arange(nimage):
-                        chunk = clipdata[i,:,:]
-                
-                        # parse upper clipping
-                        if upper_clip is None:
-                            # mask1 = [False....]
-                            mask1 = np.zeros_like(chunk, dtype=np.bool)
-                        else:
-                            mask1 = chunk > mean + abs(upper_clip)*std
-                
-                        # parse lower clipping
-                        if lower_clip is None:
-                            # mask2 = [False....]
-                            mask2 = np.zeros_like(chunk, dtype=np.bool)
-                        else:
-                            mask2 = chunk < mean - abs(lower_clip)*std
-                
-                        new_clipmask[i,:,:] = np.logical_or(mask1, mask2)
-
-                    if new_clipmask.sum() == clipmask.sum():
-                        break
-                    clipmask = new_clipmask
-                
-                mdata = np.ma.masked_array(clipdata, mask=clipmask)
-                
-                if mode == 'mean':
-                    mean = mdata.mean(axis=0).data
-                    final_array[y1:y2,x1:x2] = mean
-                elif mode == 'sum':
-                    mean = mdata.mean(axis=0).data
-                    final_array[y1:y2,x1:x2] = mean*nimage
-                elif mode == 'median':
-                    final_array[y1:y2,x1:x2] = np.median(mdata, axis=0).data
-                else:
-                    raise ValueError
+                clipdata = data[:, y1:y2, x1:x2]
+                clipmask = mask[:, y1:y2, x1:x2]
+                result = pool.apply_async(_combine_clipdata,
+                        args=(clipdata, clipmask, mode, upper_clip, lower_clip,
+                                maxiter, maskmode))
+                async_result_lst[(x1,x2,y1,y2)] = result
         # segmentation loop ends here
+
+        pool.close()
+        pool.join()
+
+        for key, result in async_result_lst.items():
+            x1, x2, y1, y2 = key
+            final_array[y1:y2, x1:x2] = result.get()
+
         return final_array
     else:
         if mode == 'mean':
