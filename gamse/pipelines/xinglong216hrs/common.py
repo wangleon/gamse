@@ -274,10 +274,16 @@ def combine_bias(config, logtable):
         # there is no bias frames
         return None, []
 
-    for ifile, logitem in enumerate(bias_items):
+
+    fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s}'
+    head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                'obsdate')
+
+    for iframe, logitem in enumerate(bias_items):
 
         # now filter the bias frames
-        filename = os.path.join(rawpath, logitem['fileid']+'.fits')
+        fname = '{}.fits'.format(logitem['fileid'])
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
         data, card_lst = correct_overscan(data, head, readout_mode)
@@ -286,7 +292,7 @@ def combine_bias(config, logtable):
         bias_data_lst.append(data)
 
         # append the file information
-        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
+        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(iframe+1)
         card = (prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
@@ -299,10 +305,15 @@ def combine_bias(config, logtable):
                 bias_card_lst.append((newkey, value))
 
         # print info
-        if ifile == 0:
+        if iframe == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g} sec'.format(
-                logitem['fileid'], logitem['exptime']))
+            print(head_str)
+        message = fmt_str.format(
+                    '[{:d}]'.format(logitem['frameid']),
+                    logitem['fileid'], logitem['object'],
+                    logitem['exptime'], logitem['obsdate'],
+                    )
+        print(message)
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))

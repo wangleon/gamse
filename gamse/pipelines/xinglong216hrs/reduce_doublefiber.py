@@ -168,9 +168,13 @@ def reduce_doublefiber(config, logtable):
                 head_lst = []
                 exptime_lst = []
 
-                print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+                print('* Combine {} Flat Images: {}'.format(
+                        nflat, flat_filename))
+                fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s} {:^8} {:^6}'
+                head_str = fmt_str.format('frameid', 'FileID', 'Object',
+                            'exptime', 'obsdate', 'N(sat)', 'Q95')
 
-                for i_item, logitem in enumerate(item_lst):
+                for iframe, logitem in enumerate(item_lst):
                     # read each individual flat frame
                     fname = '{}.fits'.format(logitem['fileid'])
                     filename = os.path.join(rawpath, fname)
@@ -179,7 +183,7 @@ def reduce_doublefiber(config, logtable):
                     mask = get_mask(data, head)
                     sat_mask = (mask&4>0)
                     bad_mask = (mask&2>0)
-                    if i_item == 0:
+                    if iframe == 0:
                         allmask = np.zeros_like(mask, dtype=np.int16)
                     allmask += sat_mask
 
@@ -189,20 +193,21 @@ def reduce_doublefiber(config, logtable):
                         head.append((key, value))
 
                     # correct bias for flat, if has bias
-                    if bias is not None:
+                    if bias is None:
+                        message = 'No bias. skipped bias correction'
+                    else:
                         data = data - bias
                         message = 'Bias corrected'
-                    else:
-                        message = 'No bias. skipped bias correction'
                     logger.info(message)
 
                     # print info
-                    message = ('FileId: {} {}'
-                                '    exptime={:5g} sec'
-                                '    Nsat={:6d}'
-                                '    Q95={:5d}').format(
-                                item['fileid'], item['object'], item['exptime'],
-                                item['nsat'], item['q95'])
+                    if iframe == 0:
+                        print(head_str)
+                    message = fmt_str.format(
+                                '[{:d}]'.format(logitem['frameid']),
+                                logitem['fileid'], logitem['object'],
+                                logitem['exptime'], logitem['obsdate'],
+                                logitem['nsat'], logitem['q95'])
                     print(message)
 
                     data_lst.append(data)
@@ -216,6 +221,7 @@ def reduce_doublefiber(config, logtable):
                                     upper_clip = 10,
                                     maxiter    = 5,
                                     maskmode   = (None, 'max')[nflat>3],
+                                    ncores     = ncores
                                     )
 
                 # get mean exposure time and write it to header
@@ -528,8 +534,7 @@ def reduce_doublefiber(config, logtable):
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
             ('flux',       (np.float32, nx)),
-            ('flat',       (np.float32, nx)),
-            ('background', (np.float32, nx)),
+            ('mask',       (np.int32,   nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -608,8 +613,13 @@ def reduce_doublefiber(config, logtable):
             spec = []
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
-                spec.append((aper, 0, flux_sum.size,
-                        np.zeros_like(flux_sum, dtype=np.float64), flux_sum))
+                n = flux_sum.size
+                row = (aper,
+                        0,
+                        n,
+                        np.zeros_like(flux_sum, dtype=np.float64),  # wavelength
+                        flux_sum,                                   # flux
+                        )
             spec = np.array(spec, dtype=spectype)
 
             wlcalib_fig = os.path.join(figpath,

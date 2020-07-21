@@ -107,8 +107,8 @@ def reduce_singlefiber(config, logtable):
     aperset_lst   = {}
 
     # first combine the flats
-    for flatname, item_lst in flat_groups.items():
-        nflat = len(item_lst)       # number of flat fieldings
+    for flatname, logitem_lst in flat_groups.items():
+        nflat = len(logitem_lst)       # number of flat fieldings
 
         # single-fiber
         flat_filename    = os.path.join(midpath,
@@ -140,17 +140,20 @@ def reduce_singlefiber(config, logtable):
             exptime_lst = []
 
             print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s} {:^8} {:^6}'
+            head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                        'obsdate', 'N(sat)', 'Q95')
 
-            for i_item, item in enumerate(item_lst):
+            for iframe, logitem in enumerate(logitem_lst):
                 # read each individual flat frame
-                fname = '{}.fits'.format(item['fileid'])
+                fname = '{}.fits'.format(logitem['fileid'])
                 filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 mask = get_mask(data, head)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
-                if i_item == 0:
+                if iframe == 0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += sat_mask
 
@@ -168,12 +171,13 @@ def reduce_singlefiber(config, logtable):
                 logger.info(message)
 
                 # print info
-                message = ('FileID: {} {}'
-                            '    exptime={:5g} sec'
-                            '    Nsat={:6d}'
-                            '    Q95={:5d}').format(
-                            item['fileid'], item['object'], item['exptime'],
-                            item['nsat'], item['q95'])
+                if iframe == 0:
+                    print(head_str)
+                message = fmt_str.format(
+                            '[{:d}]'.format(logitem['frameid']),
+                            logitem['fileid'], logitem['object'],
+                            logitem['exptime'], logitem['obsdate'],
+                            logitem['nsat'], logitem['q95'])
                 print(message)
 
                 data_lst.append(data)
@@ -183,11 +187,11 @@ def reduce_singlefiber(config, logtable):
             else:
                 data_lst = np.array(data_lst)
                 flat_data = combine_images(data_lst,
-                                mode        = 'mean',
-                                upper_clip  = 10,
-                                maxiter     = 5,
-                                maskmode    = (None, 'max')[nflat>3],
-                                ncores      = ncores,
+                                mode       = 'mean',
+                                upper_clip = 10,
+                                maxiter    = 5,
+                                maskmode   = (None, 'max')[nflat>3],
+                                ncores     = ncores,
                                 )
 
             # get mean exposure time and write it to header
@@ -349,7 +353,6 @@ def reduce_singlefiber(config, logtable):
         #master_aperset.save_txt(trac_file)
         #master_aperset.save_reg(treg_file)
 
-    exit()
     ############################## Extract ThAr ################################
 
     # get the data shape
@@ -382,7 +385,7 @@ def reduce_singlefiber(config, logtable):
         exptime = logitem['exptime']
 
         # prepare message prefix
-        logger_prefix = 'FileID: {} - '.format(logitem['fileid'])
+        logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
         fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
@@ -450,7 +453,7 @@ def reduce_singlefiber(config, logtable):
 
         section = config['reduce.wlcalib']
 
-        title = fileid+'.fits'
+        title = '{}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
