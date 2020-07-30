@@ -1161,7 +1161,7 @@ def default_smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-def get_fiber_flat2(data, mask, apertureset, nflat, slit_step=64,
+def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         q_threshold=30,
         smooth_A_func=default_smooth_aperpar_A,
         smooth_k_func=default_smooth_aperpar_k,
@@ -1922,12 +1922,19 @@ def get_fiber_flat2(data, mask, apertureset, nflat, slit_step=64,
 
 
 def _get_fiber_flat_aperture(data, mask, aper, positions, bounds,
-        nflat, q_threshold, interf_lst,
+        nflat, q_threshold, interf_lst, corr_mask_array,
         smooth_A_func,
         smooth_k_func,
         smooth_c_func,
         smooth_bkg_func,
         ):
+    """
+
+    Args:
+        data ():
+        mask ():
+        aper ():
+    """
 
     t1 = time.time()
 
@@ -2493,6 +2500,7 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
         f = intp.InterpolatedUnivariateSpline(x_lst, slit_array[ix, :], k=3)
         full_slit_array[ix, :] = f(np.arange(nx))
 
+    # construct correced mask array
     maxlst = full_slit_array.max(axis=0)
     maxilst = full_slit_array.argmax(axis=0)
     maxmask = full_slit_array>0.10*maxlst
@@ -2503,6 +2511,7 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
         ir = xnodes[ilst[-1]]
         corr_mask_array.append((il, ir))
 
+    # construct interpolation functions
     interf_lst = []
     for x in np.arange(nx):
         slitfunc = full_slit_array[:, x]
@@ -2529,7 +2538,7 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
         mp_result = pool.apply_async(
                     _get_fiber_flat_aperture,
                     args=(data, mask, aper, positions, bounds,
-                            nflat, q_threshold, interf_lst,
+                            nflat, q_threshold, interf_lst, corr_mask_array,
                             smooth_A_func, smooth_k_func, smooth_c_func,
                             smooth_bkg_func)
                     )
@@ -2570,11 +2579,15 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
     return flatdata, flatspectable
 
 
-def get_fiber_flat(*args, **kwargs):
+def get_fiber_flat_test(*args, **kwargs):
+    mp = kwargs.pop('mp')
     t1 = time.time()
-    result = get_fiber_flat_mp(*args, **kwargs)
+    if mp:
+        result = get_fiber_flat_mp(*args, **kwargs)
+    else:
+        result = get_fiber_flat(*args, **kwargs)
     t2 = time.time()
-    print('Flat time:', t2-t1)
+    print('Flat time when multiprocessing = {} : {}'.format(mp, t2-t1))
     return result
 
 def default_smooth_flux(x, y, w):
