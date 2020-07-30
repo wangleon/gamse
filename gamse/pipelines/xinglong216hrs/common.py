@@ -15,6 +15,7 @@ import matplotlib.ticker as tck
 import matplotlib.dates as mdates
 
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.obslog import read_obslog
 from ...utils.onedarray import iterative_savgol_filter
@@ -692,3 +693,43 @@ def print_wrapper(string, item):
     else:
         return string
 
+class BackgroundFigure(BackgroundFigureCommon):
+    """Figure to plot the background correction.
+    """
+    def __init__(self, dpi=300, figsize=(12, 5.5)):
+        BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
+        width = 0.36
+        height = width*figsize[0]/figsize[1]
+        self.ax1  = self.add_axes([0.06, 0.1, width, height])
+        self.ax2  = self.add_axes([0.55, 0.1, width, height])
+        self.ax1c = self.add_axes([0.06+width+0.01, 0.1, 0.015, height])
+        self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
+
+    def plot(self, data, background, scale=(5, 99)):
+        """Plot the image data with background and the subtracted background
+        light.
+
+        Args:
+            data (:class:`numpy.ndarray`): Image data to be background
+                subtracted.
+            background (:class:`numpy.ndarray`): Background light as a 2D array.
+        """
+        # find the minimum and maximum value of plotting
+        vmin = np.percentile(data, scale[0])
+        vmax = np.percentile(data, scale[1])
+
+        cax1 = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax,
+                origin='lower')
+        cax2 = self.ax2.imshow(background, cmap='viridis',
+                origin='lower')
+        cs = self.ax2.contour(background, colors='r', linewidths=0.5)
+        self.ax2.clabel(cs, inline=1, fontsize=7, use_clabeltext=True)
+        self.colorbar(cax1, cax=self.ax1c)
+        self.colorbar(cax2, cax=self.ax2c)
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X (pixel)')
+            ax.set_ylabel('Y (pixel)')
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
