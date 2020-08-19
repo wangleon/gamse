@@ -198,7 +198,6 @@ def make_config():
     outfile.close()
 
     print('Config file written to {}'.format(filename))
-    
 
 def make_obslog():
     """Scan the raw data, and generated a log file containing the detail
@@ -409,7 +408,7 @@ def make_obslog():
     # method 2: deprecated because cannot specify the formats of each column
     #logtable.write(outfilename, format='ascii.fixed_width_two_line',
     #                delimiter='|')
-    # methhod 3
+    # method 3
     outfile = open(outfilename, 'w')
     for row in logtable.pformat_all():
         outfile.write(row+os.linesep)
@@ -458,7 +457,7 @@ def reduce_rawdata():
 
     # read obslog and config
     config = load_config('Xinglong216HRS\S*\.cfg$')
-    logtable = load_obslog('\S*\.obslog$', format='astropy')
+    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     fibermode = config['data']['fibermode']
 

@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 
-from ...echelle.imageproc import combine_images, array_to_table, fix_pixels
+from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)

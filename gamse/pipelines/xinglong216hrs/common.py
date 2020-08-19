@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates as mdates
 
+from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
@@ -327,7 +328,7 @@ def combine_bias(config, logtable):
     maxiter      = section.getint('maxiter')
     maskmode    = (None, 'max')[n_bias>=3]
 
-    bias = combine_images(bias_data_lst,
+    bias_combine = combine_images(bias_data_lst,
             mode        = combine_mode,
             upper_clip  = cosmic_clip,
             maxiter     = maxiter,
@@ -346,6 +347,7 @@ def combine_bias(config, logtable):
     head = fits.Header()
     for card in bias_card_lst:
         head.append(card)
+    head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
     hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
     ############## bias smooth ##################
@@ -353,27 +355,38 @@ def combine_bias(config, logtable):
         # bias needs to be smoothed
         smooth_method = section.get('smooth_method')
 
-        h, w = bias.shape
+        ny, nx = bias_combine.shape
+        newcard_lst = []
         if smooth_method in ['gauss', 'gaussian']:
             # perform 2D gaussian smoothing
             smooth_sigma = section.getint('smooth_sigma')
             smooth_mode  = section.get('smooth_mode')
-            bias_smooth = np.zeros_like(bias, dtype=np.float64)
-            bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
+            bias_smooth = np.zeros_like(bias_combine, dtype=np.float64)
+            bias_smooth[0:ny//2, :] = gaussian_filter(
+                                        bias_combine[0:ny//2, :],
                                         sigma = smooth_sigma,
                                         mode  = smooth_mode)
-            bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
+            bias_smooth[ny//2:ny, :] = gaussian_filter(
+                                        bias_combine[ny//2:ny, :],
                                         sigma = smooth_sigma,
                                         mode  = smooth_mode)
 
             # write information to FITS header
-            bias_card_lst.append((prefix+'SMOOTH CORRECTED',  True))
-            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+            newcard_lst.append((prefix+'SMOOTH CORRECTED',  True))
+            newcard_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            newcard_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            newcard_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
         else:
             print('Unknown smooth method: ', smooth_method)
             pass
+
+        # pack the cards to bias_card_lst and also hdu_lst
+        for card in newcard_lst:
+            hdu_lst[0].header.append(card)
+            bias_card_lst.append(card)
+        hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
+        hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_smooth
