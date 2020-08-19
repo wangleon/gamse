@@ -56,6 +56,9 @@ def make_config():
             print('Invalid input: {}'.format(string))
             continue
 
+    # general database path for this instrument
+    dbpath = '~/.gamse/FOCES'
+
     # create config object
     config = configparser.ConfigParser()
 
@@ -77,58 +80,72 @@ def make_config():
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
+    config.set('reduce', 'ncores',      'max')
 
-    config.add_section('reduce.bias')
-    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
-    config.set('reduce.bias', 'cosmic_clip',   str(10))
-    config.set('reduce.bias', 'maxiter',       str(5))
-    config.set('reduce.bias', 'smooth',        'yes')
-    config.set('reduce.bias', 'smooth_method', 'gaussian')
-    config.set('reduce.bias', 'smooth_sigma',  str(3))
-    config.set('reduce.bias', 'smooth_mode',   'nearest')
+    # section of bias correction
+    sectname = 'reduce.bias'
+    config.add_section(sectname)
+    config.set(sectname, 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set(sectname, 'cosmic_clip',   str(10))
+    config.set(sectname, 'maxiter',       str(5))
+    config.set(sectname, 'smooth',        'yes')
+    config.set(sectname, 'smooth_method', 'gaussian')
+    config.set(sectname, 'smooth_sigma',  str(3))
+    config.set(sectname, 'smooth_mode',   'nearest')
 
-    config.add_section('reduce.trace')
-    config.set('reduce.trace', 'minimum',    str(8))
-    config.set('reduce.trace', 'scan_step',  str(100))
-    config.set('reduce.trace', 'separation', '500:26, 1500:15')
-    config.set('reduce.trace', 'filling',    str(0.3))
-    config.set('reduce.trace', 'align_deg',  str(2))
-    config.set('reduce.trace', 'display',    'no')
-    config.set('reduce.trace', 'degree',     str(3))
+    # section of order trace
+    sectname = 'reduce.trace'
+    config.add_section(sectname)
+    config.set(sectname, 'minimum',    str(8))
+    config.set(sectname, 'scan_step',  str(100))
+    config.set(sectname, 'separation', '500:26, 1500:15')
+    config.set(sectname, 'filling',    str(0.3))
+    config.set(sectname, 'align_deg',  str(2))
+    config.set(sectname, 'display',    'no')
+    config.set(sectname, 'degree',     str(3))
 
-    config.add_section('reduce.flat')
-    config.set('reduce.flat', 'slit_step',       str(128))
-    config.set('reduce.flat', 'q_threshold',     str(50))
-    config.set('reduce.flat', 'param_deg',       str(7))
-    config.set('reduce.flat', 'mosaic_maxcount', str(50000))
+    # section of flat field correction
+    sectname = 'reduce.flat'
+    config.add_section(sectname)
+    config.set(sectname, 'slit_step',       str(128))
+    config.set(sectname, 'q_threshold',     str(50))
+    config.set(sectname, 'param_deg',       str(7))
+    config.set(sectname, 'mosaic_maxcount', str(50000))
 
-    config.add_section('reduce.wlcalib')
-    config.set('reduce.wlcalib', 'search_database', 'yes')
-    config.set('reduce.wlcalib', 'database_path',
-                                    '~/.gamse/FOCES/wlcalib')
-    config.set('reduce.wlcalib', 'linelist',        'thar.dat')
-    config.set('reduce.wlcalib', 'use_prev_fitpar', 'no')
-    config.set('reduce.wlcalib', 'window_size',     str(13))
-    config.set('reduce.wlcalib', 'xorder',          str(3))
-    config.set('reduce.wlcalib', 'yorder',          str(4))
+    # section of wavelength calibration
+    sectname = 'reduce.wlcalib'
+    config.add_section(sectname)
+    config.set(sectname, 'search_database',  'yes')
+    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
+    config.set(sectname, 'linelist',         'thar.dat')
+    config.set(sectname, 'use_prev_fitpar',  'no')
+    config.set(sectname, 'window_size',      str(13))
+    config.set(sectname, 'xorder',           str(3))
+    config.set(sectname, 'yorder',           str(4))
     # in previous single fiber data, yorder = 4
-    config.set('reduce.wlcalib', 'maxiter',         str(6))
-    config.set('reduce.wlcalib', 'clipping',        str(2.3))
-    config.set('reduce.wlcalib', 'q_threshold',     str(10))
+    config.set(sectname, 'maxiter',          str(6))
+    config.set(sectname, 'clipping',         str(2.3))
+    config.set(sectname, 'q_threshold',      str(10))
+    config.set(sectname, 'auto_selection',   'yes')
+    config.set(sectname, 'rms_threshold',    str(0.006))
+    config.set(sectname, 'group_contiguous', 'yes')
+    config.set(sectname, 'time_diff',        str(120))
 
-    config.add_section('reduce.background')
-    config.set('reduce.background', 'subtract', 'yes')
-    config.set('reduce.background', 'ncols',    str(9))
+    # section of background correction
+    sectname = 'reduce.background'
+    config.add_section(sectname)
+    config.set(sectname, 'subtract',      'yes')
+    config.set(sectname, 'ncols',         str(9))
     distance = {'single': 6, 'double': 2}[fibermode]
-    config.set('reduce.background', 'distance', str(distance))
-    config.set('reduce.background', 'yorder',   str(6))
-    config.set('reduce.background', 'excluded_frameids', '')
-    config.set('reduce.background', 'database_path',
-                                    '~/.gamse/FOCES/background')
-                                    
-    config.add_section('reduce.extract')
-    config.set('reduce.extract', 'upper_limit', str(6))
-    config.set('reduce.extract', 'lower_limit', str(6))
+    config.set(sectname, 'distance',      str(distance))
+    config.set(sectname, 'yorder',        str(6))
+    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
+
+    # section of spectra extraction
+    sectname = 'reduce.extract'
+    config.add_section(sectname)
+    config.set(sectname, 'upper_limit', str(6))
+    config.set(sectname, 'lower_limit', str(6))
 
     # write to config file
     filename = 'FOCES.{}.cfg'.format(input_date)
@@ -144,7 +161,7 @@ def make_config():
 
     print('Config file written to {}'.format(filename))
 
-def make_obslog(path):
+def make_obslog():
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
@@ -153,21 +170,19 @@ def make_obslog(path):
     If the file name already exists, `YYYY-MM-DD.1.obslog`,
     `YYYY-MM-DD.2.obslog` ... will be used as substituions.
 
-    Args:
-        path (str): Path to the raw FITS files.
-
     """
 
     # load config file
     config = load_config('FOCES\S*\.cfg$')
 
+    rawpath   = config['data']['rawdata']
     fibermode = config['data']['fibermode']
     
     # standard naming convenction for fileid
     name_pattern1 = '^\d{8}_\d{4}_FOC\d{4}_[A-Za-z0-9]{4}$'
     name_pattern2 = '^fcs_\d{14}$'
 
-    fname_lst = sorted(os.listdir(path))
+    fname_lst = sorted(os.listdir(rawpath))
 
     # find the maximum length of fileid
     maxlen_fileid = 0
@@ -192,7 +207,7 @@ def make_obslog(path):
         if not fname.endswith('.fits'):
             continue
         fileid = fname[0:-5]
-        filename = os.path.join(path, fname)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
         # old FOCES data are 3-dimensional arrays

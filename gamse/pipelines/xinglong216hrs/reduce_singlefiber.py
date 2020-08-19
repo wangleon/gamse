@@ -6,19 +6,23 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
+import matplotlib.pyplot as plt
 
-from ...echelle.imageproc import combine_images, array_to_table, fix_pixels
+from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)
-from ...echelle.background import find_background
+from ...echelle.background import find_background, get_single_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
-                                get_time_weight, find_caliblamp_offset,
+                                get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
-                                reference_self_wavelength)
+                                reference_self_wavelength,
+                                select_calib_auto, select_calib_manu,
+                                )
 from ..common import plot_background_aspect1
-from .common import (get_bias, get_mask, correct_overscan, TraceFigure,
+from .common import (get_bias, get_mask, correct_overscan,
+                    TraceFigure, BackgroundFigure,
                      select_calib_from_database)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
@@ -34,30 +38,37 @@ def reduce_singlefiber(config, logtable):
 
     # extract keywords from config file
     section      = config['data']
-    rawdata      = section.get('rawdata')
+    rawpath      = section.get('rawpath')
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
     readout_mode = section.get('readout_mode')
 
     section     = config['reduce']
-    midproc     = section.get('midproc')
-    onedspec    = section.get('onedspec')
-    report      = section.get('report')
+    midpath     = section.get('midpath')
+    odspath     = section.get('odspath')
+    figpath     = section.get('figpath')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
+    ncores      = section.get('ncores')
 
     # create folders if not exist
-    if not os.path.exists(report):   os.mkdir(report)
-    if not os.path.exists(onedspec): os.mkdir(onedspec)
-    if not os.path.exists(midproc):  os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
+
+    # determine number of cores to be used
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
 
     # initialize general card list
     general_card_lst = {}
     ############################# parse bias ###################################
 
-    bias, bias_card_lst= get_bias(config, logtable)
+    bias, bias_card_lst = get_bias(config, logtable)
 
     ######################### find flat groups #################################
     print('*'*10 + 'Parsing Flat Fieldings' + '*'*10)
@@ -100,17 +111,17 @@ def reduce_singlefiber(config, logtable):
     aperset_lst   = {}
 
     # first combine the flats
-    for flatname, item_lst in flat_groups.items():
-        nflat = len(item_lst)       # number of flat fieldings
+    for flatname, logitem_lst in flat_groups.items():
+        nflat = len(logitem_lst)       # number of flat fieldings
 
         # single-fiber
-        flat_filename    = os.path.join(midproc,
+        flat_filename    = os.path.join(midpath,
                             'flat_{}.fits'.format(flatname))
-        aperset_filename = os.path.join(midproc,
+        aperset_filename = os.path.join(midpath,
                             'trace_flat_{}.trc'.format(flatname))
-        aperset_regname  = os.path.join(midproc,
+        aperset_regname  = os.path.join(midpath,
                             'trace_flat_{}.reg'.format(flatname))
-        trace_figname = os.path.join(report,
+        trace_figname = os.path.join(figpath,
                         'trace_flat_{}.{}'.format(flatname, fig_format))
 
         # get flat_data and mask_array
@@ -133,16 +144,20 @@ def reduce_singlefiber(config, logtable):
             exptime_lst = []
 
             print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+            fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s} {:^8} {:^6}'
+            head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                        'obsdate', 'N(sat)', 'Q95')
 
-            for i_item, item in enumerate(item_lst):
+            for iframe, logitem in enumerate(logitem_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawdata, item['fileid']+'.fits')
+                fname = '{}.fits'.format(logitem['fileid'])
+                filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 mask = get_mask(data, head)
                 sat_mask = (mask&4>0)
                 bad_mask = (mask&2>0)
-                if i_item == 0:
+                if iframe == 0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
                 allmask += sat_mask
 
@@ -160,12 +175,13 @@ def reduce_singlefiber(config, logtable):
                 logger.info(message)
 
                 # print info
-                message = ('FileID: {} {}'
-                            '    exptime={:5g} sec'
-                            '    Nsat={:6d}'
-                            '    Q95={:5d}').format(
-                            item['fileid'], item['object'], item['exptime'],
-                            item['nsat'], item['q95'])
+                if iframe == 0:
+                    print(head_str)
+                message = fmt_str.format(
+                            '[{:d}]'.format(logitem['frameid']),
+                            logitem['fileid'], logitem['object'],
+                            logitem['exptime'], logitem['obsdate'],
+                            logitem['nsat'], logitem['q95'])
                 print(message)
 
                 data_lst.append(data)
@@ -179,6 +195,7 @@ def reduce_singlefiber(config, logtable):
                                 upper_clip = 10,
                                 maxiter    = 5,
                                 maskmode   = (None, 'max')[nflat>3],
+                                ncores     = ncores,
                                 )
 
             # get mean exposure time and write it to header
@@ -218,21 +235,21 @@ def reduce_singlefiber(config, logtable):
             aperset.save_reg(aperset_regname)
 
             # do the flat fielding
-            # prepare the output midproc figures in debug mode
+            # prepare the output mid-prococess figures in debug mode
             if mode=='debug':
                 figname = 'flat_aperpar_{}_%03d.{}'.format(
                             flatname, fig_format)
-                fig_aperpar = os.path.join(report, figname)
+                fig_aperpar = os.path.join(figpath, figname)
             else:
                 fig_aperpar = None
 
             # prepare the name for slit figure
             figname = 'slit_flat_{}.{}'.format(flatname, fig_format)
-            fig_slit = os.path.join(report, figname)
+            fig_slit = os.path.join(figpath, figname)
 
             # prepare the name for slit file
             fname = 'slit_flat_{}.dat'.format(flatname)
-            slit_file = os.path.join(midproc, fname)
+            slit_file = os.path.join(midpath, fname)
 
             section = config['reduce.flat']
 
@@ -277,9 +294,9 @@ def reduce_singlefiber(config, logtable):
         # continue to the next colored flat
 
     ############################# Mosaic Flats #################################
-    flat_file = os.path.join(midproc, 'flat.fits')
-    trac_file = os.path.join(midproc, 'trace.trc')
-    treg_file = os.path.join(midproc, 'trace.reg')
+    flat_file = os.path.join(midpath, 'flat.fits')
+    trac_file = os.path.join(midpath, 'trace.trc')
+    treg_file = os.path.join(midpath, 'trace.reg')
 
     if len(flat_groups) == 1:
         # there's only ONE "color" of flat
@@ -287,17 +304,17 @@ def reduce_singlefiber(config, logtable):
 
         # copy the flat fits
         fname = 'flat_{}.fits'.format(flatname)
-        oriname = os.path.join(midproc, fname)
+        oriname = os.path.join(midpath, fname)
         shutil.copyfile(oriname, flat_file)
 
         '''
         # copy the trc file
         oriname = 'trace_flat_{}.trc'.format(flatname)
-        shutil.copyfile(os.path.join(midproc, oriname), trac_file)
+        shutil.copyfile(os.path.join(midpath, oriname), trac_file)
 
         # copy the reg file
         oriname = 'trace_flat_{}.reg'.format(flatname)
-        shutil.copyfile(os.path.join(midproc, oriname), treg_file)
+        shutil.copyfile(os.path.join(midpath, oriname), treg_file)
         '''
 
         flat_sens = flat_sens_lst[flatname]
@@ -352,19 +369,17 @@ def reduce_singlefiber(config, logtable):
             ('points',     np.int16),
             ('wavelength', (np.float64, nx)),
             ('flux',       (np.float32, nx)),
-            ('flux_err',   (np.float32, nx)),
-            ('flux_mask',  (np.int16,   nx)),
-            ('flat',       (np.float32, nx)),
-            ('background', (np.float32, nx)),
+            ('mask',       (np.int32,   nx)),
             ]
     names, formats = list(zip(*types))
-    spectype = np.dtype({'names': names, 'formats': formats})
+    wlcalib_spectype = np.dtype({'names': names, 'formats': formats})
     
     calib_lst = {}
 
     # filter ThAr frames
-    thar_items = list(filter(lambda item: item['object'].lower() == 'thar',
-                             logtable))
+    filter_thar = lambda item: item['object'].lower() == 'thar'
+
+    thar_items = list(filter(filter_thar, logtable))
 
     for ithar, logitem in enumerate(thar_items):
         # logitem alias
@@ -378,12 +393,13 @@ def reduce_singlefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        message = ('FileID: {} ({}) OBJECT: {{{}}} - wavelength '
-                   'identification'.format(fileid, imgtype, objname))
+        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmt_str.format(fileid, imgtype, objname)
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawdata, fileid+'.fits')
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
@@ -423,26 +439,22 @@ def reduce_singlefiber(config, logtable):
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
             n = flux_sum.size
-            row = (
-                    aper,
-                    0,
-                    n,
+
+            # pack to table
+            row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux
-                    np.zeros(n, dtype=np.float32),  # flux error
-                    np.zeros(n, dtype=np.int16),    # flux mask
-                    np.zeros(n, dtype=np.float32),  # flat
-                    np.zeros(n, dtype=np.float32),  # background
+                    np.zeros(n, dtype=np.int16),    # mask
                     )
             spec.append(row)
-        spec = np.array(spec, dtype=spectype)
-    
-        wlcalib_fig = os.path.join(report,
-                'wlcalib_{}.{}'.format(fileid, fig_format))
+        spec = np.array(spec, dtype=wlcalib_spectype)
+   
+        figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
+        wlcalib_fig = os.path.join(figpath, figname)
 
         section = config['reduce.wlcalib']
 
-        title = fileid+'.fits'
+        title = '{}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
@@ -461,7 +473,7 @@ def reduce_singlefiber(config, logtable):
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = 'Archive wavelength calibration not found'
+                    message = 'Archive wavelength calibration file not found'
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -506,8 +518,8 @@ def reduce_singlefiber(config, logtable):
                     if mode == 'debug':
                         figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
                         figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(report, figname1)
-                        fig_scatter = os.path.join(report, figname2)
+                        fig_ccf     = os.path.join(figpath, figname1)
+                        fig_scatter = os.path.join(figpath, figname2)
                     else:
                         fig_ccf     = None
                         fig_scatter = None
@@ -521,8 +533,9 @@ def reduce_singlefiber(config, logtable):
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
 
-                    message = 'Aperture offset = {}; Pixel offset = {}'.format(
-                                aperture_koffset, pixel_koffset)
+                    message = 'Aperture offset = {}; Pixel offset = {}'
+                    message = message.format(aperture_koffset,
+                                             pixel_koffset)
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -591,74 +604,75 @@ def reduce_singlefiber(config, logtable):
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
                 )
-                
-        #hdu_lst = self_reference_singlefiber(spec, head, calib)
-        filename = os.path.join(onedspec,
-                                '{}_{}.fits'.format(fileid, oned_suffix))
-        hdu_lst.writeto(filename, overwrite=True)
-    
+
         # add more infos in calib
         calib['fileid']   = fileid
         calib['date-obs'] = head[statime_key]
         calib['exptime']  = head[exptime_key]
-        # pack to calib_lst
-        calib_lst[logitem['frameid']] = calib
 
         # reference the ThAr spectra
         spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
-        # save calib results and the oned spec for this fiber
-        for key,value in card_lst:
-            key = 'HIERARCH GAMSE WLCALIB '+key
-            head.append((key, value))
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix+key, value))
 
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(spec),
                     fits.BinTableHDU(identlist),
                     ])
-        filename = os.path.join(midproc, 'wlcalib.{}.fits'.format(fileid))
+
+        # save in midproc path as a wlcalib reference file
+        fname = 'wlcalib.{}.fits'.format(fileid)
+        filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        filename = os.path.join(onedspec,
-                                '{}_{}.fits'.format(fileid, oned_suffix))
+        # save in onedspec path
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
-
+    
         # pack to calib_lst
-        if frameid not in calib_lst:
-            calib[frameid] = calib
+        calib_lst[frameid] = calib
+
 
     # print fitting summary
-    fmt_string = (' [{:3d}] {}'
-                    ' - ({:4g} sec)'
-                    ' - {:4d}/{:4d} r.m.s. = {:7.5f}')
-    for frameid, calib in sorted(calib_lst.items()):
-        print(fmt_string.format(frameid, calib['fileid'], calib['exptime'],
-            calib['nuse'], calib['ntot'], calib['std']))
-    
-    # print promotion and read input frameid list
-    while(True):
-        string = input('Select References: ')
-        ref_frameid_lst  = []
-        ref_calib_lst    = []
-        ref_datetime_lst = []
-        succ = True
-        for s in string.split(','):
-            s = s.strip()
-            if len(s)>0 and s.isdigit() and int(s) in calib_lst:
-                frameid = int(s)
-                calib   = calib_lst[frameid]
-                ref_frameid_lst.append(frameid)
-                ref_calib_lst.append(calib)
-                ref_datetime_lst.append(calib['date-obs'])
-            else:
-                print('Warning: "{}" is an invalid calib frame'.format(s))
-                succ = False
-                break
-        if succ:
-            break
-        else:
-            continue
+    fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
+    section = config['reduce.wlcalib']
+    auto_selection = section.getboolean('auto_selection')
+
+    if auto_selection:
+        rms_threshold    = section.getfloat('rms_threshold', 0.005)
+        group_contiguous = section.getboolean('group_contiguous', True)
+        time_diff        = section.getfloat('time_diff', 120)
+
+        ref_calib_lst = select_calib_auto(calib_lst,
+                            rms_threshold    = rms_threshold,
+                            group_contiguous = group_contiguous,
+                            time_diff        = time_diff,
+                        )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+
+        # print ThAr summary and selected calib
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            if calib['fileid'] in ref_fileid_lst:
+                string = '\033[91m{} [selected]\033[0m'.format(string)
+            print(string)
+    else:
+        # print the fitting summary
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            print(string)
+
+        promotion = 'Select References: '
+        ref_calib_lst = select_calib_manu(calib_lst,
+                            promotion = promotion)
 
     '''
     ############################## Extract Flat ################################
@@ -687,9 +701,23 @@ def reduce_singlefiber(config, logtable):
                 fits.PrimaryHDU(header=head),
                 fits.BinTableHDU(spec),
                 ])
-    filename = os.path.join(onedspec, 'flat'+oned_suffix+'.fits')
+    filename = os.path.join(odspath, 'flat'+oned_suffix+'.fits')
     hdu_lst.writeto(filename, overwrite=True)
     '''
+
+    # define dtype of 1-d spectra
+    types = [
+            ('aperture',    np.int16),
+            ('order',       np.int16),
+            ('points',      np.int16),
+            ('wavelength',  (np.float64, nx)),
+            ('flux',        (np.float32, nx)),
+            ('error',       (np.float32, nx)),
+            ('mask',        (np.int16,   nx)),
+            ('background',  (np.float32, nx)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
 
     # filter science items in logtable
     extr_filter = config['reduce.extract'].get('extract',
@@ -698,7 +726,7 @@ def reduce_singlefiber(config, logtable):
     extr_items = list(filter(extr_filter, logtable))
 
     #################### Extract Science Spectrum ##############################
-    for iextr, logitem in extr_items:
+    for logitem in extr_items:
 
         # logitem alias
         frameid = logitem['frameid']
@@ -711,12 +739,12 @@ def reduce_singlefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        message = 'FileID: {} ({}) OBJECT: {{{}}} - start reduction'.format(
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
+
+        message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, objname)
         logger.info(message)
         print(message)
-
-        filename = os.path.join(rawdata, fileid+'.fits')
 
         # read raw data
         data, head = fits.getdata(filename, header=True)
@@ -745,70 +773,111 @@ def reduce_singlefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
-        # correct background
-        section = config['reduce.background']
-        fig_sec = os.path.join(report,
-                    'bkg_{}_sec.{}'.format(fileid, fig_format))
-
-        stray = find_background(data, mask,
-                apertureset_lst = master_aperset,
-                ncols           = section.getint('ncols'),
-                distance        = section.getfloat('distance'),
-                yorder          = section.getint('yorder'),
-                fig_section     = fig_sec,
-                )
-        data = data - stray
-
-        ####
-        #outfilename = os.path.join(midproc, '%s_bkg.fits'%fileid)
-        #fits.writeto(outfilename, data)
+        # get background lights
+        background = get_single_background(data, master_aperset)
 
         # plot stray light
-        fig_stray = os.path.join(report,
-                    'bkg_{}_stray.{}'.format(fileid, fig_format))
-        plot_background_aspect1(data+stray, stray, fig_stray)
-        message = 'Background corrected.'
+        fig_bkg = BackgroundFigure()
+        fig_bkg.plot(data, background)
+        # set title
+        title = 'Background Correction for {}'.format(fileid)
+        fig_bkg.suptitle(title)
+        # save figure
+        figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
+        figfilename = os.path.join(figpath, figname)
+        fig_bkg.savefig(figfilename)
+        plt.close(fig_bkg)
+
+        ## correct background
+        #section = config['reduce.background']
+        #fig_sec = os.path.join(figpath,
+        #            'bkg_{}_sec.{}'.format(fileid, fig_format))
+        #stray = find_background(data, mask,
+        #        apertureset_lst = master_aperset,
+        #        ncols           = section.getint('ncols'),
+        #        distance        = section.getfloat('distance'),
+        #        yorder          = section.getint('yorder'),
+        #        fig_section     = fig_sec,
+        #        )
+        #data = data - stray
+        ####
+        #outfilename = os.path.join(midpath, '%s_bkg.fits'%fileid)
+        #fits.writeto(outfilename, data)
+        ## plot stray light
+        #fig_stray = os.path.join(figpath,
+        #            'bkg_{}_stray.{}'.format(fileid, fig_format))
+        #plot_background_aspect1(data+stray, stray, fig_stray)
+
+        data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
+        lower_limit = section.getfloat('lower_limit')
+        upper_limit = section.getfloat('upper_limit')
+
+        # extract 1d spectra of the object
         spectra1d = extract_aperset(data, mask,
-                    apertureset = master_aperset,
-                    lower_limit = section.getfloat('lower_limit'),
-                    upper_limit = section.getfloat('upper_limit'),
+                        apertureset = master_aperset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
                     )
-        message = '1D spectra extracted for {:d} '.format(len(spectra1d))
+        message = '1D spectra of {} orders extracted'.format(len(spectra1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
+
+        # extract 1d spectra for straylight/background light
+        background1d = extract_aperset(background, mask,
+                        apertureset = master_aperset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
+                    )
+        message = '1D straylight of {} orders extracted'.format(
+                    len(background1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        prefix = 'HIERARCH GAMSE EXTRACTION '
+        head.append((prefix + 'LOWER LIMIT', lower_limit))
+        head.append((prefix + 'UPPER LIMIT', upper_limit))
 
         # pack spectrum
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
             n = flux_sum.size
-            row = (
-                    aper,
-                    0,
-                    n,
+            # background 1d flux
+            back_flux = background1d[aper]['flux_sum']
+
+            row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux
-                    np.zeros(n, dtype=np.float32),  # flux error
-                    np.zeros(n, dtype=np.int16),    # flux mask
-                    np.zeros(n, dtype=np.float32),  # flat
-                    np.zeros(n, dtype=np.float32),  # background
+                    np.zeros(n, dtype=np.float32),  # error
+                    np.zeros(n, dtype=np.int16),    # mask
+                    back_flux,                      # background
                     )
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
-        weight_lst = get_time_weight(ref_datetime_lst, head[statime_key])
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                        obsdate = head[statime_key],
+                        exptime = head[exptime_key],
+                        )
 
-        message = 'FileID: {} - wavelength calibration weights: {}'.format(
-                    fileid, ','.join(['{:8.4f}'.format(w) for w in weight_lst]))
-
-        logger.info(message)
-        print(message)
+        message_lst = ['Wavelength calibration:']
+        for i, calib in enumerate(ref_calib_lst):
+            string = ' '*len(screen_prefix)
+            string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['date-obs'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
         spec, card_lst = reference_spec_wavelength(spec,
                             ref_calib_lst, weight_lst)
@@ -822,10 +891,9 @@ def reduce_singlefiber(config, logtable):
                     fits.BinTableHDU(spec),
                     ])
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
-        filename = os.path.join(onedspec, fname)
+        filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        message = 'FileID: {} - Spectra written to {}'.format(
-                    fileid, filename)
-        logger.info(message)
-        print(message)
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)

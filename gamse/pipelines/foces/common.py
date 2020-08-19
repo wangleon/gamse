@@ -1,5 +1,6 @@
 import os
 import re
+import math
 import shutil
 import datetime
 import logging
@@ -95,6 +96,9 @@ def get_bias(config, logtable):
             * **bias** (:class:`numpy.ndarray`) – Output bias image.
             * **bias_card_lst** (list) – List of FITS header cards related to
               the bias correction.
+            * **n_bias** (int) --- Number of bias images.
+            * **ovrstd** (float) --- Standard deviation of overscan of bias.
+            * **ron** (float) --- Readout error caused by bias.
 
     """
     mode = config['reduce'].get('mode')
@@ -113,17 +117,17 @@ def get_bias(config, logtable):
                             if reobj.match(card.keyword)]
 
         n_bias = head['GAMSE BIAS NFILE']
-        bias_ovrstd_lst = [head['GAMSE BIAS FILE {:03d} OVERSCAN STDEV'.format(i+1)]
-                            for i in range(n_bias)]
-        ovrstd = np.mean(bias_ovrstd_lst)
+        ovrstd = head['GAMSE BIAS OVERSTD']
+        ron    = head['GAMSE BIAS RON_ERROR']
+
         # print info
         message = 'Load bias from image: "{}"'.format(bias_file)
         logger.info(message)
         print(message)
+        return bias, bias_card_lst, n_bias, ovrstd, ron
     else:
-        bias, bias_card_lst, n_bias, ovrstd = combine_bias(config, logtable)
+        return combine_bias(config, logtable)
 
-    return bias, bias_card_lst, n_bias, ovrstd
 
 def combine_bias(config, logtable):
     """Combine bias images.
@@ -138,6 +142,9 @@ def combine_bias(config, logtable):
             * **bias** (:class:`numpy.ndarray`) – Output bias image.
             * **bias_card_lst** (list) – List of FITS header cards related to
               the bias correction.
+            * **n_bias** (int) --- Number of bias images.
+            * **ovrstd** (float) --- Standard deviation of overscan of bias.
+            * **ron** (float) --- Readout error caused by bias.
     
     Combine bias frames found in observing log.
     The resulting array **bias** is combined using sigma-clipping method with
@@ -149,6 +156,14 @@ def combine_bias(config, logtable):
     """
     rawdata   = config['data']['rawdata']
     direction = config['data']['direction']
+
+    # determine number of cores to be used
+    ncores = config['reduce'].get('ncores')
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
+
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -164,7 +179,7 @@ def combine_bias(config, logtable):
 
     if n_bias == 0:
         # there is no bias frames
-        return None, [], 0, 0.0
+        return None, [], 0, 0.0, 0.0
 
     for ifile, logitem in enumerate(bias_items):
 
@@ -219,10 +234,11 @@ def combine_bias(config, logtable):
     maskmode     = (None, 'max')[n_bias>=3]
 
     bias_combine = combine_images(bias_data_lst,
-            mode       = combine_mode,
-            upper_clip = cosmic_clip,
-            maxiter    = maxiter,
-            maskmode   = maskmode,
+            mode        = combine_mode,
+            upper_clip  = cosmic_clip,
+            maxiter     = maxiter,
+            maskmode    = maskmode,
+            ncores      = ncores,
             )
 
     bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
@@ -234,8 +250,10 @@ def combine_bias(config, logtable):
     hdu_lst = fits.HDUList()
     # create new FITS Header for bias
     head = fits.Header()
+    # pack new card list into header and bias_card_lst
     for card in bias_card_lst:
         head.append(card)
+    head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
     hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
     ############## bias smooth ##################
@@ -252,20 +270,26 @@ def combine_bias(config, logtable):
             bias_smooth = gaussian_filter(bias_combine,
                             sigma=smooth_sigma, mode=smooth_mode)
 
+            # factor of readout noise caused by bias subtraction
+            ron_factor = 2*math.pi*smooth_sigma**2
+
             # write information to FITS header
-            bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
-            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+            newcard_lst.append((prefix+'SMOOTH CORRECTED', True))
+            newcard_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            newcard_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            newcard_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+
         else:
             print('Unknown smooth method: ', smooth_method)
             pass
 
         # pack the cards to bias_card_lst and also hdu_lst
         for card in newcard_lst:
-            bias_card_lst.append(card)
             hdu_lst[0].header.append(card)
+            bias_card_lst.append(card)
         hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
+        hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_smooth
@@ -278,16 +302,31 @@ def combine_bias(config, logtable):
         # bias is the result array to return
         bias = bias_combine
 
+        # factor of readout noise caused by bias subtraction
+        ron_factor = 1
+
+    # calculate average overstd values for all bias frames
+    bias_overstd = np.mean(bias_overstd_lst)
+    # put this parameter to the header
+    card = (prefix + 'OVERSTD', bias_overstd)
+    bias_card_lst.append(card)
+    hdu_lst[0].header.append(card)
+
+    # calculate the readout noise caused by bias subtraction
+    ron = bias_overstd/math.sqrt(n_bias*ron_factor)
+    # put this parameter to the header
+    card = (prefix + 'RON_ERROR', ron)
+    bias_card_lst.append(card)
+    hdu_lst[0].header.append(card)
+
+    # write to FITS file
     hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)
     logger.info(message)
     print(message)
 
-    # calculate average overstd values for all bias frames
-    bias_meanstd = np.mean(bias_overstd_lst)
-
-    return bias, bias_card_lst, n_bias, bias_meanstd
+    return bias, bias_card_lst, n_bias, bias_overstd, ron
 
 
 def get_mask(data):

@@ -2757,20 +2757,26 @@ def reference_wl_new(spec, calib, head, channel, include_identlist):
 
     return fits.HDUList(hdu_lst)
 
-def get_time_weight(datetime_lst, datetime):
+def get_calib_weight_lst(calib_lst, obsdate, exptime):
     """Get weight according to the time interval.
 
     Args:
-        datetime_lst (list):
-        datetime (datetime.datetime):
+        calib_lst (list): A list of calib dicts.
+        obsdate (str):
+        exptime (float): Exposure time in seconds.
 
     Returns:
         list: A list of floats as the weights.
     """
-    input_datetime = dateutil.parser.parse(datetime)
-    dt_lst = [(dateutil.parser.parse(dt) - input_datetime).total_seconds()
-                for dt in datetime_lst]
+    input_datetime = dateutil.parser.parse(obsdate) \
+                        + datetime.timedelta(seconds=exptime/2)
+    datetime_lst = [dateutil.parser.parse(calib['date-obs']) \
+                        + datetime.timedelta(seconds=calib['exptime']/2)
+                        for calib in calib_lst]
+
+    dt_lst = [(dt - input_datetime).total_seconds() for dt in datetime_lst]
     dt_lst = np.array(dt_lst)
+
     if len(dt_lst)==1:
         # only one reference in datetime_lst
         weight_lst = [1.0]
@@ -3358,3 +3364,108 @@ def get_aperture_coeffs_in_header(head):
             if len(coeffs[(channel, aperture)]) == icoeff:
                 coeffs[(channel, aperture)].append(value)
     return coeffs
+
+
+def select_calib_auto(calib_lst, rms_threshold=1e9, group_contiguous=True,
+        time_diff=120):
+    """Select calib as references from a list of calib objects.
+
+    Args:
+        calib_lst (dict): A dict of calib dicts.
+        rms_threshold (float): Threshold of fitting RMS.
+        group_contiguous (bool): Whether to group contiguous exposures.
+        time_diff (float): Time difference of continuous exposures in minutes.
+    Return:
+        list: A list of calib dicts.
+    See Also:
+        :func:`select_calib_manu`
+    """
+
+    if group_contiguous:
+        calib_groups = []
+
+        # initialize previous
+        prev_id = -99
+        prev_time = datetime.datetime(1900, 1, 1, 0, 0, 0)
+
+        for frameid, calib in sorted(calib_lst.items()):
+            if calib['std'] > rms_threshold:
+                continue
+
+            # if this logitem is in calib_lst, it must be put into the
+            # calib_groups, either in an existing group, or a new group
+            this_id = frameid
+            this_time = dateutil.parser.parse(calib['date-obs']) + \
+                        datetime.timedelta(seconds=calib['exptime']/2)
+            delta_time = (this_time - prev_time)
+
+            if this_id == prev_id + 1 \
+                and delta_time.total_seconds() < time_diff*60:
+                # put it in an existing group
+                calib_groups[-1].append(calib)
+            else:
+                # in a new group
+                calib_groups.append([calib])
+
+            prev_id = this_id
+            prev_time = this_time
+
+        # find the best calib in each group
+        ref_calib_lst    = []
+        for group in calib_groups:
+            # find the minimum RMS within each group
+            std_lst = np.array([calib['std'] for calib in group])
+            imin = std_lst.argmin()
+            ref_calib_lst.append(group[imin])
+
+    else:
+        # if not group continuous exposures, just pick up calibs with RMS less
+        # than rms threshold
+        ref_calib_lst = [calib for frameid, calib in sorted(calib_lst.items())
+                            if calib['std'] < rms_threshold]
+
+    return ref_calib_lst
+
+
+def select_calib_manu(calib_lst, promotion,
+        error_message='Warning: "{}" is not a valid calib object',
+        ):
+    """Select a calib dict manually.
+
+    Args:
+        calib_lst (dict): A dict of calib dicts.
+        promotion (str): A promotion string.
+        error_message (str): Message to be shown if user input is not found.
+    Return:
+        list: A list of calib dicts.
+
+    See Also:
+        :func:`select_calib_auto`
+    """
+    # print promotion and read input frameid list
+    while(True):
+        string = input(promotion)
+        ref_calib_lst = []
+        succ = True
+        for s in string.split(','):
+            s = s.strip()
+            if len(s)>0 and s.isdigit():
+                frameid = int(s)
+                if frameid in calib_lst:
+                    # user input is found in calib_lst
+                    calib = calib_lst[frameid]
+                    ref_calib_lst.append(calib)
+                else:
+                    # user input is not found in calib_lst
+                    print(error_message.format(s))
+                    succ = False
+                    break
+
+            else:
+                print(error_messag.format(s))
+                succ = False
+                break
+        if succ:
+            return ref_calib_lst
+        else:
+            continue

@@ -18,7 +18,7 @@ from ..echelle.extract import extract_aperset
 from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
                                #self_reference_singlefiber,
                                #wl_reference,
-                               get_time_weight)
+                               get_calib_weight_lst)
 from ..echelle.background import find_background
 from ..utils.config import read_config
 from ..utils.obslog import read_obslog
@@ -117,21 +117,21 @@ def reduce():
 
     # extract keywords from config file
     section = config['data']
-    rawdata     = section.get('rawdata')
+    rawpath     = section.get('rawpath')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     section = config['reduce']
-    midproc     = section.get('midproc')
-    result      = section.get('result')
-    report      = section.get('report')
+    midpath     = section.get('midpath')
+    odspath     = section.get('odspath')
+    figpath     = section.get('figpath')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):  os.mkdir(report)
-    if not os.path.exists(result):  os.mkdir(result)
-    if not os.path.exists(midproc): os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
 
     ################################ parse bias ################################
     bias_file = config['reduce.bias'].get('bias_file')
@@ -161,8 +161,8 @@ def reduce():
         for logitem in logtable:
             if logitem['object'].strip()=='Bias' \
                 and abs(logitem['exptime'])<1e-3:
-                filename = os.path.join(rawdata,
-                            '{}.fits'.format(logitem['fileid']))
+                filename = os.path.join(rawpath,
+                            logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 # correct overscan here
                 data, head, overmean = correct_overscan(data, head)
@@ -256,7 +256,7 @@ def reduce():
 
         for logitem in logtable:
             if logitem['object'].strip()=='NarrowFlat':
-                filename = os.path.join(rawdata,
+                filename = os.path.join(rawpath,
                             '{}.fits'.format(item['fileid']))
                 data, head = fits.getdata(filename, header=True)
                 data, head, overmean = correct_overscan(data, head)
@@ -321,7 +321,7 @@ def reduce():
         # save the trace figure
         tracefig.adjust_positions()
         tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
-        figfile = os.path.join(report,
+        figfile = os.path.join(figpath,
                     'trace_{}.{}'.format(flatname, fig_format))
         tracefig.savefig(figfile)
 
@@ -333,7 +333,7 @@ def reduce():
     flat_groups = {}
     for logitem in logtable:
         if logitem['objectname']=='WideFlat':
-            flatname = 'flat_{%d}'.format(item['exptime'])
+            flatname = 'flat_{%d}'.format(logitem['exptime'])
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
             flat_groups[flatname].append(logitem['fileid'])
@@ -354,7 +354,7 @@ def reduce():
         else:
             data_lst = []
             for ifile, fileid in enumerate(fileids):
-                filename = os.path.join(rawdata, '%s.fits'%fileid)
+                filename = os.path.join(rawpath, '%s.fits'%fileid)
                 data, head = fits.getdata(filename, header=True)
                 mask = (data[:,0:2048]==65535)
                 if ifile==0:
@@ -456,19 +456,19 @@ def reduce():
         fits.writeto(mosaic_resp_filename, flatmap, overwrite=True)
 
     ############################# extract ThAr #################################
-    h, w = bias.shape
+    ny, nx = bias.shape
     spectype = np.dtype({
                 'names':  ('aperture', 'order', 'points', 'wavelength', 'flux'),
-                'formats':('i',       'i',     'i',      '(%d,)f8'%h,  '(%d,)f'%h),
+                'formats':('i',       'i',     'i',      '(%d,)f8'%ny,  '(%d,)f'%ny),
                 })
 
     if True:
         calib_lst = {}
         count_thar = 0
-        for item in log:
-            if item.objectname[0]=='ThAr':
+        for logitem in logtable:
+            if logitem.objectname[0]=='ThAr':
                 count_thar += 1
-                filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+                filename = os.path.join(rawpath, logitem['fileid']+'.fits')
                 data, head = fits.getdata(filename, header=True)
                 mask = np.int16(data == 65535)*4
                 data, head, overmean = correct_overscan(data, head)
@@ -493,9 +493,9 @@ def reduce():
     
                 if ref_spec is None or ref_calib is None:
                     calib = wvcalib(spec,
-                                    filename      = '%s.fits'%item.fileid,
+                                    filename      = '%s.fits'%logitem['fileid'],
                                     identfilename = 'a.idt',
-                                    figfilename   = 'wvcalib_%s.png'%item.fileid,
+                                    figfilename   = 'wvcalib_%s.png'%logitem['fileid'],
                                     channel       = None,
                                     linelist      = 'thar.dat',
                                     window_size   = 13,
@@ -509,8 +509,8 @@ def reduce():
                 else:
                     aper_offset = ref_aperset.find_aper_offset(aperset)
                     calib = recalib(spec,
-                                    filename      = '%s.fits'%item.fileid,
-                                    figfilename   = 'wvcalib_%s.png'%item.fileid,
+                                    filename      = '%s.fits'%logitem['fileid'],
+                                    figfilename   = 'wvcalib_%s.png'%logitem['fileid'],
                                     ref_spec      = ref_spec,
                                     channel       = None,
                                     linelist      = 'thar.dat',
@@ -559,9 +559,9 @@ def reduce():
                                 for frameid in ref_frameid_lst]
 
     ###################### Extract science spectra #############################
-    for item in log:
-        if item.imagetype=='sci':
-            filename = os.path.join(rawdata, '%s.fits'%item.fileid)
+    for logitem in logtable:
+        if logitem['imgtype']=='sci':
+            filename = os.path.join(rawpath, item['fileid']+'.fits')
             data, head = fits.getdata(filename, header=True)
             mask = np.int16(data == 65535)*4
 

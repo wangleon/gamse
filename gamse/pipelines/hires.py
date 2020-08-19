@@ -142,20 +142,20 @@ def make_config():
 
     config.set('data', 'telescope',   'Keck-I')
     config.set('data', 'instrument',  'HIRES')
-    config.set('data', 'rawdata',     'rawdata')
+    config.set('data', 'rawpath',     'rawdata')
     #config.set('data', 'statime_key', statime_key)
     #config.set('data', 'exptime_key', exptime_key)
 
     config.add_section('reduce')
-    config.set('reduce', 'midproc',     'midproc')
-    config.set('reduce', 'report',      'report')
-    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'midpath',     'midproc')
+    config.set('reduce', 'figpath',     'images')
+    config.set('reduce', 'odspath',     'onedspec')
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
     
     config.add_section('reduce.bias')
-    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set('reduce.bias', 'bias_file',     '${reduce:midpath}/bias.fits')
     config.set('reduce.bias', 'cosmic_clip',   str(10))
     config.set('reduce.bias', 'maxiter',       str(5))
     config.set('reduce.bias', 'smooth',        'yes')
@@ -171,10 +171,10 @@ def make_config():
     config.set('reduce.trace', 'align_deg',  str(2))
     config.set('reduce.trace', 'display',    'no')
     config.set('reduce.trace', 'degree',     str(4))
-    config.set('reduce.trace', 'file',       '${reduce:midproc}/trace.fits')
+    config.set('reduce.trace', 'file',       '${reduce:midpath}/trace.fits')
 
     config.add_section('reduce.flat')
-    config.set('reduce.flat', 'file', '${reduce:midproc}/flat.fits')
+    config.set('reduce.flat', 'file', '${reduce:midpath}/flat.fits')
 
     # write to config file
     filename = 'HIRES.{}.cfg'.format(input_date)
@@ -522,21 +522,21 @@ def reduce():
 
     # extract keywords from config file
     section = config['data']
-    rawdata     = section.get('rawdata')
+    rawpath     = section.get('rawpath')
     statime_key = section.get('statime_key')
     exptime_key = section.get('exptime_key')
     section = config['reduce']
-    midproc     = section.get('midproc')
-    onedspec    = section.get('onedspec')
-    report      = section.get('report')
+    midpath     = section.get('midpath')
+    odspath     = section.get('odspath')
+    figpath     = section.get('figpath')
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
 
     # create folders if not exist
-    if not os.path.exists(report):   os.mkdir(report)
-    if not os.path.exists(onedspec): os.mkdir(onedspec)
-    if not os.path.exists(midproc):  os.mkdir(midproc)
+    if not os.path.exists(figpath): os.mkdir(figpath)
+    if not os.path.exists(odspath): os.mkdir(odspath)
+    if not os.path.exists(midpath): os.mkdir(midpath)
 
     nccd = 3
 
@@ -579,8 +579,8 @@ def reduce():
 
         for logitem in logtable:
             if logitem['object'].strip().lower()=='bias':
-                fname = '{}.fits'.format(logitem['fileid'])
-                filename = os.path.join(rawdata, fname)
+                fname = logitem['fileid']+'.fits'
+                filename = os.path.join(rawpath, fname)
                 hdu_lst = fits.open(filename)
                 data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                 hdu_lst.close()
@@ -760,7 +760,7 @@ def reduce():
             # in different files
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
-                    filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
                     hdu_lst = fits.open(filename)
                     data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                     hdu_lst.close()
@@ -859,13 +859,13 @@ def reduce():
     # decorate trace fig and save to file
     tracefig.adjust_positions()
     tracefig.suptitle('Trace for all 3 CCDs', fontsize=15)
-    figfile = os.path.join(report, 'trace.png')
+    figfile = os.path.join(figpath, 'trace.png')
     tracefig.savefig(figfile)
 
-    trcfile = os.path.join(midproc, 'trace.trc')
+    trcfile = os.path.join(midpath, 'trace.trc')
     aperset.save_txt(trcfile)
 
-    regfile = os.path.join(midproc, 'trace.reg')
+    regfile = os.path.join(midpath, 'trace.reg')
     aperset.save_reg(regfile, transpose=True)
 
     # save mosaiced flat image

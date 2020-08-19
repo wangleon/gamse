@@ -1,11 +1,11 @@
 import os
 import re
 import datetime
+import dateutil.parser
 import configparser
 
 import numpy as np
 import astropy.io.fits as fits
-from astropy.time import Time
 from astropy.table import Table
 
 from ...utils.misc import extract_date
@@ -85,6 +85,9 @@ def make_config():
             'Left Bottom & Right Top': 'xr-',
             }[readout_mode]
 
+    # general database path for this instrument
+    dbpath = '~/.gamse/Xinglong216.HRS'
+
     # create config object
     config = configparser.ConfigParser()
 
@@ -101,7 +104,7 @@ def make_config():
 
     config.set('data', 'telescope',    'Xinglong216')
     config.set('data', 'instrument',   'HRS')
-    config.set('data', 'rawdata',      'rawdata')
+    config.set('data', 'rawpath',      'rawdata')
     config.set('data', 'statime_key',  statime_key)
     config.set('data', 'exptime_key',  exptime_key)
     config.set('data', 'readout_mode', readout_mode)
@@ -112,59 +115,75 @@ def make_config():
         config.set('data', 'fiberoffset', str(-12))
 
     config.add_section('reduce')
-    config.set('reduce', 'midproc',     'midproc')
-    config.set('reduce', 'report',      'report')
-    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'midpath',     'midproc')
+    config.set('reduce', 'figpath',     'images')
+    config.set('reduce', 'odspath',     'onedspec')
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
-    
-    config.add_section('reduce.bias')
-    config.set('reduce.bias', 'bias_file',     '${reduce:midproc}/bias.fits')
-    config.set('reduce.bias', 'cosmic_clip',   str(10))
-    config.set('reduce.bias', 'maxiter',       str(5))
-    config.set('reduce.bias', 'smooth',        'yes')
-    config.set('reduce.bias', 'smooth_method', 'gaussian')
-    config.set('reduce.bias', 'smooth_sigma',  str(3))
-    config.set('reduce.bias', 'smooth_mode',   'nearest')
+    config.set('reduce', 'ncores',      'max')
 
-    config.add_section('reduce.trace')
-    config.set('reduce.trace', 'minimum',    str(8))
-    config.set('reduce.trace', 'scan_step',  str(100))
-    config.set('reduce.trace', 'separation', '500:20, 1500:30, 3500:52')
-    config.set('reduce.trace', 'filling',    str(0.3))
-    config.set('reduce.trace', 'align_deg',  str(2))
-    config.set('reduce.trace', 'display',    'no')
-    config.set('reduce.trace', 'degree',     str(3))
+    # section of bias correction
+    sectname = 'reduce.bias'
+    config.add_section(sectname)
+    config.set(sectname, 'bias_file',     '${reduce:midpath}/bias.fits')
+    config.set(sectname, 'cosmic_clip',   str(10))
+    config.set(sectname, 'maxiter',       str(5))
+    config.set(sectname, 'smooth',        'yes')
+    config.set(sectname, 'smooth_method', 'gaussian')
+    config.set(sectname, 'smooth_sigma',  str(3))
+    config.set(sectname, 'smooth_mode',   'nearest')
 
-    config.add_section('reduce.flat')
-    config.set('reduce.flat', 'slit_step',       str(256))
-    config.set('reduce.flat', 'q_threshold',     str(50))
-    config.set('reduce.flat', 'mosaic_maxcount', str(50000))
+    # section of order trace
+    sectname = 'reduce.trace'
+    config.add_section(sectname)
+    config.set(sectname, 'minimum',    str(8))
+    config.set(sectname, 'scan_step',  str(100))
+    config.set(sectname, 'separation', '500:20, 1500:30, 3500:52')
+    config.set(sectname, 'filling',    str(0.3))
+    config.set(sectname, 'align_deg',  str(2))
+    config.set(sectname, 'display',    'no')
+    config.set(sectname, 'degree',     str(3))
 
-    config.add_section('reduce.wlcalib')
-    config.set('reduce.wlcalib', 'search_database', 'yes')
-    config.set('reduce.wlcalib', 'database_path',
-                                    '~/.gamse/Xinglong216.HRS/wlcalib')
-    config.set('reduce.wlcalib', 'linelist',        'thar.dat')
-    config.set('reduce.wlcalib', 'use_prev_fitpar', 'yes')
-    config.set('reduce.wlcalib', 'window_size',     str(13))
-    config.set('reduce.wlcalib', 'xorder',          str(3))
-    config.set('reduce.wlcalib', 'yorder',          str(3))
-    config.set('reduce.wlcalib', 'maxiter',         str(5))
-    config.set('reduce.wlcalib', 'clipping',        str(3))
-    config.set('reduce.wlcalib', 'q_threshold',     str(10))
+    # section of flat field correction
+    sectname = 'reduce.flat'
+    config.add_section(sectname)
+    config.set(sectname, 'slit_step',       str(256))
+    config.set(sectname, 'q_threshold',     str(50))
+    config.set(sectname, 'mosaic_maxcount', str(50000))
 
-    config.add_section('reduce.background')
-    config.set('reduce.background', 'ncols',    str(9))
-    config.set('reduce.background', 'distance', str(7))
-    config.set('reduce.background', 'yorder',   str(7))
+    # section of wavelength calibration
+    sectname = 'reduce.wlcalib'
+    config.add_section(sectname)
+    config.set(sectname, 'search_database',  'yes')
+    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
+    config.set(sectname, 'linelist',         'thar.dat')
+    config.set(sectname, 'use_prev_fitpar',  'yes')
+    config.set(sectname, 'window_size',      str(13))
+    config.set(sectname, 'xorder',           str(3))
+    config.set(sectname, 'yorder',           str(3))
+    config.set(sectname, 'maxiter',          str(5))
+    config.set(sectname, 'clipping',         str(3))
+    config.set(sectname, 'q_threshold',      str(10))
+    config.set(sectname, 'auto_selection',   'yes')
+    config.set(sectname, 'rms_threshold',    str(0.006))
+    config.set(sectname, 'group_contiguous', 'yes')
+    config.set(sectname, 'time_diff',        str(120))
 
-    config.add_section('reduce.extract')
-    config.set('reduce.extract', 'extract', 
+    # section of background correction
+    sectname = 'reduce.background'
+    config.add_section(sectname)
+    config.set(sectname, 'ncols',    str(9))
+    config.set(sectname, 'distance', str(7))
+    config.set(sectname, 'yorder',   str(7))
+
+    # section of spectra extraction
+    sectname = 'reduce.extract'
+    config.add_section(sectname)
+    config.set(sectname, 'extract', 
             "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
-    config.set('reduce.extract', 'upper_limit', str(7))
-    config.set('reduce.extract', 'lower_limit', str(7))
+    config.set(sectname, 'upper_limit', str(7))
+    config.set(sectname, 'lower_limit', str(7))
 
     # write to config file
     filename = 'Xinglong216HRS.{}.cfg'.format(input_date)
@@ -179,9 +198,8 @@ def make_config():
     outfile.close()
 
     print('Config file written to {}'.format(filename))
-    
 
-def make_obslog(path):
+def make_obslog():
     """Scan the raw data, and generated a log file containing the detail
     information for each frame.
 
@@ -191,16 +209,14 @@ def make_obslog(path):
     If the file name already exists, `YYYY-MM-DD.1.obslog`,
     `YYYY-MM-DD.2.obslog` ... will be used as substituions.
 
-    Args:
-        path (str): Path to the raw FITS files.
-
     """
     # load config file
     config = load_config('Xinglong216HRS\S*\.cfg$')
+    rawpath = config['data'].get('rawpath')
 
     # scan filenames and determine the maximum length of fileid
     maxlen_fileid = max([len(fname[0:-5])
-                    for fname in os.listdir(config['data']['rawdata'])
+                    for fname in os.listdir(rawpath)
                     if fname.endswith('.fits')])
 
     cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
@@ -211,9 +227,16 @@ def make_obslog(path):
     obsinfo_file = config['data'].get('obsinfo_file')
     has_obsinfo = os.path.exists(obsinfo_file)
     if has_obsinfo:
+        # method 1 (deprecated)
         #io_registry.register_reader('obslog', Table, read_obslog)
         #addinfo_table = Table.read(obsinfo_file, format='obslog')
-        addinfo_table = read_obslog(obsinfo_file)
+
+        # method 2 (for 3-line headers, deprecated)
+        #addinfo_table = read_obslog(obsinfo_file)
+
+        # method 3 (for normal table)
+        addinfo_table = read_obsinfo(obsinfo_file)
+
         addinfo_lst = {row['frameid']:row for row in addinfo_table}
         # prepare the difference list between real observation time and FITS
         # time
@@ -224,7 +247,7 @@ def make_obslog(path):
         maxobjlen = max([len(row['object']) for row in addinfo_table])
 
     # scan the raw files
-    fname_lst = sorted(os.listdir(path))
+    fname_lst = sorted(os.listdir(rawpath))
 
     # prepare logtable
     logtable = Table(dtype=[
@@ -234,7 +257,7 @@ def make_obslog(path):
                         ('object',  'S{:d}'.format(maxobjlen)),
                         ('i2',      'S1'),
                         ('exptime', 'f4'),
-                        ('obsdate', Time),
+                        ('obsdate', 'S19'),
                         ('nsat',    'i4'),
                         ('q95',     'i4'),
                 ])
@@ -245,7 +268,7 @@ def make_obslog(path):
         if not fname.endswith('.fits'):
             continue
         fileid  = fname[0:-5]
-        filename = os.path.join(path, fname)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
         # get science region
@@ -267,12 +290,13 @@ def make_obslog(path):
 
         # get obsdate from FITS header
         statime_key = config['data'].get('statime_key')
-        obsdate = Time(head[statime_key])
+        obsdate = dateutil.parser.parse(head[statime_key])
         # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
-            real_obsdate = addinfo_lst[frameid]['obsdate'].datetime
-            file_obsdate = obsdate.datetime
+            time_str = addinfo_lst[frameid]['obsdate']
+            real_obsdate = dateutil.parser.parse(time_str)
+            file_obsdate = obsdate
             delta_t = real_obsdate - file_obsdate
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
@@ -324,7 +348,7 @@ def make_obslog(path):
                 '  {:s}'.format(objectname.ljust(maxobjlen)),
                 '  {:1s}I2'.format(i2),
                 '  Texp = {:4g}'.format(exptime),
-                '  {:23s}'.format(obsdate.isot),
+                '  {:23s}'.format(obsdate.isoformat()),
                 '  Nsat = {:6d}'.format(saturation),
                 '  Q95 = {:5d}'.format(quantile95),
                 ]
@@ -341,16 +365,25 @@ def make_obslog(path):
         time_offset = np.median(np.array(delta_t_lst))
         time_offset_dt = datetime.timedelta(seconds=time_offset)
         # plot time offset
-        figname = os.path.join(config['reduce']['report'],
-                                'obsdate_offset.png')
+
+        # find the filename of time-offset figure
+        figpath = config['reduce'].get('figpath')
+        if not os.path.exists(figpath):
+            os.mkdir(figpath)
+        figname = os.path.join(figpath, 'obsdate_offset.png')
+
         plot_time_offset(real_obsdate_lst, delta_t_lst, time_offset, figname)
+
         # correct time offset
         for row in logtable:
-            row['obsdate'] = row['obsdate'] + time_offset_dt
+            # convert to datetime.Datetime object
+            dt = dateutil.parser.parse(row['obsdate'])
+            # add offset and convert back to string
+            row['obsdate'] = (dt + time_offset_dt).isoformat()
 
     # determine filename of logtable.
     # use the obsdate of the first frame
-    obsdate = logtable[0]['obsdate'].iso[0:10]
+    obsdate = logtable[0]['obsdate'][0:10]
     outname = '{}.obslog'.format(obsdate)
     if os.path.exists(outname):
         i = 0
@@ -370,7 +403,52 @@ def make_obslog(path):
     logtable['exptime'].info.format = 'g'
 
     # save the logtable
-    write_obslog(logtable, outfilename, delimiter='|')
+    # method 1: deprecated
+    #write_obslog(logtable, outfilename, delimiter='|')
+    # method 2: deprecated because cannot specify the formats of each column
+    #logtable.write(outfilename, format='ascii.fixed_width_two_line',
+    #                delimiter='|')
+    # method 3
+    outfile = open(outfilename, 'w')
+    for row in logtable.pformat_all():
+        outfile.write(row+os.linesep)
+    outfile.close()
+
+def read_obsinfo(filename):
+    """Read obsinfo file and convert it to a Astropy table.
+
+    Args:
+        filename (str): Filename of obsinfo.
+    Returns:
+        :class:`astropy.table.Table`: A new logtable.
+        
+    """
+    table1 = Table.read(filename, format='ascii.fixed_width_two_line')
+
+    # create a new table but the datatype of the first column is int
+    newdtype = [(item[0], 'i4' if item[0]=='frameid' else item[1])
+                    for item in table1.dtype.descr]
+    newtable = Table(dtype=newdtype, masked=True)
+
+    for row in table1:
+        frameid = row['frameid']
+        mask = [v is np.ma.masked for v in row]
+        if '-' in frameid:
+            # the first element is a range of numbers
+            g = frameid.split('-')
+            id1 = int(g[0])
+            id2 = int(g[1])
+            for i in range(id1, id2+1):
+                # copy the row and set the first element to an integer
+                newrow = [v for v in row]
+                newrow[0] = i
+                newtable.add_row(newrow, mask=mask)
+        else:
+            newrow = [v for v in row]
+            newrow[0] = int(newrow[0])
+            newtable.add_row(newrow, mask=mask)
+
+    return newtable
 
 def reduce_rawdata():
     """2D to 1D pipeline for the High Resolution spectrograph on Xinglong 2.16m
@@ -379,7 +457,7 @@ def reduce_rawdata():
 
     # read obslog and config
     config = load_config('Xinglong216HRS\S*\.cfg$')
-    logtable = load_obslog('\S*\.obslog$')
+    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     fibermode = config['data']['fibermode']
 

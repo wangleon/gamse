@@ -1,6 +1,7 @@
 import os
 import time
 import math
+import multiprocessing as mp
 import logging
 logger = logging.getLogger(__name__)
 
@@ -1179,10 +1180,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         nflat (int): Number of flat fielding frames combined.
         slit_step (int): Step of slit scanning.
         q_threshold (float): Threshold of *Q*-factor.
-        smooth_A_func (func): Function of smoothing the aperture parameter A.
-        smooth_k_func (func): Function of smoothing the aperture parameter k.
-        smooth_c_func (func): Function of smoothing the aperture parameter c.
-        smooth_bkg_func (func): Function of smoothing the aperture parameter bkg.
+        smooth_A_func (func): Function of smoothing the aperture parameter *A*.
+        smooth_k_func (func): Function of smoothing the aperture parameter *k*.
+        smooth_c_func (func): Function of smoothing the aperture parameter *c*.
+        smooth_bkg_func (func): Function of smoothing the aperture parameter
+            *bkg*.
         fig_aperpar (str): Path to the image of aperture profile parameters.
         fig_overlap (str): Path to the image of overlapped slit profiles.
         fig_slit (str): Path to the image of slit functions.
@@ -1211,15 +1213,14 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     def errfunc2(p, xdata, ydata, interf):
         return ydata - fitfunc2(p, xdata, interf)
 
-    h, w = data.shape
-
+    ny, nx = data.shape
 
     # find saturation mask
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
 
     # find the central positions and boundaries for each aperture
-    allx = np.arange(w)
+    allx = np.arange(nx)
     positions = apertureset.get_positions(allx)
     bounds = apertureset.get_boundaries(allx)
 
@@ -1236,9 +1237,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     xnodes = np.arange(left, right+1e-5, step)
 
     # scanning column list
-    x_lst = np.arange(0, w, slit_step)
-    if x_lst[-1] != w-1:
-        x_lst = np.append(x_lst, w-1)
+    x_lst = np.arange(0, nx, slit_step)
+    if x_lst[-1] != nx-1:
+        x_lst = np.append(x_lst, nx-1)
 
     # initialize the array for slit function
     slit_array = np.zeros((xnodes.size, x_lst.size))
@@ -1263,7 +1264,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             b1 = bounds[aper][0][x]
             b2 = bounds[aper][1][x]
             b1 = np.int32(np.round(np.maximum(b1, 0)))
-            b2 = np.int32(np.round(np.minimum(b2, h)))
+            b2 = np.int32(np.round(np.minimum(b2, ny)))
             if b2-b1 <= 5:
                 continue
             xdata = np.arange(b1, b2)
@@ -1451,15 +1452,15 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             _z_lst.append(v)
         ax = fig3.get_axes()[ipara]
         ax.scatter(_x_lst, _y_lst, c=_z_lst, cmap='jet', lw=0, s=15, alpha=0.6)
-        ax.set_xlim(0, w-1)
-        ax.set_ylim(0, h-1)
+        ax.set_xlim(0, nx-1)
+        ax.set_ylim(0, ny-1)
 
     #####second step, scan each column and find the fitting parameters##########
     # construct slit functions using cubic spline interpolation for all columns
-    full_slit_array = np.zeros((xnodes.size, w))
+    full_slit_array = np.zeros((xnodes.size, nx))
     for ix in np.arange(xnodes.size):
         f = intp.InterpolatedUnivariateSpline(x_lst, slit_array[ix, :], k=3)
-        full_slit_array[ix, :] = f(np.arange(w))
+        full_slit_array[ix, :] = f(np.arange(nx))
 
     maxlst = full_slit_array.max(axis=0)
     maxilst = full_slit_array.argmax(axis=0)
@@ -1472,7 +1473,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         corr_mask_array.append((il, ir))
 
     interf_lst = []
-    for x in np.arange(w):
+    for x in np.arange(nx):
         slitfunc = full_slit_array[:, x]
         nslit = slitfunc.size
         interf = intp.InterpolatedUnivariateSpline(
@@ -1483,9 +1484,9 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     flatdata = np.ones_like(data, dtype=np.float64)
 
     # prepare an x list
-    newx_lst = np.arange(0, w-1, 10)
-    if newx_lst[-1] != w-1:
-        newx_lst = np.append(newx_lst, w-1)
+    newx_lst = np.arange(0, nx-1, 10)
+    if newx_lst[-1] != nx-1:
+        newx_lst = np.append(newx_lst, nx-1)
 
     ###################### loop for every aperture ########################
     # use to remember the status of unsaved aperpar_fig
@@ -1493,7 +1494,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     has_aperpar_fig = False
 
     # initialize 1-d spectra array of flat
-    flatspec_lst = {aper: np.full(w, np.nan) for aper in apertureset}
+    flatspec_lst = {aper: np.full(nx, np.nan) for aper in apertureset}
 
     for iaper, aper in enumerate(sorted(apertureset.keys())):
         fitpar_lst  = [] # stores (A, k, c, bkg).has the same length as newx_lst
@@ -1523,12 +1524,12 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             # central position
             pos = position[x]
             # skip this column if central position excess the CCD range
-            if pos<0 or pos>h:
+            if pos<0 or pos>ny:
                 fitpar_lst.append(blank_p)
                 continue
             # lower and upper bounds
             y1 = int(max(0, lbound[x]))
-            y2 = int(min(h, ubound[x]))
+            y2 = int(min(ny, ubound[x]))
             # construct fitting data (xdata, ydata)
             xdata = np.arange(y1, y2)
             ydata = data[y1:y2, x]
@@ -1542,7 +1543,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             # estimate the SNR
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
-            _i2 = min(h, _icen+6)
+            _i2 = min(ny, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
             # skip this column if sn is too low
             if sn < q_threshold:
@@ -1554,10 +1555,11 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             if prev_p is None:
                 p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
             else:
-                p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos, max(0,ydata.min())]
+                p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos,
+                        max(0,ydata.min())]
 
             # skip this column if lower or upper 1 sigma excess the CCD range
-            if pos-1./p0[1]<0 or pos+1./p0[1]>h:
+            if pos-1./p0[1]<0 or pos+1./p0[1]>ny:
                 fitpar_lst.append(blank_p)
                 continue
 
@@ -1583,7 +1585,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             if succ:
                 if not is_first_correct:
                     is_first_correct = True
-                    if x > 0.25*w:
+                    if x > 0.25*nx:
                         break_aperture = True
                         break
                 fitpar_lst.append(p)
@@ -1599,7 +1601,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
         fitpar_lst = np.array(fitpar_lst)
 
-        if np.isnan(fitpar_lst[:,0]).sum()>0.5*w:
+        if np.isnan(fitpar_lst[:,0]).sum()>0.5*nx:
             message = ('Aperture {:3d}: Skipped because of too many NaN '
                        'values in aperture parameters').format(aper)
             logger.debug(message)
@@ -1625,7 +1627,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         # filter out short segments
         # every index in group is index in newx_lst, NOT real pixel numbers
         group_lst = [group for group in group_lst
-                     if newx_lst[group[-1]] - newx_lst[group[0]] > w/10]
+                     if newx_lst[group[-1]] - newx_lst[group[0]] > nx/10]
 
         if len(group_lst) == 0:
             message = ('Aperture {:3d}: Skipped'.format(aper))
@@ -1639,16 +1641,16 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
             if ipara == 0:
                 # fit for A
-                res = smooth_A_func(newx_lst, ypara, fitmask, group_lst, w)
+                res = smooth_A_func(newx_lst, ypara, fitmask, group_lst, nx)
             elif ipara == 1:
                 # fit for k
-                res = smooth_k_func(newx_lst, ypara, fitmask, group_lst, w)
+                res = smooth_k_func(newx_lst, ypara, fitmask, group_lst, nx)
             elif ipara == 2:
                 # fit for c
-                res = smooth_c_func(newx_lst, ypara, fitmask, group_lst, w)
+                res = smooth_c_func(newx_lst, ypara, fitmask, group_lst, nx)
             else:
                 # fit for bkg
-                res = smooth_bkg_func(newx_lst, ypara, fitmask, group_lst, w)
+                res = smooth_bkg_func(newx_lst, ypara, fitmask, group_lst, nx)
 
             # extract smoothing results
             aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
@@ -1691,16 +1693,16 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 #        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax1.get_ylim()
                 if ipara == 0:
-                    ax1.text(0.05*w, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
+                    ax1.text(0.05*nx, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
                             fontsize=10)
-                ax1.text(0.9*w, 0.15*_y1+0.85*_y2, 'AKCB'[ipara], fontsize=10)
+                ax1.text(0.9*nx, 0.15*_y1+0.85*_y2, 'AKCB'[ipara], fontsize=10)
 
                 # fill the fitting regions
                 for group in group_lst:
                     i1, i2 = newx_lst[group[0]], newx_lst[group[-1]]
                     ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
 
-                ax1.set_xlim(0, w-1)
+                ax1.set_xlim(0, nx-1)
                 ax1.set_ylim(_y1, _y2)
                 if iaper%5<4:
                     ax1.set_xticklabels([])
@@ -1716,7 +1718,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 for tickline in ax2.yaxis.get_ticklines():
                     tickline.set_color('gray')
                     tickline.set_alpha(0.6)
-                if w<3000:
+                if nx<3000:
                     ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
                     ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
@@ -1737,7 +1739,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                             fig5.add_axes([0.08, 0.10, 0.36, 0.41]),
                             fig5.add_axes([0.56, 0.10, 0.36, 0.41]),
                         ]
-                    i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
+                    i1 = newx_lst[group_lst[0][0]]
+                    i2 = newx_lst[group_lst[-1][-1]]
                     ax51 = axes5_lst[ipara]
                     
                     # make a copy of ax1 and plot the residuals in the background
@@ -1750,7 +1753,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     _m = mask_rej_lst>0
                     if _m.sum()>0:
                         ax52.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                                color='gray', lw=0.5, ms=2, alpha=0.6, zorder=-1)
+                                color='gray', lw=0.5, ms=2, alpha=0.6,
+                                zorder=-1)
                     # adjust ticks and labels for ax52
                     for tick in ax52.yaxis.get_major_ticks():
                         tick.label2.set_fontsize(10)
@@ -1767,8 +1771,8 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                     ax51.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
                                 lw=1, alpha=0.8, zorder=2)
                     _y1, _y2 = ax51.get_ylim()
-                    ax51.set_xlim(0, w-1)
-                    ax51.text(0.05*w, 0.15*_y1+0.85*_y2,
+                    ax51.set_xlim(0, nx-1)
+                    ax51.text(0.05*nx, 0.15*_y1+0.85*_y2,
                             'AKCB'[ipara]+' (Aper %d)'%aper,
                             fontsize=13)
                     if ipara in [2, 3]:
@@ -1778,7 +1782,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                         tick.label1.set_fontsize(11)
                     for tick in ax51.yaxis.get_major_ticks():
                         tick.label1.set_fontsize(11)
-                    if w<3000:
+                    if nx<3000:
                         ax51.xaxis.set_major_locator(tck.MultipleLocator(500))
                         ax51.xaxis.set_minor_locator(tck.MultipleLocator(100))
                     else:
@@ -1802,7 +1806,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         for x in allx:
             pos = position[x]
             y1 = int(max(0, lbound[x]))
-            y2 = int(min(h, ubound[x]))
+            y2 = int(min(ny, ubound[x]))
             if (y2-y1)<5:
                 continue
             xdata = np.arange(y1, y2)
@@ -1811,7 +1815,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             _badmask = bad_mask[y1:y2, x]
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
-            _i2 = min(h, _icen+6)
+            _i2 = min(ny, _icen+6)
             sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
             if sn>q_threshold and _satmask.sum()<3 and _badmask.sum()<3:
                 correct_x_lst.append(x)
@@ -1824,7 +1828,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             interf = interf_lst[x]
             pos = position[x]
             y1 = int(max(0, lbound[x]))
-            y2 = int(min(h, ubound[x]))
+            y2 = int(min(ny, ubound[x]))
             xdata = np.arange(y1, y2)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
@@ -1853,7 +1857,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             # extract the 1d spectra of the modeled flat using super-sampling
             # integration
             y1s = max(0, np.round(lbound[x]-2, 1))
-            y2s = min(h, np.round(ubound[x]+2, 1))
+            y2s = min(ny, np.round(ubound[x]+2, 1))
             xdata2 = np.arange(y1s, y2s, 0.1)
             flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
             # use trapezoidal integration
@@ -1902,7 +1906,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
     # define the datatype of flat 1d spectra
     flatspectype = np.dtype(
                     {'names':   ['aperture', 'flux'],
-                     'formats': [np.int32, (np.float32, w)],}
+                     'formats': [np.int32, (np.float32, nx)],}
                     )
     flatspectable = np.array(flatspectable, dtype=flatspectype)
 
@@ -1916,6 +1920,675 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
     return flatdata, flatspectable
 
+
+def _get_fiber_flat_aperture(data, mask, aper, positions, bounds,
+        nflat, q_threshold, interf_lst, corr_mask_array,
+        smooth_A_func,
+        smooth_k_func,
+        smooth_c_func,
+        smooth_bkg_func,
+        ):
+    """
+
+    Args:
+        data ():
+        mask ():
+        aper ():
+    """
+
+    t1 = time.time()
+
+    # define fitting and error functions
+    def fitfunc2(p, xdata, interf):
+        A, k, c, bkg = p
+        return A*interf((xdata-c)*k) + bkg
+    def errfunc2(p, xdata, ydata, interf):
+        return ydata - fitfunc2(p, xdata, interf)
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+
+    # find saturation mask
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    # prepare an x list
+    newx_lst = np.arange(0, nx-1, 10)
+    if newx_lst[-1] != nx-1:
+        newx_lst = np.append(newx_lst, nx-1)
+
+    fitpar_lst  = [] # stores (A, k, c, bkg).has the same length as newx_lst
+    aperpar_lst = []
+
+    # central positions of this aperture
+    position = positions[aper]
+    lbound, ubound = bounds[aper]
+
+
+    prev_p = None
+
+    is_first_correct = False
+    break_aperture = False
+
+    # loop for every newx. find the fitting parameters for each column
+    # prepar the blank parameter for insert
+    blank_p = np.array([np.NaN, np.NaN, np.NaN, np.NaN])
+
+    for x in newx_lst:
+        # central position
+        pos = position[x]
+        # skip this column if central position excess the CCD range
+        if pos<0 or pos>ny:
+            fitpar_lst.append(blank_p)
+            continue
+        # lower and upper bounds
+        y1 = int(max(0, lbound[x]))
+        y2 = int(min(ny, ubound[x]))
+        # construct fitting data (xdata, ydata)
+        xdata = np.arange(y1, y2)
+        ydata = data[y1:y2, x]
+        # calculate saturation mask and bad-pixel mask
+        _satmask = sat_mask[y1:y2, x]
+        _badmask = bad_mask[y1:y2, x]
+
+        # skip this column if too many saturated or bad pixels
+        if _satmask.sum()>=3 or _badmask.sum()>=3:
+            fitpar_lst.append(blank_p)
+            continue
+
+        # estimate the SNR
+        _icen = int(round(pos))
+        _i1 = max(0, _icen-5)
+        _i2 = min(ny, _icen+6)
+        sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
+        # skip this column if sn is too low
+        if sn < q_threshold:
+            fitpar_lst.append(blank_p)
+            continue
+
+        # begin fitting
+        interf = interf_lst[x]
+        if prev_p is None:
+            p0 = [ydata.max()-ydata.min(), 0.3, pos, max(0,ydata.min())]
+        else:
+            p0 = [ydata.max()-ydata.min(), abs(prev_p[1]), pos,
+                    max(0,ydata.min())]
+
+        # skip this column if lower or upper 1 sigma excess the CCD range
+        if pos-1./p0[1]<0 or pos+1./p0[1]>ny:
+            fitpar_lst.append(blank_p)
+            continue
+
+        # find A, k, c, bkg
+        #_m = np.ones_like(xdata, dtype=np.bool)
+        _m = (~_satmask)*(~_badmask)
+        for ite in range(10):
+            p, ier = opt.leastsq(errfunc2, p0,
+                        args=(xdata[_m], ydata[_m], interf))
+            ydata_fit = fitfunc2(p, xdata, interf)
+            ydata_res = ydata - ydata_fit
+            std = ydata_res[_m].std(ddof=1)
+            _new_m = (np.abs(ydata_res) < 5*std)*_m
+            if _new_m.sum() == _m.sum():
+                break
+            _m = _new_m
+        snr = p[0]/std
+
+        # p[0]: amplitude; p[1]: k; p[2]: pos, p[3]:background
+        succ = p[0]>0 and 0<p[1]<1 and y1<p[2]<y2 and snr>5 and ier<=4
+        prev_p = (None, p)[succ]
+
+        if succ:
+            if not is_first_correct:
+                is_first_correct = True
+                if x > 0.25*nx:
+                    break_aperture = True
+                    break
+            fitpar_lst.append(p)
+        else:
+            fitpar_lst.append(blank_p)
+
+    if break_aperture:
+        message = ('Aperture {:3d}: Skipped because of '
+                   'break_aperture=True').format(aper)
+        logger.info(message)
+        print(message)
+        #continue
+        return None
+
+    fitpar_lst = np.array(fitpar_lst)
+
+    if np.isnan(fitpar_lst[:,0]).sum()>0.5*nx:
+        message = ('Aperture {:3d}: Skipped because of too many NaN '
+                   'values in aperture parameters').format(aper)
+        logger.info(message)
+        print(message)
+        #continue
+        return None
+
+    if (~np.isnan(fitpar_lst[:,0])).sum()<10:
+        message = ('Aperture {:3d}: Skipped because of too few real '
+                   'values in aperture parameters').format(aper)
+        logger.info(message)
+        print(message)
+        #continue
+        return None
+
+    # pick up NaN positions in fitpar_lst and generate fitmask.
+    # NaN = False. Real number = True
+    fitmask = ~np.isnan(fitpar_lst[:,0])
+    # divide the whole order into several groups
+    xx = np.nonzero(fitmask)[0]
+    group_lst = np.split(xx, np.where(np.diff(xx) > 4)[0]+1)
+    # group_lst is composed of (x1, x2, ..., xN), where xi is index in
+    # **newx_lst**
+    # 4 means the maximum tolerance skipping value in fitmask is 3
+    # filter out short segments
+    # every index in group is index in newx_lst, NOT real pixel numbers
+    group_lst = [group for group in group_lst
+                 if newx_lst[group[-1]] - newx_lst[group[0]] > nx/10]
+
+    if len(group_lst) == 0:
+        message = ('Aperture {:3d}: Skipped'.format(aper))
+        print(message)
+        logger.info(message)
+        #continue
+        return None
+
+    # loop for A, k, c, bkg. Smooth these parameters
+    for ipara in range(4):
+        ypara = fitpar_lst[:,ipara]
+
+        if ipara == 0:
+            # fit for A
+            res = smooth_A_func(newx_lst, ypara, fitmask, group_lst, nx)
+        elif ipara == 1:
+            # fit for k
+            res = smooth_k_func(newx_lst, ypara, fitmask, group_lst, nx)
+        elif ipara == 2:
+            # fit for c
+            res = smooth_c_func(newx_lst, ypara, fitmask, group_lst, nx)
+        else:
+            # fit for bkg
+            res = smooth_bkg_func(newx_lst, ypara, fitmask, group_lst, nx)
+
+        # extract smoothing results
+        aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
+
+        # pack this parameter for every pixels
+        aperpar_lst.append(aperpar)
+
+    # find columns to be corrected in this order
+    correct_x_lst = []
+    for x in allx:
+        pos = position[x]
+        y1 = int(max(0, lbound[x]))
+        y2 = int(min(ny, ubound[x]))
+        if (y2-y1)<5:
+            continue
+        xdata = np.arange(y1, y2)
+        ydata = data[y1:y2, x]
+        _satmask = sat_mask[y1:y2, x]
+        _badmask = bad_mask[y1:y2, x]
+        _icen = int(round(pos))
+        _i1 = max(0, _icen-5)
+        _i2 = min(ny, _icen+6)
+        sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
+        if sn>q_threshold and _satmask.sum()<3 and _badmask.sum()<3:
+            correct_x_lst.append(x)
+
+    # find the left and right boundaries of the correction region
+    x1, x2 = correct_x_lst[0], correct_x_lst[-1]
+
+    result_lst = []
+    # now loop over columns in correction region
+    for x in correct_x_lst:
+        interf = interf_lst[x]
+        pos = position[x]
+        y1 = int(max(0, lbound[x]))
+        y2 = int(min(ny, ubound[x]))
+        xdata = np.arange(y1, y2)
+        ydata = data[y1:y2, x]
+        _satmask = sat_mask[y1:y2, x]
+        _badmask = bad_mask[y1:y2, x]
+
+        # correct flat for this column
+        #coeff_A, coeff_k, coeff_c, coeff_bkg = aperpar_lst
+        A   = aperpar_lst[0][x]
+        k   = aperpar_lst[1][x]
+        c   = aperpar_lst[2][x]
+        bkg = aperpar_lst[3][x]
+
+        lcorr, rcorr = corr_mask_array[x]
+        normx = (xdata-c)*k
+        corr_mask = (normx > lcorr)*(normx < rcorr)
+        flat = ydata/fitfunc2([A,k,c,bkg], xdata, interf)
+        flatmask = corr_mask*~_satmask*~_badmask
+        # adopt a decay length at the edges of flat fielding correction
+        # zones in each apertures if not all the pixels are flat corrected
+        #decay_length = 100
+        #if x1 > 0 and x < x1+decay_length:
+        #    decay = 1/(math.exp(-(x-(x1+decay_length/2))/4)+1)
+        #    flat[flatmask] = (flat[flatmask]-1)*decay + 1
+
+        # flat data would be
+        #flatdata[y1:y2, x][flatmask] = flat[flatmask]
+
+
+        # extract the 1d spectra of the modeled flat using super-sampling
+        # integration
+        y1s = max(0, np.round(lbound[x]-2, 1))
+        y2s = min(ny, np.round(ubound[x]+2, 1))
+        xdata2 = np.arange(y1s, y2s, 0.1)
+        flatmod = fitfunc2([A,k,c,bkg], xdata2, interf)
+        # use trapezoidal integration
+        # np.trapz(flatmod, x=xdata2)
+        # use simpson integration
+        flux1d = simps(flatmod, x=xdata2)
+
+        # flatspec 1d would be:
+        #flatspec_lst[aper][x] = flux1d
+        # result item
+        item = (x, y1, y2, flatmask, flat, flux1d)
+        result_lst.append(item)
+
+
+    t2 = time.time()
+    message = ('Aperture {:3d}: {:2d} group{:1s}; '
+               'correct {:4d} pixels from {:4d} to {:4d}; '
+               't = {:6.1f} ms').format(
+                aper, len(group_lst), (' ','s')[len(group_lst)>1],
+                len(correct_x_lst),
+                correct_x_lst[0], correct_x_lst[-1],
+                (t2-t1)*1e3
+                )
+    print(message)
+    return result_lst
+
+def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
+        q_threshold=30,
+        smooth_A_func=default_smooth_aperpar_A,
+        smooth_k_func=default_smooth_aperpar_k,
+        smooth_c_func=default_smooth_aperpar_c,
+        smooth_bkg_func=default_smooth_aperpar_bkg,
+        fig_aperpar=None, fig_overlap=None,
+        fig_slit=None, slit_file=None,
+    ):
+    """Get the flat fielding image from the input file.
+
+    Args:
+        data (:class:`numpy.ndarray`): Image data of flat fielding.
+        mask (:class:`numpy.ndarray`): Mask data of flat fielding.
+        apertureset (:class:`~gamse.echelle.trace.ApertureSet`): Echelle
+            apertures detected in the input file.
+        nflat (int): Number of flat fielding frames combined.
+        slit_step (int): Step of slit scanning.
+        q_threshold (float): Threshold of *Q*-factor.
+        smooth_A_func (func): Function of smoothing the aperture parameter *A*.
+        smooth_k_func (func): Function of smoothing the aperture parameter *k*.
+        smooth_c_func (func): Function of smoothing the aperture parameter *c*.
+        smooth_bkg_func (func): Function of smoothing the aperture parameter
+            *bkg*.
+        fig_aperpar (str): Path to the image of aperture profile parameters.
+        fig_overlap (str): Path to the image of overlapped slit profiles.
+        fig_slit (str): Path to the image of slit functions.
+        slit_file (str): Path to the ASCII file of slit functions.
+
+    Returns:
+        tuple: A tuple containing:
+
+            * :class:`numpy.ndarray`: 2D response map.
+            * :class:`numpy.ndarray`: A dict of flat 1-d spectra.
+
+    """
+    # define the fitting and error functions
+    def gaussian_bkg(A, center, fwhm, bkg, x):
+        s = fwhm/2./math.sqrt(2*math.log(2))
+        return A*np.exp(-(x-center)**2/2./s**2) + bkg
+    def fitfunc(p, x):
+        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+    def errfunc(p, x, y, fitfunc):
+        return y - fitfunc(p, x)
+
+
+    ny, nx = data.shape
+
+    # find saturation mask
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    # find the central positions and boundaries for each aperture
+    allx = np.arange(nx)
+    positions = apertureset.get_positions(allx)
+    bounds = apertureset.get_boundaries(allx)
+
+    plot_overlap = (fig_overlap is not None)
+    plot_aperpar = (fig_aperpar is not None)
+    plot_slit    = (fig_slit is not None)
+    plot_single  = False
+    fig_fitting = 'flat_single_%04d_%02d.png'
+    plot_fitting = True
+
+    ##########first step, scan each column and get the slit function############
+    # construct the x-coordinates for slit function
+    left, right, step = -4, +4, 0.1
+    xnodes = np.arange(left, right+1e-5, step)
+
+    # scanning column list
+    x_lst = np.arange(0, nx, slit_step)
+    if x_lst[-1] != nx-1:
+        x_lst = np.append(x_lst, nx-1)
+
+    # initialize the array for slit function
+    slit_array = np.zeros((xnodes.size, x_lst.size))
+    # prepare the fitting list
+    fitting_lst = {'A': {}, 'fwhm': {}, 'bkg': {}, 'c': {}}
+    # scan each column
+    for ix, x in enumerate(x_lst):
+        x = int(x)
+
+        if plot_overlap:
+            # fig2 is the overlapped profiles
+            fig2 = plt.figure(figsize=(8,6), dpi=150)
+            ax21 = fig2.add_subplot(211)
+            ax22 = fig2.add_subplot(212)
+
+        # initialize arrays to calcuate overlapped slit functions
+        all_x, all_y, all_r = [], [], []
+
+        # loop over all apertures
+        for aper in sorted(apertureset.keys()):
+            cen = positions[aper][x]
+            b1 = bounds[aper][0][x]
+            b2 = bounds[aper][1][x]
+            b1 = np.int32(np.round(np.maximum(b1, 0)))
+            b2 = np.int32(np.round(np.minimum(b2, ny)))
+            if b2-b1 <= 5:
+                continue
+            xdata = np.arange(b1, b2)
+            ydata = data[b1:b2, x]
+            _satmask = sat_mask[b1:b2, x]
+            _badmask = bad_mask[b1:b2, x]
+
+            # plot a single profile fitting
+            if plot_single:
+                n = aper%9
+                if n==0:
+                    figi = plt.figure(figsize=(12,8), dpi=150)
+                    figi.suptitle('X = %d'%x)
+                axi = figi.add_axes([0.06+(n%3)*0.32, 0.08+(2-n//3)*0.305,
+                                     0.27,0.24])
+                axi.plot(xdata, ydata, 'wo',
+                        markeredgewidth=1, markeredgecolor='k')
+                axi.axvline(cen, color='k', ls='--')
+
+            # fit the profile if saturated pixels less than 3 and bad pixels
+            # less than 3
+            if _satmask.sum() < 3 and _badmask.sum() < 3:
+
+                # iterative fitting using gaussian + bkg function
+                p0 = [ydata.max()-ydata.min(), (b1+b2)/2., 3.0, ydata.min()]
+                #_m = np.ones_like(xdata, dtype=np.bool)
+                _m = (~_satmask)*(~_badmask)
+                for i in range(10):
+                    p1, succ = opt.leastsq(errfunc, p0,
+                                args=(xdata[_m], ydata[_m], fitfunc))
+                    res = errfunc(p1, xdata, ydata, fitfunc)
+                    std = res[_m].std(ddof=1)
+                    _new_m = (np.abs(res) < 3*std)*_m
+                    if _m.sum() == _new_m.sum():
+                        break
+                    _m = _new_m
+
+                A, c, fwhm, bkg = p1
+                snr = A/std
+                s = fwhm/2./math.sqrt(2*math.log(2))
+                if b1 < c < b2 and A > 50 and 2 < fwhm < 10:
+                    # pack the fitting parameters
+                    fitting_lst['A'][(aper, x)]    = A
+                    fitting_lst['c'][(aper, x)]    = c
+                    fitting_lst['fwhm'][(aper, x)] = fwhm
+                    fitting_lst['bkg'][(aper, x)]  = bkg
+
+                    norm_x = (xdata[_m]-c)/s
+                    norm_y = (ydata[_m]-bkg)/A
+                    norm_r = res[_m]/A
+
+                    # pack normalized x, y, r
+                    for _norm_x, _norm_y, _norm_r in zip(norm_x, norm_y, norm_r):
+                        all_x.append(_norm_x)
+                        all_y.append(_norm_y)
+                        all_r.append(_norm_r)
+
+                    if plot_single:
+                        axi.plot(xdata[_m], ydata[_m], 'ko')
+                        _newx = np.arange(b1, b2+1e-3, 0.1)
+                        axi.plot(_newx, fitfunc(p1, _newx), 'r-')
+                        axi.axvline(c, color='r', ls='--')
+                        axi.plot(xdata[_satmask], ydata[_satmask],'yo',ms=2)
+                        axi.plot(xdata[_badmask], ydata[_badmask],'go',ms=2)
+
+            if plot_single:
+                _y1, _y2 = axi.get_ylim()
+                axi.text(0.95*b1+0.05*b2, 0.15*_y1+0.85*_y2,
+                         'Aperture %2d'%aper)
+                axi.set_xlim(b1, b2)
+                if n%9==8 or aper==max(apertureset.keys()):
+                    figi.savefig(fig_fitting%(x, aper))
+                    plt.close(figi)
+        # now aperture loop ends
+
+        # convert all_x, all_y, all_r to numpy arrays
+        all_x = np.array(all_x)
+        all_y = np.array(all_y)
+        all_r = np.array(all_r)
+
+        # construct slit function for this column
+        step = 0.1
+        _m = np.ones_like(all_x, dtype=np.bool)
+        for k in range(20):
+            #find y nodes
+            _xnodes, _ynodes = [], [] # pre-initialize nodes list.
+            for c in xnodes:
+                _m1 = np.abs(all_x[_m]-c) < step/2
+                if _m1.sum()>0:
+                    _xnodes.append(c)
+                    _ynodes.append(all_y[_m][_m1].mean(dtype=np.float64))
+
+            # construct the real slit function list with interpolating the empty
+            # values
+            _xnodes = np.array(_xnodes)
+            _ynodes = np.array(_ynodes)
+            f0 = intp.InterpolatedUnivariateSpline(_xnodes, _ynodes, k=3, ext=3)
+            ynodes = f0(xnodes)
+
+            # smoothing
+            ynodes = sg.savgol_filter(ynodes, window_length=9, polyorder=5)
+            f = intp.InterpolatedUnivariateSpline(xnodes, ynodes, k=3, ext=3)
+            res = all_y - f(all_x)
+            std = res[_m].std()
+            _new_m = np.abs(res) < 3*std
+            if _new_m.sum() == _m.sum():
+                break
+            _m = _new_m
+        slit_array[:,ix] = ynodes
+
+
+        # plot the overlapped slit functions
+        # _s = 2.35482 = FWHM/sigma for gaussian function
+        _s = 2*math.sqrt(2*math.log(2))
+        if plot_overlap:
+            ax21.plot(all_x, all_y, 'ro', ms=3, alpha=0.3, markeredgewidth=0)
+            ax21.plot(all_x[_m], all_y[_m], 'ko', ms=1, markeredgewidth=0)
+            ax21.plot(xnodes, ynodes, 'b-')
+            ax22.plot(all_x, all_y-gaussian_bkg(1, 0, _s, 0, all_x),
+                      'ro', ms=3, alpha=0.3, markeredgewidth=0)
+            ax22.plot(all_x[_m], all_y[_m]-gaussian_bkg(1, 0, _s, 0, all_x[_m]),
+                      'ko', ms=1, markeredgewidth=0)
+            ax22.plot(xnodes, ynodes - gaussian_bkg(1, 0, _s, 0, xnodes), 'b-')
+            newxx = np.arange(-5, 5+1e-5, 0.01)
+            ax21.plot(newxx, gaussian_bkg(1, 0, _s, 0, newxx), 'k-', alpha=0.5)
+            ax21.grid(True)
+            ax22.grid(True)
+            ax21.set_xlim(-7,7)
+            ax22.set_xlim(-7,7)
+            ax21.set_ylim(-0.2, 1.2)
+            ax22.set_ylim(-0.25, 0.25)
+            ax21.set_ylim(-0.2, 1.2)
+            fig2.savefig(fig_overlap%x)
+            plt.close(fig2)
+    # column loop ends here
+
+    # write the slit function into an ascii file
+    if slit_file is not None:
+        slitoutfile = open(slit_file, 'w')
+
+        string = ', '.join(['{:d}'.format(x) for x in x_lst])
+        slitoutfile.write('COLUMNS = ' + string + os.linesep)
+
+        string = ', '.join(['{:5.2f}'.format(x) for x in xnodes])
+        slitoutfile.write('NODES = ' + string + os.linesep)
+
+        for col in np.arange(x_lst.size):
+            for row in np.arange(xnodes.size):
+                slitoutfile.write(' {:12.8f}'.format(slit_array[row, col]))
+            slitoutfile.write(os.linesep)
+
+        slitoutfile.close()
+
+    # plot the slit function
+    if plot_slit:
+        fig = plt.figure(figsize=(5,10), dpi=150)
+        ax  = fig.add_axes([0.16, 0.06, 0.81, 0.92])
+        for ix in np.arange(slit_array.shape[1]):
+            ax.plot(xnodes, slit_array[:,ix] + ix*0.15, '-', color='C0')
+            ax.text(2.5, 0.03+ix*0.15, 'X=%d'%(x_lst[ix]), fontsize=13)
+        ax.set_xlim(xnodes[0], xnodes[-1])
+        _y1, _y2 = ax.get_ylim()
+        # has to be removed after plotting
+        #ax.text(xnodes[0]+0.5, 0.05*_y1+0.95*_y2, 'HRS (Xinglong)', fontsize=21)
+        ax.set_xlabel('$\sigma$', fontsize=15)
+        ax.set_ylabel('Intensity', fontsize=15)
+        for tick in ax.xaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        for tick in ax.yaxis.get_major_ticks():
+            tick.label1.set_fontsize(13)
+        fig.savefig(fig_slit)
+        plt.close(fig)
+
+    # plot the fitting list as a parameter map
+    fig3 = plt.figure(figsize=(8,6), dpi=150)
+    ax31 = fig3.add_subplot(221)
+    ax32 = fig3.add_subplot(222)
+    ax33 = fig3.add_subplot(223)
+    ax34 = fig3.add_subplot(224)
+    for ipara, para in enumerate(['A','fwhm','bkg']):
+        _x_lst, _y_lst, _z_lst = [], [], []
+        for key, v in fitting_lst[para].items():
+            _x_lst.append(key[1])
+            _y_lst.append(fitting_lst['c'][key])
+            _z_lst.append(v)
+        ax = fig3.get_axes()[ipara]
+        ax.scatter(_x_lst, _y_lst, c=_z_lst, cmap='jet', lw=0, s=15, alpha=0.6)
+        ax.set_xlim(0, nx-1)
+        ax.set_ylim(0, ny-1)
+
+    #####second step, scan each column and find the fitting parameters##########
+    # construct slit functions using cubic spline interpolation for all columns
+    full_slit_array = np.zeros((xnodes.size, nx))
+    for ix in np.arange(xnodes.size):
+        f = intp.InterpolatedUnivariateSpline(x_lst, slit_array[ix, :], k=3)
+        full_slit_array[ix, :] = f(np.arange(nx))
+
+    # construct correced mask array
+    maxlst = full_slit_array.max(axis=0)
+    maxilst = full_slit_array.argmax(axis=0)
+    maxmask = full_slit_array>0.10*maxlst
+    corr_mask_array = []
+    for x in allx:
+        ilst = np.nonzero(maxmask[:,x])[0]
+        il = xnodes[ilst[0]]
+        ir = xnodes[ilst[-1]]
+        corr_mask_array.append((il, ir))
+
+    # construct interpolation functions
+    interf_lst = []
+    for x in np.arange(nx):
+        slitfunc = full_slit_array[:, x]
+        nslit = slitfunc.size
+        interf = intp.InterpolatedUnivariateSpline(
+                    #np.arange(nslit)-nslit//2, slitfunc, k=3, ext=1)
+                    xnodes, slitfunc, k=3, ext=1)
+        interf_lst.append(interf)
+
+    flatdata = np.ones_like(data, dtype=np.float64)
+
+    ###################### loop for every aperture ########################
+    # use to remember the status of unsaved aperpar_fig
+    # = True if there's unsaved figure in memory
+    has_aperpar_fig = False
+
+    # initialize 1-d spectra array of flat
+    flatspec_lst = {aper: np.full(nx, np.nan) for aper in apertureset}
+
+    ncores = mp.cpu_count()
+    pool = mp.Pool(ncores)
+    mp_result_lst = {}
+    for iaper, aper in enumerate(sorted(apertureset.keys())):
+        mp_result = pool.apply_async(
+                    _get_fiber_flat_aperture,
+                    args=(data, mask, aper, positions, bounds,
+                            nflat, q_threshold, interf_lst, corr_mask_array,
+                            smooth_A_func, smooth_k_func, smooth_c_func,
+                            smooth_bkg_func)
+                    )
+        mp_result_lst[aper] = mp_result
+    pool.close()
+    pool.join()
+
+    for aper, mp_result in sorted(mp_result_lst.items()):
+        result = mp_result.get()
+        if result is None:
+            continue
+        for item in result:
+            x, y1, y2, flatmask, flat, flux1d = item
+            flatdata[y1:y2, x][flatmask] = flat[flatmask]
+            flatspec_lst[aper][x] = flux1d
+
+
+
+    # pack the final 1-d spectra of flat
+    flatspectable = [(aper, flatspec_lst[aper])
+                     for aper in sorted(apertureset.keys())]
+
+    # define the datatype of flat 1d spectra
+    flatspectype = np.dtype(
+                    {'names':   ['aperture', 'flux'],
+                     'formats': [np.int32, (np.float32, nx)],}
+                    )
+    flatspectable = np.array(flatspectable, dtype=flatspectype)
+
+    ###################### aperture loop ends here ########################
+    if plot_aperpar and has_aperpar_fig:
+        # there's unsaved figure in memory. save and close the figure
+        fig.savefig(fig_aperpar%aper)
+        plt.close(fig)
+        has_aperpar_fig = False
+
+
+    return flatdata, flatspectable
+
+
+def get_fiber_flat_test(*args, **kwargs):
+    mp = kwargs.pop('mp')
+    t1 = time.time()
+    if mp:
+        result = get_fiber_flat_mp(*args, **kwargs)
+    else:
+        result = get_fiber_flat(*args, **kwargs)
+    t2 = time.time()
+    print('Flat time when multiprocessing = {} : {}'.format(mp, t2-t1))
+    return result
 
 def default_smooth_flux(x, y, w):
     """

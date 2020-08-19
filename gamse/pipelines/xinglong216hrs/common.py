@@ -14,7 +14,9 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates as mdates
 
+from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.obslog import read_obslog
 from ...utils.onedarray import iterative_savgol_filter
@@ -249,8 +251,16 @@ def combine_bias(config, logtable):
 
     """
 
-    rawdata      = config['data']['rawdata']
+    rawpath      = config['data']['rawpath']
     readout_mode = config['data']['readout_mode']
+
+    # determine number of cores to be used
+    ncores = config['reduce'].get('ncores')
+    if ncores == 'max':
+        ncores = os.cpu_count()
+    else:
+        ncores = min(os.cpu_count(), int(ncores))
+
     section = config['reduce.bias']
     bias_file = section['bias_file']
 
@@ -266,10 +276,16 @@ def combine_bias(config, logtable):
         # there is no bias frames
         return None, []
 
-    for ifile, logitem in enumerate(bias_items):
+
+    fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s}'
+    head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                'obsdate')
+
+    for iframe, logitem in enumerate(bias_items):
 
         # now filter the bias frames
-        filename = os.path.join(rawdata, logitem['fileid']+'.fits')
+        fname = '{}.fits'.format(logitem['fileid'])
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
         data, card_lst = correct_overscan(data, head, readout_mode)
@@ -278,7 +294,7 @@ def combine_bias(config, logtable):
         bias_data_lst.append(data)
 
         # append the file information
-        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(ifile+1)
+        prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(iframe+1)
         card = (prefix+' FILEID', logitem['fileid'])
         bias_card_lst.append(card)
 
@@ -291,10 +307,15 @@ def combine_bias(config, logtable):
                 bias_card_lst.append((newkey, value))
 
         # print info
-        if ifile == 0:
+        if iframe == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
-        print('  - FileID: {} exptime={:5g} sec'.format(
-                logitem['fileid'], logitem['exptime']))
+            print(head_str)
+        message = fmt_str.format(
+                    '[{:d}]'.format(logitem['frameid']),
+                    logitem['fileid'], logitem['object'],
+                    logitem['exptime'], logitem['obsdate'],
+                    )
+        print(message)
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
@@ -307,11 +328,12 @@ def combine_bias(config, logtable):
     maxiter      = section.getint('maxiter')
     maskmode    = (None, 'max')[n_bias>=3]
 
-    bias = combine_images(bias_data_lst,
-            mode       = combine_mode,
-            upper_clip = cosmic_clip,
-            maxiter    = maxiter,
-            maskmode   = maskmode,
+    bias_combine = combine_images(bias_data_lst,
+            mode        = combine_mode,
+            upper_clip  = cosmic_clip,
+            maxiter     = maxiter,
+            maskmode    = maskmode,
+            ncores      = ncores,
             )
 
     bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
@@ -325,6 +347,7 @@ def combine_bias(config, logtable):
     head = fits.Header()
     for card in bias_card_lst:
         head.append(card)
+    head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
     hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
     ############## bias smooth ##################
@@ -332,27 +355,38 @@ def combine_bias(config, logtable):
         # bias needs to be smoothed
         smooth_method = section.get('smooth_method')
 
-        h, w = bias.shape
+        ny, nx = bias_combine.shape
+        newcard_lst = []
         if smooth_method in ['gauss', 'gaussian']:
             # perform 2D gaussian smoothing
             smooth_sigma = section.getint('smooth_sigma')
             smooth_mode  = section.get('smooth_mode')
-            bias_smooth = np.zeros_like(bias, dtype=np.float64)
-            bias_smooth[0:h//2, :] = gaussian_filter(bias[0:h//2, :],
+            bias_smooth = np.zeros_like(bias_combine, dtype=np.float64)
+            bias_smooth[0:ny//2, :] = gaussian_filter(
+                                        bias_combine[0:ny//2, :],
                                         sigma = smooth_sigma,
                                         mode  = smooth_mode)
-            bias_smooth[h//2:h, :] = gaussian_filter(bias[h//2:h, :],
+            bias_smooth[ny//2:ny, :] = gaussian_filter(
+                                        bias_combine[ny//2:ny, :],
                                         sigma = smooth_sigma,
                                         mode  = smooth_mode)
 
             # write information to FITS header
-            bias_card_lst.append((prefix+'SMOOTH CORRECTED',  True))
-            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+            newcard_lst.append((prefix+'SMOOTH CORRECTED',  True))
+            newcard_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            newcard_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            newcard_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
         else:
             print('Unknown smooth method: ', smooth_method)
             pass
+
+        # pack the cards to bias_card_lst and also hdu_lst
+        for card in newcard_lst:
+            hdu_lst[0].header.append(card)
+            bias_card_lst.append(card)
+        hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
+        hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_smooth
@@ -672,3 +706,43 @@ def print_wrapper(string, item):
     else:
         return string
 
+class BackgroundFigure(BackgroundFigureCommon):
+    """Figure to plot the background correction.
+    """
+    def __init__(self, dpi=300, figsize=(12, 5.5)):
+        BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
+        width = 0.36
+        height = width*figsize[0]/figsize[1]
+        self.ax1  = self.add_axes([0.06, 0.1, width, height])
+        self.ax2  = self.add_axes([0.55, 0.1, width, height])
+        self.ax1c = self.add_axes([0.06+width+0.01, 0.1, 0.015, height])
+        self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
+
+    def plot(self, data, background, scale=(5, 99)):
+        """Plot the image data with background and the subtracted background
+        light.
+
+        Args:
+            data (:class:`numpy.ndarray`): Image data to be background
+                subtracted.
+            background (:class:`numpy.ndarray`): Background light as a 2D array.
+        """
+        # find the minimum and maximum value of plotting
+        vmin = np.percentile(data, scale[0])
+        vmax = np.percentile(data, scale[1])
+
+        cax1 = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax,
+                origin='lower')
+        cax2 = self.ax2.imshow(background, cmap='viridis',
+                origin='lower')
+        cs = self.ax2.contour(background, colors='r', linewidths=0.5)
+        self.ax2.clabel(cs, inline=1, fontsize=7, use_clabeltext=True)
+        self.colorbar(cax1, cax=self.ax1c)
+        self.colorbar(cax2, cax=self.ax2c)
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X (pixel)')
+            ax.set_ylabel('Y (pixel)')
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))

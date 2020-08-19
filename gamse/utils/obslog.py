@@ -118,19 +118,40 @@ def _read_obslog(filename):
     return logtable
 
 
-def read_obslog(filename):
+def read_obslog(filename, fmt='auto'):
     """Read the observing log.
 
     Args:
-        filename (str): Filename of the obsereving log file.
+        filename (str): Filename of the observing log file.
+        fmt (str): Format of the log file.
 
     Returns:
         :class:`astropy.table.Table`: An observing log object.
     
     """
-    registry.register_reader('obslog', Table, _read_obslog)
-    table = Table.read(filename, format='obslog')
-    registry.unregister_reader('obslog', Table)
+
+    # customized obslog format
+    if fmt == 'obslog':
+        registry.register_reader('obslog', Table, _read_obslog)
+        table = Table.read(filename, format='obslog')
+        registry.unregister_reader('obslog', Table)
+
+    # astropy format
+    elif fmt == 'astropy':
+        table = Table.read(filename, format='ascii.fixed_width_two_line')
+
+    # auto selection
+    elif fmt == 'auto':
+        try:
+            table = Table.read(filename, format='ascii.fixed_width_two_line')
+        except:
+            registry.register_reader('obslog', Table, _read_obslog)
+            table = Table.read(filename, format='obslog')
+            registry.unregister_reader('obslog', Table)
+
+    else:
+        table = None
+
     return table
 
 def _write_obslog(table, filename, overwrite=False, delimiter=' '):
