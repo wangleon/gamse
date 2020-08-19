@@ -26,7 +26,7 @@ def load_config(pattern):
             break
     return config
 
-def load_obslog(pattern, format='obslog'):
+def load_obslog(pattern, fmt='obslog'):
     """Find and read the observing log file.
 
     Args:
@@ -83,7 +83,7 @@ def load_obslog(pattern, format='obslog'):
 
     message = 'Load obslog file: "{}"'.format(select_logname)
     print(message)
-    logtable = read_obslog(select_logname, format=format)
+    logtable = read_obslog(select_logname, fmt=fmt)
     return logtable
 
 
