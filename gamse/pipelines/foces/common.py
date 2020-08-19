@@ -250,8 +250,10 @@ def combine_bias(config, logtable):
     hdu_lst = fits.HDUList()
     # create new FITS Header for bias
     head = fits.Header()
+    # pack new card list into header and bias_card_lst
     for card in bias_card_lst:
         head.append(card)
+    head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
     hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
     ############## bias smooth ##################
@@ -272,10 +274,10 @@ def combine_bias(config, logtable):
             ron_factor = 2*math.pi*smooth_sigma**2
 
             # write information to FITS header
-            bias_card_lst.append((prefix+'SMOOTH CORRECTED', True))
-            bias_card_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
-            bias_card_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
-            bias_card_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
+            newcard_lst.append((prefix+'SMOOTH CORRECTED', True))
+            newcard_lst.append((prefix+'SMOOTH METHOD', 'GAUSSIAN'))
+            newcard_lst.append((prefix+'SMOOTH SIGMA',  smooth_sigma))
+            newcard_lst.append((prefix+'SMOOTH MODE',   smooth_mode))
 
         else:
             print('Unknown smooth method: ', smooth_method)
@@ -283,9 +285,11 @@ def combine_bias(config, logtable):
 
         # pack the cards to bias_card_lst and also hdu_lst
         for card in newcard_lst:
-            bias_card_lst.append(card)
             hdu_lst[0].header.append(card)
+            bias_card_lst.append(card)
         hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
+        hdu_lst[0].header.append(card)
 
         # bias is the result array to return
         bias = bias_smooth
@@ -317,6 +321,7 @@ def combine_bias(config, logtable):
 
     # write to FITS file
     hdu_lst.writeto(bias_file, overwrite=True)
+
     message = 'Bias image written to "{}"'.format(bias_file)
     logger.info(message)
     print(message)

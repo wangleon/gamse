@@ -457,22 +457,22 @@ def reduce_singlefiber(config, logtable):
                     upper_limit = section.getfloat('upper_limit'),
                     )
         head = master_aperset.to_fitsheader(head)
+        message = '1D spectra extracted for {:d} orders'.format(len(spectra1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
     
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
             n = flux_sum.size
-            # search for flat flux
-            m = flat_spec['aperture']==aper
-            flat_flux = flat_spec[m][0]['flux']
 
             # pack to table
-            item = (aper, 0, n,
+            row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux
-                    np.zeros(n),                    # mask
+                    np.zeros(n, dtype=np.int16),    # mask
                     )
-            spec.append(item)
+            spec.append(row)
         spec = np.array(spec, dtype=wlcalib_spectype)
     
         figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
@@ -499,8 +499,7 @@ def reduce_singlefiber(config, logtable):
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = ('Did not find any archive wavelength'
-                               'calibration file')
+                    message = 'Archive wavelength calibration file not found'
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -648,12 +647,13 @@ def reduce_singlefiber(config, logtable):
                     fits.BinTableHDU(spec),
                     fits.BinTableHDU(identlist),
                     ])
+
         # save in midpath as a wlcalib reference file
         fname = 'wlcalib.{}.fits'.format(fileid)
         filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
-        # save a second time in onedspec
+        # save in onedspec
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
         filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
@@ -678,6 +678,7 @@ def reduce_singlefiber(config, logtable):
                             time_diff        = time_diff,
                         )
         ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+
         # print ThAr summary and selected calib
         for frameid, calib in sorted(calib_lst.items()):
             string = fmt_string.format(frameid, calib['fileid'],
@@ -701,19 +702,19 @@ def reduce_singlefiber(config, logtable):
 
     # define dtype of 1-d spectra
     types = [
-            ('aperture',     np.int16),
-            ('order',        np.int16),
-            ('points',       np.int16),
-            ('wavelength',   (np.float64, nx)),
-            ('flux_sum',     (np.float32, nx)),
-            ('flux_sum_err', (np.float32, nx)),
-            ('flux_sum_mask',(np.int16,   nx)),
-            ('flux_opt',     (np.float32, nx)),
-            ('flux_opt_err', (np.float32, nx)),
-            ('flux_opt_mask',(np.int16,   nx)),
-            ('flux_raw',     (np.float32, nx)),
-            ('flat',         (np.float32, nx)),
-            ('background',   (np.float32, nx)),
+            ('aperture',        np.int16),
+            ('order',           np.int16),
+            ('points',          np.int16),
+            ('wavelength',      (np.float64, nx)),
+            ('flux_sum',        (np.float32, nx)),
+            ('flux_sum_err',    (np.float32, nx)),
+            ('flux_sum_mask',   (np.int16,   nx)),
+            ('flux_opt',        (np.float32, nx)),
+            ('flux_opt_err',    (np.float32, nx)),
+            ('flux_opt_mask',   (np.int16,   nx)),
+            ('flux_raw',        (np.float32, nx)),
+            ('flat',            (np.float32, nx)),
+            ('background',      (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -734,7 +735,7 @@ def reduce_singlefiber(config, logtable):
         if imgtype != 'sci':
             continue
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
 
         message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, objname)
@@ -822,7 +823,6 @@ def reduce_singlefiber(config, logtable):
         #                    fig_section  = fig_sec,
         #            )
         #    data = data - stray
-
         #    # put information into header
         #    prefix = 'HIERARCH GAMSE BACKGROUND '
         #    head.append((prefix + 'CORRECTED', True))
@@ -911,7 +911,7 @@ def reduce_singlefiber(config, logtable):
             # background 1d flux
             back_flux = background1d[aper]['flux_sum']
 
-            item = (aper, 0, n,
+            row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux_sum
                     flux_err,                       # flux_sum_err
@@ -923,7 +923,7 @@ def reduce_singlefiber(config, logtable):
                     flat_flux,                      # flat
                     back_flux,                      # background
                     )
-            spec.append(item)
+            spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
