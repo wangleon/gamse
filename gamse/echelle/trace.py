@@ -682,8 +682,8 @@ class TraceFigureCommon(Figure):
             bbox3.x0, y0, bbox3.width, bbox3.height
             ])
 
-def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
-        align_deg=2, filling=0.3, degree=3,
+def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
+        separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
         display=True, fig=None):
     """Find the positions of apertures on a CCD image.
 
@@ -692,6 +692,7 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         mask (:class:`numpy.ndarray`): Image mask with the same shape as
             **data**, where saturated pixels are marked with 4, and bad pixels
             with 2.
+        transpose (bool): Transpose the **data** and **mask** if *True*.
         scan_step (int): Steps of pixels used to scan along the main
             dispersion direction.
         minimum (float): Minimum value to filter the input image.
@@ -701,13 +702,19 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
             cross-sections along the cross-dispersion direction.
         filling (float): Fraction of detected pixels to total step of scanning.
         degree (int): Degree of polynomials to fit aperture locations.
+        conv_core (str or float): Width of convolution core.
         display (bool): If *True*, display a figure on the screen.
+        fig (Figure):
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
             aperture locations.
 
     """
+
+    if transpose:
+        data = data.T
+        mask = mask.T
 
     gap_mask = (mask & 1 > 0)
     bad_mask = (mask & 2 > 0)
@@ -751,21 +758,31 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
     # now fsep is an numpy unfunc telling you the order separations at any given
     # rows
 
-    fig.ax1.imshow(logdata,cmap='gray',interpolation='none')
     # fill saturation pixels with red
     sat_cmap = mcolors.LinearSegmentedColormap.from_list('TransRed',
                [(1,0,0,0), (1,0,0,0.8)], N=2)
-    fig.ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
     # fill bad pixels with blue
     bad_cmap = mcolors.LinearSegmentedColormap.from_list('TransBlue',
                [(0,0,1,0), (0,0,1,0.8)], N=2)
-    fig.ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
     # filll CCD gaps with green
     gap_cmap = mcolors.LinearSegmentedColormap.from_list('TransGreen',
                [(0,1,0,0), (0,1,0,0.8)], N=2)
-    fig.ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
-    fig.ax1.set_xlim(0,w-1)
-    fig.ax1.set_ylim(h-1,0)
+
+    if transpose:
+        fig.ax1.imshow(logdata.T, cmap='gray', interpolation='none')
+        fig.ax1.imshow(sat_mask.T, interpolation='none', cmap=sat_cmap)
+        fig.ax1.imshow(bad_mask.T, interpolation='none', cmap=bad_cmap)
+        fig.ax1.imshow(gap_mask.T, interpolation='none', cmap=gap_cmap)
+        fig.ax1.set_xlim(0, h-1)
+        fig.ax1.set_ylim(w-1, 0)
+    else:
+        fig.ax1.imshow(logdata, cmap='gray', interpolation='none')
+        fig.ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+        fig.ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
+        fig.ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
+        fig.ax1.set_xlim(0,w-1)
+        fig.ax1.set_ylim(h-1,0)
+
     fig.ax1.set_xlabel('X', fontsize=12)
     fig.ax1.set_ylabel('Y', fontsize=12)
 
@@ -782,8 +799,10 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         ax1p.imshow(sat_mask, interpolation='none',cmap=sat_cmap)
         for x in [0.3,0.4,0.5,0.6,0.7]:
             ax1p2.axvline(x=x, ls='--', lw=1, color='k')
-        ax1p2.arrow(0.5-0.005, 0.985, -0.05, 0, width=0.002, head_width=0.01, color='k', edgecolor='k')
-        ax1p2.arrow(0.5+0.005, 0.985, +0.05, 0, width=0.002, head_width=0.01, color='k', edgecolor='k')
+        ax1p2.arrow(0.5-0.005, 0.985, -0.05, 0,
+                    width=0.002, head_width=0.01, color='k', edgecolor='k')
+        ax1p2.arrow(0.5+0.005, 0.985, +0.05, 0,
+                    width=0.002, head_width=0.01, color='k', edgecolor='k')
         ax1p2.set_axis_off()
 
         fig2p = plt.figure(figsize=(7,4), dpi=150)
@@ -916,8 +935,26 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
 
     # convolution core for the cross-sections. used to eliminate the "flat" tops
     # of the saturated orders
-    core = np.hanning(int(fsep(h/2)))
-    core /= core.sum()
+    if isinstance(conv_core, str) and conv_core=='auto':
+        core = np.hanning(int(fsep(h/2)))
+    elif isinstance(conv_core, int):
+        if conv_core > 0:
+            core = np.hanning(conv_core)
+        elif conv_core == 0:
+            core = None
+        else:
+            print('Warning: convolution core () must be positive. '.format(
+                    conv_core))
+            core = None
+    elif isinstance(conv_core, float):
+        core = np.hanning(abs(conv_core))
+    else:
+        print('Warning: Unknown datatype of conv_core: {}'.format(conv_core))
+        core = None
+
+    # normalize the convolution core
+    if core is not None:
+        core /= core.sum()
 
     while(True):
         # scan the image along X axis starting from the middle column
@@ -932,7 +969,11 @@ def find_apertures(data, mask, scan_step=50, minimum=1e-3, separation=20,
         fixfunc = intp.InterpolatedUnivariateSpline(
                 np.arange(h)[mask1], flux1[mask1], k=3, ext=3)
         flux1 = fixfunc(np.arange(h))
-        flux1 = np.convolve(flux1, core, mode='same')
+
+        # convolve the cross-section
+        if core is not None:
+            flux1 = np.convolve(flux1, core, mode='same')
+
         if icol == 0:
             # will be used when changing the direction
             flux1_center = flux1
@@ -1505,7 +1546,7 @@ def gaussian_bkg(A, center, fwhm, bkg, x):
         A (float): Amplitude of gaussian function.
         center (float): Central value of gaussian function.
         fwhm (float): Full-width-half-maximum value of gaussian function.
-        bkg (float): Backgroudn value of gaussian function.
+        bkg (float): Background value of gaussian function.
         x (*float* or :class:`numpy.ndarray`): Input values.
 
     Returns:
