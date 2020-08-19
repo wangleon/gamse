@@ -123,10 +123,13 @@ def reduce_echelle():
         xinglong216hrs.reduce_rawdata()
 
     elif key == ('APF', 'Levy'):
-        levy.reduce()
+        levy.reduce_rawdata()
 
     elif key == ('Keck-I', 'HIRES'):
-        hires.reduce()
+        hires.reduce_rawdata()
+
+    elif key == ('MPG/ESO-2.2m', 'FEROS'):
+        feros.reduce_rawdata()
 
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
@@ -170,13 +173,13 @@ def make_obslog():
         xinglong216hrs.make_obslog()
 
     elif key == ('APF', 'Levy'):
-        levy.make_obslog(rawdata)
+        levy.make_obslog()
 
     elif key == ('Keck-I', 'HIRES'):
-        hires.make_obslog(rawdata)
+        hires.make_obslog()
 
-    elif key == ('MPG/ESO-220', 'FEROS'):
-        feros.make_obslog(rawdata)
+    elif key == ('MPG/ESO-2.2m', 'FEROS'):
+        feros.make_obslog()
 
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
@@ -191,6 +194,7 @@ def make_config():
             #'Keck/HIRES',
             ('foces',          'Fraunhofer/FOCES'),
             ('xinglong216hrs', 'Xinglong 2.16m/HRS'),
+            #('feros',          'MPG/ESO-2.2m/FEROS'),
             ]
 
     # display a list of supported instruments
@@ -220,6 +224,10 @@ def show_onedspec():
         filename_lst (list): List of filenames of 1-D spectra.
     """
 
+    # intialize obslog table and config object
+    logtable = None
+    config   = None
+
     # try to load obslog
     logname_lst = [fname for fname in os.listdir(os.curdir)
                         if fname.endswith('.obslog')]
@@ -244,25 +252,37 @@ def show_onedspec():
 
     filename_lst = []
     for arg in sys.argv[2:]:
-        if arg.isdigit() and logtable is not None:
-            # if arg is a number, find the corresponding filename in obslog
-            arg = int(arg)
-            for logitem in logtable:
-                if arg == logitem['frameid']:
-                    # get the path to the 1d spectra
-                    oned_path   = config['reduce'].get('onedspec', 'onedspec')
-                    # get the filename suffix for 1d spectra
-                    oned_suffix = config['reduce'].get('oned_suffix', 'ods')
 
-                    fname = '{}_{}.fits'.format(logitem['fileid'], oned_suffix)
-                    filename = os.path.join(oned_path, fname)
-                    if os.path.exists(filename):
-                        filename_lst.append(filename)
-                    break
-        elif os.path.exists(arg):
+        # first, check if argument is a filename.
+        if os.path.exists(arg):
             filename_lst.append(arg)
+        # if not a filename, try to find the corresponding items in obslog
         else:
-            continue
+            if config is None:
+                config = load_config('\S*\.cfg$')
+            if logtable is None:
+                logtable = load_obslog('\S*\.obslog$')
+
+            # if arg is a number, find the corresponding filename in obslog
+            if arg.isdigit():
+                arg = int(arg)
+                section = config['reduce']
+                for logitem in logtable:
+                    if arg == logitem['frameid']:
+                        # get the path to the 1d spectra
+                        odspath = section.get('odspath', None)
+                        if odspath is None:
+                            odspath = section.get('oned_spec')
+
+                        # get the filename suffix for 1d spectra
+                        oned_suffix = config['reduce'].get('oned_suffix')
+
+                        fname = '{}_{}.fits'.format(
+                                logitem['fileid'], oned_suffix)
+                        filename = os.path.join(odspath, fname)
+                        if os.path.exists(filename):
+                            filename_lst.append(filename)
+                        break
 
     if len(filename_lst)==0:
         exit()
