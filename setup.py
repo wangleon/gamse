@@ -16,6 +16,7 @@ setup(
                     'gamse/utils',
                     'gamse/echelle',
                     'gamse/pipelines',
+                    'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
                     'gamse/pipelines/xinglong216hrs',
                    ],
