@@ -5,6 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 import getpass
 import platform
+import distro
 import subprocess
 
 import numpy
@@ -66,7 +67,11 @@ def write_system_info():
         memory           = 'Unknown'
 
 
-    distribution = ' '.join(platform.dist())
+    #distribution = ' '.join(platform.dist())
+    # platform.dist() has been deprecated in Python 3.5. use
+    # distro.linux_distribution() instead.
+    distribution = ' '.join(distro.linux_distribution())
+
     username = getpass.getuser()
     node = platform.node()
     abspath = os.path.abspath(os.curdir)
