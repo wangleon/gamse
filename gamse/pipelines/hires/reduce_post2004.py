@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
@@ -13,7 +14,7 @@ from ...echelle.extract import extract_aperset
 from ...echelle.flat import get_slit_flat
 from .common import parse_3ccd_images
 
-def get_bias(config, logtable):
+def get_bias_post2004(config, logtable):
     """Get bias image.
 
     Args:
@@ -48,11 +49,11 @@ def get_bias(config, logtable):
         logger.info(message)
         print(message)
     else:
-        bias, bias_card_lst = combine_bias(config, logtable)
+        bias, bias_card_lst = combine_bias_post2004(config, logtable)
 
     return bias, bias_card_lst
 
-def combine_bias(config, logtable):
+def combine_bias_post2004(config, logtable):
     """Combine the bias images.
 
     Args:
@@ -121,21 +122,143 @@ def combine_bias(config, logtable):
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
 
-    # combine bias images
-    bias_data_lst = np.array(bias_data_lst)
-
     combine_mode = 'mean'
+    section = config['reduce.bias']
     cosmic_clip  = section.getfloat('cosmic_clip')
     maxiter      = section.getint('maxiter')
     maskmode    = (None, 'max')[n_bias>=3]
 
-    bias_combine = combine_images(bias_data_lst,
+    bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+    bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+    bias_card_lst.append((prefix+'MAXITER',      maxiter))
+    bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
+
+    # create the hdu list to be saved
+    hdu_lst = fits.HDUList()
+    # create new FITS Header for bias
+    head = fits.Header()
+    for card in bias_card_lst:
+        head.append(card)
+    head['HIERARCH GAMSE FILECONTENT 0'] = 'NONE'
+
+    # pack the primary HDU
+    hdu_lst.append(fits.PrimaryHDU(header=head))
+
+    # prepare the list for image data of each CCD
+    sub_bias_lst = []
+
+    # scan for each ccd
+    for iccd in range(nccd):
+        ### 3 CCDs loop begins here ###
+        bias_data_lst[iccd] = np.array(bias_data_lst[iccd])
+
+        sub_bias = combine_images(bias_data_lst[iccd],
             mode        = combine_mode,
             upper_clip  = cosmic_clip,
             maxiter     = maxiter,
             maskmode    = maskmode,
             ncores      = ncores,
             )
+
+        # pack bias of each CCD into sub_bias_lst
+        sub_bias_lst.append(sub_bias)
+
+        message = ('\033[{}mCombined bias for CCD {}: '
+                    'Mean = {:6.2f}\033[0m'.format(
+                    (34, 32, 31)[iccd], iccd+1, sub_bias.mean()))
+        print(message)
+
+        key = 'HIERARCH GAMSE FILECONTENT {}'.format(iccd+1)
+        hdu_lst[0].header[key] = 'BIAS COMBINED FOR CCD{}'.format(iccd+1)
+        hdu_lst.append(fits.ImageHDU(data=sub_bias))
+
+    bias_lst = sub_bias_lst
+    plot_bias_post2004(bias_lst, 'images/bias.png')
+
+    ################ bias smooth ################
+    if section.getboolean('smooth'):
+        # bias needs to be smoothed
+        smooth_method = section.get('smooth_method')
+
+        newcard_lst = []
+        if smooth_method in ['gauss', 'gaussian']:
+            # perform 2D gaussian smoothing
+            smooth_sigma = section.getint('smooth_sigma')
+            smooth_mode  = section.get('smooth_mode')
+            
+            for iccd in range(nccd):
+                sub_bias = sub_bias_lst[iccd]
+                bias_smooth = gaussian_filter(sub_bias,
+                                sigma = smooth_sigma,
+                                mode  = smooth_mode,
+                                )
+                hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+
+                # update the file content in primary HDU
+                key = 'HIERARCH GAMSE FILECONTENT {}'.format(1+nccd+iccd)
+                card = (key, 'BIAS SMOOTHED FOR CCD{}'.format(iccd+1))
+                hdu_lst[0].header.append(card)
+
+                # udpate the result array to be returned
+                bias_lst[iccd] = bias_smooth
+
+            # write information to FITS header
+            newcard_lst.append((prefix + 'SMOOTH CORRECTED', True))
+            newcard_lst.append((prefix + 'SMOOTH METHOD',  'GAUSSIAN'))
+            newcard_lst.append((prefix + 'SMOOTH SIGMA',   smooth_sigma))
+            newcard_lst.append((prefix + 'SMOOTH MODE',    smooth_mode))
+        else:
+            print('Unknown smooth method: ', smooth_method)
+            pass
+
+        # pack the cards to bias_card_lst and also hdu_lst
+        for card in newcard_lst:
+            hdu_lst[0].header.append(card)
+            bias_card_lst.append(card)
+
+    ############### save to FITS ##############
+    hdu_lst.writeto(bias_file, overwrite=True)
+
+    message = 'Bias image written to "{}"'.format(bias_file)
+    logger.info(message)
+    print(message)
+
+    return bias_lst, bias_card_lst
+
+def plot_bias_post2004(data_lst, figname):
+    """Plot bias images.
+    
+    Args:
+        data_lst (list):
+    """
+    nccd = 3
+    fig = plt.figure(figsize=(12, 8), dpi=200)
+    for iccd in range(nccd):
+        data = data_lst[iccd]
+        ax_imag = fig.add_axes([0.05+iccd*0.20, 0.1, 0.25, 0.8])
+        ax_hist = fig.add_axes([0.7, 0.1+(nccd-iccd-1)*0.28+0.05, 0.25, 0.2])
+        ax_cbar = fig.add_axes([0.7, 0.1+(nccd-iccd-1)*0.28,      0.25, 0.02])
+
+        vmin = np.percentile(data, 5)
+        vmax = np.percentile(data, 95)
+        cax = ax_imag.imshow(data, origin='lower', vmin=vmin, vmax=vmax)
+        fig.colorbar(cax, cax=ax_cbar, orientation='horizontal')
+        ax_imag.set_xlabel('X (pixel)')
+        if iccd==0:
+            ax_imag.set_ylabel('Y (pixel)')
+
+        v01 = np.percentile(data, 0.1)
+        v99 = np.percentile(data, 99.9)
+
+        # plot histogram
+        bins = np.linspace(v01, v99, 50)
+        ax_hist.hist(data.flatten(), bins=bins)
+        ax_hist.axvline(x=vmin, color='k', ls='--', lw=0.7)
+        ax_hist.axvline(x=vmax, color='k', ls='--', lw=0.7)
+        ax_hist.set_xlim(v01, v99)
+
+    fig.savefig(figname)
+    plt.close(fig)
 
 def reduce_post2004(config, logtable):
     """
@@ -177,75 +300,9 @@ def reduce_post2004(config, logtable):
 
     ################################ parse bias ################################
 
-        if has_bias:
-            # there is bias frames
-            print(' '*2 + pinfo1.get_separator())
+    bias_lst, bias_card_lst = get_bias_post2004(config, logtable)
 
-            bias = []
-            # the final HDU list
-            bias_hdu_lst = fits.HDUList([fits.PrimaryHDU()])
-
-            # scan for each ccd
-            for iccd in range(nccd):
-                ### 3 CCDs loop begins here ###
-                bias_data_lst[iccd] = np.array(bias_data_lst[iccd])
-
-                section = config['reduce.bias']
-                sub_bias = combine_images(bias_data_lst[iccd],
-                            mode       = 'mean',
-                            upper_clip = section.getfloat('cosmic_clip'),
-                            maxiter    = section.getint('maxiter'),
-                            mask       = (None, 'max')[n_bias>=3],
-                            )
-
-                message = '\033[{2}mCombined bias for CCD {0}: Mean = {1:6.2f}\033[0m'.format(
-                    iccd+1, sub_bias.mean(), (34, 32, 31)[iccd])
-
-                print(message)
-
-                head = fits.Header()
-                head['HIERARCH GAMSE BIAS NFILE'] = n_bias
-
-                ############## bias smooth ##################
-                section = config['reduce.bias']
-                if section.getboolean('smooth'):
-                    # bias needs to be smoothed
-                    smooth_method = section.get('smooth_method')
-
-                    h, w = sub_bias.shape
-                    if smooth_method in ['gauss', 'gaussian']:
-                        # perform 2D gaussian smoothing
-                        smooth_sigma = section.getint('smooth_sigma')
-                        smooth_mode  = section.get('smooth_mode')
-                        
-                        bias_smooth = gaussian_filter(sub_bias,
-                                        sigma=smooth_sigma, mode=smooth_mode)
-
-                        # write information to FITS header
-                        head['HIERARCH GAMSE BIAS SMOOTH']        = True
-                        head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                        head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
-                        head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
-                    else:
-                        print('Unknown smooth method: ', smooth_method)
-                        pass
-
-                    sub_bias = bias_smooth
-                else:
-                    # bias not smoothed
-                    head['HIERARCH GAMSE BIAS SMOOTH'] = False
-
-                bias.append(sub_bias)
-                bias_hdu_lst.append(fits.ImageHDU(data=sub_bias, header=head))
-                ### 3 CCDs loop ends here ##
-
-            # write bias into file
-            bias_hdu_lst.writeto(bias_file, overwrite=True)
-
-        else:
-            # no bias found
-            pass
-
+    exit()
     ########################## find flat groups #########################
     flat_file = config['reduce.flat'].get('flat_file')
 

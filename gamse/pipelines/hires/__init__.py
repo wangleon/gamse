@@ -62,6 +62,7 @@ def make_config():
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
+    config.set('reduce', 'ncores',      'max')
     
     config.add_section('reduce.bias')
     config.set('reduce.bias', 'bias_file',     '${reduce:midpath}/bias.fits')
