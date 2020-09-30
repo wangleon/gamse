@@ -2,8 +2,6 @@ import os
 import re
 import datetime
 import dateutil.parser
-import logging
-logger = logging.getLogger(__name__)
 import configparser
 
 import numpy as np
@@ -301,7 +299,7 @@ def reduce_rawdata():
 
     obsdate = dateutil.parser.parse(logtable[0]['obsdate'])
 
-    if obsdate < datetime.date(2004, 8, 17):
+    if obsdate < datetime.datetime(2004, 8, 17, 0, 0, 0):
         reduce_pre2004(config, logtable)
     else:
         reduce_post2004(config, logtable)
