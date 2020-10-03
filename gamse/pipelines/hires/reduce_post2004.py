@@ -5,13 +5,18 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 from scipy.ndimage.filters import gaussian_filter
+from scipy.signal import savgol_filter
+import scipy.interpolate as intp
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
+from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.background import simple_debackground
 from ...echelle.extract import extract_aperset
 from ...echelle.flat import get_slit_flat
+from ...common.obslog import parse_num_seq
 from .common import parse_3ccd_images
 
 def get_bias_post2004(config, logtable):
@@ -37,7 +42,7 @@ def get_bias_post2004(config, logtable):
         # load bias data from existing file
         hdu_lst = fits.open(bias_file)
         # pack bias image
-        bias = [hdu_lst[iccd+1].data for iccd in range(nccd)]
+        bias_lst = [hdu_lst[iccd+1+nccd].data for iccd in range(nccd)]
         hdu_lst.close()
 
         reobj = re.compile('GAMSE BIAS[\s\S]*')
@@ -49,9 +54,9 @@ def get_bias_post2004(config, logtable):
         logger.info(message)
         print(message)
     else:
-        bias, bias_card_lst = combine_bias_post2004(config, logtable)
+        bias_lst, bias_card_lst = combine_bias_post2004(config, logtable)
 
-    return bias, bias_card_lst
+    return bias_lst, bias_card_lst
 
 def combine_bias_post2004(config, logtable):
     """Combine the bias images.
@@ -145,7 +150,7 @@ def combine_bias_post2004(config, logtable):
     hdu_lst.append(fits.PrimaryHDU(header=head))
 
     # prepare the list for image data of each CCD
-    sub_bias_lst = []
+    bias_lst = []
 
     # scan for each ccd
     for iccd in range(nccd):
@@ -161,7 +166,7 @@ def combine_bias_post2004(config, logtable):
             )
 
         # pack bias of each CCD into sub_bias_lst
-        sub_bias_lst.append(sub_bias)
+        bias_lst.append(sub_bias)
 
         message = ('\033[{}mCombined bias for CCD {}: '
                     'Mean = {:6.2f}\033[0m'.format(
@@ -172,8 +177,52 @@ def combine_bias_post2004(config, logtable):
         hdu_lst[0].header[key] = 'BIAS COMBINED FOR CCD{}'.format(iccd+1)
         hdu_lst.append(fits.ImageHDU(data=sub_bias))
 
-    bias_lst = sub_bias_lst
-    plot_bias_post2004(bias_lst, 'images/bias.png')
+    # initialize bias figure
+    bias_fig = BiasFigure(data_lst=bias_lst)
+
+    new_bias_lst = []
+
+    # calculate and plot ymean of bias data
+    for iccd in range(nccd):
+        data = bias_lst[iccd]
+        ny, nx = data.shape
+        ally = np.arange(ny)
+        ymean = data.mean(axis=1)
+        ax_ycut = bias_fig.ax_ycut_lst[iccd]
+        ax_ycut.plot(ymean, ally, color='C3', lw=0.5, alpha=0.6)
+
+        mask = np.ones_like(ymean, dtype=np.bool)
+        for i in range(10):
+            f = intp.InterpolatedUnivariateSpline(
+                    ally[mask], ymean[mask], k=1)
+            yrec = f(ally)
+            ysmo = savgol_filter(yrec, window_length=301, polyorder=3)
+            yres = ymean - ysmo
+            ystd = yres[mask].std()
+            newmask = (yres>-3*ystd)*(yres<3*ystd)
+            if newmask.sum()==mask.sum():
+                break
+            mask = newmask
+
+        ax_ycut.plot(ysmo, ally, color='r', lw=0.5, alpha=1)
+
+        new_bias = np.tile(ysmo, (nx,1)).T
+        new_bias_lst.append(new_bias)
+
+    # save and close the figure
+    figpath = config['reduce']['figpath']
+    figfilename = os.path.join(figpath, 'bias.png')
+    bias_fig.savefig(figfilename)
+    plt.close(bias_fig)
+
+    for iccd in range(nccd):
+        hdu_lst.append(fits.ImageHDU(data=new_bias_lst[iccd]))
+        # update the file content in primary HDU
+        key = 'HIERARCH GAMSE FILECONTENT {}'.format(1+nccd+iccd)
+        card = (key, 'BIAS USED FOR CCD{}'.format(iccd+1))
+        hdu_lst[0].header.append(card)
+    bias_lst = new_bias_lst
+
 
     ################ bias smooth ################
     if section.getboolean('smooth'):
@@ -187,7 +236,7 @@ def combine_bias_post2004(config, logtable):
             smooth_mode  = section.get('smooth_mode')
             
             for iccd in range(nccd):
-                sub_bias = sub_bias_lst[iccd]
+                sub_bias = bias_lst[iccd]
                 bias_smooth = gaussian_filter(sub_bias,
                                 sigma = smooth_sigma,
                                 mode  = smooth_mode,
@@ -225,40 +274,59 @@ def combine_bias_post2004(config, logtable):
 
     return bias_lst, bias_card_lst
 
-def plot_bias_post2004(data_lst, figname):
-    """Plot bias images.
-    
-    Args:
-        data_lst (list):
-    """
-    nccd = 3
-    fig = plt.figure(figsize=(12, 8), dpi=200)
-    for iccd in range(nccd):
-        data = data_lst[iccd]
-        ax_imag = fig.add_axes([0.05+iccd*0.20, 0.1, 0.25, 0.8])
-        ax_hist = fig.add_axes([0.7, 0.1+(nccd-iccd-1)*0.28+0.05, 0.25, 0.2])
-        ax_cbar = fig.add_axes([0.7, 0.1+(nccd-iccd-1)*0.28,      0.25, 0.02])
+class BiasFigure(Figure):
 
-        vmin = np.percentile(data, 5)
-        vmax = np.percentile(data, 95)
-        cax = ax_imag.imshow(data, origin='lower', vmin=vmin, vmax=vmax)
-        fig.colorbar(cax, cax=ax_cbar, orientation='horizontal')
-        ax_imag.set_xlabel('X (pixel)')
-        if iccd==0:
-            ax_imag.set_ylabel('Y (pixel)')
+    def __init__(self, dpi=200, figsize=(12,8), data_lst=None):
+        Figure.__init__(self, dpi=dpi, figsize=figsize)
+        nccd = 3
+        axh = 0.8
 
-        v01 = np.percentile(data, 0.1)
-        v99 = np.percentile(data, 99.9)
+        self.ax_imag_lst = []
+        self.ax_ycut_lst = []
+        self.ax_hist_lst = []
+        self.ax_cbar_lst = []
+        for iccd in range(nccd):
+            data = data_lst[iccd]
+            ny, nx = data.shape
+            axw = axh/figsize[0]*figsize[1]/ny*nx
+            ax_imag = self.add_axes([0.1+iccd*0.20, 0.07, axw, axh])
+            ax_ycut = ax_imag.twiny()
+            ax_hist = self.add_axes([0.7, 0.07+(nccd-iccd-1)*0.28+0.03, 0.25, 0.2])
+            ax_cbar = self.add_axes([0.7, 0.07+(nccd-iccd-1)*0.28, 0.25, 0.02])
 
-        # plot histogram
-        bins = np.linspace(v01, v99, 50)
-        ax_hist.hist(data.flatten(), bins=bins)
-        ax_hist.axvline(x=vmin, color='k', ls='--', lw=0.7)
-        ax_hist.axvline(x=vmax, color='k', ls='--', lw=0.7)
-        ax_hist.set_xlim(v01, v99)
+            self.ax_imag_lst.append(ax_imag)
+            self.ax_ycut_lst.append(ax_ycut)
+            self.ax_hist_lst.append(ax_hist)
+            self.ax_cbar_lst.append(ax_cbar)
 
-    fig.savefig(figname)
-    plt.close(fig)
+            vmin = np.percentile(data, 1)
+            vmax = np.percentile(data, 99)
+            cax = ax_imag.imshow(data, origin='lower', vmin=vmin, vmax=vmax)
+            self.colorbar(cax, cax=ax_cbar, orientation='horizontal')
+            ax_imag.set_xlabel('X (pixel)')
+            if iccd==0:
+                ax_imag.set_ylabel('Y (pixel)')
+
+            ax_imag.set_xlim(0, nx-1)
+            ax_imag.set_ylim(0, ny-1)
+            ax_imag.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax_imag.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax_imag.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax_imag.yaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax_imag.set_title('CCD {}'.format(iccd+1))
+            #ax_ycut.set_ylim(0, ny-1)
+
+            # plot histogram
+            bins = np.linspace(vmin, vmax, 50)
+            color = ('C0', 'C2', 'C3')[iccd]
+            ax_hist.hist(data.flatten(), bins=bins, color=color,
+                        label='CCD {}'.format(iccd+1))
+            ax_hist.legend(loc='upper right')
+            ax_hist.set_xticklabels([])
+            ax_hist.set_xlim(vmin, vmax)
+            ax_cbar.set_xlim(vmin, vmax)
+
+        self.suptitle('Bias')
 
 def reduce_post2004(config, logtable):
     """
@@ -302,7 +370,6 @@ def reduce_post2004(config, logtable):
 
     bias_lst, bias_card_lst = get_bias_post2004(config, logtable)
 
-    exit()
     ########################## find flat groups #########################
     flat_file = config['reduce.flat'].get('flat_file')
 
