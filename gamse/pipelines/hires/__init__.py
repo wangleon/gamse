@@ -84,7 +84,7 @@ def make_config():
     config.set('reduce.trace', 'file',       '${reduce:midpath}/trace.fits')
 
     config.add_section('reduce.flat')
-    config.set('reduce.flat', 'file', '${reduce:midpath}/flat.fits')
+    config.set('reduce.flat', 'flat_file', '${reduce:midpath}/flat.fits')
 
     # write to config file
     filename = 'HIRES.{}.cfg'.format(input_date)
@@ -224,7 +224,7 @@ def make_obslog():
 
         # print log item with colors
         string_lst = [
-                '{:3d}'.format(frameid),
+                '[{:3d}]'.format(frameid),
                 '{:17s}'.format(fileid),
                 '({:3s})'.format(imgtype),
                 '{:20s}'.format(objectname),
