@@ -194,6 +194,7 @@ def make_config():
             ('foces',          'Fraunhofer/FOCES'),
             ('xinglong216hrs', 'Xinglong 2.16m/HRS'),
             ('hires',          'Keck/HIRES'),
+            ('levy',           'APF/Levy'),
             #('hds',            'Subaru/HDS'),
             #('feros',          'MPG/ESO-2.2m/FEROS'),
             ]

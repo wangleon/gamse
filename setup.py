@@ -19,6 +19,7 @@ setup(
                     'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
                     'gamse/pipelines/hires',
+                    'gamse/pipelines/levy',
                     'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {
