@@ -2606,7 +2606,7 @@ def default_smooth_flux(x, y, w):
         coeff = np.polyfit(x[mask], y[mask], deg=deg)
         yfit = np.polyval(coeff, x/w)
         yres = y - yfit
-        std = yres[fmask].std()
+        std = yres[mask].std()
         newmask = np.abs(yres) < 3*std
         if newmask.sum() == mask.sum():
             break
@@ -2634,17 +2634,17 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         :class:`numpy.ndarray`: 2D response map.
 
     """
-    h, w = data.shape
+    ny, nx = data.shape
 
     # find saturation mask and bad pixel mask
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
     gap_mask = (mask&1 > 0)
 
-    newx = np.arange(w)
+    newx = np.arange(nx)
     flatmap = np.ones_like(data, dtype=np.float64)
 
-    yy, xx = np.mgrid[:h:,:w:]
+    yy, xx = np.mgrid[:ny:,:nx:]
 
     for aper, aper_loc in sorted(apertureset.items()):
         spec = spectra1d[aper]
@@ -2662,7 +2662,7 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
 
         # fit flux
-        yfit, fmask = smooth_flux_func(newx, fluxdata, w)
+        yfit, fmask = smooth_flux_func(newx, fluxdata, nx)
 
         if figfile is not None:
             fig = plt.figure(dpi=150)
