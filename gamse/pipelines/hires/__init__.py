@@ -16,8 +16,7 @@ from .reduce_pre2004 import reduce_pre2004
 from .reduce_post2004 import reduce_post2004
 
 def make_config():
-    """Generate a config file for reducing the data taken with Xinglong 2.16m
-    HRS.
+    """Generate a config file for reducing the data taken with Keck/HIRES.
 
 
     """

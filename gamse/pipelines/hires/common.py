@@ -16,7 +16,7 @@ from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 
 def print_wrapper(string, item):
-    """A wrapper for log printing for HIRES pipeline.
+    """A wrapper for log printing for Keck/HIRES pipeline.
 
     Args:
         string (str): The output string for wrapping.
