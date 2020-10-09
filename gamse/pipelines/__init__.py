@@ -15,12 +15,7 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import feros
-from . import foces
-from . import hires
-from . import levy
-from . import sarg
-from . import xinglong216hrs
+from . import (feros, foces, hds, hires, levy, sarg, xinglong216hrs)
 
 #from .reduction import Reduction
 
@@ -181,6 +176,9 @@ def make_obslog():
     elif key == ('MPG/ESO-2.2m', 'FEROS'):
         feros.make_obslog()
 
+    elif key == ('Subaru', 'HDS'):
+        hds.make_obslog()
+
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
@@ -195,7 +193,7 @@ def make_config():
             ('xinglong216hrs', 'Xinglong 2.16m/HRS'),
             ('hires',          'Keck/HIRES'),
             ('levy',           'APF/Levy'),
-            #('hds',            'Subaru/HDS'),
+            ('hds',            'Subaru/HDS'),
             #('feros',          'MPG/ESO-2.2m/FEROS'),
             ]
 

@@ -9,7 +9,8 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date
 from ..common import load_config
-from .common import get_region_lst
+from .common import get_region_lst, get_std_setup, print_wrapper
+from .reduce import reduce_rawdata
 
 def make_config():
     """Generate a config file for reducing the data taken with Subaru/HDS
@@ -94,50 +95,39 @@ def make_obslog():
                         ('obsdate',  'S19'),
                         ('bin_1',    'S5'),
                         ('bin_2',    'S5'),
-                        ('filter1',  'S5'),
-                        ('filter2',  'S5'),
-                        ('slit_wid', 'f4'),
-                        ('slit_len', 'f4'),
-                        ('collim',   'S4'),
-                        ('crossd',   'S6'),
-                        ('ech_ang',  'f4'),
-                        ('cro_ang',  'f4'),
-                        ('wave_1',   'f4'),
-                        ('wave_2',   'f4'),
+                        ('slitsize', 'S8'),
+                        ('setup',    'S7'),
                         ('nsat_1',   'i4'),
                         ('nsat_2',   'i4'),
                         ('q95_1',    'i4'),
                         ('q95_2',    'i4'),
                 ])
 
-    fmt_str = ('  - {:5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
-            ' {:5} {:5} {:5} {:5}' # bin_1, bin_2, filter1, filter2
-            ' {:>8} {:>8} {:<4s} {:<6s}' # slit_wid, slit_len, collim, crossd
-            ' {:8} {:8} {:8} {:8}' # ech_ang, cro_ang, wave_1, wave_2
+    fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
+            ' {:5} {:5}' # bin_1, bin_2
+            ' {:>8s} {:<7s}' # slit_wid, slit_len, setup
             ' {:>7} {:>7} {:>5} {:>5}' # nsat_1, nsat_2, q95_1, q95_2
             )
     head_str = fmt_str.format('FID', 'fileid1', 'fileid2', 'objtype', 'object',
-                '', 'exptime', 'obsdate', 'bin_1',  'bin_2',
-                'filter1', 'filter2',
-                'slit_wid', 'slit_len', 'collim', 'crossd',
-                'ech_ang', 'cro_ang', 'wave_1', 'wave_2', 
-                'nsat_1', 'nsat_2', 'q95_1',  'q95_2')
+                '', 'exptime', 'obsdate', 'bin_1',  'bin_2', 'slitsize',
+                'setup', 'nsat_1', 'nsat_2', 'q95_1',  'q95_2')
     
     print(head_str)
+    frameid = 0
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
         if not re.match('HDSA\d{8}\.fits$', fname):
             continue
         # check the both CCD frames are exist
-        frameid = int(fname[4:12])
-        if frameid % 2 == 1:
-            other_fname = 'HDSA{:08d}.fits'.format(frameid+1)
+        framenum = int(fname[4:12])
+        if framenum % 2 == 1:
+            other_fname = 'HDSA{:08d}.fits'.format(framenum+1)
         else:
-            other_fname = 'HDSA{:08d}.fits'.format(frameid-1)
+            other_fname = 'HDSA{:08d}.fits'.format(framenum-1)
         if not os.path.exists(os.path.join(rawpath, other_fname)):
             print('Warning: missing file: {}'.format(other_fname))
 
-        if frameid % 2 == 0:
+        if framenum % 2 == 0:
             continue
 
         frameid1 = int(fname[4:12])
@@ -174,7 +164,7 @@ def make_obslog():
                 print('Warning: {} of {} ({}) and {} ({}) does not match.'.format(
                     key, frameid1, head1[key], frameid2, head2[key]))
 
-        frameid    = 0
+        frameid    = frameid + 1
         objtype    = head1['DATA-TYP']
         objectname = head1['OBJECT']
         exptime    = head1['EXPTIME']
@@ -182,16 +172,13 @@ def make_obslog():
         obsdate    = '{}T{}'.format(head1['DATE-OBS'], head1['UT'])
         bin_1      = '({},{})'.format(head1['BIN-FCT1'], head1['BIN-FCT2'])
         bin_2      = '({},{})'.format(head2['BIN-FCT1'], head2['BIN-FCT2'])
-        filter1    = head1['FILTER01']
-        filter2    = head1['FILTER02']
-        slit_wid   = head1['SLT-WID']
-        slit_len   = head1['SLT-LEN']
-        collim     = head1['H_COLLIM']
-        crossd     = head1['H_CROSSD']
-        ech_ang    = head1['H_EROTAN']
-        cro_ang    = head1['H_CROTAN']
-        wave_1     = head1.get('WAVELEN', None)
-        wave_2     = head2.get('WAVELEN', None)
+        slitsize   = '{:4.2f}x{:3.1f}'.format(head1['SLT-WID'], head1['SLT-LEN'])
+        setup1     = get_std_setup(head1)
+        setup2     = get_std_setup(head2)
+        if setup1 != setup2:
+            print('Warning: setup of CCD1 ({}) and CCD2 ({})'
+                  'does not match'.format(setup1, setup2))
+        setup = setup1
         sat_mask1  = np.isnan(data1)
         sat_mask2  = np.isnan(data2)
         nsat_1     = sat_mask1.sum()
@@ -202,8 +189,7 @@ def make_obslog():
         q95_2      = int(np.round(np.percentile(data2, 95)))
 
         item = [frameid, fileid1, fileid2, objtype, objectname, i2, exptime,
-                obsdate, bin_1, bin_2, filter1, filter2, slit_wid, slit_len,
-                collim, crossd, ech_ang, cro_ang, wave_1, wave_2,
+                obsdate, bin_1, bin_2, slitsize, setup,
                 nsat_1, nsat_2, q95_1, q95_2]
         logtable.add_row(item)
 
@@ -212,10 +198,13 @@ def make_obslog():
         # print log item with colors
         string = fmt_str.format('[{:d}]'.format(frameid),
                     fileid1, fileid2, objtype, objectname, i2, exptime,
-                    obsdate, bin_1, bin_2, filter1, filter2,
-                    slit_wid, slit_len, collim, crossd, ech_ang, cro_ang,
-                    wave_1, wave_2, nsat_1, nsat_2, q95_1, q95_2)
-        print(string)
+                    obsdate, bin_1, bin_2, slitsize, setup,
+                    '\033[31m{:7d}\033[0m'.format(nsat_1),
+                    '\033[34m{:7d}\033[0m'.format(nsat_2),
+                    '\033[31m{:5d}\033[0m'.format(q95_1),
+                    '\033[34m{:5d}\033[0m'.format(q95_2),
+                    )
+        print(print_wrapper(string, item))
 
     # determine filename of logtable.
     # use the obsdate of the first frame
