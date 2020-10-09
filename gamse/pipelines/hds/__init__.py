@@ -84,27 +84,44 @@ def make_obslog():
 
     # prepare logtable
     logtable = Table(dtype=[
-                        ('frameid', 'i2'),
-                        ('fileid1', 'S12'),
-                        ('fileid2', 'S12'),
-                        ('imgtype', 'S3'),
-                        ('object',  'S12'),
-                        ('i2',      'S1'),
-                        ('exptime', 'f4'),
-                        ('obsdate', 'S19'),
-                        ('nsat_1',  'i4'),
-                        ('nsat_2',  'i4'),
-                        ('q95_1',   'i4'),
-                        ('q95_2',   'i4'),
+                        ('frameid',  'i2'),
+                        ('fileid1',  'S12'),
+                        ('fileid2',  'S12'),
+                        ('objtype',  'S10'),
+                        ('object',   'S20'),
+                        ('i2',       'S1'),
+                        ('exptime',  'f4'),
+                        ('obsdate',  'S19'),
+                        ('bin_1',    'S5'),
+                        ('bin_2',    'S5'),
+                        ('filter1',  'S5'),
+                        ('filter2',  'S5'),
+                        ('slit_wid', 'f4'),
+                        ('slit_len', 'f4'),
+                        ('collim',   'S4'),
+                        ('crossd',   'S6'),
+                        ('ech_ang',  'f4'),
+                        ('cro_ang',  'f4'),
+                        ('wave_1',   'f4'),
+                        ('wave_2',   'f4'),
+                        ('nsat_1',   'i4'),
+                        ('nsat_2',   'i4'),
+                        ('q95_1',    'i4'),
+                        ('q95_2',    'i4'),
                 ])
 
-    fmt_str = ('  - {:5s} {:11s} {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s}'
-               ' {:5} {:5} {:>7} {:>7} {:>5} {:>5}')
-    head_str = fmt_str.format('FID', 'fileid1', 'fileid2', 'type', 'object',
-                                '', 'exptime', 'obsdate',
-                                'bin_1',  'bin_2',
-                                'nsat_1', 'nsat_2',
-                                'q95_1',  'q95_2')
+    fmt_str = ('  - {:5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
+            ' {:5} {:5} {:5} {:5}' # bin_1, bin_2, filter1, filter2
+            ' {:>8} {:>8} {:<4s} {:<6s}' # slit_wid, slit_len, collim, crossd
+            ' {:8} {:8} {:8} {:8}' # ech_ang, cro_ang, wave_1, wave_2
+            ' {:>7} {:>7} {:>5} {:>5}' # nsat_1, nsat_2, q95_1, q95_2
+            )
+    head_str = fmt_str.format('FID', 'fileid1', 'fileid2', 'objtype', 'object',
+                '', 'exptime', 'obsdate', 'bin_1',  'bin_2',
+                'filter1', 'filter2',
+                'slit_wid', 'slit_len', 'collim', 'crossd',
+                'ech_ang', 'cro_ang', 'wave_1', 'wave_2', 
+                'nsat_1', 'nsat_2', 'q95_1',  'q95_2')
     
     print(head_str)
     # start scanning the raw files
@@ -150,21 +167,33 @@ def make_obslog():
                 (data2[y11:y12, x11:x12], data2[y21:y22, x21:x22]),
                 axis=1)
 
-        for key in ['OBJECT', 'EXPTIME', 'DATE-OBS', 'UT']:
+        for key in ['DATA-TYP', 'OBJECT', 'EXPTIME', 'DATE-OBS', 'UT',
+                    'SLIT', 'SLT-WID', 'SLT-LEN', 'FILTER01', 'FILTER02',
+                    'H_I2CELL', 'H_COLLIM', 'H_CROSSD']:
             if head1[key] != head2[key]:
                 print('Warning: {} of {} ({}) and {} ({}) does not match.'.format(
                     key, frameid1, head1[key], frameid2, head2[key]))
 
         frameid    = 0
-        imgtype    = 'cal'
+        objtype    = head1['DATA-TYP']
         objectname = head1['OBJECT']
         exptime    = head1['EXPTIME']
-        i2         = '-'
+        i2         = {'USE': '+', 'NOUSE': '-'}[head1['H_I2CELL']]
         obsdate    = '{}T{}'.format(head1['DATE-OBS'], head1['UT'])
         bin_1      = '({},{})'.format(head1['BIN-FCT1'], head1['BIN-FCT2'])
         bin_2      = '({},{})'.format(head2['BIN-FCT1'], head2['BIN-FCT2'])
-        sat_mask1 = np.isnan(data1)
-        sat_mask2 = np.isnan(data2)
+        filter1    = head1['FILTER01']
+        filter2    = head1['FILTER02']
+        slit_wid   = head1['SLT-WID']
+        slit_len   = head1['SLT-LEN']
+        collim     = head1['H_COLLIM']
+        crossd     = head1['H_CROSSD']
+        ech_ang    = head1['H_EROTAN']
+        cro_ang    = head1['H_CROTAN']
+        wave_1     = head1.get('WAVELEN', None)
+        wave_2     = head2.get('WAVELEN', None)
+        sat_mask1  = np.isnan(data1)
+        sat_mask2  = np.isnan(data2)
         nsat_1     = sat_mask1.sum()
         nsat_2     = sat_mask2.sum()
         data1[sat_mask1] = 66535
@@ -172,17 +201,20 @@ def make_obslog():
         q95_1      = int(np.round(np.percentile(data1, 95)))
         q95_2      = int(np.round(np.percentile(data2, 95)))
 
-        item = [frameid, fileid1, fileid2, imgtype, objectname, i2, exptime,
-                obsdate, nsat_1, nsat_2, q95_1, q95_2]
+        item = [frameid, fileid1, fileid2, objtype, objectname, i2, exptime,
+                obsdate, bin_1, bin_2, filter1, filter2, slit_wid, slit_len,
+                collim, crossd, ech_ang, cro_ang, wave_1, wave_2,
+                nsat_1, nsat_2, q95_1, q95_2]
         logtable.add_row(item)
 
         item = logtable[-1]
 
         # print log item with colors
         string = fmt_str.format('[{:d}]'.format(frameid),
-                    fileid1, fileid2,
-                    '({:3s})'.format(imgtype), objectname, i2, exptime,
-                    obsdate, bin_1, bin_2, nsat_1, nsat_2, q95_1, q95_2)
+                    fileid1, fileid2, objtype, objectname, i2, exptime,
+                    obsdate, bin_1, bin_2, filter1, filter2,
+                    slit_wid, slit_len, collim, crossd, ech_ang, cro_ang,
+                    wave_1, wave_2, nsat_1, nsat_2, q95_1, q95_2)
         print(string)
 
     # determine filename of logtable.
@@ -201,7 +233,7 @@ def make_obslog():
         outfilename = outname
 
     # set display formats
-    logtable['imgtype'].info.format = '^s'
+    logtable['objtype'].info.format = '<s'
     logtable['object'].info.format = '<s'
     logtable['i2'].info.format = '^s'
     logtable['exptime'].info.format = 'g'
