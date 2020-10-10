@@ -1,6 +1,8 @@
+import os
 import numpy as np
-import astropy.io.fit as fits
+import astropy.io.fits as fits
 import scipy.interpolate as intp
+from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 
 def get_region_lst(header):
@@ -208,6 +210,8 @@ def get_badpixel_mask(ccd_id, binx, biny):
 
 def fix_image(data, mask):
     if mask.shape != data.shape:
+        print('data shape {} and mask shape {} do not match'.format(
+                data.shape, mask.shape))
         raise ValueError
 
     for i, v in enumerate(mask.sum(axis=1)):
@@ -250,17 +254,89 @@ def correct_overscan(data, header):
         print('error on image shape of y axis')
         raise ValueError
 
-    # initialize bias data
-    bias = np.float32(np.zeros_like(data))
-    # initialize overscaned data
-    overdata = np.zeros((ny, nx-ovs_width), dtype=np.float32)
 
- def get_bias(config, logtable):
+    # i1:i2 science  data for readout 1
+    # i2:i3 overscan data for readout 1
+    # i3:i4 overscan data for readout 2
+    # i4:i5 science  data for readout 2
+
+    #  Subaru CCD
+    #  +-----+---+---+-----+
+    #  |     |   |   |     |
+    #  | sci |ovr|ovr| sci |
+    #  |     |   |   |     |
+    #  +-----+---+---+-----+
+    # i1    i2  i3  i4    i5
+    #
+    i1 = 0
+    i2 = osmin1 - 1
+    i3 = nx//2
+    i4 = osmax1
+    i5 = nx
+
+    # j1,j2,j3: x boudaries for overscaned data
+    # j1:j2 science data for readout 1
+    # j2:j3 science data for readout 2
+    j1 = 0
+    j2 = i2
+    j3 = i2 + (i5 - i4)
+
+
+    #
+    overdata1 = data[:,i2+2:i3].mean(axis=1)
+    overdata2 = data[:,i3:i4-2].mean(axis=1)
+
+    overmean1 = overdata1.mean()
+    overmean2 = overdata2.mean()
+
+    #sm1 = savgol_filter(overdata1, window_length=501, polyorder=3)
+    #sm2 = savgol_filter(overdata2, window_length=501, polyorder=3)
+    #fig = plt.figure()
+    #ax = fig.gca()
+    #ax.plot(overdata1, lw=0.5, alpha=0.6)
+    #ax.plot(overdata2, lw=0.5, alpha=0.6)
+    #ax.plot(sm1, lw=0.5, alpha=0.6, color='C3')
+    #fig.savefig(header['FRAMEID']+'.png')
+    #plt.close(fig)
+
+    # initialize the overscan-corrected data
+    corrdata = np.zeros((ny, nx-ovs_width), dtype=np.float32)
+    corrdata[:, j1:j2] = data[:,i1:i2] - overmean1
+    corrdata[:, j2:j3] = data[:,i4:i5] - overmean2
+
+    return corrdata
+
+def parse_image(data, header):
+    """Parse CCD image.
+
+    Args:
+        data ():
+        header ():
+    """
+    ccd_id = header['DET-ID']
+    binx   = header['BIN-FCT1']
+    biny   = header['BIN-FCT2']
+
+    # reset saturated pixels (NaN) to 65535
+    sat_mask = np.isnan(data)
+    data[sat_mask] = 65535
+
+    # fix bad pixels
+    bad_mask = get_badpixel_mask(ccd_id, binx, biny)
+    data = fix_image(data, bad_mask)
+
+    # correct overscan
+    data = correct_overscan(data, header)
+
+    return data
+
+def get_bias(config, logtable, filterfunc=None):
     """Get bias image.
 
     Args:
         config (:class:`configparser.ConfigParser`): Config object.
         logtable (:class:`astropy.table.Table`): Table of Observing log.
+        filterfunc (func):
     """
     mode = config['reduce'].get('mode')
     bias_file = config['reduce.bias'].get('bias_file')
@@ -268,14 +344,15 @@ def correct_overscan(data, header):
     if mode=='debug' and os.path.exists(bias_file):
         pass
     else:
-        return combine_bias(config, logtable)
+        return combine_bias(config, logtable, filterfunc=filterfunc)
 
-def combine_bias(config, logtable):
+def combine_bias(config, logtable, filterfunc=None):
     """Combine bias images.
 
     Args:
         config (:class:`configparser.ConfigParser`): Config object.
         logtable (:class:`astropy.table.Table`): Table of Observing log.
+        filterfunc (func):
 
     Returns:
 
@@ -285,8 +362,11 @@ def combine_bias(config, logtable):
     bias_filter = lambda item: item['objtype']=='BIAS' \
                            and item['object']=='BIAS'
     logitem_lst = filter(bias_filter, logtable)
-    for logitem in logitem_lst:
+    if filterfunc is not None:
+        logitem_lst = filter(filterfunc, logitem_lst)
+    for logitem in logtable:
         fname1 = '{}.fits'.format(logitem['fileid1'])
         filename1 = os.path.join(rawpath, fname1)
         data, head = fits.getdata(filename1, header=True)
-        correct_overscan(data, head)
+        data = parse_image(data, head)
+        print(logitem)

@@ -60,6 +60,13 @@ def make_config():
     config.set('reduce', 'fig_format',  'png')
     config.set('reduce', 'ncores',      'max')
 
+    # section of bias correction
+    sectname = 'reduce.bias'
+    config.add_section(sectname)
+    config.set(sectname, 'bias_file',     '${reduce:midpath}/bias.fits')
+    config.set(sectname, 'cosmic_clip',   str(10))
+    config.set(sectname, 'maxiter',       str(5))
+
     # write to config file
     filename = 'HDS.{}.cfg'.format(input_date)
     outfile = open(filename, 'w')

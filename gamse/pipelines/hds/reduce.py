@@ -39,5 +39,38 @@ def reduce_rawdata():
     else:
         ncores = min(os.cpu_count(), int(ncores))
 
+    ############ count different setups #############
+    setup_lst = {}
+    for logitem in logtable:
+        setup   = logitem['setup']
+        objtype = logitem['objtype']
+        bin_1   = eval(logitem['bin_1'])
+        bin_2   = eval(logitem['bin_2'])
+        binning = (bin_1, bin_2)
+        if (setup, binning) not in setup_lst:
+            setup_lst[(setup, binning)] = {}
+        if objtype not in setup_lst[(setup, binning)]:
+            setup_lst[(setup, binning)][objtype] = 0
+        setup_lst[(setup, binning)][objtype] += 1
+
+    object_setup_lst = []
+    for (setup, binning), objtype_lst in sorted(setup_lst.items()):
+        print('Setup: {} Binning: {}'.format(setup, binning))
+        count_total = 0
+        for objtype, count in sorted(objtype_lst.items()):
+            print(' - {:10s}: {:3d} Frames'.format(objtype, count))
+            count_total += count
+            if objtype=='OBJECT':
+                object_setup_lst.append((setup, binning))
+        print(' - {:10s}: {:3d} Frames'.format('Total', count_total))
+    object_setup_lst = list(set(object_setup_lst))
+
+    if len(object_setup_lst)==1:
+        sel_setup, sel_binning = object_setup_lst[0]
+    print('Selected setup: {} binning: {}'.format(
+            sel_setup, sel_binning))
     ############### parse bias #################
-    get_bias(config, logtable)
+    filterfunc = lambda item: item['setup']==sel_setup \
+                    and item['bin_1']==sel_binning[0] \
+                    and item['bin_2']==sel_binning[1]
+    get_bias(config, logtable, filterfunc)
