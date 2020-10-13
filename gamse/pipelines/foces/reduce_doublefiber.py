@@ -829,13 +829,9 @@ def reduce_doublefiber(config, logtable):
 
             # pack to a structured array
             spec = []
-            #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
                 n = flux_sum.size
-                # search for flat flux
-                m = flat_spec_lst[fiber]['aperture']==aper
-                flat_flux = flat_spec_lst[fiber][m][0]['flux']
 
                 # pack to table
                 item = (aper, 0, n,
@@ -1853,7 +1849,7 @@ def reduce_doublefiber(config, logtable):
                             obsdate = head[statime_key],
                             exptime = head[exptime_key],
                             )
-            message_lst = ['Fiber {}: Wavelength calibration:']
+            message_lst = ['Fiber {}: Wavelength calibration:'.format(fiber)]
             for i, calib in enumerate(ref_calib_lst[fiber]):
                 string = ' '*len(screen_prefix)
                 string = string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
