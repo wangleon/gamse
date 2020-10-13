@@ -1,9 +1,14 @@
 import os
+import logging
+logger = logging.getLogger(__name__)
+
 import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
+
+from ...echelle.imageproc import combine_images
 
 def get_region_lst(header):
     """Get a list of array indices.
@@ -51,11 +56,60 @@ def get_region_lst(header):
              (ovr2_x1, ovr2_x2, ovr2_y1, ovr2_y2)),
             ]
 
+std_setup_lst = {
+    'StdUa':   (310, 387, 400,  476, 'BLUE', 4.986, 'FREE',  'FREE'),
+    'StdUb':   (298, 370, 382,  458, 'BLUE', 4.786, 'FREE',  'FREE'),
+    'StdBa':   (342, 419, 432,  508, 'BLUE', 5.386, 'FREE',  'FREE'),
+    'StdBc':   (355, 431, 445,  521, 'BLUE', 5.561, 'FREE',  'FREE'),
+    'StdYa':   (403, 480, 494,  566, 'BLUE', 6.136, 'FREE',  'FREE'),
+    #'StdYb':  (414, 535, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
+    'StdYb':   (414, 540, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
+    'StdYc':   (442, 566, 586,  705, 'RED',  4.619, 'FREE',  'KV389'),
+    'StdYd':   (406, 531, 549,  666, 'RED',  4.336, 'FREE',  'KV370'),
+    'StdRa':   (511, 631, 658,  779, 'RED',  5.163, 'FREE',  'SC46'),
+    'StdRb':   (534, 659, 681,  800, 'RED',  5.336, 'FREE',  'SC46'),
+    'StdNIRa': (750, 869, 898, 1016, 'RED',  7.036, 'OG530', 'FREE'),
+    'StdNIRb': (673, 789, 812,  937, 'RED',  6.386, 'OG530', 'FREE'),
+    'StdNIRc': (617, 740, 759,  882, 'RED',  5.969, 'OG530', 'FREE'),
+    'StdI2a':  (498, 618, 637,  759, 'RED',  5.036, 'FREE',  'SC46'),
+    'StdI2b':  (355, 476, 498,  618, 'RED',  3.936, 'FREE',  'FREE'),
+    }
+
+def get_setup_param(setup, key=None):
+    """Get parameter of a given standard setup.
+
+    Args:
+        setup (str):
+        key (str):
+
+    Returns:
+        int, str, or tuple:
+
+    """
+    if setup not in std_setup_lst:
+        return None
+    item = std_setup_lst[setup]
+
+    colname_lst = ['wavemin_2', 'wavemax_2', 'wavemin_1', 'wavemax_1',
+                    'collim', 'cro_ang', 'filter1', 'filter2']
+    for i, colname in enumerate(colname_lst):
+        if colname == key:
+            return item[i]
+
+    if key=='wave_1':
+        return (item[2], item[3])
+    elif key=='wave_2':
+        return (item[0], item[1])
+    elif key=='crossd':
+        return item[4]
+    else:
+        return None
+
 def get_std_setup(header):
     """Get standard setup.
 
     Args:
-        header:
+        header (:class:`astropy.io.fits.Header`):
 
     Returns:
         str:
@@ -72,26 +126,7 @@ def get_std_setup(header):
     wave_min = int(round(header['WAV-MIN']))
     wave_max = int(round(header['WAV-MAX']))
 
-    std_lst = {
-            'StdUa':   (310, 387, 400,  476, 'BLUE', 4.986, 'FREE',  'FREE'),
-            'StdUb':   (298, 370, 382,  458, 'BLUE', 4.786, 'FREE',  'FREE'),
-            'StdBa':   (342, 419, 432,  508, 'BLUE', 5.386, 'FREE',  'FREE'),
-            'StdBc':   (355, 431, 445,  521, 'BLUE', 5.561, 'FREE',  'FREE'),
-            'StdYa':   (403, 480, 494,  566, 'BLUE', 6.136, 'FREE',  'FREE'),
-            #'StdYb':   (414, 535, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
-            'StdYb':   (414, 540, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
-            'StdYc':   (442, 566, 586,  705, 'RED',  4.619, 'FREE',  'KV389'),
-            'StdYd':   (406, 531, 549,  666, 'RED',  4.336, 'FREE',  'KV370'),
-            'StdRa':   (511, 631, 658,  779, 'RED',  5.163, 'FREE',  'SC46'),
-            'StdRb':   (534, 659, 681,  800, 'RED',  5.336, 'FREE',  'SC46'),
-            'StdNIRa': (750, 869, 898, 1016, 'RED',  7.036, 'OG530', 'FREE'),
-            'StdNIRb': (673, 789, 812,  937, 'RED',  6.386, 'OG530', 'FREE'),
-            'StdNIRc': (617, 740, 759,  882, 'RED',  5.969, 'OG530', 'FREE'),
-            'StdI2a':  (498, 618, 637,  759, 'RED',  5.036, 'FREE',  'SC46'),
-            'StdI2b':  (355, 476, 498,  618, 'RED',  3.936, 'FREE',  'FREE'),
-
-            }
-    for stdname, setup in std_lst.items():
+    for stdname, setup in std_setup_lst.items():
         if objtype=='BIAS' and objname=='BIAS':
             if collim == setup[4] and crossd == setup[4] \
                 and abs(cro_ang - setup[5]) < 0.05 \
@@ -241,6 +276,8 @@ def correct_overscan(data, header):
     biny   = header['BIN-FCT2']
     osmin1 = header['H_OSMIN1']
     osmax1 = header['H_OSMAX1']
+    gain1  = header['H_GAIN1']
+    gain2  = header['H_GAIN2']
 
     #width of overscan region
     ovs_width = osmax1 - osmin1 + 1
@@ -301,8 +338,8 @@ def correct_overscan(data, header):
 
     # initialize the overscan-corrected data
     corrdata = np.zeros((ny, nx-ovs_width), dtype=np.float32)
-    corrdata[:, j1:j2] = data[:,i1:i2] - overmean1
-    corrdata[:, j2:j3] = data[:,i4:i5] - overmean2
+    corrdata[:, j1:j2] = (data[:,i1:i2] - overmean1)*gain1
+    corrdata[:, j2:j3] = (data[:,i4:i5] - overmean2)*gain2
 
     return corrdata
 
@@ -321,52 +358,12 @@ def parse_image(data, header):
     sat_mask = np.isnan(data)
     data[sat_mask] = 65535
 
+    # correct overscan
+    data = correct_overscan(data, header)
+
     # fix bad pixels
     bad_mask = get_badpixel_mask(ccd_id, binx, biny)
     data = fix_image(data, bad_mask)
 
-    # correct overscan
-    data = correct_overscan(data, header)
-
     return data
 
-def get_bias(config, logtable, filterfunc=None):
-    """Get bias image.
-
-    Args:
-        config (:class:`configparser.ConfigParser`): Config object.
-        logtable (:class:`astropy.table.Table`): Table of Observing log.
-        filterfunc (func):
-    """
-    mode = config['reduce'].get('mode')
-    bias_file = config['reduce.bias'].get('bias_file')
-
-    if mode=='debug' and os.path.exists(bias_file):
-        pass
-    else:
-        return combine_bias(config, logtable, filterfunc=filterfunc)
-
-def combine_bias(config, logtable, filterfunc=None):
-    """Combine bias images.
-
-    Args:
-        config (:class:`configparser.ConfigParser`): Config object.
-        logtable (:class:`astropy.table.Table`): Table of Observing log.
-        filterfunc (func):
-
-    Returns:
-
-    """
-    rawpath = config['data']['rawpath']
-
-    bias_filter = lambda item: item['objtype']=='BIAS' \
-                           and item['object']=='BIAS'
-    logitem_lst = filter(bias_filter, logtable)
-    if filterfunc is not None:
-        logitem_lst = filter(filterfunc, logitem_lst)
-    for logitem in logtable:
-        fname1 = '{}.fits'.format(logitem['fileid1'])
-        filename1 = os.path.join(rawpath, fname1)
-        data, head = fits.getdata(filename1, header=True)
-        data = parse_image(data, head)
-        print(logitem)

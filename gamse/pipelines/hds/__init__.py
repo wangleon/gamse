@@ -100,10 +100,9 @@ def make_obslog():
                         ('i2',       'S1'),
                         ('exptime',  'f4'),
                         ('obsdate',  'S19'),
-                        ('bin_1',    'S5'),
-                        ('bin_2',    'S5'),
-                        ('slitsize', 'S8'),
                         ('setup',    'S7'),
+                        ('binning',  'S7'),
+                        ('slitsize', 'S8'),
                         ('nsat_1',   'i4'),
                         ('nsat_2',   'i4'),
                         ('q95_1',    'i4'),
@@ -111,13 +110,16 @@ def make_obslog():
                 ])
 
     fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
-            ' {:5} {:5}' # bin_1, bin_2
-            ' {:>8s} {:<7s}' # slit_wid, slit_len, setup
-            ' {:>7} {:>7} {:>5} {:>5}' # nsat_1, nsat_2, q95_1, q95_2
+                ' {:<7s} {:5} {:>8s}' # setup, binning, slitsize
+                ' \033[31m{:>7}\033[0m' # nsat_1
+                ' \033[34m{:>7}\033[0m' # nsat_2
+                ' \033[31m{:>5}\033[0m' # q95_1
+                ' \033[34m{:>5}\033[0m' # q95_2
             )
     head_str = fmt_str.format('FID', 'fileid1', 'fileid2', 'objtype', 'object',
-                '', 'exptime', 'obsdate', 'bin_1',  'bin_2', 'slitsize',
-                'setup', 'nsat_1', 'nsat_2', 'q95_1',  'q95_2')
+                '', 'exptime', 'obsdate',
+                'setup', 'binning', 'slitsize',
+                'nsat_1', 'nsat_2', 'q95_1',  'q95_2')
     
     print(head_str)
     frameid = 0
@@ -166,7 +168,8 @@ def make_obslog():
 
         for key in ['DATA-TYP', 'OBJECT', 'EXPTIME', 'DATE-OBS', 'UT',
                     'SLIT', 'SLT-WID', 'SLT-LEN', 'FILTER01', 'FILTER02',
-                    'H_I2CELL', 'H_COLLIM', 'H_CROSSD']:
+                    'H_I2CELL', 'H_COLLIM', 'H_CROSSD',
+                    'BIN-FCT1', 'BIN-FCT2']:
             if head1[key] != head2[key]:
                 print('Warning: {} of {} ({}) and {} ({}) does not match.'.format(
                     key, frameid1, head1[key], frameid2, head2[key]))
@@ -177,15 +180,25 @@ def make_obslog():
         exptime    = head1['EXPTIME']
         i2         = {'USE': '+', 'NOUSE': '-'}[head1['H_I2CELL']]
         obsdate    = '{}T{}'.format(head1['DATE-OBS'], head1['UT'])
-        bin_1      = '({},{})'.format(head1['BIN-FCT1'], head1['BIN-FCT2'])
-        bin_2      = '({},{})'.format(head2['BIN-FCT1'], head2['BIN-FCT2'])
-        slitsize   = '{:4.2f}x{:3.1f}'.format(head1['SLT-WID'], head1['SLT-LEN'])
+
+        # get setup and check the consistency of CCD1 and CCD2
         setup1     = get_std_setup(head1)
         setup2     = get_std_setup(head2)
         if setup1 != setup2:
             print('Warning: setup of CCD1 ({}) and CCD2 ({})'
                   'does not match'.format(setup1, setup2))
         setup = setup1
+
+        # get binning and check the consistency of CCD1 and CCD2
+        bin_1      = (head1['BIN-FCT1'], head1['BIN-FCT2'])
+        bin_2      = (head2['BIN-FCT1'], head2['BIN-FCT2'])
+        if bin_1 != bin_2:
+            print('Warning: Binning of CCD1 ({}) and CCD2 ({})'
+                    ' do not match'.format(bin_1, bin_2))
+        binning = '({},{})'.format(bin_1[0], bin_1[1])
+
+        slitsize   = '{:4.2f}x{:3.1f}'.format(head1['SLT-WID'], head1['SLT-LEN'])
+
         sat_mask1  = np.isnan(data1)
         sat_mask2  = np.isnan(data2)
         nsat_1     = sat_mask1.sum()
@@ -196,7 +209,7 @@ def make_obslog():
         q95_2      = int(np.round(np.percentile(data2, 95)))
 
         item = [frameid, fileid1, fileid2, objtype, objectname, i2, exptime,
-                obsdate, bin_1, bin_2, slitsize, setup,
+                obsdate, setup, binning, slitsize,
                 nsat_1, nsat_2, q95_1, q95_2]
         logtable.add_row(item)
 
@@ -205,11 +218,8 @@ def make_obslog():
         # print log item with colors
         string = fmt_str.format('[{:d}]'.format(frameid),
                     fileid1, fileid2, objtype, objectname, i2, exptime,
-                    obsdate, bin_1, bin_2, slitsize, setup,
-                    '\033[31m{:7d}\033[0m'.format(nsat_1),
-                    '\033[34m{:7d}\033[0m'.format(nsat_2),
-                    '\033[31m{:5d}\033[0m'.format(q95_1),
-                    '\033[34m{:5d}\033[0m'.format(q95_2),
+                    obsdate, setup, binning, slitsize,
+                    nsat_1, nsat_2, q95_1, q95_2,
                     )
         print(print_wrapper(string, item))
 
@@ -233,6 +243,7 @@ def make_obslog():
     logtable['object'].info.format = '<s'
     logtable['i2'].info.format = '^s'
     logtable['exptime'].info.format = 'g'
+    logtable['binning'].info.format = '^s'
 
     # save the logtable
     outfile = open(outfilename, 'w')
