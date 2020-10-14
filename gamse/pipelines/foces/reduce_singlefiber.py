@@ -148,9 +148,15 @@ def reduce_singlefiber(config, logtable):
             print('* Combine {} Flat Images: {}'.format(
                     nflat, flat_filename))
 
+            fmt_str = '    - {:>5s} {:18s} {:20s} {:7} {:23s} {:6} {:5}'
+            head_str= fmt_str.format('ID', 'fileid', 'object', 'exptime',
+                        'obsdate', 'nsat', 'q95')
+            print(head_str)
+
             for i_item, logitem in enumerate(item_lst):
                 # read each individual flat frame
-                filename = os.path.join(rawpath, logitem['fileid']+'.fits')
+                fname = '{}.fits'.format(logitem['fileid'])
+                filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
                 exptime_lst.append(head[exptime_key])
                 if data.ndim == 3:
@@ -182,14 +188,15 @@ def reduce_singlefiber(config, logtable):
                 logger.info(message)
 
                 # print info
-                message_lst = [
-                        '  - FileID: {}'.format(logitem['fileid']),
-                        logitem['object'],
-                        'exptime = {:<5g}'.format(logitem['exptime']),
-                        'Nsat = {:<6d}'.format(logitem['nsat']),
-                        'Q95 = {:<5d}'.format(logitem['q95']),
-                        ]
-                print('    '.join(message_lst))
+                string = fmt_str.format(
+                        '[{:d}]'.format(logitem['frameid']),
+                        logitem['fileid'], logitem['object'],
+                        '{:<7g}'.format(logitem['exptime']),
+                        str(logitem['obsdate']),
+                        '{:<6d}'.format(logitem['nsat']),
+                        '{:<5d}'.format(logitem['q95']),
+                        )
+                print(print_wrapper(string, logitem))
 
                 data_lst.append(data)
 

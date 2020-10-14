@@ -181,6 +181,12 @@ def combine_bias(config, logtable):
         # there is no bias frames
         return None, [], 0, 0.0, 0.0
 
+    print('* Combine Bias Images: "{}"'.format(bias_file))
+    fmt_str = '    - {:>5s} {:18s} {:10s} {:7} {:23s} {:6} {:5} {:7}'
+    head_str= fmt_str.format('FID', 'fileid', 'object', 'exptime',
+                    'obsdate', 'nsat', 'q95', 'overmean')
+    print(head_str)
+
     for ifile, logitem in enumerate(bias_items):
 
         # now filter the bias frames
@@ -213,14 +219,13 @@ def combine_bias(config, logtable):
                 bias_card_lst.append((newkey, value))
 
         # print info
-        if ifile == 0:
-            print('* Combine Bias Images: "{}"'.format(bias_file))
-        message_lst = [
-                '  - FileID: {}'.format(logitem['fileid']),
-                'exptime = {:<5g}'.format(logitem['exptime']),
-                'mean = {:<7.2f}'.format(overmean),
-                ]
-        print('    '.join(message_lst))
+        string = fmt_str.format('[{:d}]'.format(logitem['frameid']),
+                    logitem['fileid'], logitem['object'],
+                    '{:<5g}'.format(logitem['exptime']),
+                    str(logitem['obsdate']),
+                    logitem['nsat'], logitem['q95'],
+                    '{:<7.2f}'.format(overmean))
+        print(string)
 
     prefix = 'HIERARCH GAMSE BIAS '
     bias_card_lst.append((prefix + 'NFILE', n_bias))
