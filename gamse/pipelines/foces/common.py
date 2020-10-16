@@ -15,6 +15,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
+from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
@@ -261,6 +262,14 @@ def combine_bias(config, logtable):
     head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
     hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
 
+    # plot the bias
+    bias_fig = BiasFigure(data=bias_combine, title='Bias Mean')
+    # save and close the figure
+    figpath = config['reduce']['report']
+    figfilename = os.path.join(figpath, 'bias_mean.png')
+    bias_fig.savefig(figfilename)
+    plt.close(bias_fig)
+
     ############## bias smooth ##################
     if section.getboolean('smooth'):
         # bias needs to be smoothed
@@ -295,6 +304,14 @@ def combine_bias(config, logtable):
         hdu_lst.append(fits.ImageHDU(data=bias_smooth))
         card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
         hdu_lst[0].header.append(card)
+
+        # plot the smoothed bias
+        bias_fig = BiasFigure(data=bias_smooth, title='Bias Smoothed')
+        # save and close the figure
+        figpath = config['reduce']['report']
+        figfilename = os.path.join(figpath, 'bias_smooth.png')
+        bias_fig.savefig(figfilename)
+        plt.close(bias_fig)
 
         # bias is the result array to return
         bias = bias_smooth
@@ -1194,6 +1211,50 @@ def plot_bias_smooth(bias, bias_smooth, comp_figfile, hist_figfile):
     fig2.savefig(hist_figfile)
     plt.close(fig1)
     plt.close(fig2)
+
+class BiasFigure(Figure):
+    """Figure to plot the bias image.
+    """
+    def __init__(self, dpi=150, figsize=(12,8), data=None, scale=(5, 95),
+            title=None):
+        Figure.__init__(self, dpi=dpi, figsize=figsize)
+        l1 = 0.07
+        b1 = 0.10
+        h1 = 0.80
+        w1 = h1/figsize[0]*figsize[1]
+        l2 = 0.67
+        w2 = 0.30
+        hgap1 = 0.08
+        h3 = 0.02
+        h2 = (h1-2*hgap1-h3)/2
+        self.ax_image = self.add_axes([l1, b1, w1, h1])
+        self.ax_hist1 = self.add_axes([l2, b1+h3+hgap1*2+h2, w2, h2])
+        self.ax_hist2 = self.add_axes([l2, b1+h3+hgap1, w2, h2])
+        self.ax_cbar0 = self.add_axes([l2, b1, w2, h3])
+        
+        vmin = np.percentile(data, scale[0])
+        vmax = np.percentile(data, scale[1])
+        cax = self.ax_image.imshow(data, origin='lower', vmin=vmin, vmax=vmax)
+        self.colorbar(cax, cax=self.ax_cbar0, orientation='horizontal')
+        self.ax_image.set_xlabel('X (pixel)')
+        self.ax_image.set_ylabel('X (pixel)')
+
+        # plot hist1, the whole histogram
+        self.ax_hist1.hist(data.flatten(), bins=50)
+        self.ax_hist1.axvline(x=vmin, color='C1', ls='--', lw=0.7,
+                label='{} %'.format(scale[0]))
+        self.ax_hist1.axvline(x=vmax, color='C2', ls='--', lw=0.7,
+                label='{} %'.format(scale[1]))
+        self.ax_hist1.set_xlabel('Count')
+        legend = self.ax_hist1.legend(loc='upper right')
+        legend.get_frame().set_alpha(0.1)
+
+        self.ax_hist2.hist(data.flatten(), bins=np.linspace(vmin, vmax, 50))
+        self.ax_hist2.set_xlim(vmin, vmax)
+        self.ax_hist2.set_xlabel('Count')
+
+        if title is not None:
+            self.suptitle(title)
 
 
 class TraceFigure(TraceFigureCommon):
