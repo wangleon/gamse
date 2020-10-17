@@ -1,9 +1,13 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
+import scipy.interpolate as intp
+from scipy.signal import savgol_filter
 import astropy.io.fits as fits
+import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
@@ -11,8 +15,9 @@ from ...echelle.background import simple_debackground
 from ...echelle.extract import extract_aperset
 from ...echelle.flat import get_slit_flat
 from ...utils.obslog import parse_num_seq
-from .common import (get_bias_post2004, print_wrapper, parse_3ccd_images,
-                    mosaic_3_images, TraceFigure)
+from ...utils.onedarray import iterative_savgol_filter
+from .common import (print_wrapper, parse_3ccd_images, mosaic_3_images,
+                    BiasFigure, TraceFigure)
 
 def reduce_post2004(config, logtable):
     """
@@ -61,7 +66,155 @@ def reduce_post2004(config, logtable):
 
     ################################ parse bias ################################
 
-    bias_lst, bias_card_lst = get_bias_post2004(config, logtable)
+    #bias_lst, bias_card_lst = get_bias_post2004(config, logtable)
+
+    section = config['reduce.bias']
+    bias_file = section['bias_file']
+
+    if mode=='debug' and os.path.exists(bias_file):
+        # load bias data from existing file
+        hdu_lst = fits.open(bias_file)
+        # pack bias image
+        bias_lst = [hdu_lst[iccd+1+nccd].data for iccd in range(nccd)]
+        hdu_lst.close()
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # filter header cards that match the above pattern
+        bias_card_lst = [(card.keyword, card.value) for card in head.cards
+                            if reobj.match(card.keyword)]
+
+        message = 'Load bias data from file: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
+
+    else:
+
+        bias_data_lst = [[] for iccd in range(nccd)]
+        bias_card_lst = []
+        bias_items = list(filter(lambda item: item['object'].lower()=='bias',
+                                 logtable))
+        n_bias = len(bias_items)
+
+        fmt_str = '  - {:>7s} {:^17} {:^20s} {:^7}'
+        head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime')
+
+        print('* Combine Bias Images: {}'.format(bias_file))
+        print(head_str)
+
+        for logitem in bias_items:
+    
+            fname = '{}.fits'.format(logitem['fileid'])
+            filename = os.path.join(rawpath, fname)
+            hdu_lst = fits.open(filename)
+            data_lst, mask_lst = parse_3ccd_images(hdu_lst)
+            hdu_lst.close()
+    
+            for iccd in range(nccd):
+                bias_data_lst[iccd].append(data_lst[iccd])
+
+            # print info
+            message = fmt_str.format(
+                        '[{:d}]'.format(logitem['frameid']),
+                        logitem['fileid'], logitem['object'],
+                        logitem['exptime']
+                        )
+            print(message)
+
+        prefix = 'HIERARCH GAMSE BIAS '
+        bias_card_lst.append((prefix + 'NFILE', n_bias))
+    
+        combine_mode = 'mean'
+        section = config['reduce.bias']
+        cosmic_clip  = section.getfloat('cosmic_clip')
+        maxiter      = section.getint('maxiter')
+        maskmode    = (None, 'max')[n_bias>=3]
+    
+        bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+        bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+        bias_card_lst.append((prefix+'MAXITER',      maxiter))
+        bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
+
+        # create the hdu list to be saved
+        hdu_lst = fits.HDUList()
+        # create new FITS Header for bias
+        head = fits.Header()
+        for card in bias_card_lst:
+            head.append(card)
+        head['HIERARCH GAMSE FILECONTENT 0'] = 'NONE'
+
+        # pack the primary HDU
+        hdu_lst.append(fits.PrimaryHDU(header=head))
+
+        # prepare the list for image data of each CCD
+        bias_lst = []
+
+        # scan for each ccd
+        for iccd in range(nccd):
+            ### 3 CCDs loop begins here ###
+            bias_data_lst[iccd] = np.array(bias_data_lst[iccd])
+    
+            sub_bias = combine_images(bias_data_lst[iccd],
+                mode        = combine_mode,
+                upper_clip  = cosmic_clip,
+                maxiter     = maxiter,
+                maskmode    = maskmode,
+                ncores      = ncores,
+                )
+
+            # pack bias of each CCD into sub_bias_lst
+            bias_lst.append(sub_bias)
+
+            message = ('\033[{}mCombined bias for CCD {}: '
+                        'Mean = {:6.2f}\033[0m'.format(
+                        (34, 32, 31)[iccd], iccd+1, sub_bias.mean()))
+            print(message)
+        
+            key = 'HIERARCH GAMSE FILECONTENT {}'.format(iccd+1)
+            hdu_lst[0].header[key] = 'BIAS COMBINED FOR CCD{}'.format(iccd+1)
+            hdu_lst.append(fits.ImageHDU(data=sub_bias))
+
+        # initialize bias figure
+        bias_fig = BiasFigure(data_lst=bias_lst)
+
+        new_bias_lst = []
+
+        # calculate and plot ymean of bias data
+        for iccd in range(nccd):
+            data = bias_lst[iccd]
+            ny, nx = data.shape
+            ally = np.arange(ny)
+            ymean = data.mean(axis=1)
+            ax_ycut = bias_fig.ax_ycut_lst[iccd]
+            ax_ycut.plot(ymean, ally, color='C3', lw=0.5, alpha=0.6)
+
+            # use iterative savgol filter to smooth ymean
+            ysmo, _, _, _ = iterative_savgol_filter(ymean, winlen=301, order=3,
+                                maxiter=10, upper_clip=3, lower_clip=3)
+    
+            ax_ycut.plot(ysmo, ally, color='r', lw=0.5, alpha=1)
+    
+            new_bias = np.tile(ysmo, (nx,1)).T
+            new_bias_lst.append(new_bias)
+
+        # save and close the figure
+        figfilename = os.path.join(figpath, 'bias.png')
+        bias_fig.savefig(figfilename)
+        plt.close(bias_fig)
+
+        for iccd in range(nccd):
+            hdu_lst.append(fits.ImageHDU(data=new_bias_lst[iccd]))
+            # update the file content in primary HDU
+            key = 'HIERARCH GAMSE FILECONTENT {}'.format(1+nccd+iccd)
+            card = (key, 'BIAS USED FOR CCD{}'.format(iccd+1))
+            hdu_lst[0].header.append(card)
+        bias_lst = new_bias_lst
+
+        # save to FITS
+        hdu_lst.writeto(bias_file, overwrite=True)
+
+        message = 'Bias image written to "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
 
     ########################## find flat groups #########################
     flat_file = config['reduce.flat'].get('flat_file')

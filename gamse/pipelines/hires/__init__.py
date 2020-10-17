@@ -121,21 +121,37 @@ def make_obslog():
 
     # prepare logtable
     logtable = Table(dtype=[
-        ('frameid',  'i2'),  ('fileid',  'S17'), ('imgtype', 'S3'),
-        ('object',   'S20'), ('i2',      'S1'),  ('exptime', 'f4'),
-        ('obsdate',  'S23'),
-        ('deckname', 'S2'),  ('filter1', 'S5'),  ('filter2', 'S5'),
-        ('nsat_1',   'i4'),  ('nsat_2',  'i4'),  ('nsat_3',  'i4'),
-        ('q95_1',    'i4'),  ('q95_2',   'i4'),  ('q95_3',   'i4'),
-        ])
+                    ('frameid',  'i2'),
+                    ('fileid',   'S17'),
+                    ('imgtype',  'S3'),
+                    ('object',   'S20'),
+                    ('i2',       'S1'),
+                    ('exptime',  'f4'),
+                    ('obsdate',  'S23'),
+                    ('deckname', 'S2'),
+                    ('filter1',  'S5'),
+                    ('filter2',  'S5'),
+                    ('nsat_1',   'i4'),
+                    ('nsat_2',   'i4'),
+                    ('nsat_3',   'i4'),
+                    ('q95_1',    'i4'),
+                    ('q95_2',    'i4'),
+                    ('q95_3',    'i4'),
+                ])
+    fmt_str = ('  - {:>5s} {:17s} {:5s} {:<20s} {:1s}I2 {:>7} {:^23s}'
+                ' {:2s} {:5s} {:5s}' # deckname, filter1, filter2
+                ' \033[34m{:8}\033[0m' # nsat_1
+                ' \033[32m{:8}\033[0m' # nsat_2
+                ' \033[31m{:8}\033[0m' # nsat_3
+                ' \033[34m{:5}\033[0m' # q95_1
+                ' \033[32m{:5}\033[0m' # q95_2
+                ' \033[31m{:5}\033[0m' # q95_3
+                )
+    head_str = fmt_str.format('FID', 'fileid', 'imgtype', 'object', '',
+                'exptime', 'obsdate', 'deckname', 'filter1', 'filter2',
+                'nsat_1', 'nsat_2', 'nsat_3', 'q95_1', 'q95_2', 'q95_3')
 
-    #        ['frameid', 'fileid', 'imgtype', 'object', 'i2cell', 'exptime',
-    #         'obsdate', 'deckname', 'nsat_2', 'q95_2'])
-
-    # print header of logtable
-    #print(pinfo.get_separator())
-    #print(pinfo.get_title())
-    #print(pinfo.get_separator())
+    print(head_str)
 
     # start scanning the raw files
     prev_frameid = -1
@@ -162,7 +178,7 @@ def make_obslog():
         # get obsdate in 'YYYY-MM-DDTHH:MM:SS' format
         date = head0.get('DATE-OBS')
         utc  = head0.get('UTC', head0.get('UT'))
-        obsdate = '%sT%s'%(date, utc)
+        obsdate = '{}T{}'.format(date, utc)
 
         exptime  = head0.get('ELAPTIME')
         i2in     = head0.get('IODIN', False)
@@ -222,25 +238,12 @@ def make_obslog():
         item = logtable[-1]
 
         # print log item with colors
-        string_lst = [
-                '[{:3d}]'.format(frameid),
-                '{:17s}'.format(fileid),
-                '({:3s})'.format(imgtype),
-                '{:20s}'.format(objectname),
-                '{:1s}I2'.format(i2),
-                '{:7g}'.format(exptime),
-                '{:23s}'.format(obsdate),
-                '{:^2s}'.format(deckname),
-                '{:^5s}'.format(filter1),
-                '{:^5s}'.format(filter2),
-                '\033[34m{:8d}\033[0m'.format(nsat_1),
-                '\033[32m{:8d}\033[0m'.format(nsat_2),
-                '\033[31m{:8d}\033[0m'.format(nsat_3),
-                '\033[34m{:8d}\033[0m'.format(q95_1),
-                '\033[32m{:8d}\033[0m'.format(q95_2),
-                '\033[31m{:8d}\033[0m'.format(q95_3),
-                ]
-        string = ' '.join(string_lst)
+        string = fmt_str.format('[{:3d}]'.format(frameid),
+                    fileid, '({:3s})'.format(imgtype),
+                    objectname, i2, exptime, obsdate,
+                    deckname, filter1, filter2,
+                    nsat_1, nsat_2, nsat_3, q95_1, q95_2, q95_3,
+                    )
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
