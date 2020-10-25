@@ -33,8 +33,8 @@ from ...echelle.background import (find_background, simple_debackground,
                                    find_best_background,
                                    select_background_from_database)
 from ...utils.obslog import parse_num_seq
-from .common import (print_wrapper, get_mask, get_bias,
-                     correct_overscan, TraceFigure, BackgroundFigure,
+from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
+                     TraceFigure, BackgroundFigure,
                      )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
@@ -280,6 +280,8 @@ def reduce_doublefiber(config, logtable):
     flat_dsum_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_sens_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_spec_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_1d_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_raw_lst  = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
@@ -321,9 +323,15 @@ def reduce_doublefiber(config, logtable):
                 print('* Combine {} Flat Images: {}'.format(
                         nflat, flat_filename))
 
+                fmt_str = '    - {:>5s} {:18s} {:20s} {:7} {:23s} {:6} {:5}'
+                head_str= fmt_str.format('ID', 'fileid', 'object', 'exptime',
+                            'obsdate', 'nsat', 'q95')
+                print(head_str)
+
                 for i_item, logitem in enumerate(item_lst):
                     # read each individual flat frame
-                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
+                    fname = '{}.fits'.format(logitem['fileid'])
+                    filename = os.path.join(rawpath, fname)
                     data, head = fits.getdata(filename, header=True)
                     exptime_lst.append(head[exptime_key])
                     if data.ndim == 3:
@@ -357,14 +365,15 @@ def reduce_doublefiber(config, logtable):
                     # print info
                     fiberobj_lst = get_fiberobj_lst(logitem['object'], '|')
                     fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
-                    message_lst = [
-                            '  - FileID: {}'.format(logitem['fileid']),
-                            fiberobj_str,
-                            'exptime = {:<5g}'.format(logitem['exptime']),
-                            'Nsat = {:<6d}'.format(logitem['nsat']),
-                            'Q95 = {:<5d}'.format(logitem['q95']),
-                            ]
-                    print('    '.join(message_lst))
+                    string = fmt_str.format(
+                            '[{:d}]'.format(logitem['frameid']),
+                            logitem['fileid'], fiberobj_str,
+                            '{:<7g}'.format(logitem['exptime']),
+                            str(logitem['obsdate']),
+                            '{:<6d}'.format(logitem['nsat']),
+                            '{:<5d}'.format(logitem['q95']),
+                            )
+                    print(print_wrapper(string, logitem))
 
                     data_lst.append(data)
 
@@ -462,6 +471,28 @@ def reduce_doublefiber(config, logtable):
                             slit_file       = slit_file,
                             )
 
+                flat_corrdata = flat_data/flat_sens
+                section = config['reduce.extract']
+                flat_1d = extract_aperset(flat_corrdata, flat_mask,
+                            apertureset = aperset,
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
+                            )
+                table = [(aper, row['flux_sum'])
+                            for aper, row in sorted(flat_1d.items())]
+                flat_1d = np.array(table, dtype=flat_spec.dtype)
+
+                section = config['reduce.extract']
+                flat_raw1d = extract_aperset(flat_data, flat_mask,
+                            apertureset = aperset,
+                            lower_limit = section.getfloat('lower_limit'),
+                            upper_limit = section.getfloat('upper_limit'),
+                            )
+                table = [(aper, row['flux_sum'])
+                            for aper, row in sorted(flat_raw1d.items())]
+                flat_raw1d = np.array(table, dtype=flat_spec.dtype)
+                
+
                 # pack results and save to fits
                 hdu_lst = fits.HDUList([
                             fits.PrimaryHDU(flat_data, head),
@@ -507,6 +538,8 @@ def reduce_doublefiber(config, logtable):
             flat_dsum_lst[fiber][flatname] = flat_dsum
             flat_sens_lst[fiber][flatname] = flat_sens
             flat_spec_lst[fiber][flatname] = flat_spec
+            flat_1d_lst[fiber][flatname]   = flat_1d
+            flat_raw_lst[fiber][flatname]  = flat_raw1d
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
             aperset_lst[fiber][flatname]   = aperset
 
@@ -591,6 +624,10 @@ def reduce_doublefiber(config, logtable):
             # mosaic 1d spectra of flats
             flat_spec = mosaic_spec(flat_spec_lst[fiber],
                                         master_aperset[fiber])
+            flat_1d  = mosaic_spec(flat_1d_lst[fiber],
+                                        master_aperset[fiber])
+            flat_raw = mosaic_spec(flat_raw_lst[fiber],
+                                        master_aperset[fiber])
 
             # change contents of several lists
             flat_data_lst[fiber] = flat_data
@@ -599,6 +636,8 @@ def reduce_doublefiber(config, logtable):
             flat_dsum_lst[fiber] = flat_dsum
             flat_sens_lst[fiber] = flat_sens
             flat_spec_lst[fiber] = flat_spec
+            flat_1d_lst[fiber] = flat_1d
+            flat_raw_lst[fiber] = flat_raw
 
             # pack and save to fits file
             hdu_lst = fits.HDUList([
@@ -632,6 +671,9 @@ def reduce_doublefiber(config, logtable):
 
             # also correct the aperture number in flatspec
             flat_spec_lst[fiber]['aperture'] -= offset
+
+            flat_1d_lst[fiber]['aperture'] -= offset
+            flat_raw_lst[fiber]['aperture'] -= offset
 
     # save the mosaic, offset-corrected aperset to txt files
     for fiber, aperset in sorted(master_aperset.items()):
@@ -829,13 +871,9 @@ def reduce_doublefiber(config, logtable):
 
             # pack to a structured array
             spec = []
-            #print(flat_spec_lst)
             for aper, item in sorted(spectra1d.items()):
                 flux_sum = item['flux_sum']
                 n = flux_sum.size
-                # search for flat flux
-                m = flat_spec_lst[fiber]['aperture']==aper
-                flat_flux = flat_spec_lst[fiber][m][0]['flux']
 
                 # pack to table
                 item = (aper, 0, n,
@@ -1193,6 +1231,8 @@ def reduce_doublefiber(config, logtable):
             ('flux_opt_mask',(np.int16,   nx)),
             ('flux_raw',     (np.float32, nx)),
             ('flat',         (np.float32, nx)),
+            ('flat_sum',     (np.float32, nx)),
+            ('flat_raw',     (np.float32, nx)),
             ('background',   (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
@@ -1447,6 +1487,9 @@ def reduce_doublefiber(config, logtable):
             # background 1d flux
             back_flux = background1d[aper]['flux_sum']
             
+            flat_sum = flat_1d_lst[fiber][m][0]['flux']
+            flat_raw = flat_raw_lst[fiber][m][0]['flux']
+            
             item = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux_sum
@@ -1457,6 +1500,8 @@ def reduce_doublefiber(config, logtable):
                     np.zeros(n, dtype=np.int16),    # flux_opt_mask
                     flux_raw,                       # flux_raw
                     flat_flux,                      # flat
+                    flat_sum,
+                    flat_raw,
                     back_flux,                      # background
                     )
             spec.append(item)
@@ -1832,6 +1877,9 @@ def reduce_doublefiber(config, logtable):
                 flux_raw  = specraw1d[aper]['flux_sum']
                 # background 1d flux
                 back_flux = background1d[aper]['flux_sum']
+
+                flat_sum = flat_1d_lst[fiber][m][0]['flux']
+                flat_raw = flat_raw_lst[fiber][m][0]['flux']
                 
                 item = (aper, 0, n,
                         np.zeros(n, dtype=np.float64),  # wavelength
@@ -1843,6 +1891,8 @@ def reduce_doublefiber(config, logtable):
                         np.zeros(n, dtype=np.int16),    # flux_opt_mask
                         flux_raw,                       # flux_raw
                         flat_flux,                      # flat
+                        flat_sum,
+                        flat_raw,
                         back_flux,                      # background
                         )
                 spec.append(item)
@@ -1853,7 +1903,7 @@ def reduce_doublefiber(config, logtable):
                             obsdate = head[statime_key],
                             exptime = head[exptime_key],
                             )
-            message_lst = ['Fiber {}: Wavelength calibration:']
+            message_lst = ['Fiber {}: Wavelength calibration:'.format(fiber)]
             for i, calib in enumerate(ref_calib_lst[fiber]):
                 string = ' '*len(screen_prefix)
                 string = string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(

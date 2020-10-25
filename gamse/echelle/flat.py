@@ -20,6 +20,7 @@ from ..utils.onedarray  import pairwise, get_local_minima
 from ..utils.regression import iterative_polyfit
 from .imageproc         import array_to_table, table_to_array
 from .trace             import ApertureSet
+from .extract           import extract_aperset
 
 def mosaic_flat_interact(filename_lst, outfile, mosaic_file, reg_file,
     disp_axis=0, mask_suffix = '_msk'):
@@ -2606,7 +2607,7 @@ def default_smooth_flux(x, y, w):
         coeff = np.polyfit(x[mask], y[mask], deg=deg)
         yfit = np.polyval(coeff, x/w)
         yres = y - yfit
-        std = yres[fmask].std()
+        std = yres[mask].std()
         newmask = np.abs(yres) < 3*std
         if newmask.sum() == mask.sum():
             break
@@ -2617,7 +2618,7 @@ def default_smooth_flux(x, y, w):
     return newy, mask
 
 
-def get_slit_flat(data, mask, apertureset, spectra1d,
+def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
         smooth_flux_func=default_smooth_flux,
         figfile=None
@@ -2629,26 +2630,83 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         mask (:class:`numpy.ndarray`): Mask data of flat fielding.
         apertureset (:class:`~gamse.echelle.trace.ApertureSet`): Echelle
             apertures detected in the input file.
+        transpose (bool): Transpose the **data** and **mask** if *True*.
     
     Returns:
         :class:`numpy.ndarray`: 2D response map.
 
     """
-    h, w = data.shape
+    if transpose:
+        data = data.T
+        mask = mask.T
+
+    ny, nx = data.shape
 
     # find saturation mask and bad pixel mask
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
     gap_mask = (mask&1 > 0)
 
-    newx = np.arange(w)
+    newx = np.arange(nx)
     flatmap = np.ones_like(data, dtype=np.float64)
 
-    yy, xx = np.mgrid[:h:,:w:]
+    yy, xx = np.mgrid[:ny:,:nx:]
+
+    spec1d = extract_aperset(data, mask, apertureset=apertureset,
+                lower_limit=lower_limit, upper_limit=upper_limit)
 
     for aper, aper_loc in sorted(apertureset.items()):
-        spec = spectra1d[aper]
+        # first, extract the 1d spectra of this aperture
+        '''
+        domain = aper_loc.position.domain
+        d1, d2 = int(domain[0]), int(domain[1])+1
+        newx = np.arange(d1, d2)
+        position = aper_loc.position(newx)
+        lower_line = position - lower_limit
+        upper_line = position + upper_limit
+        lower_line = np.maximum(lower_line, -0.5)
+        lower_line = np.minimum(lower_line, ny-1-0.5)
+        upper_line = np.maximum(upper_line, -0.5)
+        upper_line = np.minimum(upper_line, ny-1-0.5)
+        lower_ints = np.int32(np.round(lower_line))
+        upper_ints = np.int32(np.round(upper_line))
+        m1 = yy[:,d1:d2] > lower_ints
+        m2 = yy[:,d1:d2] < upper_ints
+        newmask = np.zeros_like(data, dtype=np.bool)
+        newmask[:,d1:d2] = m1*m2
+        newmask = np.float32(newmask)
+        newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
+        newmask[upper_ints, newx] = (upper_line+0.5)%1
+        # filter the bad, saturated, and gap pixels
+        newmask = newmask*(~sat_mask)
+        newmask = newmask*(~bad_mask)
+        newmask = newmask*(~gap_mask)
 
+        ## determine the upper and lower row of summing
+        r1 = int(lower_line.min())
+        r2 = int(upper_line.max())+1
+
+
+        # summing the data and mask
+        weight_sum = newmask[r1:r2].sum(axis=0)
+        # summing the flux
+        fluxsum = (data[r1:r2]*newmask[r1:r2]).sum(axis=0)
+        # calculate mean flux
+        # filter the zero values
+        _m = weight_sum>0
+        fluxmean = np.zeros_like(fluxsum)
+        fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
+        '''
+        fluxmean = spec1d[aper]['flux_mean']
+
+        fig = plt.figure(dpi=200)
+        ax = fig.gca()
+        ax.plot(fluxmean, lw=0.5)
+        ax.grid(True)
+        fig.savefig('flux_{}.png'.format(aper))
+        plt.close(fig)
+        continue
+        
         domain = aper_loc.position.domain
         d1, d2 = int(domain[0]), int(domain[1])+1
         newx = np.arange(d1, d2)
@@ -2662,7 +2720,7 @@ def get_slit_flat(data, mask, apertureset, spectra1d,
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
 
         # fit flux
-        yfit, fmask = smooth_flux_func(newx, fluxdata, w)
+        yfit, fmask = smooth_flux_func(newx, fluxdata, nx)
 
         if figfile is not None:
             fig = plt.figure(dpi=150)

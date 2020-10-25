@@ -140,7 +140,8 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
     hdu_lst.writeto(outfilename, overwrite=True)
     logger.info('Write 1D spectra file "%s"'%outfilename)
 
-def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5, variance=False):
+def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
+        variance=False):
     """Extract 1-D spectra from the input image data following the input
     :class:`~gamse.echelle.trace.ApertureSet`.
 
@@ -151,7 +152,7 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5, varia
             :class:`~gamse.echelle.trace.ApertureSet` instance.
         lower_limit (float): Lower limit of the extracted aperture.
         upper_limit (float): Upper limit of the extracted aperture.
-        variance (bool)    : If a variance array is processed the weights 
+        variance (bool): If a variance array is processed the weights 
                              need to be squared
 
     Returns:

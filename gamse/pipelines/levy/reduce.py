@@ -1,125 +1,38 @@
 import os
 import logging
 logger = logging.getLogger(__name__)
-import configparser
 
 import numpy as np
 import astropy.io.fits as fits
-from astropy.table import Table
-from astropy.time  import Time
-import scipy.signal as sg
-from scipy.ndimage.filters import gaussian_filter
-import matplotlib.pyplot as plt
 
-from ..echelle.imageproc import combine_images, table_to_array, array_to_table
-from ..echelle.trace import find_apertures, load_aperture_set, TraceFigureCommon
-from ..echelle.flat import get_slit_flat
-from ..echelle.extract import extract_aperset
-from ..echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
+from ...echelle.imageproc import combine_images
+from ...echelle.trace import find_apertures, load_aperture_set
+from ...echelle.flat import get_slit_flat
+from ...echelle.extract import extract_aperset
+from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database, 
                                #self_reference_singlefiber,
                                #wl_reference,
                                get_calib_weight_lst)
-from ..echelle.background import find_background
-from ..utils.config import read_config
-from ..utils.obslog import read_obslog
-from .common import FormattedInfo
+from ...echelle.background import find_background
+from ...utils.config import read_config
+from ...utils.obslog import read_obslog
+from ..common import load_obslog, load_config
+from .common import (correct_overscan, TraceFigure)
 
-def correct_overscan(data, head):
-    """Correct the overscan of CCD image.
-
-    Args:
-        data (:class:`numpy.dtype`): Input data image.
-        head (:class:`astropy.io.fits.Header`): Input FITS header.
-
-    Returns:
-        tuple: A tuple containing:
-
-            * **corrdata** (:class:`numpy.dtype`) – Output image with overscan 
-              corrected.
-            * **head** (:class:`astropy.io.fits.Header`) – Updated FITS header.
-            * **overmean** (*float*) – Average of overscan values.
-    """
-    if data.shape==(4608, 2080):
-        overmean = data[:,2049:2088].mean(axis=1)
-        oversmooth = sg.savgol_filter(overmean, window_length=1201, polyorder=3)
-        #coeff = np.polyfit(np.arange(overmean.size), overmean, deg=7)
-        #oversmooth2 = np.polyval(coeff, np.arange(overmean.size))
-        res = (overmean - oversmooth).std()
-        #fig = plt.figure(dpi=150)
-        #ax = fig.gca()
-        #ax.plot(overmean)
-        #ax.plot(oversmooth)
-        #ax.plot(oversmooth2)
-        #plt.show()
-        #plt.close(fig)
-        overdata = np.tile(oversmooth, (2048, 1)).T
-        corrdata = data[:,0:2048] - overdata
-        overmean = overdata.mean()
-
-        # update fits header
-        head['HIERARCH GAMSE OVERSCAN']        = True
-        head['HIERARCH GAMSE OVERSCAN METHOD'] = 'smooth'
-        head['HIERARCH GAMSE OVERSCAN AXIS-1'] = '2049:2088'
-        head['HIERARCH GAMSE OVERSCAN AXIS-2'] = '0:4608'
-        head['HIERARCH GAMSE OVERSCAN MEAN']   = overmean
-
-        return corrdata, head, overmean
-
-class TraceFigure(TraceFigureCommon):
-    """Figure to plot the order tracing.
-    """
-    def __init__(self):
-        TraceFigureCommon.__init__(self, figsize=(20,10), dpi=150)
-        self.ax1 = self.add_axes([0.05,0.07,0.43,0.86])
-        self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
-        self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
-        self.ax4 = self.ax3.twinx()
-
-def reduce():
+def reduce_rawdata():
     """Reduce the APF/Levy spectra.
     """
 
-    # read obs log
-    logname_lst = [fname for fname in os.listdir(os.curdir)
-                        if fname[-7:]=='.obslog']
-    if len(logname_lst)==0:
-        print('No observation log found')
-        exit()
-    elif len(logname_lst)>1:
-        print('Multiple observation log found:')
-        for logname in sorted(logname_lst):
-            print('  '+logname)
-    else:
-        pass
-
-    # read obs log
-    logtable = read_obslog(logname_lst[0])
-
-    # load config files
-    config_file_lst = []
-    # find built-in config file
-    config_path = os.path.join(os.path.dirname(__file__), '../data/config')
-    config_file = os.path.join(config_path, 'Levy.cfg')
-    if os.path.exists(config_file):
-        config_file_lst.append(config_file)
-
-    # find local config file
-    for fname in os.listdir(os.curdir):
-        if fname[-4:]=='.cfg':
-            config_file_lst.append(fname)
-
-    # load both built-in and local config files
-    config = configparser.ConfigParser(
-                inline_comment_prefixes = (';','#'),
-                interpolation           = configparser.ExtendedInterpolation(),
-                )
-    config.read(config_file_lst)
+    # read obslog and config
+    config = load_config('Levy\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     # extract keywords from config file
     section = config['data']
     rawpath     = section.get('rawpath')
-    statime_key = section.get('statime_key')
-    exptime_key = section.get('exptime_key')
+    statime_key = 'DATE-OBS'
+    exptime_key = 'EXPTIME'
+
     section = config['reduce']
     midpath     = section.get('midpath')
     odspath     = section.get('odspath')
@@ -127,108 +40,18 @@ def reduce():
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
+    ncores      = section.get('ncores')
 
     # create folders if not exist
     if not os.path.exists(figpath): os.mkdir(figpath)
     if not os.path.exists(odspath): os.mkdir(odspath)
     if not os.path.exists(midpath): os.mkdir(midpath)
 
-    ################################ parse bias ################################
-    bias_file = config['reduce.bias'].get('bias_file')
-
-    if mode=='debug' and os.path.exists(bias_file):
-        has_bias = True
-        # load bias data from existing file
-        bias = fits.getdata(bias_file)
-        message = 'Load bias from file: {}'.format(bias_file)
-        logger.info(message)
-        print(message)
+    # determine number of cores to be used
+    if ncores == 'max':
+        ncores = os.cpu_count()
     else:
-        bias_data_lst = []
-
-        # prepare print info
-        columns = [
-                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{3:8s}',  '{1:8.2f}'),
-                ('mean',     '{4:8s}',  '{2:8.2f}'),
-                ]
-        title, fmt_title, fmt_item = zip(*columns)
-        fmt_title = ' '.join(fmt_title)
-        fmt_item  = ' '.join(fmt_item)
-
-        for logitem in logtable:
-            if logitem['object'].strip()=='Bias' \
-                and abs(logitem['exptime'])<1e-3:
-                filename = os.path.join(rawpath,
-                            logitem['fileid']+'.fits')
-                data, head = fits.getdata(filename, header=True)
-                # correct overscan here
-                data, head, overmean = correct_overscan(data, head)
-
-                # print info
-                if len(bias_data_lst) == 0:
-                    print('* Combine Bias Images: {}'.format(bias_file))
-                    print(' '*2 + fmt_title.format(*title))
-                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
-
-                bias_data_lst.append(data)
-
-        n_bias = len(bias_data_lst)         # number of bias images
-        has_bias = n_bias > 0
-
-        if has_bias:
-            # there is bias frames
-
-            # combine bias images
-            bias_data_lst = np.array(bias_data_lst)
-
-            section = config['reduce.bias']
-            bias = combine_images(bias_data_lst,
-                    mode       = 'mean',
-                    upper_clip = section.getfloat('cosmic_clip'),
-                    maxiter    = section.getint('maxiter'),
-                    mask       = (None, 'max')[n_bias>=3],
-                    )
-
-            # create new FITS Header for bias
-            head = fits.Header()
-            head['HIERARCH GAMSE BIAS NFILE'] = n_bias
-
-            ############## bias smooth ##################
-            if section.getboolean('smooth'):
-                # bias needs to be smoothed
-                smooth_method = section.get('smooth_method')
-
-                if smooth_method in ['gauss','gaussian']:
-                    # perform 2D gaussian smoothing
-                    smooth_sigma = section.getint('smooth_sigma')
-                    smooth_mode  = section.get('smooth_mode')
-
-                    bias_smooth = gaussian_filter(bias,
-                                    sigma=smooth_sigma, mode=smooth_mode)
-
-                    # write information to FITS header
-                    head['HIERARCH GAMSE BIAS SMOOTH']        = True
-                    head['HIERARCH GAMSE BIAS SMOOTH METHOD'] = 'GAUSSIAN'
-                    head['HIERARCH GAMSE BIAS SMOOTH SIGMA']  = smooth_sigma
-                    head['HIERARCH GAMSE BIAS SMOOTH MODE']   = smooth_mode
-                else:
-                    print('Unknown smooth method: ', smooth_method)
-                    pass
-
-                bias = bias_smooth
-            else:
-                # bias not smoothed
-                head['HIERARCH GAMSE BIAS SMOOTH'] = False
-
-            fits.writeto(bias_file, bias, header=head, overwrite=True)
-            logger.info('Bias image written to "%s"'%bias_file)
-
-        else:
-            # no bias found
-            pass
+        ncores = min(os.cpu_count(), int(ncores))
 
     ########################### find & trace the orders ######################
     section = config['reduce.trace']
@@ -242,34 +65,39 @@ def reduce():
         # combine trace file from narrow flats
         trace_data_lst = []
 
-        # prepare print info
-        columns = [
-                ('fileid',   '{0:10s}', '{0.fileid:10s}'),
-                ('exptime',  '{1:7s}',  '{0.exptime:7g}'),
-                ('obsdate',  '{2:25s}', '{0.obsdate:25s}'),
-                ('overscan', '{3:8s}',  '{1:8.2f}'),
-                ('mean',     '{4:8s}',  '{2:8.2f}'),
-                ]
-        title, fmt_title, fmt_item = zip(*columns)
-        fmt_title = ' '.join(fmt_title)
-        fmt_item  = ' '.join(fmt_item)
+        fmt_str = ('  - {:5s} {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s}'
+                ' {:>7} {:>5} {:7}')
+        head_str = fmt_str.format('FID', 'fileid', 'type', 'object', '',
+                                 'exptime', 'obsdate', 'nsat', 'q95', 'ovrmean')
 
         for logitem in logtable:
             if logitem['object'].strip()=='NarrowFlat':
-                filename = os.path.join(rawpath,
-                            '{}.fits'.format(item['fileid']))
+                fname = '{}.fits'.format(logitem['fileid'])
+                filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
-                data, head, overmean = correct_overscan(data, head)
-                if has_bias:
-                    data = data - bias
-
-                # print info
-                if len(trace_data_lst) == 0:
-                    print('* Combine Images for Order Tracing: %s'%trace_file)
-                    print(' '*2 + fmt_title.format(*title))
-                print(' '*2 + fmt_item.format(item, overmean, data.mean()))
+                data, card_lst, overmean = correct_overscan(data, head)
 
                 trace_data_lst.append(data)
+
+                # print info
+                if len(trace_data_lst) == 1:
+                    # first trace data
+                    print('* Combine Images for Order Tracing: %s'%trace_file)
+                    print(head_str)
+                message = fmt_str.format(
+                            '[{:d}]'.format(logitem['frameid']),
+                            logitem['fileid'],
+                            '({:3s})'.format(logitem['imgtype']),
+                            logitem['object'],
+                            logitem['i2'],
+                            logitem['exptime'],
+                            logitem['obsdate'],
+                            logitem['nsat'],
+                            logitem['q95'],
+                            '{:>7.2f}'.format(overmean),
+                            )
+                print(message)
+
 
         n_trace = len(trace_data_lst)  # number of trace images
         has_trace = n_trace > 0
@@ -284,9 +112,10 @@ def reduce():
                     mode       = 'mean',
                     upper_clip = section.getfloat('upper_clip'),
                     maxiter    = section.getint('maxiter'),
-                    mask       = (None, 'max')[n_trace>=3],
+                    maskmode   = (None, 'max')[n_trace>=3],
+                    ncores     = ncores,
                     )
-            trace = trace.T
+
             fits.writeto(trace_file, trace, overwrite=True)
 
         else:
@@ -294,21 +123,21 @@ def reduce():
             pass
 
     # find the name of .trc file
-    trc_file = '.'.join(trace_file.split('.')[:-1])+'.trc'
-    trc_reg  = '.'.join(trace_file.split('.')[:-1])+'.reg'
-    trace_filename = os.path.basename(trace_file)
-    trace_fileid = '.'.join(trace_filename.split('.')[:-1])
+    traceid = os.path.basename(trace_file)[0:-4]
+    trac_file = os.path.join(midpath, '{}.trc'.format(traceid))
+    treg_file = os.path.join(midpath, '{}.reg'.format(traceid))
 
-    if os.path.exists(trc_file):
+    if mode=='debug' and os.path.exists(trac_file):
         # load apertures from existing file
-        aperset = load_aperture_set(trc_file)
+        aperset = load_aperture_set(trac_file)
     else:
         mask = np.zeros_like(trace, dtype=np.int8)
 
         # create the trace figure
-        tracefig = TraceFigure()
+        tracefig = TraceFigure(datashape=trace.shape)
 
         aperset = find_apertures(trace, mask,
+                    transpose  = True,
                     scan_step  = section.getint('scan_step'),
                     minimum    = section.getfloat('minimum'),
                     separation = section.get('separation'),
@@ -320,33 +149,36 @@ def reduce():
                     )
         # save the trace figure
         tracefig.adjust_positions()
-        tracefig.suptitle('Trace for {}'.format(flat_filename), fontsize=15)
-        figfile = os.path.join(figpath,
-                    'trace_{}.{}'.format(flatname, fig_format))
+        title = 'Trace for {}'.format(trace_file)
+        tracefig.suptitle(title)
+        figname = '{}.{}'.format(traceid, fig_format)
+        figfile = os.path.join(figpath, figname)
         tracefig.savefig(figfile)
+        tracefig.close()
 
-        aperset.save_txt(trc_file)
-        aperset.save_reg(trc_reg)
+        aperset.save_txt(trac_file)
+        aperset.save_reg(treg_file)
 
     ######################### find flat groups #################################
     ########################### Combine flat images ############################
+    exit()
     flat_groups = {}
     for logitem in logtable:
-        if logitem['objectname']=='WideFlat':
+        if logitem['object']=='WideFlat':
             flatname = 'flat_{%d}'.format(logitem['exptime'])
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
             flat_groups[flatname].append(logitem['fileid'])
     # print how many flats in each flat name
-    for flatname in flat_groups:
-        n = len(flat_groups[flatname])
+    for flatname, item_lst in sorted(flat_groups.items()):
+        n = len(item_lst)
         print('{} images in {}'.format(n, flatname))
 
     flat_data_lst = {}
     flat_mask_lst = {}
-    for flatname, fileids in flat_groups.items():
+    for flatname, logitem_lst in flat_groups.items():
         flat_filename = '{}.fits'.format(flatname)
-        mask_filename = '%s_msk.fits'%flatname
+        mask_filename = '_msk.fits'%flatname
         if os.path.exists(flat_filename) and os.path.exists(mask_filename):
             flat_data = fits.getdata(flat_filename)
             mask_table = fits.getdata(mask_filename)
@@ -624,92 +456,3 @@ all_columns = [
         ('q95',     'int',   '{:^6s}',  '{0[q95]:6d}'),
         ]
 
-def make_obslog(path):
-    """Print the observing log.
-
-    Args:
-        path (str): Path to the raw FITS files.
-    """
-    cal_objects = ['bias', 'wideflat', 'narrowflat', 'flat', 'dark', 'iodine',
-                    'thar']
-
-    # prepare logtable
-    logtable = Table(dtype=[
-        ('frameid', 'i2'),  ('fileid', 'S12'),  ('imgtype', 'S3'),
-        ('object',  'S12'), ('i2',     'bool'), ('exptime', 'f4'),
-        ('obsdate', Time),  ('nsat',   'i4'),   ('q95',     'i4'),
-        ])
-
-    # prepare infomation to print
-    pinfo = FormattedInfo(all_columns,
-            ['frameid', 'fileid', 'imgtype', 'object', 'exptime', 'obsdate',
-             'nsat', 'q95'])
-
-    # print header of logtable
-    print(pinfo.get_separator())
-    print(pinfo.get_title())
-    print(pinfo.get_separator())
-
-    # start scanning the raw files
-    for fname in sorted(os.listdir(path)):
-        if fname[-5:] != '.fits':
-            continue
-        filename = os.path.join(path, fname)
-        data, head = fits.getdata(filename, header=True)
-
-        fileid     = fname[0:-5]
-        obstype    = head['OBSTYPE']
-        exptime    = head['EXPTIME']
-        objectname = head['OBJECT']
-        obsdate    = Time(head['DATE-OBS'])
-        i2cell     = {'In': 1, 'Out': 0}[head['ICELNAM']]
-
-        imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
-
-        # determine the total number of saturated pixels
-        saturation = (data>=65535).sum()
-
-        # find the 95% quantile
-        quantile95 = np.sort(data.flatten())[int(data.size*0.95)]
-
-        item = [0, fileid, imgtype, obstype, objectname, i2cell, exptime,
-                obsdate, saturation, quantile95]
-        logtable.add_row(item)
-
-        item = logtable[-1]
-
-        # print log item with colors
-
-    logtable.sort('obsdate')
-
-    # allocate frameid
-    prev_frameid = -1
-    for item in logtable:
-        frameid = int(item['fileid'][-4:])
-        if frameid <= prev_frameid:
-            print('Warning: frameid {} > prev_frameid {}'.format(
-                    frameid, prev_frameid))
-
-        item['frameid'] = frameid
-
-        prev_frameid = frameid
-
-    # determine filename of logtable.
-    # use the obsdate of the first frame
-    obsdate = logtable[0]['obsdate'][0:10]
-    outname = '{}.obslog'.format(obsdate)
-    if os.path.exists(outname):
-        i = 0
-        while(True):
-            i += 1
-            outname = '{}.{}.obslog'.format(obsdate, i)
-            if not os.path.exists(outname):
-                outfilename = outname
-                break
-    else:
-        outfilename = outname
-
-    # save the logtable
-    logtable.write(outfilename, format='ascii.fixed_width_two_line')
-
-    return True

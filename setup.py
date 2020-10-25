@@ -16,7 +16,11 @@ setup(
                     'gamse/utils',
                     'gamse/echelle',
                     'gamse/pipelines',
+                    'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
+                    'gamse/pipelines/hds',
+                    'gamse/pipelines/hires',
+                    'gamse/pipelines/levy',
                     'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {

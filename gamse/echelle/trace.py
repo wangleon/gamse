@@ -783,8 +783,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         fig.ax1.set_xlim(0,w-1)
         fig.ax1.set_ylim(h-1,0)
 
-    fig.ax1.set_xlabel('X', fontsize=12)
-    fig.ax1.set_ylabel('Y', fontsize=12)
+    fig.ax1.set_xlabel('X')
+    fig.ax1.set_ylabel('Y')
 
     plot_paper_fig = False
 
@@ -1105,8 +1105,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     fig.ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
             lw=0.8)
     fig.ax2.set_yscale('log')
-    fig.ax2.set_xlabel('Y', fontsize=12)
-    fig.ax2.set_ylabel('Count', fontsize=12)
+    fig.ax2.set_xlabel('Y')
+    fig.ax2.set_ylabel('Count')
     fig.ax2.set_ylim(0.5,)
 
     if plot_paper_fig:
@@ -1287,7 +1287,10 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
-        fig.ax1.plot(xfit, yfit, 'ro',lw=0.5, alpha=0.8, ms=1, markeredgewidth=0)
+        if transpose:
+            fig.ax1.plot(yfit, xfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
+        else:
+            fig.ax1.plot(xfit, yfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
 
         # fit chebyshev polynomial
         # determine the left and right domain
@@ -1307,7 +1310,10 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
         # generate a curve using for plot
         newx, newy = poly.linspace()
-        fig.ax1.plot(newx, newy, '-',lw=0.8, alpha=1, color='C0')
+        if transpose:
+            fig.ax1.plot(newy, newx, '-', lw=0.8, alpha=1, color='C0')
+        else:
+            fig.ax1.plot(newx, newy, '-', lw=0.8, alpha=1, color='C0')
 
         if plot_paper_fig:
             # plot the order in paper figure and the mini-figure
@@ -1356,10 +1362,9 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     for tick in fig.ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    fig.ax3.set_xlabel('Y', fontsize=12)
-    fig.ax3.set_ylabel('Detected Peaks', fontsize=12)
-    fig.ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8,
-                    fontsize=12)
+    fig.ax3.set_xlabel('Y')
+    fig.ax3.set_ylabel('Detected Peaks')
+    fig.ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8)
     for ax in [fig.ax2, fig.ax3, fig.ax4]:
         ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
         # set tickers
