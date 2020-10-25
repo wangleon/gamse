@@ -123,6 +123,9 @@ def reduce_echelle():
     elif key == ('Keck-I', 'HIRES'):
         hires.reduce_rawdata()
 
+    elif key == ('Subaru', 'HDS'):
+        hds.reduce_rawdata()
+
     elif key == ('MPG/ESO-2.2m', 'FEROS'):
         feros.reduce_rawdata()
 
