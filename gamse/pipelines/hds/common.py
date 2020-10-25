@@ -8,8 +8,6 @@ import scipy.interpolate as intp
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
 
-from ...echelle.imageproc import combine_images
-
 def get_region_lst(header):
     """Get a list of array indices.
 
