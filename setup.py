@@ -21,6 +21,7 @@ setup(
                     'gamse/pipelines/hds',
                     'gamse/pipelines/hires',
                     'gamse/pipelines/levy',
+                    'gamse/pipelines/lhrs',
                     'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {
