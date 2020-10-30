@@ -75,7 +75,12 @@ def make_config():
     config.set(sectname, 'trace_file', '${reduce:midpath}/trace.fits')
     config.set(sectname, 'minimum',    str(1e-3))
     config.set(sectname, 'scan_step',  str(100))
-    config.set(sectname, 'separation', '100:95, 2000:55, 3700:24')
+
+    if input_datetime > datetime.datetime(2020, 9, 30):
+        separation = '500:38, 2000:55, 3800:95'
+    else:
+        separation = '100:95, 2000:55, 3700:24'
+    config.set(sectname, 'separation', separation)
     config.set(sectname, 'filling',    str(0.2))
     config.set(sectname, 'align_deg',  str(3))
     config.set(sectname, 'display',    'no')
@@ -153,7 +158,7 @@ def make_obslog():
         data, head = fits.getdata(filename, header=True)
 
         frameid    = 0  # frameid will be determined later
-        fileid     = fname[0:-5]
+        fileid     = fname[0:-4]
         exptime    = head['EXPOSURE']
         objectname = ""
         obsdate    = head['DATE-OBS']
@@ -183,3 +188,34 @@ def make_obslog():
     # allocate frameid
     prev_frameid = -1
     for logitem in logtable:
+        frameid = prev_frameid + 1
+        logitem['frameid'] = frameid
+        prev_frameid = frameid
+
+    # determine filename of logtable.
+    # use the obsdate of the first frame
+    obsdate = logtable[0]['obsdate'][0:10]
+    outname = '{}.obslog'.format(obsdate)
+    if os.path.exists(outname):
+        i = 0
+        while(True):
+            i += 1
+            outname = '{}.{}.obslog'.format(obsdate, i)
+            if not os.path.exists(outname):
+                outfilename = outname
+                break
+    else:
+        outfilename = outname
+
+    # set display formats
+    logtable['imgtype'].info.format = '^s'
+    logtable['fileid'].info.format = '<s'
+    logtable['object'].info.format = '<s'
+    logtable['exptime'].info.format = 'g'
+
+    # save the logtable
+    outfile = open(outfilename, 'w')
+    for row in logtable.pformat_all():
+        outfile.write(row+os.linesep)
+    outfile.close()
+
