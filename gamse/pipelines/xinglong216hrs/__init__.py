@@ -200,7 +200,7 @@ def make_config():
     print('Config file written to {}'.format(filename))
 
 def make_obslog():
-    """Scan the raw data, and generated a log file containing the detail
+    """Scan the raw data, and generate a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running.

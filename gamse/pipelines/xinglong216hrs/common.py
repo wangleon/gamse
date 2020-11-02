@@ -399,6 +399,7 @@ def combine_bias(config, logtable):
         # bias is the result array to return
         bias = bias_combine
 
+    ############### save to FITS ##############
     hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)
