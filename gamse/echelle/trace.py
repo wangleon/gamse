@@ -682,6 +682,9 @@ class TraceFigureCommon(Figure):
             bbox3.x0, y0, bbox3.width, bbox3.height
             ])
 
+    def close(self):
+        plt.close(self)
+
 def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
         display=True, fig=None):
