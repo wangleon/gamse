@@ -143,21 +143,24 @@ def make_obslog():
 
     # prepare logtable
     logtable = Table(dtype=[
-                        ('frameid', 'i2'),
-                        ('fileid',  'S12'),
-                        ('imgtype', 'S3'),
-                        ('object',  'S12'),
-                        ('i2',      'S1'),
-                        ('exptime', 'f4'),
-                        ('obsdate', 'S19'),
-                        ('nsat',    'i4'),
-                        ('q95',     'i4'),
+                        ('frameid',  'i2'),
+                        ('fileid',   'S12'),
+                        ('imgtype',  'S3'),
+                        ('object',   'S12'),
+                        ('i2',       'S1'),
+                        ('exptime',  'f4'),
+                        ('obsdate',  'S19'),
+                        ('halogen1', 'S8'),
+                        ('halogen2', 'S8'),
+                        ('nsat',     'i4'),
+                        ('q95',      'i4'),
                 ])
 
-    fmt_str = ('  - {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s}'
+    fmt_str = ('  - {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s} {:<8s} {:<8s}'
                ' {:>7} {:>5}')
     head_str = fmt_str.format('fileid', 'type', 'object', '', 'exptime',
-                                'obsdate', 'nsat', 'q95')
+                                'obsdate', 'halogen1', 'halogen2',
+                                'nsat', 'q95')
     print(head_str)
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
@@ -171,6 +174,8 @@ def make_obslog():
         exptime    = head['EXPTIME']
         objectname = head['OBJECT']
         obsdate    = head['DATE-OBS']
+        halogen1   = head['HALOGEN1']
+        halogen2   = head['HALOGEN2']
         i2         = {'In': '+', 'Out': '-'}[head['ICELNAM']]
 
         imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
@@ -182,7 +187,7 @@ def make_obslog():
         quantile95 = int(np.round(np.percentile(data, 95)))
 
         item = [frameid, fileid, imgtype, objectname, i2, exptime, obsdate,
-                saturation, quantile95]
+                halogen1, halogen2, saturation, quantile95]
         logtable.add_row(item)
 
         item = logtable[-1]
@@ -190,7 +195,7 @@ def make_obslog():
         # print log item with colors
         string = fmt_str.format(fileid,
                     '({:3s})'.format(imgtype), objectname, i2, exptime,
-                    obsdate, saturation, quantile95)
+                    obsdate, halogen1, halogen2, saturation, quantile95)
         print(print_wrapper(string, item))
 
     # sort by obsdate
