@@ -2188,13 +2188,15 @@ class CalibFigure(Figure):
             tick.label1.set_fontsize(tick_size)
 
 
-def select_calib_from_database(path, time_key, current_time):
+def select_calib_from_database(path, time_key, current_time,
+        filepattern='wlcalib.\S*.fits$'):
     """Select a previous calibration result in database.
 
     Args:
         path (str): Path to search for the calibration files.
         time_key (str): Name of the key in the FITS header.
         current_time (str): Time string of the file to be calibrated.
+        filepattern (str):
 
     Returns:
         tuple: A tuple containing:
@@ -2208,7 +2210,7 @@ def select_calib_from_database(path, time_key, current_time):
     filename_lst = []
     datetime_lst = []
     for fname in os.listdir(path):
-        if re.match('wlcalib.\S*.fits$', fname) is not None:
+        if re.match(filepattern, fname) is not None:
             filename = os.path.join(path, fname)
             head = fits.getheader(filename)
             dt = dateutil.parser.parse(head[time_key])
@@ -2225,9 +2227,10 @@ def select_calib_from_database(path, time_key, current_time):
     sel_filename = filename_lst[imin]
 
     # load spec, calib, and aperset from selected FITS file
-    f = fits.open(sel_filename)
-    head = f[0].header
-    spec = f[1].data
+    hdu_lst = fits.open(sel_filename)
+    head = hdu_lst[0].header
+    spec = hdu_lst[1].data
+    hdu_lst.close()
 
     calib = get_calib_from_header(head)
 
@@ -2847,34 +2850,31 @@ def get_calib_from_header(header):
         tuple: A tuple containing calib results.
     """
 
-    prefix = 'HIERARCH GAMSE WLCALIB'
-    #prefix = 'HIERARCH EDRS WVCALIB'
+    prefix = 'HIERARCH GAMSE WLCALIB '
 
-    xorder = header[prefix+' XORDER']
-    yorder = header[prefix+' YORDER']
+    xorder = header[prefix+'XORDER']
+    yorder = header[prefix+'YORDER']
 
     coeff = np.zeros((yorder+1, xorder+1))
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
-        coeff[j,i] = header[prefix+' COEFF %d %d'%(j, i)]
+        coeff[j,i] = header[prefix+'COEFF {:d} {:d}'.format(j, i)]
 
     calib = {
               'coeff':         coeff,
-              'npixel':        header[prefix+' NPIXEL'],
-              'k':             header[prefix+' K'],
-              'offset':        header[prefix+' OFFSET'],
-              'std':           header[prefix+' STDDEV'],
-              'nuse':          header[prefix+' NUSE'],
-              'ntot':          header[prefix+' NTOT'],
+              'npixel':        header[prefix+'NPIXEL'],
+              'k':             header[prefix+'K'],
+              'offset':        header[prefix+'OFFSET'],
+              'std':           header[prefix+'STDDEV'],
+              'nuse':          header[prefix+'NUSE'],
+              'ntot':          header[prefix+'NTOT'],
 #             'identlist':     calibwindow.identlist,
-              'window_size':   header[prefix+' WINDOW_SIZE'],
+              'window_size':   header[prefix+'WINDOW_SIZE'],
               'xorder':        xorder,
               'yorder':        yorder,
-              'maxiter':       header[prefix+' MAXITER'],
-              'clipping':      header[prefix+' CLIPPING'],
-              'q_threshold':   header[prefix+' Q_THRESHOLD'],
-              #'q_threshold':   header[prefix+' SNR_THRESHOLD'],
-              'direction':     header[prefix+' DIRECTION'],
-              #'direction':     'xr-',
+              'maxiter':       header[prefix+'MAXITER'],
+              'clipping':      header[prefix+'CLIPPING'],
+              'q_threshold':   header[prefix+'Q_THRESHOLD'],
+              'direction':     header[prefix+'DIRECTION'],
             }
     return calib
 
