@@ -492,7 +492,7 @@ def reduce_singlefiber(config, logtable):
         if ithar == 0:
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
-                # find previouse calibration results
+                # find previous calibration results
                 database_path = section.get('database_path')
                 database_path = os.path.expanduser(database_path)
 
@@ -566,9 +566,8 @@ def reduce_singlefiber(config, logtable):
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
 
-                    message = 'Aperture offset = {}; Pixel offset = {}'
-                    message = message.format(aperture_koffset,
-                                             pixel_koffset)
+                    message = 'Aperture offset = {}; Pixel offset = {}'.format(
+                                aperture_koffset, pixel_koffset)
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
