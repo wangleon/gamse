@@ -44,10 +44,16 @@ def get_mask():
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
-    def __init__(self, datashape):
-        TraceFigureCommon.__init__(self, figsize=(20,10), dpi=150)
-        self.ax1 = self.add_axes([0.05,0.07,0.43,0.86])
-        self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
-        self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
+    def __init__(self, datashape, figsize=(12,6)):
+        TraceFigureCommon.__init__(self, figsize=figsize, dpi=150)
+        axh = 0.86
+        axw = axh/figsize[0]*figsize[1]/datashape[0]*datashape[1]
+        x1 = 0.06
+        self.ax1 = self.add_axes([x1,0.07,axw,axh])
+
+        hgap = 0.05
+        x2 = x1 + axw + hgap
+        self.ax2 = self.add_axes([x2, 0.50, 0.95-x2, 0.40])
+        self.ax3 = self.add_axes([x2, 0.10, 0.95-x2, 0.40])
         self.ax4 = self.ax3.twinx()
 
