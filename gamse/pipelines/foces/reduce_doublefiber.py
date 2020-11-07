@@ -570,11 +570,6 @@ def reduce_doublefiber(config, logtable):
             # there's only ONE "color" of flat
             flatname = list(fiber_flat_lst)[0]
 
-            # copy the flat fits
-            fname = 'flat_{}_{}.fits'.format(fiber, flatname)
-            oriname = os.path.join(midpath, fname)
-            shutil.copyfile(oriname, flat_fiber_file)
-
             '''
             # copy the trc file
             if multi_fiber:
@@ -591,6 +586,13 @@ def reduce_doublefiber(config, logtable):
             '''
 
             flat_sens = flat_sens_lst[fiber][flatname]
+            flat_mask = flat_mask_lst[fiber][flatname]
+            flat_norm = flat_norm_lst[fiber][flatname]
+            flat_dsum = flat_dsum_lst[fiber][flatname]
+            flat_sens = flat_sens_lst[fiber][flatname]
+            flat_spec = flat_spec_lst[fiber][flatname]
+            flat_1d   = flat_1d_lst[fiber][flatname]
+            flat_raw  = flat_raw_lst[fiber][flatname]
     
             # no need to mosaic aperset
             master_aperset[fiber] = list(aperset_lst[fiber].values())[0]
@@ -629,26 +631,26 @@ def reduce_doublefiber(config, logtable):
             flat_raw = mosaic_spec(flat_raw_lst[fiber],
                                         master_aperset[fiber])
 
-            # change contents of several lists
-            flat_data_lst[fiber] = flat_data
-            flat_mask_lst[fiber] = flat_mask
-            flat_norm_lst[fiber] = flat_norm
-            flat_dsum_lst[fiber] = flat_dsum
-            flat_sens_lst[fiber] = flat_sens
-            flat_spec_lst[fiber] = flat_spec
-            flat_1d_lst[fiber] = flat_1d
-            flat_raw_lst[fiber] = flat_raw
+        # change contents of several lists
+        flat_data_lst[fiber] = flat_data
+        flat_mask_lst[fiber] = flat_mask
+        flat_norm_lst[fiber] = flat_norm
+        flat_dsum_lst[fiber] = flat_dsum
+        flat_sens_lst[fiber] = flat_sens
+        flat_spec_lst[fiber] = flat_spec
+        flat_1d_lst[fiber] = flat_1d
+        flat_raw_lst[fiber] = flat_raw
 
-            # pack and save to fits file
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(flat_data),
-                        fits.ImageHDU(flat_mask),
-                        fits.ImageHDU(flat_norm),
-                        fits.ImageHDU(flat_dsum),
-                        fits.ImageHDU(flat_sens),
-                        fits.BinTableHDU(flat_spec),
-                        ])
-            hdu_lst.writeto(flat_fiber_file, overwrite=True)
+        # pack and save to fits file
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(flat_mask),
+                    fits.ImageHDU(flat_norm),
+                    fits.ImageHDU(flat_dsum),
+                    fits.ImageHDU(flat_sens),
+                    fits.BinTableHDU(flat_spec),
+                    ])
+        hdu_lst.writeto(flat_fiber_file, overwrite=True)
 
         # align different fibers
         if ifiber == 0:
@@ -821,7 +823,7 @@ def reduce_doublefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        filename = os.path.join(rawpath, '{}.fits'.formt(fileid))
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
@@ -862,11 +864,19 @@ def reduce_doublefiber(config, logtable):
             objname = objname.lower()
 
             section = config['reduce.extract']
+            lower_limit = section.getfloat('lower_limit')
+            upper_limit = section.getfloat('upper_limit')
+            apertureset = master_aperset[fiber]
+
             spectra1d = extract_aperset(data, mask,
-                        apertureset = master_aperset[fiber],
-                        lower_limit = section.getfloat('lower_limit'),
-                        upper_limit = section.getfloat('upper_limit'),
+                        apertureset = apertureset,
+                        lower_limit = lower_limit,
+                        upper_limit = upper_limit,
                         )
+            message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
+                       fiber, len(spectra1d))
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
             head = master_aperset[fiber].to_fitsheader(head, fiber=fiber)
 
             # pack to a structured array
@@ -1276,7 +1286,7 @@ def reduce_doublefiber(config, logtable):
         if objname.lower()[0:4] in ['flat', 'thar']:
             continue
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
 
         message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
                     fileid, imgtype, fiberobj_str)
@@ -1345,7 +1355,7 @@ def reduce_doublefiber(config, logtable):
         figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
         figfilename = os.path.join(figpath, figname)
         fig_bkg.savefig(figfilename)
-        plt.close(fig_bkg)
+        fig_bkg.close()
 
         data = data - background
         message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
@@ -1574,9 +1584,9 @@ def reduce_doublefiber(config, logtable):
             else:
                 pass
 
-        filename = os.path.join(rawpath, fileid+'.fits')
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
 
-        message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
+        message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, fiberobj_str)
         logger.info(message)
         print(message)
