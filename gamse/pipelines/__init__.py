@@ -387,3 +387,24 @@ def show_onedspec():
 
     fig.canvas.mpl_connect('key_press_event', on_key)
     plt.show()
+
+def plot_spectra1d():
+
+    # load config file in current directory
+    config_file_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname.endswith('.cfg')]
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
+    # find telescope and instrument from config file
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+
+    key = (telescope, instrument)
+
+    if key == ('Xinglong216', 'HRS'):
+        xinglong216hrs.plot_spectra1d()

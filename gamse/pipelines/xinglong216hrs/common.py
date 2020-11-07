@@ -10,6 +10,7 @@ from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates as mdates
@@ -18,7 +19,6 @@ from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
-from ...utils.obslog import read_obslog
 from ...utils.onedarray import iterative_savgol_filter
 
 def get_region_lst(header, readout_mode):
@@ -597,21 +597,25 @@ def select_calib_from_database(database_path, dateobs):
     """
     
     indexfile = os.path.join(database_path, 'index.dat')
-    calibtable = read_obslog(indexfile)
+    calibtable = Table.read(indexfile, format='ascii.fixed_width_two_line')
 
     input_date = dateutil.parser.parse(dateobs)
     if input_date > datetime.datetime(2019, 1, 1):
-        mask = [t.datetime > datetime.datetime(2019, 1, 1)
+        mask = [dateutil.parser.parse(t) > datetime.datetime(2019, 1, 1)
                 for t in calibtable['obsdate']]
     else:                         
-        mask = [t.datetime < datetime.datetime(2019, 1, 1)
+        mask = [dateutil.parser.parse(t) < datetime.datetime(2019, 1, 1)
                 for t in calibtable['obsdate']]
     
-    fileid = calibtable[mask][-1]['fileid']
+    # select the latest ThAr
+    row = calibtable[mask][-1]
+    fileid = row['fileid']
 
-    filename = 'wlcalib.{}.fits'.format(fileid)
+    filename = 'wlcalib_{}.fits'.format(fileid)
     filepath = os.path.join(database_path, filename)
-         
+    message = 'Select {} from database as ThAr reference'.format(filename)
+    logger.info(message)
+
     # load spec, calib, and aperset from selected FITS file
     f = fits.open(filepath)
     head = f[0].header
