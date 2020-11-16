@@ -3088,7 +3088,8 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
 
     return spec, card_lst
 
-def reference_pixel_wavelength(pixels, apertures, calib_lst, weight_lst):
+def reference_pixel_wavelength(pixels, apertures, calib=None,
+        calib_lst=None, weight_lst=None):
     """Calculate the wavelength of a list of pixels with given calibration list
     and weights.
 
@@ -3107,14 +3108,19 @@ def reference_pixel_wavelength(pixels, apertures, calib_lst, weight_lst):
     pixels    = np.array(pixels)
     apertures = np.array(apertures)
 
-    combined_calib = combine_calib(calib_lst, weight_lst)
+    if calib is not None:
+        used_calib = calib
+    elif calib_lst is not None and weight_lst is not None:
+        used_calib = combine_calib(calib_lst, weight_lst)
+    else:
+        raise ValueError
 
-    k      = combined_calib['k']
-    offset = combined_calib['offset']
-    xorder = combined_calib['xorder']
-    yorder = combined_calib['yorder']
-    npixel = combined_calib['npixel']
-    coeff  = combined_calib['coeff']
+    k      = used_calib['k']
+    offset = used_calib['offset']
+    xorder = used_calib['xorder']
+    yorder = used_calib['yorder']
+    npixel = used_calib['npixel']
+    coeff  = used_calib['coeff']
 
     orders = apertures*k + offset
     wavelengths = get_wavelength(coeff, npixel, pixels, orders)
