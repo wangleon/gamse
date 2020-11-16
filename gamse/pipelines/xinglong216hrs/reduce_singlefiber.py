@@ -12,7 +12,7 @@ from ...echelle.imageproc import combine_images
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)
-from ...echelle.background import find_background, get_single_background
+from ...echelle.background import find_background, get_interorder_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
@@ -774,7 +774,7 @@ def reduce_singlefiber(config, logtable):
         print(screen_prefix + message)
 
         # get background lights
-        background = get_single_background(data, master_aperset)
+        background = get_interorder_background(data, master_aperset)
 
         # plot stray light
         fig_bkg = BackgroundFigure()
