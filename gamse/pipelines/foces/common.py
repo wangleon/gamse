@@ -1270,7 +1270,8 @@ class TraceFigure(TraceFigureCommon):
 class BackgroundFigure(BackgroundFigureCommon):
     """Figure to plot the background correction.
     """
-    def __init__(self, dpi=300, figsize=(12, 5.5)):
+    def __init__(self, data=None, background=None, dpi=300, figsize=(12, 5.5),
+            title=None, figname=None):
         BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
         width = 0.36
         height = width*figsize[0]/figsize[1]
@@ -1279,7 +1280,14 @@ class BackgroundFigure(BackgroundFigureCommon):
         self.ax1c = self.add_axes([0.06+width+0.01, 0.1, 0.015, height])
         self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
 
-    def plot(self, data, background, scale=(5, 99)):
+        if data is not None and background is not None:
+            self.plot_background(data, background)
+        if title is not None:
+            self.suptitle(title)
+        if figname is not None:
+            self.savefig(figname)
+
+    def plot_background(self, data, background, scale=(5, 99)):
         """Plot the image data with background and the subtracted background
         light.
 
@@ -1307,3 +1315,134 @@ class BackgroundFigure(BackgroundFigureCommon):
             ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
             ax.yaxis.set_major_locator(tck.MultipleLocator(500))
             ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
+
+class BrightnessProfileFigure(Figure):
+    """Figure to plot the background combinations.
+    """
+    def __init__(self,
+            fiber_obs_bkg_lst = None,
+            fiber_sel_bkg_lst = None,
+            fiber_scale_lst   = None,
+            title=None, filename=None, dpi=300, figsize=(8,6)):
+        # create figure
+        Figure.__init__(self, figsize=figsize, dpi=dpi)
+        self.canvas = FigureCanvasAgg(self)
+        # plot profiles
+        if None not in [fiber_obs_bkg_lst, fiber_sel_bkg_lst, fiber_scale_lst]:
+            self.plot_profile(fiber_obs_bkg_lst,
+                              fiber_sel_bkg_lst,
+                              fiber_scale_lst)
+        # set figure title
+        if title is not None:
+            self.suptitle(title)
+
+        # save figure
+        if filename is not None:
+            self.savefig(filename)
+
+    def plot_profile(self, fiber_obs_bkg_lst, fiber_sel_bkg_lst,
+            fiber_scale_lst):
+        """Plot the brightness profiles of observed and scaled brightness
+        profiles
+
+        Args:
+            fiber_obs_bkg_lst (dict):
+            fiber_sel_bkg_lst (dict):
+            fiber_scale_lst (dict):
+        """
+        ax1 = self.add_axes([0.1,0.58,0.85,0.32])
+        ax2 = self.add_axes([0.1,0.10,0.85,0.32])
+
+        # check if the keys of input dicts are identical
+        keys1 = sorted(fiber_obs_bkg_lst.keys())
+        keys2 = sorted(fiber_sel_bkg_lst.keys())
+        keys3 = sorted(fiber_scale_lst.keys())
+
+        if keys1 != keys2 or keys1 != keys3:
+            print('Warning: input keys are different:',keys1, keys2, keys3)
+            raise ValueError
+
+        # plot observed background profiles
+        alpha = 0.7
+        lw = 1.0
+        ls = '-'
+        for ifiber, fiber in enumerate(keys1):
+            obs_bkg = fiber_obs_bkg_lst[fiber]
+            color = 'C{:d}'.format(ifiber%10)
+            ax1.plot(obs_bkg.aper_pos_lst, obs_bkg.aper_brt_lst,
+                    label='Fiber {}'.format(fiber),
+                    color=color, lw=lw, ls=ls, alpha=alpha,
+                    )
+            ax2.plot(obs_bkg.aper_ord_lst, obs_bkg.aper_brt_lst,
+                    label='Fiber {}'.format(fiber),
+                    color=color, lw=lw, ls=ls, alpha=alpha,
+                    )
+
+        # plot scaled background profiles
+        ls = '--'
+        for ifiber, fiber in enumerate(keys1):
+            sel_bkg = fiber_sel_bkg_lst[fiber]
+            scale   = fiber_scale_lst[fiber]
+            color = 'C{:d}'.format(ifiber%10)
+            ax1.plot(sel_bkg.aper_pos_lst, sel_bkg.aper_brt_lst*scale,
+                    label=u'saved \xd7 {:4.2f}'.format(scale),
+                    color=color, lw=lw, ls=ls, alpha=alpha,
+                    )
+            ax2.plot(sel_bkg.aper_ord_lst, sel_bkg.aper_brt_lst*scale,
+                    label=u'saved \xd7 {:4.2f}'.format(scale),
+                    color=color, lw=lw, ls=ls, alpha=alpha,
+                    )
+
+        for ax in self.get_axes():
+            # set legends
+            leg = ax.legend(loc='upper left')
+            #leg.get_frame().set_alpha(0.1)
+            ax.grid(True, ls='--')
+            ax.set_axisbelow(True)
+
+        # set xlim of ax1
+        ny, nx = sel_bkg.data.shape
+        ax1.set_xlim(0, ny-1)
+
+        # set xlim of ax2
+        ord1 = max(obs_bkg.aper_ord_lst)
+        ord2 = min(obs_bkg.aper_ord_lst)
+        ax2.set_xlim(ord1, ord2)
+
+        # interpolate function converting wavelength (lambda) to order number
+        idx = obs_bkg.aper_wav_lst.argsort()
+        f = InterpolatedUnivariateSpline(
+                    obs_bkg.aper_wav_lst[idx],
+                    obs_bkg.aper_ord_lst[idx], k=3)
+        # find the exponential part of wavelength span
+        wavmin = min(obs_bkg.aper_wav_lst)
+        wavmax = max(obs_bkg.aper_wav_lst)
+        wavdiff = wavmax - wavmin
+        exp = int(math.log10(wavdiff))
+        # adjust the exponential part if too large
+        if wavdiff/(10**exp)<=2:
+            exp -= 1
+        w = 10**int(math.log10(wavmin))
+        # find the major ticks of the wavelength axis
+        wticks = []
+        wlabels = []
+        while(w <= wavmax):
+            if w >= wavmin:
+                order = f(w)
+                wticks.append(float(order))
+                wlabels.append('{:g}'.format(w))
+            w += 10**exp
+
+        # plot a series of wavelength ticks in top
+        ax22 = ax2.twiny()
+        ax22.set_xticks(wticks)
+        ax22.set_xticklabels(wlabels)
+        ax22.set_xlim(ax2.get_xlim())
+        ax22.set_xlabel(u'Wavelength (\xc5)')
+
+        # others
+        ax1.set_xlabel('Pixel')
+        ax2.set_xlabel('Order')
+
+    def close(self):
+        plt.close(self)
