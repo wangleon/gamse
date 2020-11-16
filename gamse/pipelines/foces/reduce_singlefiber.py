@@ -21,7 +21,7 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 select_calib_auto, select_calib_manu,
                                 )
 from ...echelle.background import (find_background, simple_debackground,
-                                   get_single_background)
+                                   get_interorder_background)
 from ...utils.obslog import parse_num_seq
 from ..common import plot_background_aspect1
 from .common import (print_wrapper, get_mask, get_bias,
@@ -792,7 +792,7 @@ def reduce_singlefiber(config, logtable):
         print(screen_prefix + message)
 
         # get background lights
-        background = get_single_background(data, master_aperset)
+        background = get_interorder_background(data, master_aperset)
 
         # plot stray light
         fig_bkg = BackgroundFigure()

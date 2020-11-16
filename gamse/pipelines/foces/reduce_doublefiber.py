@@ -8,10 +8,9 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import scipy.interpolate as intp
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.figure import Figure
+from scipy.ndimage.filters import median_filter
 
-from ...echelle.imageproc import combine_images
+from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                              mosaic_spec)
@@ -27,10 +26,11 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
                                 combine_fiber_identlist,
                                 )
 from ...echelle.background import (find_background, simple_debackground,
-                                   get_single_background, get_xdisp_profile,
+                                   get_interorder_background, get_xdisp_profile,
                                    BackgroundLight,
                                    find_best_background,
-                                   select_background_from_database)
+                                   select_background_from_database,
+                                   )
 from ...utils.obslog import parse_num_seq
 from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
                      TraceFigure, BackgroundFigure,
@@ -1193,7 +1193,7 @@ def reduce_doublefiber(config, logtable):
 
         filename = os.path.join(rawpath, '{}.fits'.format(fileid))
 
-        message = 'FileID: {:s} ({:s}) OBJECT: {:s}'.format(
+        message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, fiberobj_str)
         logger.info(message)
         print(message)
@@ -1248,15 +1248,18 @@ def reduce_doublefiber(config, logtable):
         variance_map = variance_map + data**2/master_flatdsum_0
 
         # get background lights
-        background = get_single_background(data, master_aperset[fiber])
+        background = get_interorder_background(data, master_aperset[fiber])
+        background = median_filter(background, size=(9,1), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
 
         # plot stray light
         figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
         figfilename = os.path.join(figpath, figname)
         fig_bkg = BackgroundFigure(data, background,
-                title   = 'Background Correction for {}'.format(fileid),
-                figname = figfilename,
-                )
+                    title   = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
         fig_bkg.close()
 
         data = data - background
@@ -1320,7 +1323,7 @@ def reduce_doublefiber(config, logtable):
                     aper_wav_lst = aper_wav_lst,
                     )
         # save to fits
-        outfilename = os.path.join(midpath, 'bkg.{}.fits'.format(fileid))
+        outfilename = os.path.join(midpath, 'bkg_{}.fits'.format(fileid))
         bkg_obj.savefits(outfilename)
         # pack to saved_bkg_lst
         saved_bkg_lst.append(bkg_obj)
@@ -1500,6 +1503,7 @@ def reduce_doublefiber(config, logtable):
         mask = get_mask(data)
 
         head.append(('HIERARCH GAMSE CCD GAIN', 1.0))
+
         # correct overscan
         data, card_lst, overmean, overstd = correct_overscan(
                                             data, mask, direction)
@@ -1508,7 +1512,6 @@ def reduce_doublefiber(config, logtable):
             del head['BLANK']
         for key, value in card_lst:
             head.append((key, value))
-
         message = 'Overscan corrected. Mean = {:.2f}'.format(overmean)
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
