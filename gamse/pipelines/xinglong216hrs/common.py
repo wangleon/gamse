@@ -1,5 +1,6 @@
 import os
 import re
+import math
 import datetime
 import logging
 logger = logging.getLogger(__name__)
@@ -776,6 +777,8 @@ class BackgroundFigure(BackgroundFigureCommon):
             vmax = background.max()
             cax2 = self.ax2.imshow(background, cmap='viridis',
                     vmin=vmin, vmax=vmax, origin='lower')
+            # set colorbar
+            cbar2 = self.colorbar(cax2, cax=self.ax2c)
         elif zscale[1] == 'log':
             m = background <= 0
             plotdata2 = np.zeros_like(background, dtype=np.float32)

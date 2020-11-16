@@ -175,9 +175,11 @@ def make_config():
     # section of background correction
     sectname = 'reduce.background'
     config.add_section(sectname)
-    config.set(sectname, 'ncols',    str(9))
-    config.set(sectname, 'distance', str(7))
-    config.set(sectname, 'yorder',   str(7))
+    config.set(sectname, 'subtract',      'yes')
+    config.set(sectname, 'ncols',         str(9))
+    config.set(sectname, 'distance',      str(7))
+    config.set(sectname, 'yorder',        str(7))
+    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
 
     # section of spectra extraction
     sectname = 'reduce.extract'
@@ -216,7 +218,8 @@ def make_obslog():
     config = load_config('Xinglong216HRS\S*\.cfg$')
     rawpath = config['data'].get('rawpath')
 
-    cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
+    cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar', 'flat;', ';flat',
+                    'thar;', ';thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
     # if the obsinfo file exists, read and pack the information
