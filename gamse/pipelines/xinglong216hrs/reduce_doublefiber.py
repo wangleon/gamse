@@ -15,6 +15,7 @@ from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
 from ...echelle.background import (find_background, get_interorder_background,
                                    get_xdisp_profile, BackgroundLight,
                                    find_best_background,
+                                   select_background_from_database,
                                    )
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
@@ -590,6 +591,9 @@ def reduce_doublefiber(config, logtable):
 
     ############################## Extract ThAr ################################
 
+    # prepare the saved background light list
+    saved_bkg_lst = []
+
     # get the data shape
     ny, nx = flat_sens.shape
 
@@ -635,7 +639,11 @@ def reduce_doublefiber(config, logtable):
         fiberobj_lst = get_fiberobj_lst(logitem['object'])
         fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
-        # now all objects in fiberobj_lst must be ThAr
+        # filter out frames with double fiber ThAr
+        if len(fiberobj_lst)!=1:
+            continue
+
+        # now this frame is a single-fiber ThAr
 
         count_thar += 1
         message = ('FileID: {} ({}) OBJECT: {}'
@@ -681,7 +689,10 @@ def reduce_doublefiber(config, logtable):
         figfilename = os.path.join(figpath, figname)
         fig_bkg = BackgroundFigure(data, background,
                     title   = 'Background Correction for {}'.format(fileid),
-                    figname = figfilename)
+                    figname = figfilename,
+                    zscale  = ('log', 'log'),
+                    contour = False,
+                    )
         fig_bkg.close()
 
         data = data - background
@@ -692,221 +703,259 @@ def reduce_doublefiber(config, logtable):
 
         head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', True))
 
-        for ifiber, objname in fiberobj_lst:
-            fiber = chr(ifiber+65)
-            objname = objname.lower()
 
-            section = config['reduce.extract']
-            lower_limit = section.getfloat('lower_limit')
-            upper_limit = section.getfloat('upper_limit')
-            apertureset = master_aperset[fiber]
+        ifiber, objname = fiberobj_lst[0]
+        fiber = chr(ifiber+65)
+        objname = objname.lower()
 
-            spectra1d = extract_aperset(data, mask,
-                        apertureset = apertureset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
-                        )
-            message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
-                       fiber, len(spectra1d))
-            logger.info(logger_prefix + message)
-            print(screen_prefix + message)
+        section = config['reduce.extract']
+        lower_limit = section.getfloat('lower_limit')
+        upper_limit = section.getfloat('upper_limit')
+        apertureset = master_aperset[fiber]
 
-            # pack to a structured array
-            spec = []
-            for aper, item in sorted(spectra1d.items()):
-                flux_sum = item['flux_sum']
-                n = flux_sum.size
-                # pack to table
-                item = (aper, 0, n,
-                        np.zeros_like(flux_sum, dtype=np.float64),  # wavelength
-                        flux_sum,                                   # flux
-                        np.zeros(n),                                # mask
-                        )
-                spec.append(item)
-            spec = np.array(spec, dtype=wlcalib_spectype)
+        spectra1d = extract_aperset(data, mask,
+                    apertureset = apertureset,
+                    lower_limit = lower_limit,
+                    upper_limit = upper_limit,
+                    )
+        message = 'Fiber {}: 1D spectra of {} orders extracted'.format(
+                   fiber, len(spectra1d))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
 
-            figname = 'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format)
-            wlcalib_fig = os.path.join(figpath, figname)
+        # pack to a structured array
+        spec = []
+        for aper, item in sorted(spectra1d.items()):
+            flux_sum = item['flux_sum']
+            n = flux_sum.size
+            # pack to table
+            item = (aper, 0, n,
+                    np.zeros_like(flux_sum, dtype=np.float64),  # wavelength
+                    flux_sum,                                   # flux
+                    np.zeros(n),                                # mask
+                    )
+            spec.append(item)
+        spec = np.array(spec, dtype=wlcalib_spectype)
 
-            section = config['reduce.wlcalib']
+        figname = 'wlcalib_{}_{}.{}'.format(fileid, fiber, fig_format)
+        wlcalib_fig = os.path.join(figpath, figname)
 
-            title = '{}.fits - Fiber {}'.format(fileid, fiber)
+        section = config['reduce.wlcalib']
 
-            if count_thar == 1:
-                # this is the first ThAr frame in this observing run
-                if section.getboolean('search_database'):
-                    # find previouse calibration results
-                    database_path = section.get('database_path')
-                    database_path = os.path.expanduser(database_path)
+        title = '{}.fits - Fiber {}'.format(fileid, fiber)
 
-                    message = ('Searching for archive wavelength calibration'
-                               'file in "{}"'.format(database_path))
+        if count_thar == 1:
+            # this is the first ThAr frame in this observing run
+            if section.getboolean('search_database'):
+                # find previouse calibration results
+                database_path = section.get('database_path')
+                database_path = os.path.expanduser(database_path)
+
+                message = ('Searching for archive wavelength calibration'
+                           'file in "{}"'.format(database_path))
+                logger.info(logger_prefix + message)
+
+                ref_spec, ref_calib = select_calib_from_database(
+                        database_path, head[statime_key])
+
+                if ref_spec is None or ref_calib is None:
+
+                    message = ('Did not find any archive wavelength'
+                               'calibration file')
                     logger.info(logger_prefix + message)
 
-                    ref_spec, ref_calib = select_calib_from_database(
-                            database_path, head[statime_key])
-
-                    if ref_spec is None or ref_calib is None:
-
-                        message = ('Did not find any archive wavelength'
-                                   'calibration file')
-                        logger.info(logger_prefix + message)
-
-                        # if failed, pop up a calibration window and
-                        # identify the wavelengths manually
-                        calib = wlcalib(spec,
-                            figfilename = wlcalib_fig,
-                            title       = title,
-                            linelist    = section.get('linelist'),
-                            window_size = section.getint('window_size'),
-                            xorder      = section.getint('xorder'),
-                            yorder      = section.getint('yorder'),
-                            maxiter     = section.getint('maxiter'),
-                            clipping    = section.getfloat('clipping'),
-                            q_threshold = section.getfloat('q_threshold'),
-                            )
-                    else:
-                        # if success, run recalib
-                        # determine the direction
-                        message = 'Found archive wavelength calibration file'
-                        logger.info(message)
-
-                        ref_direction = ref_calib['direction']
-
-                        if direction[1] == '?':
-                            aperture_k = None
-                        elif direction[1] == ref_direction[1]:
-                            aperture_k = 1
-                        else:
-                            aperture_k = -1
-
-                        if direction[2] == '?':
-                            pixel_k = None
-                        elif direction[2] == ref_direction[2]:
-                            pixel_k = 1
-                        else:
-                            pixel_k = -1
-
-                        # determine the name of the output figure during lamp
-                        # shift finding.
-                        if mode == 'debug':
-                            figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
-                            figname2 = 'lamp_ccf_scatter.png'
-                            fig_ccf     = os.path.join(figpath, figname1)
-                            fig_scatter = os.path.join(figpath, figname2)
-                        else:
-                            fig_ccf     = None
-                            fig_scatter = None
-
-                        result = find_caliblamp_offset(ref_spec, spec,
-                                    aperture_k  = aperture_k,
-                                    pixel_k     = pixel_k,
-                                    fig_ccf     = fig_ccf,
-                                    fig_scatter = fig_scatter,
-                                    )
-                        aperture_koffset = (result[0], result[1])
-                        pixel_koffset    = (result[2], result[3])
-
-                        message = 'Aperture offset = {}; Pixel offset = {}'
-                        message = message.format(aperture_koffset,
-                                                 pixel_koffset)
-                        logger.info(logger_prefix + message)
-                        print(screen_prefix + message)
-
-                        use = section.getboolean('use_prev_fitpar')
-                        xorder      = (section.getint('xorder'), None)[use]
-                        yorder      = (section.getint('yorder'), None)[use]
-                        maxiter     = (section.getint('maxiter'), None)[use]
-                        clipping    = (section.getfloat('clipping'), None)[use]
-                        window_size = (section.getint('window_size'), None)[use]
-                        q_threshold = (section.getfloat('q_threshold'), None)[use]
-
-                        calib = recalib(spec,
-                            figfilename      = wlcalib_fig,
-                            title            = title,
-                            ref_spec         = ref_spec,
-                            linelist         = section.get('linelist'),
-                            aperture_koffset = aperture_koffset,
-                            pixel_koffset    = pixel_koffset,
-                            ref_calib        = ref_calib,
-                            xorder           = xorder,
-                            yorder           = yorder,
-                            maxiter          = maxiter,
-                            clipping         = clipping,
-                            window_size      = window_size,
-                            q_threshold      = q_threshold,
-                            direction        = direction,
-                            )
-                else:
-                    message = 'No database searching. Identify lines manually'
-                    logger.info(logger_prefix + message)
-
-                    # do not search the database
+                    # if failed, pop up a calibration window and
+                    # identify the wavelengths manually
                     calib = wlcalib(spec,
-                        figfilename   = wlcalib_fig,
-                        title         = title,
-                        identfilename = section.get('ident_file', None),
-                        linelist      = section.get('linelist'),
-                        window_size   = section.getint('window_size'),
-                        xorder        = section.getint('xorder'),
-                        yorder        = section.getint('yorder'),
-                        maxiter       = section.getint('maxiter'),
-                        clipping      = section.getfloat('clipping'),
-                        q_threshold   = section.getfloat('q_threshold'),
+                        figfilename = wlcalib_fig,
+                        title       = title,
+                        linelist    = section.get('linelist'),
+                        window_size = section.getint('window_size'),
+                        xorder      = section.getint('xorder'),
+                        yorder      = section.getint('yorder'),
+                        maxiter     = section.getint('maxiter'),
+                        clipping    = section.getfloat('clipping'),
+                        q_threshold = section.getfloat('q_threshold'),
                         )
+                else:
+                    # if success, run recalib
+                    # determine the direction
+                    message = 'Found archive wavelength calibration file'
+                    logger.info(message)
 
-                # then use this ThAr as the reference
-                ref_calib = calib
-                ref_spec  = spec
+                    ref_direction = ref_calib['direction']
+
+                    if direction[1] == '?':
+                        aperture_k = None
+                    elif direction[1] == ref_direction[1]:
+                        aperture_k = 1
+                    else:
+                        aperture_k = -1
+
+                    if direction[2] == '?':
+                        pixel_k = None
+                    elif direction[2] == ref_direction[2]:
+                        pixel_k = 1
+                    else:
+                        pixel_k = -1
+
+                    # determine the name of the output figure during lamp
+                    # shift finding.
+                    if mode == 'debug':
+                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
+                        figname2 = 'lamp_ccf_scatter.png'
+                        fig_ccf     = os.path.join(figpath, figname1)
+                        fig_scatter = os.path.join(figpath, figname2)
+                    else:
+                        fig_ccf     = None
+                        fig_scatter = None
+
+                    result = find_caliblamp_offset(ref_spec, spec,
+                                aperture_k  = aperture_k,
+                                pixel_k     = pixel_k,
+                                fig_ccf     = fig_ccf,
+                                fig_scatter = fig_scatter,
+                                )
+                    aperture_koffset = (result[0], result[1])
+                    pixel_koffset    = (result[2], result[3])
+
+                    message = 'Aperture offset = {}; Pixel offset = {}'
+                    message = message.format(aperture_koffset,
+                                             pixel_koffset)
+                    logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
+
+                    use = section.getboolean('use_prev_fitpar')
+                    xorder      = (section.getint('xorder'), None)[use]
+                    yorder      = (section.getint('yorder'), None)[use]
+                    maxiter     = (section.getint('maxiter'), None)[use]
+                    clipping    = (section.getfloat('clipping'), None)[use]
+                    window_size = (section.getint('window_size'), None)[use]
+                    q_threshold = (section.getfloat('q_threshold'), None)[use]
+
+                    calib = recalib(spec,
+                        figfilename      = wlcalib_fig,
+                        title            = title,
+                        ref_spec         = ref_spec,
+                        linelist         = section.get('linelist'),
+                        aperture_koffset = aperture_koffset,
+                        pixel_koffset    = pixel_koffset,
+                        ref_calib        = ref_calib,
+                        xorder           = xorder,
+                        yorder           = yorder,
+                        maxiter          = maxiter,
+                        clipping         = clipping,
+                        window_size      = window_size,
+                        q_threshold      = q_threshold,
+                        direction        = direction,
+                        )
             else:
-                # for other ThArs, no aperture offset
-                calib = recalib(spec,
-                    figfilename      = wlcalib_fig,
-                    title            = title,
-                    ref_spec         = ref_spec,
-                    linelist         = section.get('linelist'),
-                    ref_calib        = ref_calib,
-                    aperture_koffset = (1, 0),
-                    pixel_koffset    = (1, 0),
-                    xorder           = ref_calib['xorder'],
-                    yorder           = ref_calib['yorder'],
-                    maxiter          = ref_calib['maxiter'],
-                    clipping         = ref_calib['clipping'],
-                    window_size      = ref_calib['window_size'],
-                    q_threshold      = ref_calib['q_threshold'],
-                    direction        = direction,
+                message = 'No database searching. Identify lines manually'
+                logger.info(logger_prefix + message)
+
+                # do not search the database
+                calib = wlcalib(spec,
+                    figfilename   = wlcalib_fig,
+                    title         = title,
+                    identfilename = section.get('ident_file', None),
+                    linelist      = section.get('linelist'),
+                    window_size   = section.getint('window_size'),
+                    xorder        = section.getint('xorder'),
+                    yorder        = section.getint('yorder'),
+                    maxiter       = section.getint('maxiter'),
+                    clipping      = section.getfloat('clipping'),
+                    q_threshold   = section.getfloat('q_threshold'),
                     )
 
-            # add more infos in calib
-            calib['fileid']   = fileid
-            calib['date-obs'] = head[statime_key]
-            calib['exptime']  = head[exptime_key]
+            # then use this ThAr as the reference
+            ref_calib = calib
+            ref_spec  = spec
+        else:
+            # for other ThArs, no aperture offset
+            calib = recalib(spec,
+                figfilename      = wlcalib_fig,
+                title            = title,
+                ref_spec         = ref_spec,
+                linelist         = section.get('linelist'),
+                ref_calib        = ref_calib,
+                aperture_koffset = (1, 0),
+                pixel_koffset    = (1, 0),
+                xorder           = ref_calib['xorder'],
+                yorder           = ref_calib['yorder'],
+                maxiter          = ref_calib['maxiter'],
+                clipping         = ref_calib['clipping'],
+                window_size      = ref_calib['window_size'],
+                q_threshold      = ref_calib['q_threshold'],
+                direction        = direction,
+                )
 
-            # reference the ThAr spectra
-            spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+        # add more infos in calib
+        calib['fileid']   = fileid
+        calib['date-obs'] = head[statime_key]
+        calib['exptime']  = head[exptime_key]
 
-            # save calib results into fits header
-            for key, value in card_lst:
-                key = 'HIERARCH GAMSE WLCALIB '+key
-                head.append((key, value))
+        # reference the ThAr spectra
+        spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
-            # save onedspec into FITS
-            hdu_lst = fits.HDUList([
-                        fits.PrimaryHDU(header=head),
-                        fits.BinTableHDU(spec),
-                        fits.BinTableHDU(identlist),
-                        ])
-            fname = 'wlcalib_{}_{}.fits'.format(fileid, fiber)
-            filename = os.path.join(midpath, fname)
-            hdu_lst.writeto(filename, overwrite=True)
+        # save calib results into fits header
+        for key, value in card_lst:
+            key = 'HIERARCH GAMSE WLCALIB '+key
+            head.append((key, value))
 
-            # pack to calib_lst
-            if fiber not in calib_lst:
-                calib_lst[fiber] = {}
-            calib_lst[fiber][frameid] = calib
-            
-        # fiber loop ends here
+        # save onedspec into FITS
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    fits.BinTableHDU(identlist),
+                    ])
+        fname = 'wlcalib_{}_{}.fits'.format(fileid, fiber)
+        filename = os.path.join(midpath, fname)
+        hdu_lst.writeto(filename, overwrite=True)
 
+        # pack to calib_lst
+        if fiber not in calib_lst:
+            calib_lst[fiber] = {}
+        calib_lst[fiber][frameid] = calib
+
+        # get order brightness profile
+        result = get_xdisp_profile(data, master_aperset[fiber])
+        aper_num_lst, aper_pos_lst, aper_brt_lst = result
+
+        # calibrate the wavelength of background
+        ny, nx = data.shape
+        pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+        # reference the wavelengths of background image
+        orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                            calib = calib,
+                            )
+        aper_ord_lst = orders
+        aper_wav_lst = waves
+
+        # pack to background list
+        bkg_info = {
+                    'fileid': fileid,
+                    'fiber': fiber,
+                    'object': 'thar',
+                    'objtype': 'thar',
+                    'exptime': exptime,
+                    'date-obs': head[statime_key],
+                    }
+        bkg_obj = BackgroundLight(
+                    info         = bkg_info,
+                    header       = head,
+                    data         = background,
+                    aper_num_lst = aper_num_lst,
+                    aper_ord_lst = aper_ord_lst,
+                    aper_pos_lst = aper_pos_lst,
+                    aper_brt_lst = aper_brt_lst,
+                    aper_wav_lst = aper_wav_lst,
+                    )
+        # save to fits
+        outfilename = os.path.join(midpath, 'bkg_{}.fits'.format(fileid))
+        bkg_obj.savefits(outfilename)
+        # pack to saved_bkg_lst
+        saved_bkg_lst.append(bkg_obj)
+        
     # print fitting summary
     fmt_string = (
         ' [{:3d}] {} - fiber {:1s} ({:4g} sec) - {:4d}/{:4d} r.m.s. = {:7.5f}')
@@ -1033,7 +1082,6 @@ def reduce_doublefiber(config, logtable):
 
     # first round, find the images with only single objects. extract the
     # spectra, and save the background lights
-    saved_bkg_lst = []
 
     for logitem in logtable:
         # logitem alias
@@ -1147,7 +1195,9 @@ def reduce_doublefiber(config, logtable):
 
         # reference the wavelengths of background image
         orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                            ref_calib_lst[fiber], weight_lst)
+                            calib_lst  = ref_calib_lst[fiber],
+                            weight_lst = weight_lst,
+                            )
         aper_ord_lst = orders
         aper_wav_lst = waves
 
@@ -1345,8 +1395,8 @@ def reduce_doublefiber(config, logtable):
             pixel_lst = np.repeat(nx//2, aper_num_lst.size)
             aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
                                             pixel_lst, aper_num_lst,
-                                            ref_calib_lst[fiber],
-                                            weight_lst)
+                                            calib_lst  = ref_calib_lst[fiber],
+                                            weight_lst = weight_lst)
 
             obs_bkg_obj = BackgroundLight(
                             aper_num_lst = aper_num_lst,
