@@ -144,8 +144,8 @@ def make_config():
     # section of spectra extraction
     sectname = 'reduce.extract'
     config.add_section(sectname)
-    config.set(sectname, 'upper_limit', str(6))
-    config.set(sectname, 'lower_limit', str(6))
+    config.set(sectname, 'upper_limit', str(4.5))
+    config.set(sectname, 'lower_limit', str(4.5))
 
     # write to config file
     filename = 'FOCES.{}.cfg'.format(input_date)

@@ -8,6 +8,7 @@ import scipy.interpolate as intp
 import scipy.optimize as opt
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
+import math
 
 from .imageproc import table_to_array
 from ..utils.onedarray import pairwise, smooth
@@ -113,7 +114,8 @@ def sum_extract(infilename, mskfilename, outfilename, channels, apertureset_lst,
 
             # determine the upper and lower row of summing
             r1 = int(lower_line.min())
-            r2 = int(upper_line.max())+1
+            r2 = int(math.ceil(upper_line.max()))+1
+
             mask = mask[r1:r2]
 
             # summing the data and mask
@@ -201,7 +203,7 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
 
         ## determine the upper and lower row of summing
         r1 = int(lower_line.min())
-        r2 = int(upper_line.max())+1
+        r2 = int(math.ceil(upper_line.max()))+1
 
         # summing the data and mask
         weight_sum = newmask[r1:r2].sum(axis=0)
