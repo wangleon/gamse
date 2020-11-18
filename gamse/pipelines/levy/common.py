@@ -93,6 +93,27 @@ def correct_overscan(data, head):
 
         return newdata, card_lst, overmean
 
+def get_mask(data):
+    """Get the mask of input image.
+
+    Args:
+        data (:class:`numpy.ndarray`): Input image data.
+
+    Returns:
+        :class:`numpy.ndarray`: Image mask.
+    """
+    # saturated CCD count
+    saturation_adu = 63000
+
+    mask_sat = (data >= saturation_adu)
+
+    mask_bad = np.zeros_like(data, dtype=np.int16)
+    # no bad pixels in Levy CCD
+
+    mask = np.int16(mask_sat)*4 + np.int16(mask_bad)*2
+
+    return mask
+
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
@@ -110,5 +131,3 @@ class TraceFigure(TraceFigureCommon):
         self.ax3 = self.add_axes([x2, 0.10, 0.93-x2, 0.40])
         self.ax4 = self.ax3.twinx()
 
-    def close(self):
-        plt.close(self)

@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import datetime
 import dateutil.parser
 import configparser
@@ -7,6 +8,7 @@ import configparser
 import numpy as np
 import astropy.io.fits as fits
 from astropy.table import Table
+import matplotlib.pyplot as plt
 
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
@@ -173,9 +175,11 @@ def make_config():
     # section of background correction
     sectname = 'reduce.background'
     config.add_section(sectname)
-    config.set(sectname, 'ncols',    str(9))
-    config.set(sectname, 'distance', str(7))
-    config.set(sectname, 'yorder',   str(7))
+    config.set(sectname, 'subtract',      'yes')
+    config.set(sectname, 'ncols',         str(9))
+    config.set(sectname, 'distance',      str(7))
+    config.set(sectname, 'yorder',        str(7))
+    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
 
     # section of spectra extraction
     sectname = 'reduce.extract'
@@ -200,7 +204,7 @@ def make_config():
     print('Config file written to {}'.format(filename))
 
 def make_obslog():
-    """Scan the raw data, and generated a log file containing the detail
+    """Scan the raw data, and generate a log file containing the detail
     information for each frame.
 
     An ascii file will be generated after running.
@@ -214,12 +218,8 @@ def make_obslog():
     config = load_config('Xinglong216HRS\S*\.cfg$')
     rawpath = config['data'].get('rawpath')
 
-    # scan filenames and determine the maximum length of fileid
-    maxlen_fileid = max([len(fname[0:-5])
-                    for fname in os.listdir(rawpath)
-                    if fname.endswith('.fits')])
-
-    cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar']
+    cal_objects = ['bias', 'flat', 'dark', 'i2', 'thar', 'flat;', ';flat',
+                    'thar;', ';thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
     # if the obsinfo file exists, read and pack the information
@@ -252,15 +252,21 @@ def make_obslog():
     # prepare logtable
     logtable = Table(dtype=[
                         ('frameid', 'i2'),
-                        ('fileid',  'S{:d}'.format(maxlen_fileid)),
+                        ('fileid',  'S11'),
                         ('imgtype', 'S3'),
                         ('object',  'S{:d}'.format(maxobjlen)),
                         ('i2',      'S1'),
                         ('exptime', 'f4'),
-                        ('obsdate', 'S19'),
+                        ('obsdate', 'S23'),
                         ('nsat',    'i4'),
                         ('q95',     'i4'),
                 ])
+
+    fmt_str = ('  - {:5s} {:11s} {:5s} ' + '{{:<{}s}}'.format(maxobjlen) +
+                ' {:1s}I2 {:>7} {:23s} {:>7} {:>5}')
+    head_str = fmt_str.format('frameid', 'fileid', 'type', 'object', '',
+                                'exptime', 'obsdate', 'nsat', 'q95')
+    print(head_str)
 
     prev_frameid = -1
     # start scanning the raw files
@@ -276,13 +282,10 @@ def make_obslog():
         data = data[y1:y2, x1:x2]
 
         # find frameid for different name conventions
-        if re.match('^\d{11}$', fileid):
+        if re.match('\d{11}$', fileid) or re.match('\d{12}$', fileid):
             frameid = int(fileid[8:])
-        elif re.match('^\d{12}$', fileid):
-            frameid = int(fileid[8:])
-        elif re.match('^HRS\d{11}$', fileid):
-            frameid = int(fileid[11:])
         else:
+            frameid = 0
             print('Error: unknown FileID: {}'.format(fileid))
         if frameid <= prev_frameid:
             print('Warning: frameid {} > prev_frameid {}'.format(
@@ -334,25 +337,19 @@ def make_obslog():
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))
 
-        item = [frameid, fileid, imgtype, objectname, i2, exptime, obsdate,
-                saturation, quantile95]
+        item = [frameid, fileid, imgtype, objectname, i2, exptime,
+                obsdate.isoformat()[0:23], saturation, quantile95]
         logtable.add_row(item)
         # get table Row object. (not elegant!)
         item = logtable[-1]
 
         # print log item with colors
-        string_lst = [
-                '  {:>5s}'.format('[{:d}]'.format(frameid)),
-                '  {:11s}'.format(fileid),
-                '  ({:3s})'.format(imgtype),
-                '  {:s}'.format(objectname.ljust(maxobjlen)),
-                '  {:1s}I2'.format(i2),
-                '  Texp = {:4g}'.format(exptime),
-                '  {:23s}'.format(obsdate.isoformat()),
-                '  Nsat = {:6d}'.format(saturation),
-                '  Q95 = {:5d}'.format(quantile95),
-                ]
-        string = ''.join(string_lst)
+        string = fmt_str.format(
+                    '[{:d}]'.format(frameid), fileid,
+                    '({:3s})'.format(imgtype),
+                    objectname, i2, exptime,
+                    obsdate.isoformat()[0:23],
+                    saturation, quantile95)
         print(print_wrapper(string, item))
 
         prev_frameid = frameid
@@ -379,7 +376,7 @@ def make_obslog():
             # convert to datetime.Datetime object
             dt = dateutil.parser.parse(row['obsdate'])
             # add offset and convert back to string
-            row['obsdate'] = (dt + time_offset_dt).isoformat()
+            row['obsdate'] = (dt + time_offset_dt).isoformat()[0:23]
 
     # determine filename of logtable.
     # use the obsdate of the first frame
@@ -467,3 +464,25 @@ def reduce_rawdata():
         reduce_doublefiber(config, logtable)
     else:
         print('Invalid fibermode:', fibermode)
+
+def plot_spectra1d():
+    filename_lst = sys.argv[2:]
+
+    for filename in filename_lst:
+        hdu_lst = fits.open(filename)
+        spec = hdu_lst[1].data
+        hdu_lst.close()
+
+        for row in spec:
+            fig = plt.figure(dpi=200, figsize=(12, 8))
+            ax = fig.gca()
+            ax.plot(row['wavelength'], row['flux_sum'], lw=0.7)
+            ax.set_xlim(row['wavelength'].min(), row['wavelength'].max())
+            ax.grid(True, lw=0.5, ls='--')
+            ax.set_axisbelow(True)
+            ax.set_xlabel(u'Wavelength (\xc5)')
+            ax.set_ylabel('Flux')
+            fig.savefig('{}_order_{:03d}.png'.format(os.path.splitext(filename)[0],
+                        row['order']))
+            plt.close()
+

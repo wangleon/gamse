@@ -6,6 +6,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import scipy.interpolate as intp
 import scipy.optimize as opt
+import scipy.integrate as intg
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import math
@@ -207,8 +208,22 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
 
         # summing the data and mask
         weight_sum = newmask[r1:r2].sum(axis=0)
-        # summing the flux
+        # summing the flux and save it to fluxsum
+        # method 1: direct sum
         fluxsum = (data[r1:r2]*newmask[r1:r2]).sum(axis=0)
+
+        # method2: simpson integration
+        #fluxsum = []
+        #for x in np.arange(data.shape[1]):
+        #    summask = newmask[:,x]>0
+        #    samplex = np.arange(data.shape[0])[summask]
+        #    if len(samplex)>0:
+        #        fluxp = intg.simps(data[:,x][summask], samplex)
+        #    else:
+        #        fluxp = 0.0
+        #    fluxsum.append(fluxp)
+        #fluxsum = np.array(fluxsum)
+
         # calculate mean flux
         # filter the zero values
         _m = weight_sum>0

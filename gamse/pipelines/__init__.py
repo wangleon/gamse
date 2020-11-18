@@ -15,7 +15,7 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import (feros, foces, hds, hires, levy, sarg, xinglong216hrs)
+from . import (feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
 
 #from .reduction import Reduction
 
@@ -129,6 +129,9 @@ def reduce_echelle():
     elif key == ('MPG/ESO-2.2m', 'FEROS'):
         feros.reduce_rawdata()
 
+    elif key == ('LAMOST', 'HRS'):
+        lhrs.reduce_rawdata()
+
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
@@ -182,6 +185,9 @@ def make_obslog():
     elif key == ('Subaru', 'HDS'):
         hds.make_obslog()
 
+    elif key == ('LAMOST', 'HRS'):
+        lhrs.make_obslog()
+
     else:
         print('Unknown Instrument: %s - %s'%(telescope, instrument))
         exit()
@@ -197,6 +203,7 @@ def make_config():
             ('hires',          'Keck/HIRES'),
             ('levy',           'APF/Levy'),
             ('hds',            'Subaru/HDS'),
+            ('lhrs',           'LAMOST/HRS'),
             #('feros',          'MPG/ESO-2.2m/FEROS'),
             ]
 
@@ -380,3 +387,24 @@ def show_onedspec():
 
     fig.canvas.mpl_connect('key_press_event', on_key)
     plt.show()
+
+def plot_spectra1d():
+
+    # load config file in current directory
+    config_file_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname.endswith('.cfg')]
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation           = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file_lst)
+
+    # find telescope and instrument from config file
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+
+    key = (telescope, instrument)
+
+    if key == ('Xinglong216', 'HRS'):
+        xinglong216hrs.plot_spectra1d()

@@ -17,7 +17,8 @@ from ...echelle.background import find_background
 from ...utils.config import read_config
 from ...utils.obslog import read_obslog
 from ..common import load_obslog, load_config
-from .common import (correct_overscan, TraceFigure)
+from .common import correct_overscan, get_mask, TraceFigure
+from .flat import smooth_flat_flux_func
 
 def reduce_rawdata():
     """Reduce the APF/Levy spectra.
@@ -63,67 +64,60 @@ def reduce_rawdata():
         trace = fits.getdata(trace_file)
     else:
         # combine trace file from narrow flats
-        trace_data_lst = []
+        print('* Combine Images for Order Tracing: %s'%trace_file)
 
-        fmt_str = ('  - {:5s} {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s}'
-                ' {:>7} {:>5} {:7}')
-        head_str = fmt_str.format('FID', 'fileid', 'type', 'object', '',
-                                 'exptime', 'obsdate', 'nsat', 'q95', 'ovrmean')
+        filterfunc = lambda item: item['object'].strip()=='NarrowFlat'
 
-        for logitem in logtable:
-            if logitem['object'].strip()=='NarrowFlat':
-                fname = '{}.fits'.format(logitem['fileid'])
-                filename = os.path.join(rawpath, fname)
-                data, head = fits.getdata(filename, header=True)
-                data, card_lst, overmean = correct_overscan(data, head)
+        logitem_lst = list(filter(filterfunc, logtable))
 
-                trace_data_lst.append(data)
-
-                # print info
-                if len(trace_data_lst) == 1:
-                    # first trace data
-                    print('* Combine Images for Order Tracing: %s'%trace_file)
-                    print(head_str)
-                message = fmt_str.format(
-                            '[{:d}]'.format(logitem['frameid']),
-                            logitem['fileid'],
-                            '({:3s})'.format(logitem['imgtype']),
-                            logitem['object'],
-                            logitem['i2'],
-                            logitem['exptime'],
-                            logitem['obsdate'],
-                            logitem['nsat'],
-                            logitem['q95'],
-                            '{:>7.2f}'.format(overmean),
-                            )
-                print(message)
-
-
-        n_trace = len(trace_data_lst)  # number of trace images
+        n_trace = len(logitem_lst)  # number of trace images
         has_trace = n_trace > 0
 
-        if has_trace:
-            # there is trace frames
+        fmt_str = ('  - {:5s} {:11s} {:5s} {:<12s} {:1s}I2 {:>7} {:^23s}'
+                    ' {:>7} {:>5} {:8}')
+        head_str = fmt_str.format('FID', 'fileid', 'type', 'object', '',
+                    'exptime', 'obsdate', 'nsat', 'q95', 'overmean')
+        print(head_str)
 
-            # combine trace images
-            trace_data_lst = np.array(trace_data_lst)
+        trace_data_lst = []
+        for logitem in logitem_lst:
+            fname = '{}.fits'.format(logitem['fileid'])
+            filename = os.path.join(rawpath, fname)
+            data, head = fits.getdata(filename, header=True)
+            data, card_lst, overmean = correct_overscan(data, head)
 
-            trace = combine_images(trace_data_lst,
-                    mode       = 'mean',
-                    upper_clip = section.getfloat('upper_clip'),
-                    maxiter    = section.getint('maxiter'),
-                    maskmode   = (None, 'max')[n_trace>=3],
-                    ncores     = ncores,
-                    )
+            trace_data_lst.append(data)
 
-            fits.writeto(trace_file, trace, overwrite=True)
+            message = fmt_str.format(
+                        '[{:d}]'.format(logitem['frameid']),
+                        logitem['fileid'],
+                        '({:3s})'.format(logitem['imgtype']),
+                        logitem['object'], logitem['i2'],
+                        logitem['exptime'], logitem['obsdate'],
+                        logitem['nsat'], logitem['q95'],
+                        '{:>8.2f}'.format(overmean),
+                        )
+            print(message)
 
-        else:
-            # no trace image found
-            pass
+
+        # combine trace images
+        trace_data_lst = np.array(trace_data_lst)
+
+        trace = combine_images(trace_data_lst,
+                mode       = 'mean',
+                upper_clip = section.getfloat('upper_clip'),
+                maxiter    = section.getint('maxiter'),
+                maskmode   = (None, 'max')[n_trace>=3],
+                ncores     = ncores,
+                )
+
+        fits.writeto(trace_file, trace, overwrite=True)
+        message = 'Trace image written to "{}"'.format(trace_file)
+        print(message)
+        logger.info(message)
 
     # find the name of .trc file
-    traceid = os.path.basename(trace_file)[0:-4]
+    traceid = os.path.splitext(os.path.basename(trace_file))[0]
     trac_file = os.path.join(midpath, '{}.trc'.format(traceid))
     treg_file = os.path.join(midpath, '{}.reg'.format(traceid))
 
@@ -161,52 +155,129 @@ def reduce_rawdata():
 
     ######################### find flat groups #################################
     ########################### Combine flat images ############################
-    exit()
     flat_groups = {}
     for logitem in logtable:
-        if logitem['object']=='WideFlat':
-            flatname = 'flat_{%d}'.format(logitem['exptime'])
+        if logitem['object']=='WideFlat' \
+            and logitem['halogen1']=='Off' and logitem['halogen2']=='On':
+            flatname = 'flat_{:g}'.format(logitem['exptime'])
             if flatname not in flat_groups:
                 flat_groups[flatname] = []
-            flat_groups[flatname].append(logitem['fileid'])
+            flat_groups[flatname].append(logitem)
+
     # print how many flats in each flat name
-    for flatname, item_lst in sorted(flat_groups.items()):
-        n = len(item_lst)
+    for flatname, logitem_lst in sorted(flat_groups.items()):
+        n = len(logitem_lst)
         print('{} images in {}'.format(n, flatname))
 
     flat_data_lst = {}
     flat_mask_lst = {}
-    for flatname, logitem_lst in flat_groups.items():
-        flat_filename = '{}.fits'.format(flatname)
-        mask_filename = '_msk.fits'%flatname
-        if os.path.exists(flat_filename) and os.path.exists(mask_filename):
-            flat_data = fits.getdata(flat_filename)
-            mask_table = fits.getdata(mask_filename)
-            mask_array = table_to_array(mask_table, flat_data.shape)
+    for flatname, item_lst in sorted(flat_groups.items()):
+        nflat = len(item_lst)
+
+        flat_filename = os.path.join(midpath,
+                            '{}.fits'.format(flatname))
+        if mode=='debug' and os.path.exists(flat_filename):
+            # read flat data
+            hdu_lst = fits.open(flat_filename)
+
+            flat_data = hdu_lst[0].data
+            flat_mask = hdu_lst[1].data
         else:
+            # if the above conditions are not satisfied, comine each flat
             data_lst = []
-            for ifile, fileid in enumerate(fileids):
-                filename = os.path.join(rawpath, '%s.fits'%fileid)
+            exptime_lst = []
+
+            print('* Combine {} Flat Images: {}'.format(
+                    nflat, flat_filename))
+
+            fmt_str = ('   - {:>5s} {:11s} {:5s} {:<12s} {:1s}I2 {:7} {:^23s}'
+                    ' {:<8s} {:<8s} {:>7} {:>5} {:8}')
+            head_str= fmt_str.format('ID', 'fileid', 'type', 'object', '',
+                        'exptime', 'obsdate', 'halogen1', 'halogen2',
+                        'nsat', 'q95', 'overmean')
+            print(head_str)
+
+            for ifile, logitem in enumerate(item_lst):
+                fname = '{}.fits'.format(logitem['fileid'])
+                filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
-                mask = (data[:,0:2048]==65535)
-                if ifile==0:
+                data, card_lst, overmean = correct_overscan(data, head)
+                exptime_lst.append(head[exptime_key])
+                mask = get_mask(data)
+
+                # generate the mask for all images
+                sat_mask = (mask&4>0)
+                bad_mask = (mask&2>0)
+                if ifile == 0:
                     allmask = np.zeros_like(mask, dtype=np.int16)
-                allmask += mask
-                data, head = correct_overscan(data, head)
-                data = data - bias
+                allmask += sat_mask
+
+                message = fmt_str.format(
+                            '[{:d}]'.format(logitem['frameid']),
+                            logitem['fileid'],
+                            '({:3s})'.format(logitem['imgtype']),
+                            logitem['object'], logitem['i2'],
+                            logitem['exptime'], logitem['obsdate'],
+                            logitem['halogen1'], logitem['halogen2'],
+                            logitem['nsat'], logitem['q95'],
+                            '{:>8.2f}'.format(overmean),
+                            )
+                print(message)
+
                 data_lst.append(data)
-            nflat = len(data_lst)
-            print('combine images for', flatname)
-            flat_data = combine_images(data_lst, mode='mean',
-                        upper_clip=10, maxiter=5)
-            fits.writeto(flat_filename, flat_data, overwrite=True)
-            
-            sat_mask = allmask>nflat/2.
-            mask_array = np.int16(sat_mask)*4
-            mask_table = array_to_table(mask_array)
-            fits.writeto(mask_filename, mask_table, overwrite=True)
+
+            if nflat == 1:
+                flat_data = data_lst[0]
+                flat_dsum = data_lst[0]
+            else:
+                data_lst = np.array(data_lst)
+                flat_data = combine_images(data_lst,
+                                mode        = 'mean',
+                                upper_clip  = 10,
+                                maxiter     = 5,
+                                maskmode    = (None, 'max')[nflat>3],
+                                ncores      = ncores,
+                                )
+                flat_dsum = flat_data*nflat
+
+            # get mean exposure time and write it to header
+            head = fits.Header()
+            exptime = np.array(exptime_lst).mean()
+            head[exptime_key] = exptime
+
+            # find saturation mask
+            sat_mask = allmask > nflat/2.
+            flat_mask = np.int16(sat_mask)*4 # + np.int16(bad_mask)*2
+
+            # get exposure time normalized flats
+            flat_norm = flat_data/exptime
+
+
+            '''
+            # pack results and save to fits
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(flat_data, head),
+                        fits.ImageHDU(flat_mask),
+                        fits.ImageHDU(flat_norm),
+                        fits.ImageHDU(flat_dsum),
+                        fits.ImageHDU(flat_sens),
+                        fits.BinTableHDU(flat_spec),
+                        ])
+            hdu_lst.writeto(flat_filename, overwrite=True)
+            '''
+        flat_sens, flat_spec = get_slit_flat(
+                    data        = flat_data,
+                    mask        = flat_mask,
+                    apertureset = aperset,
+                    nflat       = nflat,
+                    transpose   = True,
+                    smooth_flux_func = smooth_flat_flux_func,
+                    )
+
         flat_data_lst[flatname] = flat_data
-        flat_mask_lst[flatname] = mask_array
+        flat_mask_lst[flatname] = flat_mask
+        flat_norm_lst[flatname] = flat_norm
+        flat_dsum_lst[flatname] = flat_dsum
 
     ######################### Extract flat spectrum ############################
     flatmap_lst = {}

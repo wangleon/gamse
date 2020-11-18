@@ -20,7 +20,6 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ..echelle.trace      import ApertureSet
-from ..echelle.imageproc  import savitzky_golay_2d
 from ..utils.onedarray    import get_local_minima, get_edge_bin
 from ..utils.regression   import get_clip_mean
 from ..utils.regression2d import polyfit2d, polyval2d
@@ -763,8 +762,8 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     """
     """
 
-    h, w = data.shape
-    allx = np.arange(h)
+    ny, nx = data.shape
+    allx = np.arange(ny)
 
     if smooth is not None:
         core = np.hanning(smooth)
@@ -777,7 +776,8 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
         sect_mask = mask[:, x]>0
 
         if sect_mask.sum() > 0:
-            f = intp.InterpolatedUnivariateSpline(allx[~sect_mask], section[~sect_mask], k=3, ext=3)
+            f = intp.InterpolatedUnivariateSpline(
+                    allx[~sect_mask], section[~sect_mask], k=3, ext=3)
             section = f(allx)
         
         if smooth is not None:
@@ -787,7 +787,7 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
 
         allimin, allmin = get_local_minima(section_new)
         # remove the first and last local minima
-        m = (allimin>0) * (allimin<h-1)
+        m = (allimin>0) * (allimin<ny-1)
         allimin = allimin[m]
         allmin  = allmin[m]
 
@@ -795,9 +795,10 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
         #mask = np.ones_like(allmin, dtype=np.bool)
         fitmask = (allmin > 0)*(sect_mask[allimin]==0)
         for i in range(maxiter):
-            coeff = np.polyfit(allimin[fitmask]/h, np.log(allmin[fitmask]), deg=deg)
-            #res_lst = allmin - np.exp(np.polyval(coeff, allimin/h))
-            res_lst = np.log(allmin) - np.polyval(coeff, allimin/h)
+            coeff = np.polyfit(allimin[fitmask]/ny, np.log(allmin[fitmask]),
+                                deg=deg)
+            #res_lst = allmin - np.exp(np.polyval(coeff, allimin/ny))
+            res_lst = np.log(allmin) - np.polyval(coeff, allimin/ny)
             std = res_lst[fitmask].std()
             mask1 = res_lst < 3*std
             mask2 = res_lst > -3*std
@@ -807,7 +808,7 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
             else:
                 fitmask = fitmask*new_fitmask
 
-        logbkg = np.polyval(coeff, allx/h)
+        logbkg = np.polyval(coeff, allx/ny)
         linbkg = np.exp(logbkg)
         ######################## plot #####################
         #figname = 'bkg-b-%04d.png'%x
@@ -827,15 +828,15 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
             plt.close(fig)
         ###################################################
 
-        logbkg = np.polyval(coeff, allx/h)
+        logbkg = np.polyval(coeff, allx/ny)
         grid.append(logbkg)
 
     # interpolate the whole image
     grid = np.array(grid)
     stray = np.zeros_like(data, dtype=data.dtype)
-    for y in np.arange(h):
+    for y in np.arange(ny):
         f = intp.InterpolatedUnivariateSpline(xnodes, grid[:,y], k=3)
-        stray[y, :] = f(np.arange(w))
+        stray[y, :] = f(np.arange(nx))
 
     pmask = data>0
     corrected_data = np.zeros_like(data)
@@ -843,14 +844,19 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     return np.exp(corrected_data)
 
 
-def get_single_background(data, apertureset):
-    #apertureset = load_aperture_set('../midproc/trace_A.trc')
-    h, w = data.shape
+def get_interorder_background(data, apertureset):
+    """Get inter-order background light from a given image.
+
+    Args:
+        data ():
+        apertureset ():
+    """
+    ny, nx = data.shape
 
     bkg_image = np.zeros_like(data, dtype=np.float32)
-    allrows = np.arange(h)
+    allrows = np.arange(ny)
     plot_x = []
-    for x in np.arange(w):
+    for x in np.arange(nx):
         if x in plot_x:
             plot = True
         else:
@@ -869,8 +875,10 @@ def get_single_background(data, apertureset):
         x_lst, y_lst = [], []
         for (y1, y2) in get_edge_bin(~mask_rows):
             if plot:
-                ax01.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
-                ax02.plot(allrows[y1:y2], data[y1:y2,x], color='C0', alpha=1, lw=0.7)
+                ax01.plot(allrows[y1:y2], data[y1:y2,x],
+                            color='C0', alpha=1, lw=0.7)
+                ax02.plot(allrows[y1:y2], data[y1:y2,x],
+                            color='C0', alpha=1, lw=0.7)
             if y2-y1>1:
                 yflux = data[y1:y2, x]
                 xlist = np.arange(y1, y2)
@@ -904,10 +912,6 @@ def get_single_background(data, apertureset):
             ax02.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
             ax02.set_ylim(_y1, _y2)
     
-    bkg_image = median_filter(bkg_image, size=(9,1), mode='nearest')
-    #fits.writeto('bkg_{}.fits'.format(fileid), bkg_image, overwrite=True)
-    bkg_image = savitzky_golay_2d(bkg_image, window_length=(21, 101), order=3, mode='nearest')
-    #fits.writeto('bkg_{}_sm.fits'.format(fileid), bkg_image, overwrite=True)
     return bkg_image
 
 
@@ -1186,6 +1190,9 @@ class BackgroundFigureCommon(Figure):
         Figure.__init__(self, *args, **kwargs)
         self.canvas = FigureCanvasAgg(self)
 
+    def close(self):
+        plt.close(self)
+
 def find_best_background(background_lst, background, fiber, objname, time,
         objtype):
     """Find the best pre-saved background light from a list of backgrounds.
@@ -1200,12 +1207,12 @@ def find_best_background(background_lst, background, fiber, objname, time,
 
     """
 
-    if objname.lower() in ['comb', 'fp']:
+    if objname.lower() in ['comb', 'fp', 'thar']:
         candidate_lst = []
         shift_lst = []
         scale_lst = []
 
-        # first round, seach for the same object in the SAME fiber
+        # first round, seach for the SAME object in the SAME fiber
         for bkg_obj in background_lst:
             if bkg_obj.info['object'].lower() == objname.lower() \
                 and bkg_obj.info['fiber'] == fiber:
@@ -1220,7 +1227,7 @@ def find_best_background(background_lst, background, fiber, objname, time,
             # the minimum scale guarantees that the template has the best SNR
             return candidate_lst[index]
 
-        # second round, search for the SAME object
+        # second round, search for the SAME object but in all possible fibers.
         for bkg_obj in background_lst:
             if bkg_obj.info['object'].lower() == objname.lower():
                 shift = background.find_xdisp_shift(bkg_obj)
@@ -1240,7 +1247,7 @@ def find_best_background(background_lst, background, fiber, objname, time,
         candidate_lst = []
         scale_lst = []
 
-        # first round, seach for the SAME object in the same fiber
+        # first round, seach for the SAME object in the SAME fiber
         for bkg_obj in background_lst:
             if bkg_obj.info['object'].lower() == objname.lower() \
                 and bkg_obj.info['fiber'] == fiber:
@@ -1252,7 +1259,7 @@ def find_best_background(background_lst, background, fiber, objname, time,
             index = np.array(scale_lst).argmin()
             return candidate_lst[index]
 
-        # second round, search for objects in the same fiber
+        # second round, search for objects in the SAME fiber
         for bkg_obj in background_lst:
             if bkg_obj.info['objtype'] == objtype \
                 and bkg_obj.info['fiber'] == fiber:

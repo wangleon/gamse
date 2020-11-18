@@ -2591,21 +2591,23 @@ def get_fiber_flat_test(*args, **kwargs):
     print('Flat time when multiprocessing = {} : {}'.format(mp, t2-t1))
     return result
 
-def default_smooth_flux(x, y, w):
+def default_smooth_flux(x, y, npoints):
     """
 
     Args:
         x ():
         y ():
+        npoints (int):
 
     Returns:
 
     """
     deg = 7
+    maxiter = 10
     mask = np.ones_like(y, dtype=np.bool)
-    while(True):
-        coeff = np.polyfit(x[mask], y[mask], deg=deg)
-        yfit = np.polyval(coeff, x/w)
+    for niter in range(maxiter):
+        coeff = np.polyfit(x[mask]/npoints, y[mask], deg=deg)
+        yfit = np.polyval(coeff, x/npoints)
         yres = y - yfit
         std = yres[mask].std()
         newmask = np.abs(yres) < 3*std
@@ -2613,8 +2615,8 @@ def default_smooth_flux(x, y, w):
             break
         mask = newmask
 
-    newx = np.arange(w)
-    newy = np.polyval(coeff, newx/w)
+    newx = np.arange(npoints)
+    newy = np.polyval(coeff, newx/npoints)
     return newy, mask
 
 
@@ -2652,53 +2654,13 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
 
     yy, xx = np.mgrid[:ny:,:nx:]
 
+    # extract the 1d spectra of flat fielding
     spec1d = extract_aperset(data, mask, apertureset=apertureset,
                 lower_limit=lower_limit, upper_limit=upper_limit)
 
     for aper, aper_loc in sorted(apertureset.items()):
-        # first, extract the 1d spectra of this aperture
+
         '''
-        domain = aper_loc.position.domain
-        d1, d2 = int(domain[0]), int(domain[1])+1
-        newx = np.arange(d1, d2)
-        position = aper_loc.position(newx)
-        lower_line = position - lower_limit
-        upper_line = position + upper_limit
-        lower_line = np.maximum(lower_line, -0.5)
-        lower_line = np.minimum(lower_line, ny-1-0.5)
-        upper_line = np.maximum(upper_line, -0.5)
-        upper_line = np.minimum(upper_line, ny-1-0.5)
-        lower_ints = np.int32(np.round(lower_line))
-        upper_ints = np.int32(np.round(upper_line))
-        m1 = yy[:,d1:d2] > lower_ints
-        m2 = yy[:,d1:d2] < upper_ints
-        newmask = np.zeros_like(data, dtype=np.bool)
-        newmask[:,d1:d2] = m1*m2
-        newmask = np.float32(newmask)
-        newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
-        newmask[upper_ints, newx] = (upper_line+0.5)%1
-        # filter the bad, saturated, and gap pixels
-        newmask = newmask*(~sat_mask)
-        newmask = newmask*(~bad_mask)
-        newmask = newmask*(~gap_mask)
-
-        ## determine the upper and lower row of summing
-        r1 = int(lower_line.min())
-        r2 = int(upper_line.max())+1
-
-
-        # summing the data and mask
-        weight_sum = newmask[r1:r2].sum(axis=0)
-        # summing the flux
-        fluxsum = (data[r1:r2]*newmask[r1:r2]).sum(axis=0)
-        # calculate mean flux
-        # filter the zero values
-        _m = weight_sum>0
-        fluxmean = np.zeros_like(fluxsum)
-        fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
-        '''
-        fluxmean = spec1d[aper]['flux_mean']
-
         fig = plt.figure(dpi=200)
         ax = fig.gca()
         ax.plot(fluxmean, lw=0.5)
@@ -2706,12 +2668,13 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         fig.savefig('flux_{}.png'.format(aper))
         plt.close(fig)
         continue
+        '''
         
         domain = aper_loc.position.domain
         d1, d2 = int(domain[0]), int(domain[1])+1
         newx = np.arange(d1, d2)
 
-        fluxdata = spec['flux_mean'][d1:d2]
+        flux_mean = spec1d[aper]['flux_mean'][d1:d2]
 
         position = aper_loc.position(newx)
         lower_line = position - lower_limit
@@ -2720,22 +2683,23 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
 
         # fit flux
-        yfit, fmask = smooth_flux_func(newx, fluxdata, nx)
+        yfit, fmask = smooth_flux_func(newx, flux_mean, nx)
 
-        if figfile is not None:
+        #if figfile is not None:
+        if True:
             fig = plt.figure(dpi=150)
-            ax1 = fig.add_subplot(311)
-            ax2 = fig.add_subplot(312)
-            ax3 = fig.add_subplot(313)
-            ax1.plot(spec['flux_sum'],  ls='-',lw=0.5, color='C0')
-            ax2.plot(spec['flux_mean'], ls='-',lw=0.5, color='C0')
-            ax2.plot(newx, yfit, ls='-',lw=0.5, color='C1')
-            ax3.plot(spec['nsum'], ls='-',lw=0.5)
-            print(aper,spec['mask'], spec['mask'].sum())
-            xx = np.arange(spec['flux_sum'].size)[spec['mask']]
-            group_lst = np.split(xx, np.where(np.diff(xx) > 1)[0]+1)
-            fig.suptitle('Aperture %3d'%aper)
-            fig.savefig(figfile%aper)
+            ax = fig.gca()
+            ax.plot(flux_mean, ls='-', lw=0.5, color='C0')
+            ax.plot(newx, yfit, ls='-',lw=0.5, color='C1')
+
+            #xx = np.arange(spec['flux_sum'].size)[spec['mask']]
+            #group_lst = np.split(xx, np.where(np.diff(xx) > 1)[0]+1)
+            ax.grid(True, ls='--')
+            ax.set_axisbelow(True)
+            fig.suptitle('Aperture {:03d}'.format(aper))
+            figfilename = 'flat_flux_{:03d}.png'.format(aper)
+            #fig.savefig(figfile%aper)
+            fig.savefig(figfilename)
             plt.close(fig)
 
         # construct a 1-D mask marking the pixels with enough S/N
