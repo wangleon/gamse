@@ -174,6 +174,8 @@ def reduce_doublefiber(config, logtable):
     flat_1d_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_raw_lst  = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_data_bkg = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_bkg_lst  = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
 
     # first combine the flats
@@ -207,7 +209,7 @@ def reduce_doublefiber(config, logtable):
                 hdu_lst.close()
                 aperset = load_aperture_set(aperset_filename)
             else:
-                # if the above conditions are not satisfied, comine each flat
+                # if the above conditions are not satisfied, combine each flat
                 data_lst = []
                 head_lst = []
                 exptime_lst = []
@@ -435,6 +437,7 @@ def reduce_doublefiber(config, logtable):
             flat_1d_lst[fiber][flatname]   = flat_1d
             flat_raw_lst[fiber][flatname]  = flat_raw1d
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
+            flat_bkg_lst[fiber][flatname]  = flat_data
             aperset_lst[fiber][flatname]   = aperset
 
             # continue to the next colored flat
@@ -552,6 +555,7 @@ def reduce_doublefiber(config, logtable):
                     fits.BinTableHDU(flat_spec),
                     ])
         hdu_lst.writeto(flat_fiber_file, overwrite=True)
+
 
         # align different fibers
         if ifiber == 0:
@@ -1145,15 +1149,40 @@ def reduce_doublefiber(config, logtable):
             ('flux_opt_err', (np.float32, nx)),
             ('flux_opt_mask',(np.int16,   nx)),
             ('flux_raw',     (np.float32, nx)),
-            ('flat',         (np.float32, nx)),
+            ('blaze',        (np.float32, nx)),
             ('flat_sum',     (np.float32, nx)),
             ('flat_raw',     (np.float32, nx)),
+            ('flat_bkg',     (np.float32, nx)),
             ('background',   (np.float32, nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
 
     extracted_fileid_lst = []
+
+    ################### Extract stray light of flats ###################
+    flat_bkg  = {}
+    back_flat_1d = {}
+    for fiber, fiber_flat_lst in sorted(flat_groups.items()):
+        for flatname, item_lst in sorted(fiber_flat_lst.items()):
+            print('background:',fiber,flatname )
+            flat_data_bkg[fiber][flatname] = get_single_background(flat_bkg_lst[fiber][flatname], master_aperset[fiber])
+        flat_bkg[fiber] = mosaic_images(flat_data_bkg[fiber],master_aperset[fiber])
+        print(flat_bkg)
+        print(flat_bkg[fiber] )
+        # extract 1d spectra for stray light of the mosaic flat
+        section = config['reduce.extract']
+        back_flat_1d[fiber] = extract_aperset(flat_bkg[fiber], np.zeros(np.shape(flat_bkg[fiber]), dtype=bool),
+                                    apertureset=master_aperset[fiber],
+                                    lower_limit=section.getfloat('lower_limit'),
+                                    upper_limit=section.getfloat('upper_limit'),
+                                    )
+
+        message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
+            fiber, len(back_flat_1d[fiber]))
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
     #################### Extract Spectra with Single Objects ###################
 
     # first round, find the images with only single objects. extract the
@@ -1398,13 +1427,15 @@ def reduce_doublefiber(config, logtable):
             # read error/varriance and calc. error
             flux_err  = np.sqrt(error1d[aper]['flux_sum'])
             # read raw flux
-            flux_raw  = specraw1d[aper]['flux_sum'] 
+            flux_raw  = specraw1d[aper]['flux_sum']
+            # 1d flat flux sum and raw
+            flat_sum  = flat_1d_lst[fiber][m][0]['flux']
+            flat_raw  = flat_raw_lst[fiber][m][0]['flux']
+            # background 1d flat
+            back_flat = back_flat_1d[fiber][aper]['flux_sum']
             # background 1d flux
             back_flux = background1d[aper]['flux_sum']
-            
-            flat_sum = flat_1d_lst[fiber][m][0]['flux']
-            flat_raw = flat_raw_lst[fiber][m][0]['flux']
-            
+
             item = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux_sum
@@ -1417,6 +1448,7 @@ def reduce_doublefiber(config, logtable):
                     flat_flux,                      # flat
                     flat_sum,
                     flat_raw,
+                    back_flat,                      # background flat
                     back_flux,                      # background
                     )
             spec.append(item)
@@ -1788,12 +1820,14 @@ def reduce_doublefiber(config, logtable):
                 flux_err  = np.sqrt(error1d[aper]['flux_sum'])
                 #read raw flux
                 flux_raw  = specraw1d[aper]['flux_sum']
+                # 1d flat flux sum and raw
+                flat_sum = flat_1d_lst[fiber][m][0]['flux']
+                flat_raw = flat_raw_lst[fiber][m][0]['flux']
+                # background 1d flat
+                back_flat = back_flat_1d[fiber][aper]['flux_sum']
                 # background 1d flux
                 back_flux = background1d[aper]['flux_sum']
 
-                flat_sum = flat_1d_lst[fiber][m][0]['flux']
-                flat_raw = flat_raw_lst[fiber][m][0]['flux']
-                
                 item = (aper, 0, n,
                         np.zeros(n, dtype=np.float64),  # wavelength
                         flux_sum,                       # flux_sum
@@ -1806,6 +1840,7 @@ def reduce_doublefiber(config, logtable):
                         flat_flux,                      # flat
                         flat_sum,
                         flat_raw,
+                        back_flat,                      # background flat
                         back_flux,                      # background
                         )
                 spec.append(item)
