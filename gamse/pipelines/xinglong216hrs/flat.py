@@ -101,7 +101,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
         # determine how many pixels in each bin.
         # if w=4000, then 500 pix. if w=2000, then 250 pix.
         npixbin = npoints//8
-        bins = np.linspace(p1, p2, int(p2-p1)/npixbin+2)
+        bins = np.linspace(p1, p2, int(p2-p1)//npixbin+2)
         hist, _ = np.histogram(x, bins)
 
         n_nonzerobins = np.nonzero(hist)[0].size
