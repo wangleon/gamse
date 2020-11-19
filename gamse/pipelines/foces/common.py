@@ -1271,7 +1271,7 @@ class BackgroundFigure(BackgroundFigureCommon):
     """Figure to plot the background correction.
     """
     def __init__(self, data=None, background=None, dpi=300, figsize=(12, 5.5),
-            title=None, figname=None):
+            title=None, figname=None, zscale=('log', 'linear'), contour=True):
         BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
         width = 0.36
         height = width*figsize[0]/figsize[1]

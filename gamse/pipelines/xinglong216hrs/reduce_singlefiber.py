@@ -6,9 +6,9 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
-import matplotlib.pyplot as plt
+from scipy.ndimage.filters import median_filter
 
-from ...echelle.imageproc import combine_images
+from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)
@@ -775,18 +775,18 @@ def reduce_singlefiber(config, logtable):
 
         # get background lights
         background = get_interorder_background(data, master_aperset)
+        background = median_filter(background, size=(9,1), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
 
         # plot stray light
-        fig_bkg = BackgroundFigure()
-        fig_bkg.plot(data, background)
-        # set title
-        title = 'Background Correction for {}'.format(fileid)
-        fig_bkg.suptitle(title)
-        # save figure
         figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
         figfilename = os.path.join(figpath, figname)
-        fig_bkg.savefig(figfilename)
-        plt.close(fig_bkg)
+        fig_bkg = BackgroundFigure(data, background,
+                    title   = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
+        fig_bkg.close()
 
         ## correct background
         #section = config['reduce.background']
