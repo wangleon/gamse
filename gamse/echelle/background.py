@@ -1328,5 +1328,5 @@ def select_background_from_database(path, **args):
         return None
 
     selected_fileid = row['fileid']
-    filename = os.path.join(path, 'bkg.{}.fits'.format(selected_fileid))
+    filename = os.path.join(path, 'bkg_{}.fits'.format(selected_fileid))
     return BackgroundLight.read(filename)
