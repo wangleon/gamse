@@ -33,7 +33,7 @@ from ...echelle.background import (find_background, simple_debackground,
                                    )
 from ...utils.obslog import parse_num_seq
 from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
-                     TraceFigure, BackgroundFigure, BirghtnessProfileFigure,
+                     TraceFigure, BackgroundFigure, BrightnessProfileFigure,
                      )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg)
