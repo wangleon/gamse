@@ -1165,18 +1165,31 @@ def reduce_doublefiber(config, logtable):
     back_flat_1d = {}
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
         for flatname, item_lst in sorted(fiber_flat_lst.items()):
-            print('background:',fiber,flatname )
-            flat_data_bkg[fiber][flatname] = get_single_background(flat_bkg_lst[fiber][flatname], master_aperset[fiber])
-        flat_bkg[fiber] = mosaic_images(flat_data_bkg[fiber],master_aperset[fiber])
+            print('background:', fiber, flatname)
+            data = flat_bkg_lst[fiber][flatname]
+            background = get_interorder_background(data, master_aperset[fiber])
+            background = median_filter(background, size=(9,1), mode='nearest')
+            background = savitzky_golay_2d(background, window_length=(21, 101),
+                            order=3, mode='nearest')
+            flat_data_bkg[fiber][flatname] = background
+
+        flat_bkg[fiber] = mosaic_images(flat_data_bkg[fiber],
+                                        master_aperset[fiber])
         print(flat_bkg)
-        print(flat_bkg[fiber] )
+        print(flat_bkg[fiber])
         # extract 1d spectra for stray light of the mosaic flat
         section = config['reduce.extract']
-        back_flat_1d[fiber] = extract_aperset(flat_bkg[fiber], np.zeros(np.shape(flat_bkg[fiber]), dtype=bool),
-                                    apertureset=master_aperset[fiber],
-                                    lower_limit=section.getfloat('lower_limit'),
-                                    upper_limit=section.getfloat('upper_limit'),
-                                    )
+        data = flat_bkg[fiber]
+        mask = np.zeros_like(data, dtype=np.bool)
+        lower_limit = section.getfloat('lower_limit')
+        upper_limit = section.getfloat('upper_limit')
+        apertureset = master_aperset[fiber]
+
+        back_flat_1d[fiber] = extract_aperset(data, mask,
+                                apertureset = apertureset,
+                                lower_limit = lower_limit,
+                                upper_limit = upper_limit,
+                                )
 
         message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
             fiber, len(back_flat_1d[fiber]))
