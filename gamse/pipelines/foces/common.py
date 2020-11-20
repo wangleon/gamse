@@ -15,6 +15,7 @@ import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
