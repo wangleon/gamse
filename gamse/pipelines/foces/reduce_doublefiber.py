@@ -1165,7 +1165,6 @@ def reduce_doublefiber(config, logtable):
     back_flat_1d = {}
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
         for flatname, item_lst in sorted(fiber_flat_lst.items()):
-            print('background:', fiber, flatname)
             data = flat_bkg_lst[fiber][flatname]
             background = get_interorder_background(data, master_aperset[fiber])
             background = median_filter(background, size=(9,1), mode='nearest')
@@ -1175,8 +1174,6 @@ def reduce_doublefiber(config, logtable):
 
         flat_bkg[fiber] = mosaic_images(flat_data_bkg[fiber],
                                         master_aperset[fiber])
-        print(flat_bkg)
-        print(flat_bkg[fiber])
         # extract 1d spectra for stray light of the mosaic flat
         section = config['reduce.extract']
         data = flat_bkg[fiber]
@@ -1333,12 +1330,10 @@ def reduce_doublefiber(config, logtable):
 
         ny, nx = data.shape
         pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-
         # reference the wavelengths of background image
-        orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                            ref_calib_lst[fiber], weight_lst)
-        aper_ord_lst = orders
-        aper_wav_lst = waves
+        results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                    ref_calib_lst[fiber], weight_lst)
+        aper_ord_lst, aper_wav_lst = results
 
         if objname.lower() in ['comb', 'fp']:
             objtype = objname.lower()
@@ -1669,10 +1664,9 @@ def reduce_doublefiber(config, logtable):
                             )
             ny, nx = data.shape
             pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-            aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
-                                            pixel_lst, aper_num_lst,
-                                            ref_calib_lst[fiber],
-                                            weight_lst)
+            results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                        ref_calib_lst[fiber], weight_lst)
+            aper_ord_lst, aper_wav_lst = results
 
             obs_bkg_obj = BackgroundLight(
                             aper_num_lst = aper_num_lst,
