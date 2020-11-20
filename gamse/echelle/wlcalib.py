@@ -3088,16 +3088,15 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
 
     return spec, card_lst
 
-def reference_pixel_wavelength(pixels, apertures, calib=None,
-        calib_lst=None, weight_lst=None):
+def reference_pixel_wavelength(pixels, apertures, calib, weight=None):
     """Calculate the wavelength of a list of pixels with given calibration list
     and weights.
 
     Args:
         pixels (*list* or class:`numpy.ndarray`):
         apertures (*list* or class:`numpy.ndarray`):
-        calib_lst (*list*):
-        weight_lst (*list*):
+        calib (*list*):
+        weight (*list*):
 
     Returns:
         tuple:
@@ -3108,10 +3107,12 @@ def reference_pixel_wavelength(pixels, apertures, calib=None,
     pixels    = np.array(pixels)
     apertures = np.array(apertures)
 
-    if calib is not None:
+    if isinstance(calib, dict):
+        # calib is a single calib results
         used_calib = calib
-    elif calib_lst is not None and weight_lst is not None:
-        used_calib = combine_calib(calib_lst, weight_lst)
+    if isinstance(calib, list) and isinstance(weight, list):
+        # when calib is a list of calib objects, combine them by weights
+        used_calib = combine_calib(calib, weight)
     else:
         raise ValueError
 

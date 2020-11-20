@@ -924,12 +924,9 @@ def reduce_doublefiber(config, logtable):
         # calibrate the wavelength of background
         ny, nx = data.shape
         pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-        # reference the wavelengths of background image
-        orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                            calib = calib,
-                            )
-        aper_ord_lst = orders
-        aper_wav_lst = waves
+        # reference the wavelengths of background image with this single calib
+        results = reference_pixel_wavelength(pixel_lst, aper_num_lst, calib)
+        aper_ord_lst, aper_wav_lst = results
 
         # pack to background list
         bkg_info = {
@@ -1192,14 +1189,10 @@ def reduce_doublefiber(config, logtable):
 
         ny, nx = data.shape
         pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-
         # reference the wavelengths of background image
-        orders, waves = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                            calib_lst  = ref_calib_lst[fiber],
-                            weight_lst = weight_lst,
-                            )
-        aper_ord_lst = orders
-        aper_wav_lst = waves
+        results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                    ref_calib_lst[fiber], weight_lst)
+        aper_ord_lst, aper_wav_lst = results
 
         if objname.lower() in ['comb', 'fp']:
             objtype = objname.lower()
@@ -1393,10 +1386,9 @@ def reduce_doublefiber(config, logtable):
                             )
             ny, nx = data.shape
             pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-            aper_ord_lst, aper_wav_lst = reference_pixel_wavelength(
-                                            pixel_lst, aper_num_lst,
-                                            calib_lst  = ref_calib_lst[fiber],
-                                            weight_lst = weight_lst)
+            results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                        ref_calib_lst[fiber], weight_lst)
+            aper_ord_lst, aper_wav_lst = results
 
             obs_bkg_obj = BackgroundLight(
                             aper_num_lst = aper_num_lst,
