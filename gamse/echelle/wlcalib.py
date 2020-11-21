@@ -3095,8 +3095,8 @@ def reference_pixel_wavelength(pixels, apertures, calib, weight=None):
     Args:
         pixels (*list* or class:`numpy.ndarray`):
         apertures (*list* or class:`numpy.ndarray`):
-        calib (*list*):
-        weight (*list*):
+        calib (*list* or *dict*):
+        weight (*list* or class:`numpy.ndarray`):
 
     Returns:
         tuple:
@@ -3110,7 +3110,7 @@ def reference_pixel_wavelength(pixels, apertures, calib, weight=None):
     if isinstance(calib, dict):
         # calib is a single calib results
         used_calib = calib
-    if isinstance(calib, list):
+    elif isinstance(calib, list):
         # when calib is a list of calib objects, combine them by weights
         if not hasattr(weight, '__len__'):
             print('Input weight {} has no length'.format(weight))
