@@ -182,7 +182,7 @@ def make_config():
 
     # use individual functions in each pipeline
     modulename = instrument_lst[select-1][0]
-    eval([modulename]).make_config()
+    eval(modulename).make_config()
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
