@@ -20,7 +20,6 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
                                 )
-from ..common import plot_background_aspect1
 from .common import (get_bias, get_mask, correct_overscan,
                     TraceFigure, BackgroundFigure,
                      select_calib_from_database)
