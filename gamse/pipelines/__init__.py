@@ -18,6 +18,15 @@ from . import common
 from . import (feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
 
 #from .reduction import Reduction
+instrument_lst = [
+    ('foces',           'Fraunhofer',       'FOCES'),
+    ('xinglong216hrs',  'Xinglong 2.16m',   'HRS'),
+    ('hires',           'Keck-I',           'HIRES'),
+    ('levy',            'APF',              'Levy'),
+    ('hds',             'Subaru',           'HDS'),
+    ('lhrs',            'LAMOST',           'HRS'),
+    ('feros',           'MPG/ESO-2.2m',     'FEROS'),
+    ]
 
 def reduce_echelle():
     """Automatically select the instrument and reduce echelle spectra
@@ -106,35 +115,14 @@ def reduce_echelle():
     telescope  = section['telescope']
     instrument = section['instrument']
 
-    logger.info('Start reducing %s, %s data'%(telescope, instrument))
+    logger.info('Start reducing {}, {} data'.format(telescope, instrument))
 
-    key = (telescope, instrument)
+    for row in instrument_lst:
+        if telescope == row[1] and instrument == row[2]:
+            eval(row[0]).reduce_rawdata()
+            exit()
 
-    # call the corresponding data reduction functions
-    if key == ('Fraunhofer', 'FOCES'):
-        foces.reduce_rawdata()
-
-    elif key == ('Xinglong216', 'HRS'):
-        xinglong216hrs.reduce_rawdata()
-
-    elif key == ('APF', 'Levy'):
-        levy.reduce_rawdata()
-
-    elif key == ('Keck-I', 'HIRES'):
-        hires.reduce_rawdata()
-
-    elif key == ('Subaru', 'HDS'):
-        hds.reduce_rawdata()
-
-    elif key == ('MPG/ESO-2.2m', 'FEROS'):
-        feros.reduce_rawdata()
-
-    elif key == ('LAMOST', 'HRS'):
-        lhrs.reduce_rawdata()
-
-    else:
-        print('Unknown Instrument: %s - %s'%(telescope, instrument))
-        exit()
+    print('Unknown Instrument: {} - {}'.format(telescope, instrument))
 
 def make_obslog():
     """Scan the path to the raw FITS files and generate an observing log.
@@ -164,48 +152,18 @@ def make_obslog():
     telescope  = section['telescope']
     instrument = section['instrument']
 
-    key = (telescope, instrument)
+    for row in instrument_lst:
+        if telescope == row[1] and instrument == row[2]:
+            eval(row[0]).make_obslog()
+            exit()
 
-    # call the make_obslog() function in corresponding modules
-    if key == ('Fraunhofer', 'FOCES'):
-        foces.make_obslog()
-
-    elif key == ('Xinglong216', 'HRS'):
-        xinglong216hrs.make_obslog()
-
-    elif key == ('APF', 'Levy'):
-        levy.make_obslog()
-
-    elif key == ('Keck-I', 'HIRES'):
-        hires.make_obslog()
-
-    elif key == ('MPG/ESO-2.2m', 'FEROS'):
-        feros.make_obslog()
-
-    elif key == ('Subaru', 'HDS'):
-        hds.make_obslog()
-
-    elif key == ('LAMOST', 'HRS'):
-        lhrs.make_obslog()
-
-    else:
-        print('Unknown Instrument: %s - %s'%(telescope, instrument))
-        exit()
+    print('Unknown Instrument: {} - {}'.format(telescope, instrument))
 
 def make_config():
-    """Generate a config file.
+    """Print a list of supported instrument and generate a config file according
+    to user's selection.
     
     """
-
-    instrument_lst = [
-            ('foces',          'Fraunhofer/FOCES'),
-            ('xinglong216hrs', 'Xinglong 2.16m/HRS'),
-            ('hires',          'Keck/HIRES'),
-            ('levy',           'APF/Levy'),
-            ('hds',            'Subaru/HDS'),
-            ('lhrs',           'LAMOST/HRS'),
-            #('feros',          'MPG/ESO-2.2m/FEROS'),
-            ]
 
     # display a list of supported instruments
     print('List of supported instruments:')
@@ -225,7 +183,7 @@ def make_config():
 
     # use individual functions in each pipeline
     modulename = instrument_lst[select-1][0]
-    globals()[modulename].make_config()
+    eval([modulename]).make_config()
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
@@ -234,11 +192,7 @@ def show_onedspec():
         filename_lst (list): List of filenames of 1-D spectra.
     """
 
-    # intialize obslog table and config object
-    logtable = None
-    config   = None
-
-    # try to load obslog
+    # load obslog
     logname_lst = [fname for fname in os.listdir(os.curdir)
                         if fname.endswith('.obslog')]
     if len(logname_lst)==0:
@@ -246,14 +200,9 @@ def show_onedspec():
     else:
         logtable = read_obslog(logname_lst[0])
 
-    # try to load config file
-    # find local config file
-    config_file_lst = []
-    for fname in os.listdir(os.curdir):
-        if fname.endswith('.cfg'):
-            config_file_lst.append(fname)
-
-    # load both built-in and local config files
+    # load config files in the current directory
+    config_file_lst = [fname for fname in os.listdir(os.curdir)
+                        if fname.endswith('.cfg')]
     config = configparser.ConfigParser(
                 inline_comment_prefixes = (';','#'),
                 interpolation           = configparser.ExtendedInterpolation(),
@@ -390,7 +339,7 @@ def show_onedspec():
 
 def plot_spectra1d():
 
-    # load config file in current directory
+    # load config files in the current directory
     config_file_lst = [fname for fname in os.listdir(os.curdir)
                         if fname.endswith('.cfg')]
     config = configparser.ConfigParser(
@@ -404,7 +353,82 @@ def plot_spectra1d():
     telescope  = section['telescope']
     instrument = section['instrument']
 
-    key = (telescope, instrument)
+    for row in instrument_lst:
+        if telescope == row[1] and instrument == row[2]:
+            eval(row[0]).plot_spectra1d()
+            exit()
 
-    if key == ('Xinglong216', 'HRS'):
-        xinglong216hrs.plot_spectra1d()
+def convert_onedspec():
+    """Convert one-dimensional spectra.
+    """
+    config = common.load_config('\S*\.cfg$', verbose=False)
+    logtable = common.load_obslog('\S*\.obslog$', fmt='astropy', verbose=False)
+
+    section = config['reduce']
+    odspath     = section.get('odspath', None)
+    oned_suffix = section.get('oned_suffix')
+
+    filename_lst = []
+    if len(sys.argv)==2:
+        # no addtional args. convert all of the onedspec
+        for fname in sorted(os.listdir(odspath)):
+            if fname.endswith('.fits') or fname.endswith('.fit'):
+                filename = os.path.join(odspath, fname)
+                filename_lst.append(filename)
+    else:
+        for arg in sys.argv[2:]:
+            if os.path.exists(arg):
+                filename_lst.append(arg)
+            elif os.path.exists(os.path.join(odspath, arg)):
+                filename_lst.append(os.path.join(odspath, arg))
+            else:
+                if arg.isdigit():
+                    arg = int(arg)
+                for logitem in logtable:
+                    if arg == logitem['frameid'] or arg == logitem['fileid']:
+                        pattern = str(logitem['fileid'])+'\S*'
+                        for fname in sorted(os.listdir(odspath)):
+                            filename = os.path.join(odspath, fname)
+                            if os.path.isfile(filename) \
+                                and re.match(pattern, fname):
+                                filename_lst.append(filename)
+
+    for filename in filename_lst:
+        data = fits.getdata(filename)
+
+        if 'flux' in data.dtype.names:
+            flux_key = 'flux'
+        elif 'flux_sum' in data.dtype.names:
+            flux_key = 'flux_sum'
+        else:
+            pass
+
+        spec = {}
+        for row in data:
+            order = row['order']
+            wave = row['wavelength']
+            flux = row[flux_key]
+
+            if wave[0]> wave[-1]:
+                wave = wave[::-1]
+                flux = flux[::-1]
+
+            spec[order] = (wave, flux)
+            ascii_prefix = os.path.splitext(os.path.basename(filename))[0]
+            target_path = os.path.join(odspath, ascii_prefix)
+            target_fname = '{}_order_{:03d}.txt'.format(ascii_prefix, order)
+            target_filename = os.path.join(target_path, target_fname)
+
+            if not os.path.exists(target_path):
+                os.mkdir(target_path)
+
+            if os.path.exists(target_filename):
+                print('Warning: {} is overwritten'.format(target_filename))
+
+            outfile = open(target_filename, 'w')
+            for w, f in zip(wave, flux):
+                outfile.write('{:11.5f} {:+16.8e}'.format(w, f)+os.linesep)
+            outfile.close()
+
+        print('Convert {} to {} files with ASCII formats in {}'.format(
+                filename, len(data), target_path))
