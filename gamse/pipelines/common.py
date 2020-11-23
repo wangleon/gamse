@@ -9,8 +9,15 @@ import matplotlib.ticker as tck
 
 from ..utils.obslog import read_obslog
 
-def load_config(pattern):
+def load_config(pattern, verbose=True):
     """Load the config file.
+
+    Args:
+        pattern (str):
+        verbose (bool):
+
+    Returns:
+        config
     """
     # load config files
     config = configparser.ConfigParser(
@@ -21,16 +28,19 @@ def load_config(pattern):
     for fname in os.listdir(os.curdir):
         if re.match(pattern, fname):
             config.read(fname)
-            message = 'Load congfig file: "{}"'.format(fname)
-            print(message)
+            if verbose:
+                message = 'Load congfig file: "{}"'.format(fname)
+                print(message)
             break
     return config
 
-def load_obslog(pattern, fmt='obslog'):
+def load_obslog(pattern, fmt='obslog', verbose=True):
     """Find and read the observing log file.
 
     Args:
         pattern (str): Pattern of the filename of observing log.
+        fmt (str):
+        verbose (bool):
 
     Returns:
         :class:`astropy.io.Table`: Observing log table.
@@ -42,7 +52,7 @@ def load_obslog(pattern, fmt='obslog'):
 
     if len(logname_lst)==0:
         print('No observation log found')
-        exit()
+        return None
     elif len(logname_lst)==1:
         select_logname = logname_lst[0]
     elif len(logname_lst)>1:
@@ -81,8 +91,10 @@ def load_obslog(pattern, fmt='obslog'):
     else:
         pass
 
-    message = 'Load obslog file: "{}"'.format(select_logname)
-    print(message)
+    if verbose:
+        message = 'Load obslog file: "{}"'.format(select_logname)
+        print(message)
+
     logtable = read_obslog(select_logname, fmt=fmt)
     return logtable
 

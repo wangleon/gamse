@@ -3,7 +3,7 @@ import os
 import sys
 
 from gamse.pipelines import (make_config, make_obslog, reduce_echelle,
-                             plot_spectra1d, show_onedspec)
+                             plot_spectra1d, show_onedspec, convert_onedspec)
 
 def print_help():
     pass
@@ -25,6 +25,8 @@ def main():
         plot_spectra1d()
     elif sys.argv[1] == 'show':
         show_onedspec()
+    elif sys.argv[1] == 'convert':
+        convert_onedspec()
     else:
         print('Unknow argument: %s'%sys.argv[1])
         exit()
