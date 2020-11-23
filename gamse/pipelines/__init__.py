@@ -168,8 +168,9 @@ def make_config():
     # display a list of supported instruments
     print('List of supported instruments:')
     for i, row in enumerate(instrument_lst):
-        instrument = row[1]
-        print('[{}] {}'.format(i+1, instrument))
+        telescope  = row[1]
+        instrument = row[2]
+        print('[{}] {}/{}'.format(i+1, telescope, instrument))
 
     # select instrument
     while(True):
