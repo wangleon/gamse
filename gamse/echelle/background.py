@@ -1173,11 +1173,17 @@ class BackgroundLight(object):
         common_ord_lst = [order for order in self.aper_ord_lst
                                 if order in bkg_obj.aper_ord_lst]
 
-        brt_lst1 = [self.get_brightness(order=o) for o in common_ord_lst]
-        brt_lst2 = [bkg_obj.get_brightness(order=o) for o in common_ord_lst]
+        brt_lst1, brt_lst2 = [], []
+        for order in common_ord_lst:
+            brt1 = self.get_brightness(order=order)
+            brt2 = bkg_obj.get_brightness(order=order)
+            if brt1>0 and brt2>0:
+                brt_lst1.append(brt1)
+                brt_lst2.append(brt2)
 
         fitfunc = lambda s: brt_lst2*s
         errfunc = lambda s: brt_lst1 - fitfunc(s)
+
         s0 = np.median(brt_lst1)/np.median(brt_lst2)
         fitres = opt.least_squares(errfunc, s0)
         s = fitres.x[0]
