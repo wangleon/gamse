@@ -20,7 +20,7 @@ from . import (feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
 #from .reduction import Reduction
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
-    ('xinglong216hrs',  'Xinglong 2.16m',   'HRS'),
+    ('xinglong216hrs',  'Xinglong216',      'HRS'),
     ('hires',           'Keck-I',           'HIRES'),
     ('levy',            'APF',              'Levy'),
     ('hds',             'Subaru',           'HDS'),
