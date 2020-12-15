@@ -8,7 +8,7 @@ setup(
     description  = 'Data Reduction Software for High-resolution Echelle Spectrographs',
     author       = 'Liang Wang',
     author_email = 'lwang@mpe.mpg.de',
-    license      = 'BSD',
+    license      = 'Apache-2.0',
     scripts      = ['scripts/gamse',
                     ],
     packages     = [
