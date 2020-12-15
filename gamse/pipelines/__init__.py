@@ -19,7 +19,7 @@ from . import (feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
 
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
-    ('xinglong216hrs',  'Xinglong 2.16m',   'HRS'),
+    ('xinglong216hrs',  'Xinglong216',      'HRS'),
     ('hires',           'Keck-I',           'HIRES'),
     ('levy',            'APF',              'Levy'),
     ('hds',             'Subaru',           'HDS'),
@@ -167,8 +167,9 @@ def make_config():
     # display a list of supported instruments
     print('List of supported instruments:')
     for i, row in enumerate(instrument_lst):
-        instrument = row[1]
-        print('[{}] {}'.format(i+1, instrument))
+        telescope  = row[1]
+        instrument = row[2]
+        print('[{}] {}/{}'.format(i+1, telescope, instrument))
 
     # select instrument
     while(True):
