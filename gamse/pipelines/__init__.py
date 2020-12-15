@@ -17,7 +17,6 @@ from ..utils.misc   import write_system_info
 from . import common
 from . import (feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
 
-#from .reduction import Reduction
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
     ('xinglong216hrs',  'Xinglong216',      'HRS'),

@@ -245,6 +245,8 @@ def make_obslog():
 
         # find maximum length of object
         maxobjlen = max([len(row['object']) for row in addinfo_table])
+    else:
+        maxobjlen = 12
 
     # scan the raw files
     fname_lst = sorted(os.listdir(rawpath))
