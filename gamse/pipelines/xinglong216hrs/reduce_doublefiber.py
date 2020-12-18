@@ -25,7 +25,6 @@ from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
                                 )
-from ..common import plot_background_aspect1, FormattedInfo
 from .common import (get_bias, get_mask, correct_overscan, 
                      select_calib_from_database,
                      TraceFigure, BackgroundFigure, BrightnessProfileFigure,

@@ -20,7 +20,6 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
                                 )
-from ..common import plot_background_aspect1
 from .common import (get_bias, get_mask, correct_overscan,
                     TraceFigure, BackgroundFigure,
                      select_calib_from_database)
@@ -344,6 +343,9 @@ def reduce_singlefiber(config, logtable):
         # mosaic 1d spectra of flats
         flat_spec = mosaic_spec(flat_spec_lst, master_aperset)
 
+        zeromask = (flat_sens == 0.0)
+        flat_sens[zeromask] = 1.0
+
         # pack and save to fits file
         hdu_lst = fits.HDUList([
                     fits.PrimaryHDU(flat_data),
@@ -354,8 +356,8 @@ def reduce_singlefiber(config, logtable):
                     ])
         hdu_lst.writeto(flat_file, overwrite=True)
 
-        #master_aperset.save_txt(trac_file)
-        #master_aperset.save_reg(treg_file)
+        master_aperset.save_txt(trac_file)
+        master_aperset.save_reg(treg_file)
 
     ############################## Extract ThAr ################################
 

@@ -23,7 +23,6 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ...echelle.background import (find_background, simple_debackground,
                                    get_interorder_background)
 from ...utils.obslog import parse_num_seq
-from ..common import plot_background_aspect1
 from .common import (print_wrapper, get_mask, get_bias,
                     correct_overscan, TraceFigure, BackgroundFigure)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
