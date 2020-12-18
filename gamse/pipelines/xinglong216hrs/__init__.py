@@ -141,7 +141,7 @@ def make_config():
     config.add_section(sectname)
     config.set(sectname, 'minimum',    str(8))
     config.set(sectname, 'scan_step',  str(100))
-    config.set(sectname, 'separation', '500:20, 1500:30, 3500:52')
+    config.set(sectname, 'separation', '500:19, 1500:29, 3500:52')
     config.set(sectname, 'filling',    str(0.3))
     config.set(sectname, 'align_deg',  str(2))
     config.set(sectname, 'display',    'no')
