@@ -271,6 +271,7 @@ def make_obslog():
     print(head_str)
 
     prev_frameid = -1
+    prev_fits_endtime = None
     # start scanning the raw files
     for fname in fname_lst:
         if not fname.endswith('.fits'):
@@ -296,6 +297,29 @@ def make_obslog():
         # get obsdate from FITS header
         statime_key = config['data'].get('statime_key')
         obsdate = dateutil.parser.parse(head[statime_key])
+
+        # get exposure time from FITS header
+        exptime_key = config['data'].get('exptime_key')
+        exptime = head[exptime_key]
+
+        # for post 2019 data, there's another keyword "EXPOEND" to record
+        # exposur end time.
+        if 'EXPOEND' in head:
+            obsdate2 = dateutil.parser.parse(head['EXPOEND'])
+            calc_exptime = (obsdate2-obsdate).seconds
+            if abs(calc_exptime - exptime)>10:
+                print('Warning: TIME difference of {} error: '
+                        'end - start = {:.2f}, exptime = {:.2f}'
+                        ''.format(fileid, calc_exptime, exptime))
+
+            if prev_fits_endtime is not None:
+                if obsdate < prev_fits_endtime:
+                    # exposure start time does not up-to-date. calculate the
+                    # start time according to the exposure end time and exptime.
+                    obsdate = obsdate2 - datetime.timedelta(seconds=exptime)
+            prev_fits_endtime = obsdate2
+       
+
         # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
             and addinfo_lst[frameid]['obsdate'] is not np.ma.masked):
@@ -306,9 +330,6 @@ def make_obslog():
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
 
-        # get exposure time from FITS header
-        exptime_key = config['data'].get('exptime_key')
-        exptime = head[exptime_key]
 
         # parse object name
         if 'OBJECT' in head:
@@ -378,7 +399,10 @@ def make_obslog():
             # convert to datetime.Datetime object
             dt = dateutil.parser.parse(row['obsdate'])
             # add offset and convert back to string
-            row['obsdate'] = (dt + time_offset_dt).isoformat()[0:23]
+            obsdate_str = (dt + time_offset_dt).isoformat()[0:23]
+            if len(obsdate_str)==19:
+                obsdate_str += '.000'
+            row['obsdate'] = obsdate_str
 
     # determine filename of logtable.
     # use the obsdate of the first frame
