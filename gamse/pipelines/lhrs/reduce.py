@@ -18,7 +18,7 @@ def reduce_rawdata():
     """
 
     # read obslog and config
-    config = load_config('Levy\S*\.cfg$')
+    config = load_config('LHRS\S*\.cfg$')
     logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     # extract keywords from config file
@@ -48,8 +48,31 @@ def reduce_rawdata():
         ncores = min(os.cpu_count(), int(ncores))
 
     ############# trace ################
-    traceid = ''
-    fname = '{}.fit'.format(traceid)
+    fmt_str = ('   - {:>5s} {:^15s} {:<20s} {:>7} {:>8} {:>8}')
+    head_str = fmt_str.format('FID', 'fileid', 'object', 'exptime', 'nsat',
+                                'q95')
+    print(head_str)
+    for logitem in logtable:
+        message = fmt_str.format('[{:d}]'.format(logitem['frameid']),
+                    logitem['fileid'], logitem['object'], logitem['exptime'],
+                    logitem['nsat'], logitem['q95'])
+        print(message)
+    prompt = 'Select file for tracing order positions: '
+    while(True):
+        input_string = input(prompt.format(''))
+        try:
+            frameid = int(input_string)
+            if frameid in logtable['frameid']:
+                traceid = frameid
+                break
+            else:
+                continue
+        except:
+            continue
+
+    mask = logtable['frameid']==traceid
+    fileid = logtable[mask][0]['fileid']
+    fname = '{}.fit'.format(fileid)
     filename = os.path.join(rawpath, fname)
     flat_data, head = fits.getdata(filename, header=True)
     flat_data = correct_overscan(flat_data, head)

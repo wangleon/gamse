@@ -96,7 +96,7 @@ def make_config():
     config.add_section('data')
 
     # determine the time-dependent keywords
-    if input_datetime < datetime.datetime(2019, 1, 1):
+    if input_datetime < datetime.datetime(2018, 12, 1):
         statime_key = 'DATE-STA'
         exptime_key = 'EXPTIME'
     else:
@@ -309,8 +309,8 @@ def make_obslog():
             calc_exptime = (obsdate2-obsdate).seconds
             if abs(calc_exptime - exptime)>10:
                 print('Warning: TIME difference of {} error: '
-                        'end - start = {:.2f}, exptime = {:.2f}'
-                        ''.format(fileid, calc_exptime, exptime))
+                        'EXPOEND - {} = {:.2f}, exptime = {:.2f}'
+                        ''.format(fileid, statime_key, calc_exptime, exptime))
 
             if prev_fits_endtime is not None:
                 if obsdate < prev_fits_endtime:
@@ -318,7 +318,6 @@ def make_obslog():
                     # start time according to the exposure end time and exptime.
                     obsdate = obsdate2 - datetime.timedelta(seconds=exptime)
             prev_fits_endtime = obsdate2
-       
 
         # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
