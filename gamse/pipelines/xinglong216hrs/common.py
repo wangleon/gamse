@@ -603,11 +603,15 @@ def select_calib_from_database(database_path, dateobs):
     calibtable = Table.read(indexfile, format='ascii.fixed_width_two_line')
 
     input_date = dateutil.parser.parse(dateobs)
-    if input_date > datetime.datetime(2019, 1, 1):
-        mask = [dateutil.parser.parse(t) > datetime.datetime(2019, 1, 1)
+
+    # after 1st Dec 2018, echelle format and keywords in FITS header changed
+    time_node1 = datetime.datetime(2018, 12, 1)
+
+    if input_date > time_node1:
+        mask = [dateutil.parser.parse(t) > time_node1
                 for t in calibtable['obsdate']]
     else:                         
-        mask = [dateutil.parser.parse(t) < datetime.datetime(2019, 1, 1)
+        mask = [dateutil.parser.parse(t) < time_node1
                 for t in calibtable['obsdate']]
     
     # select the latest ThAr
