@@ -2622,8 +2622,8 @@ def default_smooth_flux(x, y, npoints):
 
 def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         lower_limit=5, upper_limit=5, deg=7, q_threshold=500,
-        smooth_flux_func=default_smooth_flux,
-        figfile=None
+        smooth_flux_func = default_smooth_flux,
+        figfile=None,
     ):
     """Get the flat fielding image for the slit-fed flat fielding image.
 
@@ -2681,21 +2681,35 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         upper_line = position + upper_limit
         mask = np.zeros_like(data, dtype=np.bool)
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
+        gap1d = (np.int32(gap_mask)*mask).sum(axis=0)
+        sat1d = (np.int32(sat_mask)*mask).sum(axis=0)
 
         # fit flux
-        yfit, fmask = smooth_flux_func(newx, flux_mean, nx)
+        yfit = smooth_flux_func(newx, flux_mean, nx)
+        print(aper, d1, d2, newx.size, flux_mean.size, yfit.size)
 
         #if figfile is not None:
         if True:
             fig = plt.figure(dpi=150)
             ax = fig.gca()
-            ax.plot(flux_mean, ls='-', lw=0.5, color='C0')
+            ax.plot(newx, flux_mean, ls='-', lw=0.5, color='C0')
             ax.plot(newx, yfit, ls='-',lw=0.5, color='C1')
+            idx = np.nonzero(sat1d)[0]
+            group_lst = np.split(idx, np.where(np.diff(idx)!=1)[0]+1)
+            _y1, _y2 = ax.get_ylim()
+            if len(group_lst)>0:
+                for group in group_lst:
+                    if group.size==0:
+                        continue
+                    print(group)
+                    i1, i2 = group[0], group[-1]
+                    ax.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
 
             #xx = np.arange(spec['flux_sum'].size)[spec['mask']]
             #group_lst = np.split(xx, np.where(np.diff(xx) > 1)[0]+1)
             ax.grid(True, ls='--')
             ax.set_axisbelow(True)
+            ax.set_ylim(0,)
             fig.suptitle('Aperture {:03d}'.format(aper))
             figfilename = 'flat_flux_{:03d}.png'.format(aper)
             #fig.savefig(figfile%aper)
@@ -2723,5 +2737,4 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
 
         # build the sensitivity map
         flatmap[imgmask] = data[imgmask]/fitimg[imgmask]
-        print(aper)
     return flatmap
