@@ -5,6 +5,8 @@ import math
 import datetime
 import dateutil.parser
 import itertools
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import numpy.polynomial as poly
@@ -672,12 +674,16 @@ class CalibWindow(tk.Frame):
         self.param['nuse']   = nuse
         self.param['ntot']   = ntot
 
+        message = 'Wavelength fitted. std={:.6f}, utot={}, nuse={}'.format(
+                    std, ntot, nuse)
+        logger.info(message)
+
         self.plot_wavelength()
 
         # udpdate the order/aperture string
         aperture = self.param['aperture']
         order = k*aperture + offset
-        text = 'Order %d (Aperture %d)'%(order, aperture)
+        text = 'Order {} (Aperture {})'.format(order, aperture)
         self.info_frame.order_label.config(text=text)
 
         self.update_fit_buttons()
@@ -733,6 +739,7 @@ class CalibWindow(tk.Frame):
         offset  = self.param['offset']
         coeff   = self.param['coeff']
         npixel  = self.param['npixel']
+        n_insert = 0
         for aperture in sorted(self.spec['aperture']):
             mask = self.spec['aperture'] == aperture
             flux = self.spec[mask][0]['flux']
@@ -801,11 +808,15 @@ class CalibWindow(tk.Frame):
                 self.identlist[aperture] = np.append(self.identlist[aperture], item)
                 has_insert = True
                 #print('insert', aperture, line[0], peak_x, i)
+                n_insert += 1
 
             # resort this order if there's new line inserted
             if has_insert:
                 self.identlist[aperture] = np.sort(self.identlist[aperture],
                                                     order='pixel')
+
+        message = '{} new lines inserted'.format(n_insert)
+        logger.info(message)
 
         self.fit()
 
@@ -943,6 +954,9 @@ class CalibWindow(tk.Frame):
 
         self.plot_frame.canvas.draw()
         self.plot_frame.fig.savefig(self.param['figfilename'])
+        message = 'Wavelength solution plotted in {}'.format(
+                    self.param['figfilename'])
+        logger.info(message)
 
     def on_click(self, event):
         """Response function of clicking the axes.
@@ -1632,7 +1646,7 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_ident(identlist, coeff, filename, channel):
+def save_ident(identlist, coeff, filename, channel=None):
     """Write the ident line list and coefficients into an ASCII file.
     The existing informations in the ASCII file will not be affected.
     Only the input channel will be overwritten.
