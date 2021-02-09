@@ -102,14 +102,20 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
         # if npoints=4000, then 500 pix. if w=2000, then 250 pix.
         npixbin = npoints//8
         bins = np.linspace(p1, p2, int(p2-p1)//npixbin+2)
+        # now the whole order is splitted into aproximately 8 bins
         hist, _ = np.histogram(x, bins)
+        # hist is the number of local maxima points (LMP) in each bin
 
         n_nonzerobins = np.nonzero(hist)[0].size
         n_zerobins = hist.size - n_nonzerobins
+        # n_nonzerobins is the number of bins with local maxima points (LMP)
+        # n_zerobins is the number of bins without local maxima points (LMP)
 
         if p2-p1 < npoints/8 or n_zerobins <= 1 or \
             n_zerobins < n_nonzerobins or n_nonzerobins >= 3:
-            # there's fringe
+            # there's fringe if bins without LMP are less than 2, or
+            # bins with LMP is more than without LMP, or
+            # bins with LMP are more than 3
             has_fringe = True
         else:
             # no fringe

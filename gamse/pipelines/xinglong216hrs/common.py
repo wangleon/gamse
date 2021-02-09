@@ -614,8 +614,14 @@ def select_calib_from_database(database_path, dateobs):
         mask = [dateutil.parser.parse(t) < time_node1
                 for t in calibtable['obsdate']]
     
-    # select the latest ThAr
-    row = calibtable[mask][-1]
+    # select the latest ThAr (deprecated)
+    #row = calibtable[mask][-1]
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable[mask]['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[mask][irow]
     fileid = row['fileid']
 
     filename = 'wlcalib_{}.fits'.format(fileid)

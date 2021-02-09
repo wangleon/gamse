@@ -889,7 +889,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         p0[-3] = 1.0
 
         interfunc = intp.InterpolatedUnivariateSpline(
-                    np.arange(flux1.size), flux1, k=3)
+                    np.arange(flux1.size), flux1, k=3, ext=3)
         mask = np.ones_like(flux0, dtype=np.bool)
         clipping = 5.
         for i in range(10):
@@ -1196,7 +1196,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         #fig.ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
-    logger.info((os.linesep+' '*4).join(message))
+    logger.info((os.linesep+' '*2).join(message))
 
     # check the first and last peak. If the separation is larger than 2x of 
     # the local separation, remove them

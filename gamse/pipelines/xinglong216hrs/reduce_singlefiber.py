@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 from scipy.ndimage.filters import median_filter
+import scipy.interpolate as intp
 
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
@@ -583,12 +584,20 @@ def reduce_singlefiber(config, logtable):
                     clipping      = section.getfloat('clipping'),
                     q_threshold   = section.getfloat('q_threshold'),
                     )
+                message = ('Wavelength calibration finished.'
+                            '(k, offset) = ({}, {})'.format(
+                            calib['k'], calib['offset']))
+                logger.info(logger_prefix + message)
+
 
             # then use this thar as reference
             ref_calib = calib
             ref_spec  = spec
+            message = 'Reference calib and spec are selected'
+            logger.info(logger_prefix + message)
         else:
-            message = 'Use ref_calib'
+            message = 'Use reference calib and spec'
+            logger.info(logger_prefix + message)
             # for other ThArs, no aperture offset
             calib = recalib(spec,
                 figfilename      = wlcalib_fig,
@@ -611,9 +620,13 @@ def reduce_singlefiber(config, logtable):
         calib['fileid']   = fileid
         calib['date-obs'] = head[statime_key]
         calib['exptime']  = head[exptime_key]
+        message = 'Add more info in calib of {}'.format(fileid)
+        logger.info(logger_prefix + message)
 
         # reference the ThAr spectra
         spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+        message = 'Wavelength solution added'
+        logger.info(logger_prefix + message)
 
         prefix = 'HIERARCH GAMSE WLCALIB '
         for key, value in card_lst:
@@ -626,14 +639,18 @@ def reduce_singlefiber(config, logtable):
                     ])
 
         # save in midproc path as a wlcalib reference file
-        fname = 'wlcalib.{}.fits'.format(fileid)
+        fname = 'wlcalib_{}.fits'.format(fileid)
         filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
+        message = 'Wavelength calibrated spectra written to {}'.format(filename)
+        logger.info(logger_prefix + message)
 
         # save in onedspec path
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
         filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)
+        message = 'Wavelength calibrated spectra written to {}'.format(filename)
+        logger.info(logger_prefix + message)
     
         # pack to calib_lst
         calib_lst[frameid] = calib
@@ -715,8 +732,8 @@ def reduce_singlefiber(config, logtable):
             ('wavelength',  (np.float64, nx)),
             ('flux',        (np.float32, nx)),
             ('error',       (np.float32, nx)),
-            ('mask',        (np.int16,   nx)),
             ('background',  (np.float32, nx)),
+            ('mask',        (np.int16,   nx)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -775,8 +792,15 @@ def reduce_singlefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
+        ny, nx = data.shape
+        allx = np.arange(nx)
         # get background lights
-        background = get_interorder_background(data, master_aperset)
+        background = get_interorder_background(data, mask, master_aperset)
+        for y in np.arange(ny):
+            m = mask[y,:]==0
+            f = intp.InterpolatedUnivariateSpline(
+                    allx[m], background[y,:][m], k=3)
+            background[y,:][~m] = f(allx[~m])
         background = median_filter(background, size=(9,1), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')

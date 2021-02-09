@@ -844,21 +844,32 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
     return np.exp(corrected_data)
 
 
-def get_interorder_background(data, apertureset):
+def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     """Get inter-order background light from a given image.
 
     Args:
         data ():
+        mask ():
         apertureset ():
     """
+    figname = kwargs.pop('figname', 'bkg_{:04d}.png')
+    distance = kwargs.pop('distance', 7)
+
+    if mask is None:
+        mask = np.zeros_like(data, dtype=np.int32)
+
     ny, nx = data.shape
 
     bkg_image = np.zeros_like(data, dtype=np.float32)
     allrows = np.arange(ny)
+
     plot_x = []
     for x in np.arange(nx):
         if x in plot_x:
             plot = True
+            fig1 = plt.figure(figsize=(12,8))
+            ax01 = fig1.add_subplot(211)
+            ax02 = fig1.add_subplot(212)
         else:
             plot = False
         mask_rows = np.zeros_like(allrows, dtype=np.bool)
@@ -868,7 +879,7 @@ def get_interorder_background(data, apertureset):
                 ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
                 ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
     
-            imask = np.abs(allrows - ycen)<7
+            imask = np.abs(allrows - ycen) < distance
             mask_rows += imask
         if plot:
             ax01.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
@@ -881,7 +892,10 @@ def get_interorder_background(data, apertureset):
                             color='C0', alpha=1, lw=0.7)
             if y2-y1>1:
                 yflux = data[y1:y2, x]
+                ymask = mask[y1:y2, x]
                 xlist = np.arange(y1, y2)
+
+                # block the highest point and calculate mean
                 _m = xlist == y1 + np.argmax(yflux)
                 mean = yflux[~_m].mean()
                 std  = yflux[~_m].std()
@@ -911,6 +925,10 @@ def get_interorder_background(data, apertureset):
             _y1, _y2 = ax02.get_ylim()
             ax02.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
             ax02.set_ylim(_y1, _y2)
+            ax01.set_xlim(0, ny-1)
+            ax02.set_xlim(0, ny-1)
+            fig1.savefig(figname.format(x))
+            plt.close(fig1)
     
     return bkg_image
 
