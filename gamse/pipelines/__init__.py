@@ -209,10 +209,16 @@ def show_onedspec():
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
     config.read(config_file_lst)
+    
+    porder = None
+    del sys.argv[0:2]
+    if '-o' in sys.argv:
+        ind = sys.argv.index('-o')
+        porder = int(sys.argv.pop(ind+1))
+        del sys.argv[ind]
 
     filename_lst = []
-    for arg in sys.argv[2:]:
-
+    for arg in sys.argv:
         # first, check if argument is a filename.
         if os.path.exists(arg):
             filename_lst.append(arg)
@@ -331,9 +337,10 @@ def show_onedspec():
                 plot_order(ax.currentorder - 1)
         else:
             pass
-
-    order0 = list(spec_lst[0][0].keys())[0]
-    plot_order(order0)
+        
+    if porder==None:
+        porder = list(spec_lst[0][0].keys())[0]
+    plot_order(porder)
 
     fig.canvas.mpl_connect('key_press_event', on_key)
     plt.show()
