@@ -10,6 +10,7 @@ import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+import scipy.interpolate as intp
 
 from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
@@ -424,6 +425,38 @@ def convert_onedspec():
     config = common.load_config('\S*\.cfg$', verbose=False)
     logtable = common.load_obslog('\S*\.obslog$', fmt='astropy', verbose=False)
 
+
+    # get user specified order argument
+    # find output format
+    if '-f' in sys.argv:
+        idx = sys.argv.index('-f')
+    elif '--format' in sys.argv:
+        idx = sys.argv.index('--format')
+    else:
+        idx = None
+
+
+    # find the user-specified output format
+    if idx is None:
+        # -f/--format is not given. default is "txt"
+        output_format = 'ASCII'
+    else:
+        # -f/--format is given
+        if len(sys.argv) > idx:
+            output_format = sys.argv.pop(idx+1)
+            sys.argv.pop(idx)
+            if output_format.lower() in ['ascii', 'txt']:
+                output_format = 'ASCII'
+            elif output_format.lower() == 'fits':
+                output_format = 'FITS'
+            else:
+                print('Error: unknown output format: {}'.format(output_format))
+                exit()
+        else:
+            print('argument -f/--format: Expected one argument')
+            exit()
+
+
     section = config['reduce']
     odspath     = section.get('odspath', None)
     oned_suffix = section.get('oned_suffix')
@@ -438,12 +471,16 @@ def convert_onedspec():
     else:
         for arg in sys.argv[2:]:
             if os.path.exists(arg):
+                # filename exists
                 filename_lst.append(arg)
             elif os.path.exists(os.path.join(odspath, arg)):
+                # filename in oned path exists
                 filename_lst.append(os.path.join(odspath, arg))
-            else:
-                if arg.isdigit():
-                    arg = int(arg)
+            elif arg.isdigit():
+                # filename is a number. find the corresponding items in obslog
+                arg = int(arg)
+
+                # scan the log table
                 for logitem in logtable:
                     if arg == logitem['frameid'] or arg == logitem['fileid']:
                         pattern = str(logitem['fileid'])+'\S*'
@@ -453,8 +490,12 @@ def convert_onedspec():
                                 and re.match(pattern, fname):
                                 filename_lst.append(filename)
 
+    # convert oned fits files
     for filename in filename_lst:
-        data = fits.getdata(filename)
+        hdu_lst = fits.open(filename)
+        head = hdu_lst[0].header
+        data = hdu_lst[1].data
+        hdu_lst.close()
 
         if 'flux' in data.dtype.names:
             flux_key = 'flux'
@@ -469,6 +510,7 @@ def convert_onedspec():
             wave = row['wavelength']
             flux = row[flux_key]
 
+            # adjust the order to increasing wavelength
             if wave[0]> wave[-1]:
                 wave = wave[::-1]
                 flux = flux[::-1]
@@ -476,7 +518,9 @@ def convert_onedspec():
             spec[order] = (wave, flux)
             ascii_prefix = os.path.splitext(os.path.basename(filename))[0]
             target_path = os.path.join(odspath, ascii_prefix)
-            target_fname = '{}_order_{:03d}.txt'.format(ascii_prefix, order)
+            suffix = {'ASCII': 'txt', 'FITS': 'fits'}[output_format]
+            target_fname = '{}_order_{:03d}.{}'.format(
+                            ascii_prefix, order, suffix)
             target_filename = os.path.join(target_path, target_fname)
 
             if not os.path.exists(target_path):
@@ -485,10 +529,33 @@ def convert_onedspec():
             if os.path.exists(target_filename):
                 print('Warning: {} is overwritten'.format(target_filename))
 
-            outfile = open(target_filename, 'w')
-            for w, f in zip(wave, flux):
-                outfile.write('{:11.5f} {:+16.8e}'.format(w, f)+os.linesep)
-            outfile.close()
+            if output_format == 'ASCII':
+                outfile = open(target_filename, 'w')
+                for w, f in zip(wave, flux):
+                    outfile.write('{:11.5f} {:+16.8e}'.format(w, f)+os.linesep)
+                outfile.close()
+            elif output_format == 'FITS':
+                f = intp.InterpolatedUnivariateSpline(wave, flux, k=3)
+                newwave = np.linspace(wave[0], wave[-1], wave.size)
+                newflux = f(newwave)
 
-        print('Convert {} to {} files with ASCII formats in {}'.format(
-                filename, len(data), target_path))
+                head['CTYPE1'] = 'WAVELENGTH'
+                head['CUNIT1'] = 'ANGSTROM'
+                head['CRPIX1'] = 1
+                head['CRVAL1'] = wave[0]
+                head['CDELT1'] = (wave[-1] - wave[0])/(wave.size-1)
+                head['CROTA1'] = 0.0
+                if 'CRVAL2' in head:
+                    del head['CRVAL2']
+                if 'CDELT2' in head:
+                    del head['CDELT2']
+
+                hdu = fits.PrimaryHDU(data=newflux, header=head)
+                hdu_lst = fits.HDUList([hdu])
+                hdu_lst.writeto(target_filename, overwrite=True)
+            else:
+                print('Error: unknown output format: ', output_format)
+
+
+        print('Convert {} to {} files with {} formats in {}'.format(
+                filename, len(data), output_format, target_path))
