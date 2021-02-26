@@ -13,22 +13,25 @@ def main():
     if len(sys.argv)==1:
         print_help()
         exit()
-    elif sys.argv[1] == 'config':
+
+    command = sys.argv[1]
+
+    if command == 'config':
         make_config()
-    elif sys.argv[1] == 'list':
+    elif command == 'list':
         # list the observing log of raw data
         make_obslog()
-    elif sys.argv[1] == 'reduce':
+    elif command == 'reduce':
         # reduce the spectra
         reduce_echelle()
-    elif sys.argv[1] == 'plot':
+    elif command == 'plot':
         plot_spectra1d()
-    elif sys.argv[1] == 'show':
+    elif command == 'show':
         show_onedspec()
-    elif sys.argv[1] == 'convert':
+    elif command == 'convert':
         convert_onedspec()
     else:
-        print('Unknow argument: %s'%sys.argv[1])
+        print('Unknow command: {}'.format(command))
         exit()
 
 if __name__=='__main__':
