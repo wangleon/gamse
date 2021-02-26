@@ -10,7 +10,6 @@ setup(
     author_email = 'lwang@mpe.mpg.de',
     license      = 'BSD',
     scripts      = ['scripts/gamse',
-                    'scripts/gamse-show',
                     ],
     packages     = [
                     'gamse',
