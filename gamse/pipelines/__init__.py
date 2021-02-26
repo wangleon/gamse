@@ -188,9 +188,6 @@ def make_config():
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
-
-    Args:
-        filename_lst (list): List of filenames of 1-D spectra.
     """
 
     # load obslog
@@ -209,48 +206,76 @@ def show_onedspec():
                 interpolation           = configparser.ExtendedInterpolation(),
                 )
     config.read(config_file_lst)
-    
-    porder = None
-    del sys.argv[0:2]
-    if '-o' in sys.argv:
-        ind = sys.argv.index('-o')
-        porder = int(sys.argv.pop(ind+1))
-        del sys.argv[ind]
 
+
+    # get user specified order argument
+    # find the order argument
+    if '-o' in sys.argv:
+        idx = sys.argv.index('-o')
+    elif '--order' in sys.argv:
+        idx = sys.argv.index('--order')
+    else:
+        idx = None
+
+    # find the user-specified order number argorder (string)
+    if idx is None:
+        # -o/--order is not given
+        argorder = None
+    else:
+        # -o/--order is given
+        if len(sys.argv) > idx:
+            argorder = sys.argv.pop(idx+1)
+            sys.argv.pop(idx)
+            if argorder.isdigit():
+                # -o argument is a number
+                pass
+            elif argorder.lower() in ['r', 'red', 'b', 'blue']:
+                # -o argumnt is either 'r' or 'b'
+                argorder = argorder.lower()[0]
+            else:
+                print('Cannot understand order {}'.format(argorder))
+                exit()
+        else:
+            print('argument -o/--order: Expected one argument')
+            exit()
+
+    # check files to plot
     filename_lst = []
-    for arg in sys.argv:
+    for arg in sys.argv[2:]:
         # first, check if argument is a filename.
         if os.path.exists(arg):
             filename_lst.append(arg)
-        # if not a filename, try to find the corresponding items in obslog
-        else:
-            if config is None:
-                config = load_config('\S*\.cfg$')
-            if logtable is None:
-                logtable = load_obslog('\S*\.obslog$')
+        elif arg.isdigit() and obslog is not None:
+            # if not a filename, try to find the corresponding items in obslog
+            #if config is None:
+            #    config = load_config('\S*\.cfg$')
+            #if logtable is None:
+            #    logtable = load_obslog('\S*\.obslog$')
 
             # if arg is a number, find the corresponding filename in obslog
-            if arg.isdigit():
-                arg = int(arg)
-                section = config['reduce']
-                for logitem in logtable:
-                    if arg == logitem['frameid']:
-                        # get the path to the 1d spectra
-                        odspath = section.get('odspath', None)
-                        if odspath is None:
-                            odspath = section.get('oned_spec')
+            arg = int(arg)
+            section = config['reduce']
+            for logitem in logtable:
+                if arg == logitem['frameid']:
+                    # get the path to the 1d spectra
+                    odspath = section.get('odspath', None)
+                    if odspath is None:
+                        odspath = section.get('oned_spec')
 
-                        # get the filename suffix for 1d spectra
-                        oned_suffix = config['reduce'].get('oned_suffix')
+                    # get the filename suffix for 1d spectra
+                    oned_suffix = config['reduce'].get('oned_suffix')
 
-                        fname = '{}_{}.fits'.format(
-                                logitem['fileid'], oned_suffix)
-                        filename = os.path.join(odspath, fname)
-                        if os.path.exists(filename):
-                            filename_lst.append(filename)
-                        break
+                    fname = '{}_{}.fits'.format(
+                            logitem['fileid'], oned_suffix)
+                    filename = os.path.join(odspath, fname)
+                    if os.path.exists(filename):
+                        filename_lst.append(filename)
+                    break
+        else:
+            print('File "" does not exists'.format(arg))
 
     if len(filename_lst)==0:
+        print('Nothing to plot')
         exit()
 
     spec_lst = []
@@ -309,7 +334,7 @@ def show_onedspec():
         leg.get_frame().set_alpha(0.1)
         ax.set_xlabel(u'Wavelength (\xc5)', fontsize=12)
         ax.set_ylabel('Flux', fontsize=12)
-        ax.set_title('Order %d'%(order), fontsize=14)
+        ax.set_title('Order {}'.format(order), fontsize=14)
         ax.set_xlim(wave_min, wave_max)
         ax.axhline(y=0, color='k', ls='--', lw=0.5)
         if flux_min > 0:
@@ -338,8 +363,35 @@ def show_onedspec():
         else:
             pass
         
-    if porder==None:
-        porder = list(spec_lst[0][0].keys())[0]
+
+    # convert argorder (string) to porder (int)
+    if argorder is None:
+        # order not specified, use the first order of the first spec
+        spec = spec_lst[0][0]
+        porder = list(spec.keys())[0]
+    elif argorder.isdigit():
+        # order numbers is given. Find the corresponding order if exists
+        argorder = int(argorder)
+        find = False
+        for spec, label in spec_lst:
+            if argorder in spec:
+                porder = argorder
+                find = True
+                break
+        if not find:
+            porder = list(spec.keys())[0]
+            print(('The user specified order {} is not in the plotted spectra. '
+                   'Plot order {} instead').format(argorder, porder))
+    elif argorder == 'r':
+        # plot the reddest order
+        porder = min([min(spec.keys()) for spec,label in spec_lst])
+    elif argorder == 'b':
+        # plot the reddest order
+        porder = max([max(spec.keys()) for spec,label in spec_lst])
+    else:
+        print('Cannot understand order {}'.format(argorder))
+        porder = list(spec.keys())[0]
+
     plot_order(porder)
 
     fig.canvas.mpl_connect('key_press_event', on_key)
