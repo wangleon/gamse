@@ -1,5 +1,12 @@
 import numpy as np
+import scipy.interpolate as intp
 import matplotlib.pyplot as plt
+
+import astropy.io.fits as fits
+
+from ...utils.regression import iterative_polyfit
+from ...utils.onedarray import iterative_savgol_filter, get_local_minima
+from .common import norm_profile
 
 def get_flat(data, aperture_set):
     ny, nx = data.shape
@@ -44,7 +51,8 @@ def get_flat(data, aperture_set):
             order_hwin_lst = order_dist_lst/2
             # size of order_hwin_lst = size of order_cent_lst + 1
     
-            for iaper, (aper, aperloc) in enumerate(sorted(aperture_set.items())):
+            for iaper, (aper, aperloc) in enumerate(
+                    sorted(aperture_set.items())):
                 cent = order_cent_lst[iaper]
                 lwin = order_hwin_lst[iaper]
                 rwin = order_hwin_lst[iaper+1]
@@ -228,4 +236,72 @@ def get_flat(data, aperture_set):
         newx = np.arange(0, ny)
         ax.plot(newx, aperloc.position(newx), '-')
     plt.show()
+
+
+
+def smooth_aperpar_A(x, y, npoints, newx):
+    #coeff, yfit, _, mask, _ = iterative_polyfit(x, y, deg=11)
+    p1, p2 = x[0], x[-1]
+    xspan = p2 - p1
+
+    f = intp.InterpolatedUnivariateSpline(x, y, k=3)
+    xnew = np.arange(x[0], x[-1]+1e-3)
+    ynew = f(xnew)
+    ysmooth, _, _, _ = iterative_savgol_filter(ynew, winlen=101, order=3,
+                    upper_clip=3, lower_clip=3)
+    imax, ymax = get_local_minima(-ysmooth, window=5)
+
+    if len(imax)>0:
+        xmax = xnew[imax]
+    else:
+        xmax = []
+
+    npixbin = npoints//8
+    bins = np.linspace(p1, p2, int(p2-p1)//npixbin+2)
+    hist, _ = np.histogram(xmax, bins)
+
+    n_nonzerobins = np.nonzero(hist)[0].size
+    n_zerobins = hist.size - n_nonzerobins
+
+    if n_zerobins <=1 or n_zerobins < n_nonzerobins or n_nonzerobins >=3:
+        has_fringe = True
+    else:
+        has_fringe = False
+
+    if has_fringe:
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
+    else:
+        deg = 5
+
+    # pick up the points with y>0
+    posmask = (y>0)*(x<4200)
+
+    coeff, _, _, m, std = iterative_polyfit(
+            x[posmask]/npoints, np.log(y[posmask]), deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+    aperpar = np.exp(np.polyval(coeff, newx/npoints))
+
+
+    return aperpar
+
+def smooth_aperpar_bkg(x, y, npoints, newx):
+    p1, p2 = x[0], x[-1]
+    xspan = p2 - p1
+
+    if   xspan > npoints/2: deg = 4
+    elif xspan > npoints/4: deg = 3
+    elif xspan > npoints/8: deg = 2
+    else:                   deg = 1
+
+    # pick up the points with y>0
+    posmask = (y>0)*(x<4200)
+
+    coeff, _, _, m, std = iterative_polyfit(
+            x[posmask]/npoints, np.log(y[posmask]), deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+    aperpar = np.exp(np.polyval(coeff, newx/npoints))
+    return aperpar
 

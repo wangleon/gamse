@@ -14,3 +14,12 @@ def make_config():
 
 def make_obslog():
     pass
+
+
+def reduce_rawdata():
+    """2D to 1D pipeline for the CFHT/ESPaDOnS.
+    """
+
+    # read obslog and config
+    config = load_config('ESPaDOnS\S*\.cfg$')
+    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
