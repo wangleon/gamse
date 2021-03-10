@@ -10,6 +10,8 @@ import astropy.io.fits as fits
 from astropy.table import Table
 
 from ...utils.misc import extract_date
+from ..common import load_obslog, load_config
+from .reduce import reduce_rawdata
 
 def make_config():
     """Generate a config file for reducing the data taken with CFHT/ESPaDOnS.
@@ -67,6 +69,20 @@ def make_config():
     config.set(sectname, 'cosmic_clip', str(10))
     config.set(sectname, 'maxiter',     str(5))
 
+    # write to config file
+    filename = 'ESPaDOnS.{}.cfg'.format(input_date)
+    outfile = open(filename, 'w')
+    for section in config.sections():
+        maxkeylen = max([len(key) for key in config[section].keys()])
+        outfile.write('[{}]'.format(section)+os.linesep)
+        fmt = '{{:{}s}} = {{}}'.format(maxkeylen)
+        for key, value in config[section].items():
+            outfile.write(fmt.format(key, value)+os.linesep)
+        outfile.write(os.linesep)
+    outfile.close()
+
+    print('Config file written to {}'.format(filename))
+
 def make_obslog():
     """Scan the raw data, and generate a log file containing the detail
     information for each frame.
@@ -81,21 +97,90 @@ def make_obslog():
     config = load_config('ESPaDOnS\S*\.cfg$')
     rawpath = config['data'].get('rawpath')
 
-    # scan the raw files
-    fname_lst = sorted(os.listdir(rawpath))
-
     # prepare logtable
     logtable = Table(dtype=[
-                        ('frameid', 'i2'),
+                        ('frameid',  'i2'),
+                        ('fileid',   'S8'),
+                        ('obstype',  'S10'),
+                        ('object',   'S15'),
+                        ('exptime',  'f4'),
+                        ('obsdate',  'S23'),
+                        ('nsat',     'i4'),
+                        ('q95',      'i4'),
+                        ('runid',    'S6'),
+                        ('pi',       'S15'),
+                        ('observer', 'S15'),
                 ])
 
-    for fname in fname_lst:
-        if not fname.endswith('.fits'):
+    prev_frameid = -1
+
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match('(\d{7}[a-z])\.fits', fname)
+        if not mobj:
             continue
-        fileid  = fname[0:-5]
+        fileid  = mobj.group(1)
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
+        frameid = prev_frameid + 1
+        obstype    = head['OBSTYPE']
+        objectname = head['OBJECT']
+        exptime    = head['EXPTIME']
+        if objectname == 'Nowhere':
+            objectname = ''
+
+        obsdate_str = '{}T{}'.format(head['DATE-OBS'], head['UTC-OBS'])
+        obsdate = dateutil.parser.parse(obsdate_str)
+
+        # determine the total number of saturated pixels
+        saturation = (data>=head['SATURATE']).sum()
+
+        # find the 95% quantile
+        quantile95 = int(np.round(np.percentile(data, 95)))
+
+
+        runid = head['RUNID']
+        pi    = head['PI_NAME']
+        observer = head['OBSERVER']
+
+        item = [frameid, fileid, obstype, objectname, exptime,
+                obsdate.isoformat()[0:23], saturation, quantile95,
+                runid, pi, observer]
+        logtable.add_row(item)
+        
+        item = logtable[-1]
+
+        prev_frameid = frameid
+
+
+    # sort by fileid
+    logtable.sort('fileid')
+
+    # determine filename of logtable.
+    # use the obsdate of the first frame
+    obsdate = logtable[0]['obsdate'][0:10]
+    outname = '{}.obslog'.format(obsdate)
+    if os.path.exists(outname):
+        i = 0
+        while(True):
+            i += 1
+            outname = '{}.{}.obslog'.format(obsdate, i)
+            if not os.path.exists(outname):
+                outfilename = outname
+                break
+    else:
+        outfilename = outname
+
+    # set display formats
+    logtable['obstype'].info.format = '^s'
+    logtable['object'].info.format = '<s'
+    logtable['exptime'].info.format = 'g'
+
+    # save the logtable
+    outfile = open(outfilename, 'w')
+    for row in logtable.pformat_all():
+        outfile.write(row+os.linesep)
+    outfile.close()
 
 def reduce_rawdata():
     """2D to 1D pipeline for the CFHT/ESPaDOnS.
@@ -104,3 +189,5 @@ def reduce_rawdata():
     # read obslog and config
     config = load_config('ESPaDOnS\S*\.cfg$')
     logtable = load_obslog('\S*\.obslog$', fmt='astropy')
+
+    reduce_rawdata(config, logtable)
