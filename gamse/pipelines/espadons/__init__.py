@@ -69,6 +69,17 @@ def make_config():
     config.set(sectname, 'cosmic_clip', str(10))
     config.set(sectname, 'maxiter',     str(5))
 
+    # section of order trace
+    sectname = 'reduce.trace'
+    config.add_section(sectname)
+
+    # section of flat field correction
+    sectname = 'reduce.flat'
+    config.add_section(sectname)
+    config.set(sectname, 'flat_file',   '${reduce:midpath}/flat.fits')
+    config.set(sectname, 'cosmic_clip', str(10))
+    config.set(sectname, 'maxiter',     str(5))
+
     # write to config file
     filename = 'ESPaDOnS.{}.cfg'.format(input_date)
     outfile = open(filename, 'w')

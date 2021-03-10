@@ -5,7 +5,15 @@ import scipy.optimize as opt
 from ...utils.regression import get_clip_mean
 from ...utils.onedarray import iterative_savgol_filter
 
-def correct_overscan(data):
+def correct_overscan(data, header):
+    """Correct overscan.
+
+    Args:
+        data ():
+        header ():
+    Returns:
+
+    """
     ny, nx = data.shape
 
     # get mask
@@ -145,5 +153,4 @@ def get_mean_profile(xnodes, ynodes, p1, p2, step):
     xlst = np.array(xlst)
     ylst = np.array(ylst)
     return xlst, ylst
-
 
