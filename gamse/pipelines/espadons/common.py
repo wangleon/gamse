@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.interpolate as intp
 import scipy.optimize as opt
+import matplotlib.pyplot as plt
 
 from ...utils.regression import get_clip_mean
 from ...utils.onedarray import iterative_savgol_filter
@@ -153,4 +154,3 @@ def get_mean_profile(xnodes, ynodes, p1, p2, step):
     xlst = np.array(xlst)
     ylst = np.array(ylst)
     return xlst, ylst
-
