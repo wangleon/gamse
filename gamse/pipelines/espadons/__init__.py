@@ -116,12 +116,14 @@ def make_obslog():
                         ('object',   'S15'),
                         ('exptime',  'f4'),
                         ('obsdate',  'S23'),
+                        ('instmode', 'S20'),
+                        ('obsmode',  'S10'),
                         ('nsat',     'i4'),
                         ('q95',      'i4'),
                         ('runid',    'S6'),
                         ('pi',       'S15'),
-                        ('observer', 'S15'),
-                ])
+                        #('observer', 'S15'),
+                ], mask=True)
 
     prev_frameid = -1
 
@@ -140,8 +142,21 @@ def make_obslog():
         if objectname == 'Nowhere':
             objectname = ''
 
+        # get obsdat as a string with iso format of 23 characters
         obsdate_str = '{}T{}'.format(head['DATE-OBS'], head['UTC-OBS'])
-        obsdate = dateutil.parser.parse(obsdate_str)
+        obsdt = dateutil.parser.parse(obsdate_str)
+        obsdate = obsdt.isoformat()[0:23]
+
+        # find instmode, obsmode, and resolution
+        mobj = re.match('([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', head['INSTMODE'])
+        if mobj:
+            instmode   = mobj.group(1)
+            obsmode    = mobj.group(2)
+            resolution = mobj.group(3)
+        else:
+            instmode   = ''
+            obsmode    = ''
+            resolution = ''
 
         # determine the total number of saturated pixels
         saturation = (data>=head['SATURATE']).sum()
@@ -149,15 +164,27 @@ def make_obslog():
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))
 
-
         runid = head['RUNID']
         pi    = head['PI_NAME']
         observer = head['OBSERVER']
 
-        item = [frameid, fileid, obstype, objectname, exptime,
-                obsdate.isoformat()[0:23], saturation, quantile95,
-                runid, pi, observer]
-        logtable.add_row(item)
+        item = [
+                (frameid,       False),
+                (fileid,        False),
+                (obstype,       False),
+                (objectname,    False),
+                (exptime,       False),
+                (obsdate,       False),
+                (instmode,      False),
+                (obsmode,       False),
+                (saturation,    False),
+                (quantile95,    False),
+                (runid,         False),
+                (pi,            False),
+                #(observer,     False),
+                ]
+        value, mask = list(zip(*item))
+        logtable.add_row(value, mask=mask)
         
         item = logtable[-1]
 
@@ -183,8 +210,8 @@ def make_obslog():
         outfilename = outname
 
     # set display formats
-    logtable['obstype'].info.format = '^s'
-    logtable['object'].info.format = '<s'
+    #logtable['obstype'].info.format = '^s'
+    #logtable['object'].info.format = '<s'
     logtable['exptime'].info.format = 'g'
 
     # save the logtable
