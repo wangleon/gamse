@@ -178,7 +178,7 @@ def get_badpixel_mask(binning, ccd=0):
             mask[:,         0:45] = True
     return np.int16(mask)
 
-def mosaic_3_images(data_lst, mask_lst):
+def mosaic_3ccd_images(data_lst, mask_lst):
     """Mosaic three images.
 
     Args:
@@ -273,8 +273,8 @@ class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
     def __init__(self):
-        TraceFigureCommon.__init__(self, figsize=(10,6), dpi=300)
-        self.ax1 = self.add_axes([0.05,0.07,0.50,0.86])
-        self.ax2 = self.add_axes([0.59,0.55,0.36,0.34])
-        self.ax3 = self.add_axes([0.59,0.13,0.36,0.34])
+        TraceFigureCommon.__init__(self, figsize=(13,6), dpi=300)
+        self.ax1 = self.add_axes([0.06,0.07,0.49,0.86])
+        self.ax2 = self.add_axes([0.60,0.55,0.35,0.352])
+        self.ax3 = self.add_axes([0.60,0.13,0.35,0.352])
         self.ax4 = self.ax3.twinx()

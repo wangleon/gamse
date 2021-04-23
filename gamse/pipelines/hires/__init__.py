@@ -11,7 +11,7 @@ from astropy.table import Table
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
 from ..common import load_obslog, load_config
-from .common import print_wrapper
+from .common import print_wrapper, parse_3ccd_images
 from .reduce_pre2004 import reduce_pre2004
 from .reduce_post2004 import reduce_post2004
 
