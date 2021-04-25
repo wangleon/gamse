@@ -154,3 +154,30 @@ def get_mean_profile(xnodes, ynodes, p1, p2, step):
     xlst = np.array(xlst)
     ylst = np.array(ylst)
     return xlst, ylst
+
+def print_wrapper(string, item):
+    """A wrapper for log printing for Xinglong216HRS pipeline.
+
+    Args:
+        string (str): The output string for wrapping.
+        item (:class:`astropy.table.Row`): The log item.
+
+    Returns:
+        str: The color-coded string.
+
+    """
+    obstype = item['obstype']
+
+    if obstype=='BIAS':
+        # bias images, use dim (2)
+        return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif obstype=='OBJECT':
+        # sci images, use highlights (1)
+        return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
+
+    elif obstype=='COMPARISON':
+        # arc lamp, use light yellow (93)
+        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    else:
+        return string

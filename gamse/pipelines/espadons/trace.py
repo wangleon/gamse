@@ -1,13 +1,49 @@
+import os
+import math
+import logging
+logger = logging.getLogger(__name__)
+
 import numpy as np
+from numpy.polynomial import Chebyshev
 import scipy.interpolate as intp
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
 
-from ...echelle.trace import ApertureSt, ApertureLocation
+from ...echelle.trace import ApertureSet, ApertureLocation
+from ...utils.onedarray import derivative
 from ...utils.regression import get_clip_mean, iterative_polyfit
 from .common import norm_profile
 
-def find_order_locations(section, y, aligned_allx=None, plot=False):
+def find_order_locations(section, y, aligned_allx=None, mode='normal'):
+    """Find order locations.
+    
+    Args:
+        section:
+        y:
+        aligned_allx ():
+        mode (str):
+
+    In "debug" mode, this function generates the following figures for each
+    scanned column and save them in the "debug" folder:
+
+        * 'order_width_CCCC.png' --- Order separations and widths.
+        * 'multi_CCCC_NN.png' --- Detected and splitted multi-peak orders.
+        * 'section_CCCC.png' --- Cross sections with positions of detected
+            orders, and stacked order profiles.
+    """
+
+    debug_path = 'debug'
+    if mode='debug':
+        plot_order_width = True
+        plot_multi_peak  = True
+        plot_section     = True
+        if not os.path.exists(debug_path):
+            os.mkdir(debug_path)
+    else:
+        plot_order_width = False
+        plot_multi_peak  = False
+        plot_section     = False
+
 
     nx = section.size
     allx = np.arange(0, nx)
@@ -122,32 +158,42 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
                 mask=sep_mask)
     coeff_sep, order_sep_fit_lst, _, order_sep_mask, _= result
 
-    '''
-    # plot the order widths and separations
-    figw = plt.figure(dpi=150)
-    axw = figw.gca()
-    axw.plot(order_pos_lst, order_wid_lst,
-                'o', color='none', mec='C0')
-    axw.plot(order_pos_lst[wid_mask], order_wid_lst[wid_mask],
-                'o', color='C0', alpha=0.7, label='Width')
-    axw.axhline(y=width_mean, ls='-', color='C1', lw=0.5,
-                label='Median of Width')
-    clip = 3
-    axw.axhline(y=width_mean+clip*width_std, ls='--', color='C1', lw=0.5)
-    axw.axhline(y=width_mean-clip*width_std, ls='--', color='C1', lw=0.5)
-    axw.plot(order_pos_lst, order_sep_lst, 'o', color='none', mec='C3')
-    axw.plot(order_pos_lst, order_sep_fit_lst, '-', color='C3')
-    axw.plot(order_pos_lst[order_sep_mask], order_sep_lst[order_sep_mask],
-                'o', color='C3', label='Separation', alpha=0.7)
-    axw.legend(loc='upper left')
-    axw.set_xlim(0, section.size-1)
-    axw.set_ylim(0,)
-    axw.grid(True, ls='--', lw=0.5)
-    axw.set_axisbelow(True)
-    figw.suptitle('Order Widths and Separations')
-    figw.savefig('order_width_{:04d}.png'.format(y))
-    plt.close(figw)
-    '''
+    if plot_order_width:
+        # plot the order widths and separations for all scanned columns in
+        # "debug" folder
+        figw = plt.figure(dpi=150)
+        axw = figw.gca()
+        # plot order width
+        axw.plot(order_pos_lst, order_wid_lst,
+                    'o', color='none', mec='C0')
+        axw.plot(order_pos_lst[wid_mask], order_wid_lst[wid_mask],
+                    'o', color='C0', alpha=0.7, label='Order Width')
+        # plot order separation
+        axw.plot(order_pos_lst, order_sep_lst, 'o', color='none', mec='C3')
+        axw.plot(order_pos_lst[order_sep_mask], order_sep_lst[order_sep_mask],
+                    'o', color='C3', label='Order Separation', alpha=0.7)
+        # plot the fitting of order separation
+        axw.plot(order_pos_lst, order_sep_fit_lst, '-', color='C3')
+        # plot mean and std-dev of order width
+        clip = 3
+        axw.axhline(y=width_mean, ls='-', color='C1', lw=0.5,
+                    label='Median of Width')
+        axw.axhline(y=width_mean+clip*width_std, ls='--', color='C1', lw=0.5)
+        axw.axhline(y=width_mean-clip*width_std, ls='--', color='C1', lw=0.5)
+        axw.legend(loc='upper left')
+        axw.set_xlim(0, section.size-1)
+        axw.set_ylim(0,)
+        axw.grid(True, ls='--', lw=0.5)
+        axw.set_axisbelow(True)
+        title = 'Order Widths and Separations for Column {:04d}'.format(y)
+        figw.suptitle(title)
+        fname = 'order_width_{:04d}.png'.format(y)
+        figname = os.path.join(debug_path, fname)
+        figw.savefig(figname)
+        plt.close(figw)
+        message = 'Order Width and Separation plotted in {}'.format(figname)
+        logger.info(message)
+
 
     m = order_wid_lst > width_mean + 3*width_std
     multi_order_lst = np.nonzero(m)[0]
@@ -158,16 +204,19 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
         i1, i2 = order_index_lst[multi_order]
         local_sep = np.polyval(coeff_sep, (i1+i2)/2)
         multi = (i2-i1)/local_sep
-        print(('Col {:4d} - Multi order: {:2d} {:4d}-{:4d}. width={:4d}  '
-             'Multi={:4.2f}').format(y, multi_order, i1, i2, i2-i1, multi)
-             )
-        # plot the multi-peak orders
-        #fig = plt.figure()
-        #ax = fig.gca()
-        #ax.plot(np.arange(i1, i2+1), np.log(section[i1:i2+1]), color='C3')
-        #ax.plot(allx[winmask], np.log(section[winmask]), 'o', ms=5, color='none',
-        #            mec='C0', mew=1)
-        #_y1, _y2 = ax.get_ylim()
+        message = ('Col {:4d} - Multi order: {:2d} {:4d}-{:4d}. width={:4d}  '
+             'Multi={:4.2f}').format(y, multi_order, i1, i2, i2-i1, multi))
+        logger.info(message)
+        print(message)
+
+        # plot multi-peak orders
+        if plot_multi_peak:
+            fig = plt.figure()
+            ax = fig.gca()
+            ax.plot(np.arange(i1, i2+1), np.log(section[i1:i2+1]), color='C3')
+            ax.plot(allx[winmask], np.log(section[winmask]),
+                    'o', ms=5, color='none', mec='C0', mew=1)
+            _y1, _y2 = ax.get_ylim()
 
         multi = int(round(multi))
         prev_i1 = i1
@@ -175,22 +224,30 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
             #e.g., mutli=4, j = 1,2,3
             pos = i1+(i2-i1)/multi*j
             pos1, pos2 = pos-local_sep/4, pos+local_sep/4
-            #ax.axvline(x=pos, ls='-', color='C0')
-            #ax.fill_betweenx([_y1, _y2], pos1, pos2,
-            #        color='C0', alpha=0.2, lw=0)
-            pos1 = int(round(pos1))
-            pos2 = int(round(pos2))
-            min_idx = section[pos1:pos2].argmin()+pos1
+            ipos1 = int(round(pos1))
+            ipos2 = int(round(pos2))
+            min_idx = section[ipos1:ipos2].argmin() + ipos1
             new_order_lst.append((prev_i1, min_idx))
             prev_i1 = min_idx+1
 
-            #ax.plot(min_idx, np.log(section[min_idx]), 'o', color='C3')
+            if plot_multi_peak:
+                ax.axvline(x=pos, ls='-', color='C0')
+                ax.fill_betweenx([_y1, _y2], pos1, pos2,
+                                    color='C0', alpha=0.2, lw=0)
+                ax.plot(min_idx, np.log(section[min_idx]), 'o', color='C3')
         new_order_lst.append((prev_i1, i2))
 
-        #ax.set_xlim(i1, i2)
-        #ax.set_ylim(_y1, _y2)
-        #fig.savefig('multi_{:04d}_{:02d}.png'.format(y, multi_order))
-        #plt.close(fig)
+        if plot_multi_peak:
+            ax.set_xlim(i1, i2)
+            ax.set_ylim(_y1, _y2)
+            title = 'Multi-peak detected in Column {}'.format(y)
+            fig.suptitle(title)
+            fname = 'multi_{:04d}_{:02d}.png'.format(y, multi_order)
+            figname = os.path.join(debug_path, fname)
+            fig.savefig(figname)
+            plt.close(fig)
+            message = 'Multipeak order plotted in {}'.format(figname)
+            logger.info(message)
 
     # if has new splitted orders from multi-orders, append them into the order
     # list and replace the old order_index_lst
@@ -219,7 +276,7 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
     all_xnodes = np.array([])
     all_ynodes = np.array([])
 
-    if plot:
+    if plot_section:
         fig2 = plt.figure(dpi=150, figsize=(12, 6))
         for i in range(4):
             ax = fig2.add_axes([0.05, 0.08+(3-i)*0.22, 0.55, 0.18])
@@ -256,13 +313,13 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
         newx, newy, param = norm_profile(xnodes, ynodes)
         order_param_lst.append(param[0:3])
 
-        if plot:
-            ax26.scatter(newx, newy, alpha=0.5, s=4)
-    
         all_xnodes = np.append(all_xnodes, newx)
         all_ynodes = np.append(all_ynodes, newy)
 
-    if plot:
+        if plot_section:
+            ax26.scatter(newx, newy, alpha=0.5, s=4)
+
+    if plot_section:
         # plot order range
         for i in range(4):
             ax = fig2.get_axes()[i]
@@ -329,8 +386,9 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
         for i in range(4):
             ax = fig2.get_axes()[i]
             ax.set_xlim(nx//4*i, nx//4*(i+1))
-        fig2.savefig('section_{:04d}.png'.format(y))
-        
+        fname = 'section_{:04d}.png'.format(y)
+        figname = os.path.join(debug_path, fname)
+        fig2.savefig(figname)
         plt.close(fig2)
 
     result_lst = [(i1, i2, v1, v2, v3) for (i1, i2), (v1, v2, v3) in zip(
@@ -339,6 +397,9 @@ def find_order_locations(section, y, aligned_allx=None, plot=False):
 
 
 def find_apertures(data):
+    """Find order locations for CFHT/ESPaDOnS data.
+    """
+
     ny, nx = data.shape
     allx = np.arange(nx)
 
@@ -394,9 +455,9 @@ def find_apertures(data):
     
         negmask = flux1<0
         if negmask.sum()>0:
-            print('Negative values:', allx[negmask])
+            message  = 'Negative values in Col {}: {}'.format(x1, allx[negmask])
             f = intp.InterpolatedUnivariateSpline(
-                    allx[~negmask], flux1[~negmask], k=1)
+                    allx[~negmask], flux1[~negmask], k=1, ext='const')
             flux1 = f(allx)
         logflux1 = np.log(flux1)
     
@@ -420,7 +481,8 @@ def find_apertures(data):
             clipping = 5.
             maxiter = 10
             for i in range(maxiter):
-                param, _ = opt.leastsq(resfunc, p0, args=(interfunc, logflux0, mask))
+                param, _ = opt.leastsq(resfunc, p0,
+                                    args=(interfunc, logflux0, mask))
                 res_lst = resfunc(param, interfunc, logflux0)
                 std = res_lst.std()
                 mask1 = res_lst <  clipping*std

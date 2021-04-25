@@ -11,7 +11,8 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date
 from ..common import load_obslog, load_config
-from .reduce import reduce_rawdata
+from .common import print_wrapper
+from .reduce import reduce_rawdata as _reduce_rawdata
 
 def make_config():
     """Generate a config file for reducing the data taken with CFHT/ESPaDOnS.
@@ -70,8 +71,8 @@ def make_config():
     config.set(sectname, 'maxiter',     str(5))
 
     # section of order trace
-    sectname = 'reduce.trace'
-    config.add_section(sectname)
+    #sectname = 'reduce.trace'
+    #config.add_section(sectname)
 
     # section of flat field correction
     sectname = 'reduce.flat'
@@ -123,7 +124,14 @@ def make_obslog():
                         ('runid',    'S6'),
                         ('pi',       'S15'),
                         #('observer', 'S15'),
-                ], mask=True)
+                ], masked=True)
+
+    fmt_str = ('  -{:5s} {:8s} {:12s} {:15s} {:>7} {:23s} {:14s} {:8s}'
+            ' {:>7} {:>5} {:>6s} {:<15s}')
+    head_str = fmt_str.format('frameid', 'fileid', 'obstype', 'object',
+                            'exptime', 'obsdate', 'instmode', 'obsmode',
+                            'nsta', 'q95', 'runid', 'pi')
+    print(head_str)
 
     prev_frameid = -1
 
@@ -188,6 +196,13 @@ def make_obslog():
         
         item = logtable[-1]
 
+        # print log item
+        string = fmt_str.format(
+                    '[{:d}]'.format(frameid), fileid, '({})'.format(obstype),
+                    objectname, exptime, obsdate, instmode, obsmode,
+                    saturation, quantile95, runid, pi)
+        print(print_wrapper(string, item))
+
         prev_frameid = frameid
 
 
@@ -228,4 +243,4 @@ def reduce_rawdata():
     config = load_config('ESPaDOnS\S*\.cfg$')
     logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
-    reduce_rawdata(config, logtable)
+    _reduce_rawdata(config, logtable)

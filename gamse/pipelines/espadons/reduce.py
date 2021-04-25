@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from ...echelle.trace import load_aperture_set
 from ...echelle.imageproc import combine_images
 from .common import correct_overscan
+from .trace import find_apertures
 
 def reduce_rawdata(config, logtable):
 
@@ -36,7 +37,7 @@ def reduce_rawdata(config, logtable):
     else:
         ncores = min(os.cpu_count(), int(ncores))
 
-    # parse bias
+    ##################### parse bias ##################################
     section = config['reduce.bias']
     bias_file = section.get('bias_file')
     if mode=='debug' and os.path.exists(bias_file):
@@ -56,7 +57,7 @@ def reduce_rawdata(config, logtable):
             # no bias
             bias = None
         else:
-            fmt_str = '  - {:>7s} {:^11} {:^10s} {:^7} {:^19s} {:6d}'
+            fmt_str = '  - {:>7s} {:^11} {:^10s} {:^7} {:^23s} {:^6}'
             head_str = fmt_str.format('frameid', 'fileid', 'obstype', 'exptime',
                         'obsdate', 'q95')
 
@@ -109,6 +110,7 @@ def reduce_rawdata(config, logtable):
             bias_mean = bias_combine.mean(axis=0)
             bias = np.repeat([bias_mean], ny, axis=0)
 
+            # plot bias mean in a figure
             fig = plt.figure(dpi=150)
             ax = fig.gca()
             ax.plot(bias_mean, lw=0.5)
@@ -134,7 +136,7 @@ def reduce_rawdata(config, logtable):
                 ])
             hdu_lst.writeto(bias_file, overwrite=True)
 
-    # parse flat
+    ######################### parse flat ##########################
     section = config['reduce.flat']
     flat_file = section.get('flat_file')
     if mode=='debug' and os.path.exists(flat_file):
@@ -148,18 +150,19 @@ def reduce_rawdata(config, logtable):
             # no flat
             flat = None
         else:
-            fmt_str = '  - {:>7s} {:^11} {:^10s} {:^7} {:^19s} {:6d}'
+            fmt_str = '  - {:>7s} {:^11} {:^10s} {:^7} {:^23s} {:^6}'
             head_str = fmt_str.format('frameid', 'fileid', 'obstype', 'exptime',
                         'obsdate', 'q95')
 
             flat_data_lst = []
             flat_card_lst = []
 
-            for logitem in flat_item_lst:
+            for ilogitem, logitem in enumerate(flat_item_lst):
                 fname = '{}.fits'.format(logitem['fileid'])
                 filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
                 data, mask = correct_overscan(data, head)
+                data = data - bias
                 flat_data_lst.append(data)
 
                 if ilogitem == 0:
@@ -173,7 +176,7 @@ def reduce_rawdata(config, logtable):
                         )
                 print(message)
 
-            # combine bias images
+            # combine flat images
             flat_data_lst = np.array(flat_data_lst)
 
             combine_mode = 'mean'
@@ -189,8 +192,20 @@ def reduce_rawdata(config, logtable):
                     ncores      = ncores,
                     )
 
-        # trace orders
-        trac_file = 'trace.txt'
-        if mode=='debug' and os.path.exists(trac_file):
-            aperset = load_aperture_set(trac_file)
+    #################### trace orders ##########################
+    trac_file = os.path.join(midpath, 'trace.txt')
+    tracA_file = os.path.join(midpath, 'trace_A.txt')
+    tracB_file = os.path.join(midpath, 'trace_B.txt')
+
+    if mode=='debug' and os.path.exists(trac_file):
+        aperset = load_aperture_set(trac_file)
+    else:
+        aperset, aperset_A, aperset_B = find_apertures(flat_data)
+
+        aperset.save_txt(trac_file)
+        aperset_A.save_txt('trace_A.txt')
+        aperset_B.save_txt('trace_B.txt')
+
+
+
 
