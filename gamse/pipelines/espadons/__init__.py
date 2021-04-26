@@ -71,8 +71,11 @@ def make_config():
     config.set(sectname, 'maxiter',     str(5))
 
     # section of order trace
-    #sectname = 'reduce.trace'
-    #config.add_section(sectname)
+    sectname = 'reduce.trace'
+    config.add_section(sectname)
+    config.set(sectname, 'scan_step', str(100))
+    config.set(sectname, 'align_deg', str(2))
+    config.set(sectname, 'degree',    str(4))
 
     # section of flat field correction
     sectname = 'reduce.flat'

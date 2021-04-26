@@ -8,11 +8,12 @@ from numpy.polynomial import Chebyshev
 import scipy.interpolate as intp
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 from ...echelle.trace import ApertureSet, ApertureLocation
 from ...utils.onedarray import derivative
 from ...utils.regression import get_clip_mean, iterative_polyfit
-from .common import norm_profile
+from .common import norm_profile, get_mean_profile
 
 def find_order_locations(section, y, aligned_allx=None, mode='normal'):
     """Find order locations.
@@ -32,13 +33,19 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
             orders, and stacked order profiles.
     """
 
-    debug_path = 'debug'
-    if mode='debug':
+    if mode=='debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
         plot_order_width = True
         plot_multi_peak  = True
         plot_section     = True
-        if not os.path.exists(debug_path):
-            os.mkdir(debug_path)
+        figname_order_width = os.path.join(dbgpath,
+                            'order_width_{:04d}.png'.format(y))
+        figname_multi_peak = lambda multi_order: os.path.join(dbgpath,
+                            'multi_{:04d}_{:02d}.png'.format(y, multi_order))
+        figname_section    = os.path.join(dbgpath,
+                            'section_{:04d}.png'.format(y))
     else:
         plot_order_width = False
         plot_multi_peak  = False
@@ -69,14 +76,6 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         else:
             return np.polyval(c2, x)
 
-    '''
-    fig = plt.figure()
-    ax = fig.gca()
-    ax.plot(np.arange(nx), np.polyval(c1, np.arange(nx)))
-    ax.plot(np.arange(nx), np.polyval(c2, np.arange(nx)))
-    plt.show()
-    '''
-
     winmask = np.ones_like(section, dtype=np.bool)
     #for i1 in np.arange(0, nx-np.polyval(c1, nx), 1):
     for i1 in np.arange(0, nx, 1):
@@ -96,9 +95,6 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
                 winmask[i1] = False
                 continue
             percent = gaplen/winlen*100
-
-        #if y==504:
-        #    print(i1, ii1, winlen, gaplen, percent)
 
         i1 = int(i1)
         i2 = i1 + int(winlen)
@@ -154,6 +150,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         sep_mask[max(idx-1, 0)] = False
         sep_mask[min(idx+1, sep_mask.size-1)] = False
 
+    # perform an interative polynomial fitting for order separation list
     result = iterative_polyfit(order_pos_lst, order_sep_lst, deg=3,
                 mask=sep_mask)
     coeff_sep, order_sep_fit_lst, _, order_sep_mask, _= result
@@ -187,11 +184,9 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         axw.set_axisbelow(True)
         title = 'Order Widths and Separations for Column {:04d}'.format(y)
         figw.suptitle(title)
-        fname = 'order_width_{:04d}.png'.format(y)
-        figname = os.path.join(debug_path, fname)
-        figw.savefig(figname)
+        figw.savefig(figname_order_width)
         plt.close(figw)
-        message = 'Order Width and Separation plotted in {}'.format(figname)
+        message = 'savefig: "{}": {}'.format(figname_order_width, title)
         logger.info(message)
 
 
@@ -205,7 +200,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         local_sep = np.polyval(coeff_sep, (i1+i2)/2)
         multi = (i2-i1)/local_sep
         message = ('Col {:4d} - Multi order: {:2d} {:4d}-{:4d}. width={:4d}  '
-             'Multi={:4.2f}').format(y, multi_order, i1, i2, i2-i1, multi))
+             'Multi={:4.2f}').format(y, multi_order, i1, i2, i2-i1, multi)
         logger.info(message)
         print(message)
 
@@ -240,13 +235,12 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         if plot_multi_peak:
             ax.set_xlim(i1, i2)
             ax.set_ylim(_y1, _y2)
-            title = 'Multi-peak detected in Column {}'.format(y)
+            title = 'Multi-peak detected in Column {:04d}'.format(y)
             fig.suptitle(title)
-            fname = 'multi_{:04d}_{:02d}.png'.format(y, multi_order)
-            figname = os.path.join(debug_path, fname)
+            figname = figname_multi_peak(multi_order)
             fig.savefig(figname)
             plt.close(fig)
-            message = 'Multipeak order plotted in {}'.format(figname)
+            message = 'savefig: "{}": {}'.format(figname, title)
             logger.info(message)
 
     # if has new splitted orders from multi-orders, append them into the order
@@ -341,7 +335,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
                     ax.vlines(i5, vi5*1.2, vi5*3, color='C3', lw=0.5)
             ax.set_ylim(2, 2**16)
 
-    if plot:
+    if plot_section:
         order_pos_lst = np.array([(i1+i2)/2 for i1, i2 in order_index_lst])
         order_wid_lst = np.array([i2-i1 for i1, i2 in order_index_lst])
         order_sep_lst = derivative(order_pos_lst)
@@ -382,23 +376,56 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         ax26.grid(True, ls='--', lw=0.5)
         ax26.set_axisbelow(True)
         ax26.set_ylim(-0.3, 1.3)
-        
         for i in range(4):
             ax = fig2.get_axes()[i]
             ax.set_xlim(nx//4*i, nx//4*(i+1))
-        fname = 'section_{:04d}.png'.format(y)
-        figname = os.path.join(debug_path, fname)
-        fig2.savefig(figname)
+        title = 'Cross section of Column {:04d}'.format(y)
+        fig2.suptitle(title)
+        fig2.savefig(figname_section)
         plt.close(fig2)
+        message = 'savefig: "{}": {}'.format(figname_section, title)
+        logger.info(message)
 
     result_lst = [(i1, i2, v1, v2, v3) for (i1, i2), (v1, v2, v3) in zip(
                                             order_index_lst, order_param_lst)]
     return result_lst
 
 
-def find_apertures(data):
+def find_apertures(data, scan_step=100, align_deg=2, degree=4,
+        mode='normal', figpath='images'):
     """Find order locations for CFHT/ESPaDOnS data.
+
+    Args:
+        data ():
+        scan_step (int):
+        align_deg (int):
+        degree (int):
+        mode (normal):
+        figpath (str):
+
     """
+
+    # prepare for figures
+    if mode == 'debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
+        plot_alignfit  = True
+        plot_orderfit  = True
+        plot_detection = True
+        figname_alignfit  = lambda x1: os.path.join(dbgpath,
+                                'alignfit_{:04d}.png'.format(x1))
+        figname_orderfit  = lambda iorder: os.path.join(dbgpath,
+                                'orderfit_{:03d}.png'.format(iorder))
+        figname_detection = os.path.join(dbgpath, 'order_detection.png')
+    else:
+        plot_alignfit  = False
+        plot_orderfit  = False
+        plot_detection = False
+    plot_orderalign = True
+    plot_allorders = True
+    figname_orderalign = os.path.join(figpath, 'order_alignment.png')
+    figname_allorders  = os.path.join(figpath, 'order_all.png')
 
     ny, nx = data.shape
     allx = np.arange(nx)
@@ -432,9 +459,6 @@ def find_apertures(data):
             mask = np.ones_like(flux0, dtype=np.bool)
         return res_lst[mask]
 
-    align_deg = 2
-    scan_step = 100
-    
     x0 = ny//2
     x_lst = {-1:[], 1:[]}
     param_lst = {-1:[], 1:[]}
@@ -445,26 +469,29 @@ def find_apertures(data):
     all_order_param_lst = {}
     all_aligned_x_lst = {}
     
-    fig0 = plt.figure(figsize=(12,8), dpi=200)
-    fig1 = plt.figure(figsize=(12,8), dpi=200)
-    ax0 = fig0.add_axes([0.1, 0.1, 0.85, 0.85])
-    ax1 = fig1.add_axes([0.1, 0.1, 0.85, 0.85])
+    if plot_orderalign:
+        fig0 = plt.figure(figsize=(12, 6), dpi=200)
+        ax0 = fig0.add_axes([0.07, 0.1, 0.4, 0.8])
+        ax1 = fig0.add_axes([0.53, 0.1, 0.4, 0.8])
     while(True):
         #flux1 = np.mean(logdata[x1-2:x1+3, :], axis=0)
         flux1 = np.mean(data[x1-2:x1+3, :], axis=0)
-    
+   
+        # fix negative values in cross-section
         negmask = flux1<0
         if negmask.sum()>0:
             message  = 'Negative values in Col {}: {}'.format(x1, allx[negmask])
             f = intp.InterpolatedUnivariateSpline(
                     allx[~negmask], flux1[~negmask], k=1, ext='const')
             flux1 = f(allx)
+
         logflux1 = np.log(flux1)
     
         if icol == 0:
             logflux1_center = logflux1
-            ax0.plot(np.arange(nx), (logflux1-1)*100+x1, color='C0', lw=0.6)
-            ax1.plot(np.arange(nx), (logflux1-1)*100+x1, color='C0', lw=0.6)
+            if plot_orderalign:
+                ax0.plot(np.arange(nx), (logflux1-1)*100+x1, color='C0', lw=0.6)
+                ax1.plot(np.arange(nx), (logflux1-1)*100+x1, color='C0', lw=0.6)
     
             all_order_param_lst[x1] = find_order_locations(flux1, x1)
             all_aligned_x_lst[x1] = allx
@@ -492,19 +519,27 @@ def find_apertures(data):
                     break
                 mask = new_mask
                 p0 = param
-    
-            '''
-            figalg = plt.figure(dpi=200)
-            axa1 = figalg.add_subplot(211)
-            axa2 = figalg.add_subplot(212)
-            axa1.plot(logflux0, lw=0.5)
-            axa1.plot(logflux1, lw=0.5)
-            axa1.plot(fitfunc(param, interfunc, logflux0.size), lw=0.5)
-            axa2.plot(resfunc(param, interfunc, logflux0), lw=0.5)
-            axa1.set_ylim(1, 10)
-            figalg.savefig('fit_{:04d}.png'.format(x1))
-            plt.close(figalg)
-            '''
+
+            if plot_alignfit:
+                figalg = plt.figure(dpi=200)
+                axa1 = figalg.add_subplot(211)
+                axa2 = figalg.add_subplot(212)
+                axa1.plot(logflux0, lw=0.5, label='Template')
+                axa1.plot(logflux1, lw=0.5, label='Flux')
+                axa1.plot(fitfunc(param, interfunc, logflux0.size), lw=0.5,
+                            label='Shifted Flux')
+                axa2.plot(resfunc(param, interfunc, logflux0), lw=0.5)
+                axa1.set_xlim(0, nx-1)
+                axa2.set_xlim(0, nx-1)
+                axa1.set_ylim(1, 10)
+                axa1.legend(loc='lower center', ncol=3)
+                title = 'Order Alignment for Column {:04d}'.format(x1)
+                figalg.suptitle(title)
+                figname = figname_alignfit(x1)
+                figalg.savefig(figname)
+                plt.close(figalg)
+                message = 'savefig: "{}": {}'.format(figname, title)
+                logger.info(message)
     
             param_lst[direction].append(param[0:-1])
             #param_lst[direction].append(param[0:-2])
@@ -512,13 +547,15 @@ def find_apertures(data):
             aligned_allx = allx.copy()
             for param in param_lst[direction][::-1]:
                 aligned_allx = backward(aligned_allx, param)
+   
+            if plot_orderalign:
+                ax0.plot(allx, (logflux1-1)*100+x1,
+                            color='k', alpha=0.2, lw=0.6)
+                ax1.plot(aligned_allx, (logflux1-1)*100+x1,
+                            color='k', alpha=0.2, lw=0.6)
     
-            ax0.plot(allx, (logflux1-1)*100+x1,
-                        color='k', alpha=0.2, lw=0.6)
-            ax1.plot(aligned_allx, (logflux1-1)*100+x1,
-                        color='k', alpha=0.2, lw=0.6)
-    
-            all_order_param_lst[x1] = find_order_locations(flux1, x1, aligned_allx)
+            all_order_param_lst[x1] = find_order_locations(
+                                        flux1, x1, aligned_allx, mode=mode)
             all_aligned_x_lst[x1] = aligned_allx
     
         x1 += direction*scan_step
@@ -539,6 +576,15 @@ def find_apertures(data):
             icol += 1
             continue
 
+    if plot_orderalign:
+        title = 'Order Alignment'
+        fig0.suptitle(title)
+        fig0.savefig(figname_orderalign)
+        plt.close(fig0)
+        message = 'savefig: "{}": {}'.format(figname_orderalign, title)
+        logger.info(message)
+
+
     aligned_bound_lst = []
     all_aligned_order_param_lst = {}
     for x1, order_param_lst in sorted(all_order_param_lst.items()):
@@ -557,7 +603,8 @@ def find_apertures(data):
     aligned_peakAB_lst = []
     aligned_peakA_lst = []
     aligned_peakB_lst = []
-    for x1, aligned_order_param_lst in sorted(all_aligned_order_param_lst.items()):
+    for x1, aligned_order_param_lst in sorted(
+                        all_aligned_order_param_lst.items()):
         for _, _, newv1, newv2, newv3 in aligned_order_param_lst:
             aligned_peakAB_lst.append(newv1)
             aligned_peakA_lst.append(newv2)
@@ -586,19 +633,19 @@ def find_apertures(data):
     norm_histA  = histA/allsize_lst
     norm_histB  = histB/allsize_lst
 
-    fig5 = plt.figure(dpi=200)
-    ax51 = fig5.add_subplot(211)
-    ax52 = fig5.add_subplot(212)
-    ax51.fill_between(binx, histAB, color='C1', step='mid', alpha=0.6)
-    ax51.fill_between(binx, histA,  color='C0', step='mid', alpha=0.6)
-    ax51.fill_between(binx, histB,  color='C3', step='mid', alpha=0.6)
-    ax51.step(binx, allsize_lst)
-    
-    ax52.fill_between(binx, norm_histAB, color='C1', step='mid', alpha=0.6)
-    ax52.fill_between(binx, norm_histA,  color='C0', step='mid', alpha=0.6)
-    ax52.fill_between(binx, norm_histB,  color='C3', step='mid', alpha=0.6)
-
-    y1, y2 = ax52.get_ylim()
+    if plot_detection:
+        # fig5 is the order detection figure
+        fig5 = plt.figure(figsize=(10, 5), dpi=150)
+        ax51 = fig5.add_subplot(211)
+        ax52 = fig5.add_subplot(212)
+        ax51.fill_between(binx, histAB, color='C1', step='mid', alpha=0.6)
+        ax51.fill_between(binx, histA,  color='C0', step='mid', alpha=0.6)
+        ax51.fill_between(binx, histB,  color='C3', step='mid', alpha=0.6)
+        ax51.step(binx, allsize_lst)
+        ax52.fill_between(binx, norm_histAB, color='C1', step='mid', alpha=0.6)
+        ax52.fill_between(binx, norm_histA,  color='C0', step='mid', alpha=0.6)
+        ax52.fill_between(binx, norm_histB,  color='C3', step='mid', alpha=0.6)
+        y1, y2 = ax52.get_ylim()
 
     # get group list
     idx = np.where(norm_histAB>1e-5)[0]
@@ -655,7 +702,7 @@ def find_apertures(data):
         yAlst  = np.array(yAlst)
         yBlst  = np.array(yBlst)
 
-        # resort
+        # sort again
         idx = xlst.argsort()
         xlst   = xlst[idx]
         yABlst = yABlst[idx]
@@ -666,94 +713,125 @@ def find_apertures(data):
         order_B_lst[iorder] = (xlst, yBlst)
         iorder += 1
 
-    for group in groupAB_lst:
-        i1, i2 = group[0], group[-1]
-        ax52.fill_betweenx([y1,y2], binx[i1], binx[i2], color='C3', alpha=0.1)
-    ax52.set_ylim(y1, y2)
-    ax51.set_xlim(minx, maxx)
-    ax52.set_xlim(minx, maxx)
+    # plot in order detection figure
+    if plot_detection:
+        for group in groupAB_lst:
+            i1, i2 = group[0], group[-1]
+            ax52.fill_betweenx([y1,y2], binx[i1], binx[i2],
+                            color='C3', alpha=0.1)
+        ax52.set_ylim(y1, y2)
+        ax51.set_xlim(minx, maxx)
+        ax52.set_xlim(minx, maxx)
+
+        fig5.savefig(figname_detection)
+        plt.close(fig5)
+        message = 'savefig: "{}": Order detections'.format(figname_detection)
+        logger.info(message)
 
     aperture_set = ApertureSet(shape=(ny, nx))
     aperture_set_A = ApertureSet(shape=(ny, nx))
     aperture_set_B = ApertureSet(shape=(ny, nx))
 
-    figall = plt.figure(dpi=200, figsize=(15, 7))
-    axall = figall.gca()
+    # plot all order position in a single figure
+    if plot_allorders:
+        figall = plt.figure(figsize=(14, 7), dpi=200)
+        axall = figall.add_axes([0.1, 0.05, 0.8, 0.85])
+
+    ######### fit order positions and pack them to ApertureSet ##########
     for iorder in sorted(order_AB_lst.keys()):
         xlst_AB, ylst_AB = order_AB_lst[iorder]
         xlst_A, ylst_A = order_A_lst[iorder]
         xlst_B, ylst_B = order_B_lst[iorder]
 
-    #for iorder, (xlst, ylst) in sorted(order_AB_lst.items()):
-
+        ##################### Parse Center of Fiber A & B ################
         fitmask = np.ones_like(xlst_AB, dtype=np.bool)
         maxiter = 10
         for nite in range(maxiter):
-            poly = Chebyshev.fit(xlst_AB[fitmask], ylst_AB[fitmask], deg=4)
+            poly = Chebyshev.fit(xlst_AB[fitmask], ylst_AB[fitmask], deg=degree)
             yres = ylst_AB - poly(xlst_AB)
             std = yres[fitmask].std()
             new_fitmask = (yres > -3*std) * (yres < 3*std)
             if new_fitmask.sum() == fitmask.sum():
                 break
             fitmask = new_fitmask
-    
+
         aperture_loc = ApertureLocation(direct='y', shape=(ny, nx))
         aperture_loc.set_position(poly)
         aperture_set[iorder] = aperture_loc
-    
-        # for plotting
-        newx = np.arange(0, ny)
-        newy = poly(newx)
-        m = (newy >= 0) * (newy < nx)
-    
-        axall.scatter(xlst_AB, ylst_AB, s=15, color='none', edgecolor='C0')
-        axall.scatter(xlst_AB[fitmask], ylst_AB[fitmask], s=15, color='C0')
-        axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
 
-        figm = plt.figure(dpi=150)
-        axm1 = figm.add_subplot(211)
-        axm2 = figm.add_subplot(212)
-        axm1.scatter(xlst_AB, ylst_AB, s=10, color='none', edgecolor='C0')
-        axm1.scatter(xlst_AB[fitmask], ylst_AB[fitmask], s=10, color='C0')
-        axm1.plot(newx[m], newy[m], '-', lw=0.7)
-        axm2.scatter(xlst_AB, ylst_AB-poly(xlst_AB),
-                    s=10, color='none', edgecolor='C0')
-        axm2.scatter(xlst_AB[fitmask], ylst_AB[fitmask]-poly(xlst_AB[fitmask]),
-                    s=10, color='C0')
-        figm.savefig('order_fit_{:03d}.png'.format(iorder))
-        plt.close(figm)
+        color = 'C1'
+        label = 'Fiber A+B'
+        if plot_allorders:
+            axall.scatter(xlst_AB, ylst_AB, s=15, color='none', edgecolor=color)
+            axall.scatter(xlst_AB[fitmask], ylst_AB[fitmask], s=15, color=color)
+            # prepare newx, newy, and m (mask) for plotting a smooth line
+            newx = np.arange(0, ny)
+            newy = poly(newx)
+            m = (newy >= 0) * (newy < nx)
+            axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
 
-        ###################################
+        if plot_orderfit:
+            # plot position fitting of each order
+            # initialize fig
+            figm = plt.figure(dpi=150)
+            axm1 = figm.add_axes([0.1, 0.4, 0.8, 0.50])
+            axm2 = figm.add_axes([0.1, 0.1, 0.8, 0.25])
+
+            axm1.scatter(xlst_AB, ylst_AB, s=10, color='none', edgecolor=color)
+            axm1.scatter(xlst_AB[fitmask], ylst_AB[fitmask], s=10, color=color)
+            axm1.plot(newx[m], newy[m], '-', color=color, lw=0.7, label=label)
+            # plot fitting residuals
+            yres_AB = ylst_AB - poly(xlst_AB)
+            axm2.scatter(xlst_AB, yres_AB,
+                            s=10, color='none', edgecolor=color)
+            axm2.scatter(xlst_AB[fitmask], yres_AB[fitmask],
+                            s=10, color=color)
+
+        ######################## Parse Fiber A ########################
         fitmask = np.ones_like(xlst_A, dtype=np.bool)
         maxiter = 10
         for nite in range(maxiter):
-            poly = Chebyshev.fit(xlst_A[fitmask], ylst_A[fitmask], deg=4)
+            poly = Chebyshev.fit(xlst_A[fitmask], ylst_A[fitmask], deg=degree)
             yres = ylst_A - poly(xlst_A)
             std = yres[fitmask].std()
             new_fitmask = (yres > -3*std) * (yres < 3*std)
             if new_fitmask.sum() == fitmask.sum():
                 break
             fitmask = new_fitmask
-    
+
         aperture_loc = ApertureLocation(direct='y', shape=(ny, nx))
         aperture_loc.set_position(poly)
         aperture_set_A[iorder] = aperture_loc
-    
-        # for plotting
-        newx = np.arange(0, ny)
-        newy = poly(newx)
-        m = (newy >= 0) * (newy < nx)
-    
-        axall.scatter(xlst_A, ylst_A, s=15, color='none', edgecolor='C0')
-        axall.scatter(xlst_A[fitmask], ylst_A[fitmask], s=15, color='C0')
-        axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
 
+        color = 'C0'
+        label = 'Fiber A'
+        if plot_allorders:
+            axall.scatter(xlst_A, ylst_A, s=15, color='none', edgecolor=color)
+            axall.scatter(xlst_A[fitmask], ylst_A[fitmask], s=15, color=color)
+            # prepare newx, newy, and m (mask) for plotting a smooth line
+            newx = np.arange(0, ny)
+            newy = poly(newx)
+            m = (newy >= 0) * (newy < nx)
+            axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
 
-        ###################################
+        if plot_orderfit:
+            # plot position fitting of each order
+            axm1.scatter(xlst_A, ylst_A, s=10, color='none', edgecolor=color)
+            axm1.scatter(xlst_A[fitmask], ylst_A[fitmask], s=10, color=color)
+            axm1.plot(newx[m], newy[m], '-', color=color, lw=0.7, label=label)
+            # plot fitting residuals
+            yres_A = ylst_A - poly(xlst_A)
+            axm2.scatter(xlst_A, yres_A,
+                            s=10, color='none', edgecolor=color)
+            axm2.scatter(xlst_A[fitmask], yres_A[fitmask],
+                            s=10, color=color)
+            
+
+        ########################### Parse Fiber B #######################
         fitmask = np.ones_like(xlst_B, dtype=np.bool)
         maxiter = 10
         for nite in range(maxiter):
-            poly = Chebyshev.fit(xlst_B[fitmask], ylst_B[fitmask], deg=4)
+            poly = Chebyshev.fit(xlst_B[fitmask], ylst_B[fitmask], deg=degree)
             yres = ylst_B - poly(xlst_B)
             std = yres[fitmask].std()
             new_fitmask = (yres > -3*std) * (yres < 3*std)
@@ -764,23 +842,55 @@ def find_apertures(data):
         aperture_loc = ApertureLocation(direct='y', shape=(ny, nx))
         aperture_loc.set_position(poly)
         aperture_set_B[iorder] = aperture_loc
-    
-        # for plotting
-        newx = np.arange(0, ny)
-        newy = poly(newx)
-        m = (newy >= 0) * (newy < nx)
-    
-        axall.scatter(xlst_B, ylst_B, s=15, color='none', edgecolor='C0')
-        axall.scatter(xlst_B[fitmask], ylst_B[fitmask], s=15, color='C0')
-        axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
 
-    axall.grid(True, ls='--', lw=0.5)
-    axall.set_axisbelow(True)
-    axall.set_xlim(0, ny-1)
-    axall.set_ylim(0, nx-1)
-    axall.set_aspect(1)
-    figall.savefig('order_all.png')
-    plt.close(figall)
+        color = 'C3'
+        label = 'Fiber B'
+        if plot_allorders:
+            axall.scatter(xlst_B, ylst_B, s=15, color='none', edgecolor=color)
+            axall.scatter(xlst_B[fitmask], ylst_B[fitmask], s=15, color=color)
+            # prepare newx, newy, and m (mask) for plotting a smooth line
+            newx = np.arange(0, ny)
+            newy = poly(newx)
+            m = (newy >= 0) * (newy < nx)
+            axall.plot(newx[m], newy[m], '-', color='C0', lw=0.7)
+
+        if plot_orderfit:
+            # plot position fitting of each order
+            axm1.scatter(xlst_B, ylst_B, s=10, color='none', edgecolor=color)
+            axm1.scatter(xlst_B[fitmask], ylst_B[fitmask], s=10, color=color)
+            axm1.plot(newx[m], newy[m], '-', color=color, lw=0.7, label=label)
+            # plot fitting residuals
+            yres_B = ylst_B - poly(xlst_B)
+            axm2.scatter(xlst_B, yres_B,
+                            s=10, color='none', edgecolor=color)
+            axm2.scatter(xlst_B[fitmask], yres_B[fitmask],
+                            s=10, color=color)
+
+            # decorate and save the order fit figure
+            axm1.set_xlim(0, ny-1)
+            axm2.set_xlim(0, ny-1)
+            legend = axm1.legend(loc='upper center', ncol=3)
+            title = 'Position fitting of Order {:03d}'.format(iorder)
+            figm.suptitle(title)
+            figname = figname_orderfit(iorder)
+            figm.savefig(figname)
+            plt.close(figm)
+            message = 'savefig: "{}": {}'.format(figname, title)
+            logger.info(message)
+
+        ####################################################################
+
+    # decoration of all order figure
+    if plot_allorders:
+        axall.grid(True, ls='--', lw=0.5)
+        axall.set_axisbelow(True)
+        axall.set_xlim(0, ny-1)
+        axall.set_ylim(0, nx-1)
+        axall.set_aspect(1)
+        figall.savefig(figname_allorders)
+        plt.close(figall)
+        message = 'savefig: "{}": All order positions'.format(figname_allorders)
+        logger.info(message)
 
     return aperture_set, aperture_set_A, aperture_set_B
 

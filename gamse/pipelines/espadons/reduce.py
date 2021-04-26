@@ -193,6 +193,8 @@ def reduce_rawdata(config, logtable):
                     )
 
     #################### trace orders ##########################
+    section = config['reduce.trace']
+
     trac_file = os.path.join(midpath, 'trace.txt')
     tracA_file = os.path.join(midpath, 'trace_A.txt')
     tracB_file = os.path.join(midpath, 'trace_B.txt')
@@ -200,12 +202,15 @@ def reduce_rawdata(config, logtable):
     if mode=='debug' and os.path.exists(trac_file):
         aperset = load_aperture_set(trac_file)
     else:
-        aperset, aperset_A, aperset_B = find_apertures(flat_data)
+        aperset, aperset_A, aperset_B = find_apertures(flat_data,
+                        scan_step = section.getint('scan_step'),
+                        align_deg = section.getint('align_deg'),
+                        degree    = section.getint('degree'),
+                        mode      = mode,
+                        figpath   = figpath,
+                        )
 
         aperset.save_txt(trac_file)
         aperset_A.save_txt('trace_A.txt')
         aperset_B.save_txt('trace_B.txt')
-
-
-
 
