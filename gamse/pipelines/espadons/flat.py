@@ -1,14 +1,43 @@
+import os
+import sys
+import logging
+logger = logging.getLogger(__name__)
+
 import numpy as np
 import scipy.interpolate as intp
+from scipy.integrate import simps
 import matplotlib.pyplot as plt
 
 import astropy.io.fits as fits
 
 from ...utils.regression import iterative_polyfit
 from ...utils.onedarray import iterative_savgol_filter, get_local_minima
-from .common import norm_profile
+from .common import norm_profile, get_mean_profile
 
-def get_flat(data, aperture_set):
+def get_flat(data, aperture_set, mode='normal'):
+    """Get flat fielding for CFHT/ESPaDOnS data.
+
+    Args:
+        data ():
+        aperture_set ():
+        mode (str):
+
+    """
+
+    if mode == 'debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
+        plot_aperpar = True
+        figname_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{:03d}.png'.format(aper))
+        save_aperpar = True
+        filename_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{:03d}.dat'.format(aper))
+    else:
+        plot_aperpar = False
+        save_aperpar = False
+
     ny, nx = data.shape
     allx = np.arange(nx)
     ally = np.arange(ny)
@@ -23,10 +52,11 @@ def get_flat(data, aperture_set):
     p1, p2 = -15, 15
     pstep = 0.5
 
-    hwidth = 256
-    for x1 in np.arange(0, ny, hwidth):
-        x2 = x1 + hwidth
-    
+    winsize = 128
+    yc_lst = np.arange(winsize/2, ny, winsize)
+
+    for iyc, yc in enumerate(yc_lst):
+        yc = int(yc)
         # initialize the mean profiles
         all_xnodes = np.array([])
         all_ynodes = np.array([])
@@ -34,14 +64,14 @@ def get_flat(data, aperture_set):
         fig = plt.figure(dpi=200)
         ax = fig.gca()
     
-        for x in np.arange(x1, x2, 16):
-        #for x in np.arange((x1+x2)//2-8, (x1+x2)//2+8, 1):
-            # skip the first column
-            if x == 0:
+        miniyc_lst = np.arange(yc-48, yc+48+1e-3, 16)
+        for iy, y in enumerate(miniyc_lst):
+            y = int(y)
+            if y == 0 or y == ny:
                 continue
-    
-            print(x)
-            order_cent_lst = np.array([aperloc.position(x)
+
+
+            order_cent_lst = np.array([aperloc.position(y)
                     for aper, aperloc in sorted(aperture_set.items())])
             order_dist_lst = np.diff(order_cent_lst)
             # now size of order_dist_lst = size of order_cent_lst - 1
@@ -66,10 +96,16 @@ def get_flat(data, aperture_set):
                 if i2 - i1 < 10:
                     continue
                 xnodes = np.arange(i1, i2)
-                ynodes = data[x, i1:i2]
-    
-                newx, newy, param = norm_profile(xnodes, ynodes)
-    
+                ynodes = data[y, i1:i2]
+
+                results = norm_profile(xnodes, ynodes)
+                # in case returns None results
+                if results is None:
+                    continue
+
+                # unpack the results
+                newx, newy, param = results
+
                 # pack A and background to result list
                 if aper not in x_lst:
                     x_lst[aper] = []
@@ -77,7 +113,7 @@ def get_flat(data, aperture_set):
                     c_lst[aper] = []
                     b_lst[aper] = []
     
-                x_lst[aper].append(x)
+                x_lst[aper].append(y)
                 c_lst[aper].append(param[0]-cent)
                 A_lst[aper].append(param[3])
                 b_lst[aper].append(param[4])
@@ -88,13 +124,28 @@ def get_flat(data, aperture_set):
                 # plotting
                 ax.scatter(newx, newy, s=1, alpha=0.1)
 
+            # print a progress bar in terminal
+            n_finished = iyc*6 + iy + 1
+            n_total    = yc_lst.size*6
+            ratio = min(n_finished/n_total, 1.0)
+            term_size = os.get_terminal_size()
+            nchar = term_size.columns - 60
+
+            string = '>'*int(ratio*nchar)
+            string = string.ljust(nchar, '-')
+            prompt = 'Constructing slit function'
+            string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+            sys.stdout.write(string)
+            sys.stdout.flush()
     
         all_xnodes = np.array(all_xnodes)
         all_ynodes = np.array(all_ynodes)
         xlst, ylst = get_mean_profile(all_xnodes, all_ynodes, p1, p2, pstep)
+        # filter out NaN values
+        m = np.isnan(ylst)
     
         # for plotting a smoothed curve in the figure
-        f = intp.InterpolatedUnivariateSpline(xlst, ylst, k=3, ext=1)
+        f = intp.InterpolatedUnivariateSpline(xlst[~m], ylst[~m], k=3, ext=1)
         newx = np.arange(p1-2, p2+2+1e-5, 0.1)
         newy = f(newx)
         ax.plot(newx, newy, ls='-', color='k', lw=0.7)
@@ -102,12 +153,14 @@ def get_flat(data, aperture_set):
         ax.set_axisbelow(True)
         ax.set_xlim(-18, 18)
         ax.set_ylim(-0.2, 1.2)
-        fig.savefig('slit_{:04d}-{:04d}.png'.format(x1, x2))
+        fig.savefig('slit_{:04d}.png'.format(yc))
         plt.close(fig)
 
-        profilex = (x1+x2)//2
+        profilex = yc
         profilex_lst.append(profilex)
-        profilefunc_lst.append(ylst)
+        profilefunc_lst.append(f(xlst))
+
+    print(' Completed')
 
     profilenode_lst = xlst
     profilex_lst = np.array(profilex_lst)
@@ -129,42 +182,56 @@ def get_flat(data, aperture_set):
     flatspec = {}
 
     ally = np.arange(0, ny)
-    for aper, aperloc in sorted(aperture_set.items()):
-        '''
-        outfile = open('aperpar_{:03d}.dat'.format(aper), 'w')
-        for x, A, b, c in zip(x_lst[aper], A_lst[aper],
-                              b_lst[aper], c_lst[aper]):
-            outfile.write('{:4d} {:+16.8e} {:+16.8e} {:+16.8e}'.format(
-                            x, A, b, c)+os.linesep)
-        outfile.close()
-        '''
+    for iaper, (aper, aperloc) in enumerate(sorted(aperture_set.items())):
+
+        # in debug mode, save aperpar in ascii files
+        if save_aperpar:
+            filename = filename_aperpar(aper)
+            outfile = open(filename, 'w')
+            for x, A, b, c in zip(x_lst[aper], A_lst[aper],
+                                  b_lst[aper], c_lst[aper]):
+                outfile.write('{:4d} {:+16.8e} {:+16.8e} {:+16.8e}'.format(
+                                x, A, b, c)+os.linesep)
+            outfile.close()
+            title = 'aperpar for Aperture {:03d}'.format(aper)
+            message = 'savefile: "{}": {}'.format(filename, title)
+            logger.info(message)
+
+
         x_lst[aper] = np.array(x_lst[aper])
         A_lst[aper] = np.array(A_lst[aper])
         c_lst[aper] = np.array(c_lst[aper])
         b_lst[aper] = np.array(b_lst[aper])
 
-
         ypos = aperloc.position(ally)
         m = (ypos > 0)*(ypos < nx)
         newx = ally[m]
-        newA = smooth_aperpar_A(x_lst[aper], A_lst[aper], npoints=ny, newx=newx)
-        newb = smooth_aperpar_bkg(x_lst[aper], b_lst[aper], npoints=ny, newx=newx)
+        newA = smooth_aperpar_A(x_lst[aper], A_lst[aper],
+                                npoints=ny, newx=newx)
+        newb = smooth_aperpar_bkg(x_lst[aper], b_lst[aper],
+                                npoints=ny, newx=newx)
     
-        ######### plot aper par #########
-        fig = plt.figure(dpi=150, figsize=(8, 6))
-        ax1 = fig.add_subplot(211)
-        ax2 = fig.add_subplot(212)
-        ax1.plot(x_lst[aper], A_lst[aper], lw=0.5)
-        ax2.plot(x_lst[aper], b_lst[aper], lw=0.5)
-        ax1.plot(newx, newA, lw=0.5, color='C3')
-        ax2.plot(newx, newb, lw=0.5, color='C3')
-    
-        for ax in fig.get_axes():
-            ax.set_xlim(0, ny-1)
-            ax.grid(True, ls='--')
-            ax.set_axisbelow(True)
-        fig.savefig('aperpar_{:03d}.png'.format(aper))
-        plt.close(fig)
+        ################## plot aper par ####################
+        if plot_aperpar:
+            fig = plt.figure(dpi=150, figsize=(8, 6))
+            ax1 = fig.add_subplot(211)
+            ax2 = fig.add_subplot(212)
+            ax1.plot(x_lst[aper], A_lst[aper], lw=0.5)
+            ax2.plot(x_lst[aper], b_lst[aper], lw=0.5)
+            ax1.plot(newx, newA, lw=0.5, color='C3')
+            ax2.plot(newx, newb, lw=0.5, color='C3')
+            for ax in fig.get_axes():
+                ax.set_xlim(0, ny-1)
+                ax.grid(True, ls='--')
+                ax.set_axisbelow(True)
+            ax1.set_ylabel('A')
+            ax2.set_ylabel('background')
+            title = 'Aperture Parameters for Aperture {:03d}'.format(aper)
+            figname = figname_aperpar(aper)
+            fig.savefig(figname)
+            plt.close(fig)
+            message = 'savefig: "{}": {}'.format(figname, title)
+            logger.info(message)
     
         # find columns to be corrected
         ypos = aperloc.position(ally)
@@ -205,12 +272,24 @@ def get_flat(data, aperture_set):
 
             interprofilefunc = interprofilefunc_lst[x]
             profile = interprofilefunc(np.arange(x1, x2)-c)
-            print(aper, x, x1, x2)
             newprofile = profile*A + b
             flatdata[x, x1:x2] = data[x, x1:x2]/newprofile
             densex = np.arange(x1, x2, 0.1)
             densep = interprofilefunc(densex-c)
             flatspec[aper][x] = simps(densep*A+b, x=densex)
+
+        ratio = min(iaper/(len(aperture_set)-1), 1.0)
+        term_size = os.get_terminal_size()
+        nchar = term_size.columns - 60
+
+        string = '>'*int(ratio*nchar)
+        string = string.ljust(nchar, '-')
+        prompt = 'Calculating flat field'
+        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+        sys.stdout.write(string)
+        sys.stdout.flush()
+
+    print(' Completed')
 
     # pack the final 1-d spectra of flat
     flatspectable = [(aper, flatspec[aper])
@@ -223,20 +302,7 @@ def get_flat(data, aperture_set):
                     )
     flatspectable = np.array(flatspectable, dtype=flatspectype)
 
-    hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(flatdata),
-                fits.BinTableHDU(flatspectable),
-            ])
-    hdu_lst.writeto('flatnew.fits', overwrite=True)
-
-
-    fig = plt.figure()
-    ax = fig.gca()
-    for aper, aperloc in aperture_set.items():
-        newx = np.arange(0, ny)
-        ax.plot(newx, aperloc.position(newx), '-')
-    plt.show()
-
+    return flatdata, flatspectable
 
 
 def smooth_aperpar_A(x, y, npoints, newx):

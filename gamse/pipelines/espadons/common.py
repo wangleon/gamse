@@ -76,6 +76,15 @@ def correct_overscan(data, header):
 
 
 def norm_profile(x, y):
+    """Normalize the decker profile.
+
+    Args:
+        x ():
+        y ():
+
+    Returns:
+        
+    """
 
     x1, x2 = x[0], x[-1]
     y1, y2 = y[0], y[-1]
@@ -89,6 +98,9 @@ def norm_profile(x, y):
 
     param = (v0, p1, p2, Amean, background.mean())
 
+    if Amean < 1e-3:
+        return None
+    
     return newx, newy/Amean, param
 
 

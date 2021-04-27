@@ -10,6 +10,7 @@ from ...echelle.trace import load_aperture_set
 from ...echelle.imageproc import combine_images
 from .common import correct_overscan
 from .trace import find_apertures
+from .flat import get_flat
 
 def reduce_rawdata(config, logtable):
 
@@ -199,8 +200,13 @@ def reduce_rawdata(config, logtable):
     tracA_file = os.path.join(midpath, 'trace_A.txt')
     tracB_file = os.path.join(midpath, 'trace_B.txt')
 
-    if mode=='debug' and os.path.exists(trac_file):
-        aperset = load_aperture_set(trac_file)
+    if mode=='debug' \
+        and os.path.exists(trac_file) \
+        and os.path.exists(tracA_file) \
+        and os.path.exists(tracB_file):
+        aperset   = load_aperture_set(trac_file)
+        aperset_A = load_aperture_set(tracA_file)
+        aperset_B = load_aperture_set(tracB_file)
     else:
         aperset, aperset_A, aperset_B = find_apertures(flat_data,
                         scan_step = section.getint('scan_step'),
@@ -211,6 +217,20 @@ def reduce_rawdata(config, logtable):
                         )
 
         aperset.save_txt(trac_file)
-        aperset_A.save_txt('trace_A.txt')
-        aperset_B.save_txt('trace_B.txt')
+        aperset_A.save_txt(tracA_file)
+        aperset_B.save_txt(tracB_file)
 
+
+    ####################### Parse Flat Fielding ##########################
+    flat_file = os.path.join(midpath, 'flat.fits')
+
+    flat_sens, flat_spec = get_flat(flat_data, aperset)
+
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(flat_data),
+                fits.ImageHDU(flat_sens),
+                fits.BinTableHDU(flat_spec),
+            ])
+    hdu_lst.writeto(flat_file, overwrite=True)
+
+    ############################ Extract ThAr ###########################
