@@ -12,7 +12,7 @@ import astropy.io.fits as fits
 
 from ...utils.regression import iterative_polyfit
 from ...utils.onedarray import iterative_savgol_filter, get_local_minima
-from .common import norm_profile, get_mean_profile
+from .common import norm_profile, get_mean_profile, get_spectype
 
 def get_flat(data, aperture_set, mode='normal'):
     """Get flat fielding for CFHT/ESPaDOnS data.
@@ -160,7 +160,8 @@ def get_flat(data, aperture_set, mode='normal'):
         profilex_lst.append(profilex)
         profilefunc_lst.append(f(xlst))
 
-    print(' Completed')
+    # use light green color
+    print(' \033[92m Completed\033[0m')
 
     profilenode_lst = xlst
     profilex_lst = np.array(profilex_lst)
@@ -289,17 +290,14 @@ def get_flat(data, aperture_set, mode='normal'):
         sys.stdout.write(string)
         sys.stdout.flush()
 
-    print(' Completed')
-
-    # pack the final 1-d spectra of flat
-    flatspectable = [(aper, flatspec[aper])
-                     for aper in sorted(aperture_set.keys())]
+    # use light green color
+    print(' \033[92m Completed\033[0m')
 
     # define the datatype of flat 1d spectra
     flatspectype = np.dtype(
                     {'names':   ['aperture', 'flux'],
-                     'formats': [np.int32, (np.float32, ny)],}
-                    )
+                     'formats': [np.int32, (np.float32, ny)],
+                     })
     flatspectable = np.array(flatspectable, dtype=flatspectype)
 
     return flatdata, flatspectable
