@@ -233,4 +233,56 @@ def reduce_rawdata(config, logtable):
             ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
+    ##################### define dtype of 1-d spectra ####################
+
+    # get the data shape
+    ny, nx = flat_sens.shape
+
+    types = [
+            ('aperture',   np.int16),
+            ('order',      np.int16),
+            ('wavelength', (np.float64, nx)),
+            ('flux',       (np.float32, nx)),
+            ('mask',       (np.int32,   nx)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+
     ############################ Extract ThAr ###########################
+
+    calib_lst = {}
+
+    # filter ThAr frames
+    filter_thar = lambda item: item['obstype'].lower() == 'COMPARISON'
+
+    thar_items = list(filter(filter_thar, logtable))
+
+    for ithar, logitem in enumerate(thar_items):
+        # logitem alias
+        frameid = logitem['frameid']
+        fileid  = logitem['fileid']
+        obstype = logitem['obstype']
+        objname = logitem['object']
+        exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
+        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmt_str.format(fileid, obstype, objname)
+        logger.info(message)
+        print(message)
+
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
+        data, head = fits.getdata(filename, header=True)
+        data, mask = correct_overscan(data)
+        data = data - bias
+
+        satmask = (mask==4)
+        data1 = data/flat_sens
+        data[~satmask] = data1[~satmask]
+        # now non-saturated pixels are flat field corrected.
+        # saturated pixels are remained
+
