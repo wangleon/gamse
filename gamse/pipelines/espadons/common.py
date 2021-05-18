@@ -1,10 +1,16 @@
+import dateutil.parser
+
 import numpy as np
 import scipy.interpolate as intp
 import scipy.optimize as opt
+import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 
+from ...echelle.wlcalib import get_calib_from_header
 from ...utils.regression import get_clip_mean
 from ...utils.onedarray import iterative_savgol_filter
+from ...utils.download import get_file
 
 def correct_overscan(data, header):
     """Correct overscan.
@@ -193,3 +199,48 @@ def print_wrapper(string, item):
         return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
     else:
         return string
+
+def select_calib_from_database(index_file, dateobs):
+    """Select wavelength calibration file in database.
+
+    Args:
+        index_file (str): Index file of saved calibration files.
+        dateobs (str): .
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **spec** (:class:`numpy.dtype`): An array of previous calibrated
+              spectra.
+            * **calib** (dict): Previous calibration results.
+    """
+
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
+
+    input_date = dateutil.parser.parse(dateobs)
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable[mask]['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[mask][irow]
+    fileid = row['fileid']      # selected fileid
+    md5 = row['md5']
+
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    logger.info(message)
+
+    filepath = os.path.join('espadons', 'wlcalib_{}.fits'.format(fileid))
+    filepath = os.path.join(os.path.expanduser('~'), '.gamse', 'espadons')
+
+    filename = get_file(filepath, md5)
+
+    # load spec, calib, and aperset from selected FITS file
+    f = fits.open(filepath)
+    head = f[0].header
+    spec = f[1].data
+    f.close()
+
+    calib = get_calib_from_header(head)
+
+    return spec, calib

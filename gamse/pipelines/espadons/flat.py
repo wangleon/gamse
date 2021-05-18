@@ -12,7 +12,7 @@ import astropy.io.fits as fits
 
 from ...utils.regression import iterative_polyfit
 from ...utils.onedarray import iterative_savgol_filter, get_local_minima
-from .common import norm_profile, get_mean_profile, get_spectype
+from .common import norm_profile, get_mean_profile
 
 def get_flat(data, aperture_set, mode='normal'):
     """Get flat fielding for CFHT/ESPaDOnS data.
@@ -180,7 +180,7 @@ def get_flat(data, aperture_set, mode='normal'):
         interprofilefunc_lst[y] = interprofilefunc
 
     flatdata = np.ones_like(data, dtype=np.float32)
-    flatspec = {}
+    flatspec_lst = {aper: np.full(ny, np.nan) for aper in aperture_set}
 
     ally = np.arange(0, ny)
     for iaper, (aper, aperloc) in enumerate(sorted(aperture_set.items())):
@@ -241,9 +241,6 @@ def get_flat(data, aperture_set, mode='normal'):
             pos = ypos[y]
             correct_y_lst.append(y)
 
-
-        flatspec[aper] = np.zeros(ny, dtype=np.float32)
-
         # loop over rows in the correction region
         for x, A, b in zip(newx, newA, newb):
             c = aperloc.position(x)
@@ -277,7 +274,7 @@ def get_flat(data, aperture_set, mode='normal'):
             flatdata[x, x1:x2] = data[x, x1:x2]/newprofile
             densex = np.arange(x1, x2, 0.1)
             densep = interprofilefunc(densex-c)
-            flatspec[aper][x] = simps(densep*A+b, x=densex)
+            flatspec_lst[aper][x] = simps(densep*A+b, x=densex)
 
         ratio = min(iaper/(len(aperture_set)-1), 1.0)
         term_size = os.get_terminal_size()
@@ -293,14 +290,7 @@ def get_flat(data, aperture_set, mode='normal'):
     # use light green color
     print(' \033[92m Completed\033[0m')
 
-    # define the datatype of flat 1d spectra
-    flatspectype = np.dtype(
-                    {'names':   ['aperture', 'flux'],
-                     'formats': [np.int32, (np.float32, ny)],
-                     })
-    flatspectable = np.array(flatspectable, dtype=flatspectype)
-
-    return flatdata, flatspectable
+    return flatdata, flatspec_lst
 
 
 def smooth_aperpar_A(x, y, npoints, newx):

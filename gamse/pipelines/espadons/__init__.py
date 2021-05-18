@@ -84,6 +84,33 @@ def make_config():
     config.set(sectname, 'cosmic_clip', str(10))
     config.set(sectname, 'maxiter',     str(5))
 
+    # section of wavelength calibration
+    sectname = 'reduce.wlcalib'
+    config.add_section(sectname)
+    config.set(sectname, 'search_database',  'yes')
+    config.set(sectname, 'linelist',         'thar.dat')
+    config.set(sectname, 'use_prev_fitpar',  'yes')
+    config.set(sectname, 'window_size',      str(13))
+    config.set(sectname, 'xorder',           str(3))
+    config.set(sectname, 'yorder',           str(3))
+    config.set(sectname, 'maxiter',          str(5))
+    config.set(sectname, 'clipping',         str(3))
+    config.set(sectname, 'q_threshold',      str(10))
+    config.set(sectname, 'auto_selection',   'yes')
+    config.set(sectname, 'rms_threshold',    str(0.006))
+    config.set(sectname, 'group_contiguous', 'yes')
+    config.set(sectname, 'time_diff',        str(120))
+
+    # section of background correction
+    sectname = 'reduce.background'
+    config.add_section(sectname)
+    config.set(sectname, 'subtract',      'yes')
+
+    # section of spectra extraction
+    sectname = 'reduce.extract'
+    config.add_section(sectname)
+    config.set(sectname, 'method', 'optimal')
+
     # write to config file
     filename = 'ESPaDOnS.{}.cfg'.format(input_date)
     outfile = open(filename, 'w')
