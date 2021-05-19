@@ -41,78 +41,111 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
     bad_mask = (mask&2 > 0)
     gap_mask = (mask&1 > 0)
 
+    allx = np.arange(nx)
+    ally = np.arange(ny)
     yy, xx = np.mgrid[:ny:,:nx:]
     spectra1d = {}
     for aper, aper_loc in sorted(apertureset.items()):
-        domain = aper_loc.position.domain
-        d1, d2 = int(domain[0]), int(domain[1])+1
-        newx = np.arange(d1, d2)
-        position = aper_loc.position(newx)
-        lower_line = position - lower_limit
-        upper_line = position + upper_limit
-        lower_line = np.maximum(lower_line, -0.5)
-        lower_line = np.minimum(lower_line, ny-1-0.5)
-        upper_line = np.maximum(upper_line, -0.5)
-        upper_line = np.minimum(upper_line, ny-1-0.5)
-        lower_ints = np.int32(np.round(lower_line))
-        upper_ints = np.int32(np.round(upper_line))
-        m1 = yy[:,d1:d2] > lower_ints
-        m2 = yy[:,d1:d2] < upper_ints
-        newmask = np.zeros_like(data, dtype=np.bool)
-        newmask[:,d1:d2] = m1*m2
-        newmask = np.float32(newmask)
-        # determine the weight in the boundary
-        if variance:
-            newmask[lower_ints, newx] = (1-(lower_line+0.5)%1)**2
-            newmask[upper_ints, newx] = ((upper_line+0.5)%1)**2
-        else:
-            newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
-            newmask[upper_ints, newx] = (upper_line+0.5)%1
-        # filter the bad, saturated, and gap pixels
-        newmask = newmask*(~sat_mask)
-        newmask = newmask*(~bad_mask)
-        newmask = newmask*(~gap_mask)
+        if aper_loc.direct==0:
+            position = aper_loc.position(ally)
+            lower_line = position - lower_limit
+            upper_line = position + upper_limit
+            lower_line = np.maximum(lower_line, -0.5)
+            lower_line = np.minimum(lower_line, nx-1-0.5)
+            upper_line = np.maximum(upper_line, -0.5)
+            upper_line = np.minimum(upper_line, nx-1-0.5)
+            lower_ints = np.int32(np.round(lower_line))
+            upper_ints = np.int32(np.round(upper_line))
+            m1 = xx > lower_ints.reshape((-1,1))
+            m2 = xx < upper_ints.reshape((-1,1))
+            newmask = np.float32(m1*m2)
+            # determine the weight in the boundary
+            newmask[ally, lower_ints] = 1-(lower_line+0.5)%1
+            newmask[ally, upper_ints] = (upper_line+0.5)%1
+            # filter the bad, saturated, and gap pixels
+            newmask = newmask*(~sat_mask)
+            newmask = newmask*(~bad_mask)
+            newmask = newmask*(~gap_mask)
+            # determine the left and right column of summing
+            c1 = int(lower_line.min())
+            c2 = int(np.ceil(upper_line.max()))+1
+            # summing the data and mask
+            weight_sum = newmask[:,c1:c2].sum(axis=1)
+            # summing the flux and save it to fluxsum
+            fluxsum = (data[:,c1:c2]*newmask[:,c1:c2]).sum(axis=1)
+            # summing the masks
+            fluxsat = (sat_mask[:,c1:c2]*newmask[:,c1:c2]).sum(axis=0)>0
 
-        ## determine the upper and lower row of summing
-        r1 = int(lower_line.min())
-        r2 = int(np.ceil(upper_line.max()))+1
 
-        # summing the data and mask
-        weight_sum = newmask[r1:r2].sum(axis=0)
-        # summing the flux and save it to fluxsum
-        # method 1: direct sum
-        fluxsum = (data[r1:r2]*newmask[r1:r2]).sum(axis=0)
+        elif aper_loc.direct==1:
+            domain = aper_loc.position.domain
+            d1, d2 = int(domain[0]), int(domain[1])+1
+            newx = np.arange(d1, d2)
+            position = aper_loc.position(newx)
+            lower_line = position - lower_limit
+            upper_line = position + upper_limit
+            lower_line = np.maximum(lower_line, -0.5)
+            lower_line = np.minimum(lower_line, ny-1-0.5)
+            upper_line = np.maximum(upper_line, -0.5)
+            upper_line = np.minimum(upper_line, ny-1-0.5)
+            lower_ints = np.int32(np.round(lower_line))
+            upper_ints = np.int32(np.round(upper_line))
+            m1 = yy[:,d1:d2] > lower_ints
+            m2 = yy[:,d1:d2] < upper_ints
+            newmask = np.zeros_like(data, dtype=np.bool)
+            newmask[:,d1:d2] = m1*m2
+            newmask = np.float32(newmask)
+            # determine the weight in the boundary
+            if variance:
+                newmask[lower_ints, newx] = (1-(lower_line+0.5)%1)**2
+                newmask[upper_ints, newx] = ((upper_line+0.5)%1)**2
+            else:
+                newmask[lower_ints, newx] = 1-(lower_line+0.5)%1
+                newmask[upper_ints, newx] = (upper_line+0.5)%1
+            # filter the bad, saturated, and gap pixels
+            newmask = newmask*(~sat_mask)
+            newmask = newmask*(~bad_mask)
+            newmask = newmask*(~gap_mask)
+            
+            # determine the upper and lower row of summing
+            r1 = int(lower_line.min())
+            r2 = int(np.ceil(upper_line.max()))+1
+            
+            # summing the data and mask
+            weight_sum = newmask[r1:r2].sum(axis=0)
+            # summing the flux and save it to fluxsum
+            # method 1: direct sum
+            fluxsum = (data[r1:r2]*newmask[r1:r2]).sum(axis=0)
+            
+            # method2: simpson integration
+            #fluxsum = []
+            #for x in np.arange(data.shape[1]):
+            #    summask = newmask[:,x]>0
+            #    samplex = np.arange(data.shape[0])[summask]
+            #    if len(samplex)>0:
+            #        fluxp = intg.simps(data[:,x][summask], samplex)
+            #    else:
+            #        fluxp = 0.0
+            #    fluxsum.append(fluxp)
+            #fluxsum = np.array(fluxsum)
 
-        # method2: simpson integration
-        #fluxsum = []
-        #for x in np.arange(data.shape[1]):
-        #    summask = newmask[:,x]>0
-        #    samplex = np.arange(data.shape[0])[summask]
-        #    if len(samplex)>0:
-        #        fluxp = intg.simps(data[:,x][summask], samplex)
-        #    else:
-        #        fluxp = 0.0
-        #    fluxsum.append(fluxp)
-        #fluxsum = np.array(fluxsum)
+            # summing the masks
+            fluxsat = (sat_mask[r1:r2]*newmask[r1:r2]).sum(axis=0)>0
 
         # calculate mean flux
         # filter the zero values
         _m = weight_sum>0
         fluxmean = np.zeros_like(fluxsum)
         fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
-
+            
         spectra1d[aper] = {
-                'flux_sum':  fluxsum,
-                'flux_mean': fluxmean,
-                'mask':      ~_m,
-                'nsum':      weight_sum,
-                }
-
-
-        # summing the masks
-        fluxsat = (sat_mask[r1:r2]*newmask[r1:r2]).sum(axis=0)>0
-        spectra1d[aper]['mask_sat'] = fluxsat
-
+            'flux_sum':  fluxsum,
+            'flux_mean': fluxmean,
+            'mask':      ~_m,
+            'nsum':      weight_sum,
+            'mask_sat':  fluxsat,
+            }
+            
     return spectra1d
 
 def get_mean_profile(nodex_lst, nodey_lst, profx_lst):
