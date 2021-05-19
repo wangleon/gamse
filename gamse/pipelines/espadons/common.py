@@ -1,3 +1,6 @@
+import os
+import logging
+logger = logging.getLogger(__name__)
 import dateutil.parser
 
 import numpy as np
@@ -221,9 +224,9 @@ def select_calib_from_database(index_file, dateobs):
 
     # select the closest ThAr
     timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
-                for t in calibtable[mask]['obsdate']]
+                for t in calibtable['obsdate']]
     irow = np.abs(timediff).argmin()
-    row = calibtable[mask][irow]
+    row = calibtable[irow]
     fileid = row['fileid']      # selected fileid
     md5 = row['md5']
 
@@ -231,15 +234,14 @@ def select_calib_from_database(index_file, dateobs):
     logger.info(message)
 
     filepath = os.path.join('espadons', 'wlcalib_{}.fits'.format(fileid))
-    filepath = os.path.join(os.path.expanduser('~'), '.gamse', 'espadons')
 
     filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file
-    f = fits.open(filepath)
-    head = f[0].header
-    spec = f[1].data
-    f.close()
+    hdu_lst = fits.open(filename)
+    head = hdu_lst[0].header
+    spec = hdu_lst[1].data
+    hdu_lst.close()
 
     calib = get_calib_from_header(head)
 

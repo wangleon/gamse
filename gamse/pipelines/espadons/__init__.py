@@ -53,6 +53,7 @@ def make_config():
     config.set('data', 'telescope',    'CFHT')
     config.set('data', 'instrument',   'ESPaDOnS')
     config.set('data', 'rawpath',      'rawdata')
+    config.set('data', 'direction',    'yr+')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')

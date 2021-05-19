@@ -24,6 +24,7 @@ def reduce_rawdata(config, logtable):
     # extract keywords from config file
     section      = config['data']
     rawpath      = section.get('rawpath')
+    direction    = section.get('direction')
 
     section     = config['reduce']
     midpath     = section.get('midpath')
@@ -149,6 +150,8 @@ def reduce_rawdata(config, logtable):
     flat_file = section.get('flat_file')
     if mode=='debug' and os.path.exists(flat_file):
         hdu_lst = fits.open(flat_file)
+        flat_data = hdu_lst[0].data
+        flat_sens = hdu_lst[1].data
         hdu_lst.close()
     else:
         flat_item_lst = [logitem for logitem in logtable
@@ -228,30 +231,29 @@ def reduce_rawdata(config, logtable):
         aperset_B.save_txt(tracB_file)
 
 
-    ####################### Parse Flat Fielding ##########################
-    flat_file = os.path.join(midpath, 'flat.fits')
+        ####################### Parse Flat Fielding ##########################
 
-    # get sensitivity map and 1d spectra of flat
-    flat_sens, flatspec_lst = get_flat(flat_data, aperset)
-    ny, nx = flat_sens.shape
+        # get sensitivity map and 1d spectra of flat
+        flat_sens, flatspec_lst = get_flat(flat_data, aperset)
+        ny, nx = flat_sens.shape
 
-    # pack the final 1-d spectra of flat
-    flatspectable = [(aper, flatspec) for aper, flatspec
-                        in sorted(flatspec_lst.items())]
+        # pack the final 1-d spectra of flat
+        flatspectable = [(aper, flatspec) for aper, flatspec
+                            in sorted(flatspec_lst.items())]
 
-    # define the datatype of flat 1d spectra
-    flatspectype = np.dtype(
+        # define the datatype of flat 1d spectra
+        flatspectype = np.dtype(
                     {'names':   ['aperture', 'flux'],
                      'formats': [np.int32, (np.float32, ny)],
                      })
-    flatspectable = np.array(flatspectable, dtype=flatspectype)
+        flatspectable = np.array(flatspectable, dtype=flatspectype)
 
-    hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(flat_data),
-                fits.ImageHDU(flat_sens),
-                fits.BinTableHDU(flatspectable),
-            ])
-    hdu_lst.writeto(flat_file, overwrite=True)
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(flat_sens),
+                    fits.BinTableHDU(flatspectable),
+                ])
+        hdu_lst.writeto(flat_file, overwrite=True)
 
     ##################### define dtype of 1-d spectra ####################
 
@@ -261,11 +263,11 @@ def reduce_rawdata(config, logtable):
     types = [
             ('aperture',   np.int16),
             ('order',      np.int16),
-            ('wavelength', (np.float64, nx)),
-            ('flux',       (np.float32, nx)),
-            ('error',      (np.float32, nx)),
-            ('background', (np.float32, nx)),
-            ('mask',       (np.int32,   nx)),
+            ('wavelength', (np.float64, ny)),
+            ('flux',       (np.float32, ny)),
+            ('error',      (np.float32, ny)),
+            ('background', (np.float32, ny)),
+            ('mask',       (np.int32,   ny)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -275,7 +277,7 @@ def reduce_rawdata(config, logtable):
     calib_lst = {}
 
     # filter ThAr frames
-    filter_thar = lambda item: item['obstype'].lower() == 'COMPARISON'
+    filter_thar = lambda item: item['obstype'] == 'COMPARISON'
 
     thar_items = list(filter(filter_thar, logtable))
 
@@ -284,6 +286,7 @@ def reduce_rawdata(config, logtable):
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
         obstype = logitem['obstype']
+        obsdate = logitem['obsdate']
         objname = logitem['object']
         exptime = logitem['exptime']
 
@@ -291,8 +294,8 @@ def reduce_rawdata(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
-        message = fmt_str.format(fileid, obstype, objname)
+        fmt_str = 'FileID: {} ({}) - wavelength identification'
+        message = fmt_str.format(fileid, obstype)
         logger.info(message)
         print(message)
 
@@ -300,7 +303,7 @@ def reduce_rawdata(config, logtable):
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
-        data, mask = correct_overscan(data)
+        data, mask = correct_overscan(data, head)
         message = 'Overscan corrected.'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
@@ -317,7 +320,7 @@ def reduce_rawdata(config, logtable):
         data[~satmask] = data1[~satmask]
         # now non-saturated pixels are flat field corrected.
         # saturated pixels are remained
-        message = 'Flat Filed corrected.'
+        message = 'Flat field corrected.'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
@@ -368,13 +371,13 @@ def reduce_rawdata(config, logtable):
                 index_file = os.path.join(os.path.dirname(__file__),
                                 '../../data/calib/wlcalib_espadons.dat')
 
-                message = ('Searching for archive wavelength calibration'
-                           'file in "{}"'.format(index_file))
+                message = ('Searching for archive wavelength calibration '
+                           'file in "{}"'.format(os.path.basename(index_file)))
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
                 ref_spec, ref_calib = select_calib_from_database(
-                            database_path, head[statime_key])
+                            index_file, obsdate)
 
                 if ref_spec is None or ref_calib is None:
 
@@ -521,8 +524,8 @@ def reduce_rawdata(config, logtable):
 
         # add more infos in calib
         calib['fileid']   = fileid
-        calib['date-obs'] = logitem['obsdate']
-        calib['exptime']  = logitem['exptime']
+        calib['date-obs'] = obsdate
+        calib['exptime']  = exptime
         message = 'Add more info in calib of {}'.format(fileid)
         logger.info(logger_prefix + message)
 
