@@ -10,6 +10,7 @@ import astropy.io.fits as fits
 from astropy.table import Table
 import matplotlib.pyplot as plt
 
+from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.regression import get_clip_mean
 from ...utils.onedarray import iterative_savgol_filter
@@ -246,3 +247,113 @@ def select_calib_from_database(index_file, dateobs):
     calib = get_calib_from_header(head)
 
     return spec, calib
+
+
+
+
+class BackgroundFigure(BackgroundFigureCommon):
+    def __init__(self, data=None, background=None, dpi=300, figsize=(6, 5),
+            title=None, figname=None, zscale=('log', 'linear'), contour=True):
+
+        ny, nx = data.shape
+        BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
+        width = 0.3
+        # size[0]*width = size[1]*height for (1:1)
+        # size[0]*width/(size[1]*height) = nx/ny
+        # height = size[0]*width/size[1]/nx*ny
+        height = width*figsize[0]/figsize[1]/nx*ny
+
+        self.ax1  = self.add_axes([0.10, 0.1, width, height])
+        self.ax2  = self.add_axes([0.55, 0.1, width, height])
+        self.ax1c = self.add_axes([0.10+width+0.01, 0.1, 0.015, height])
+        self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
+
+        if data is not None and background is not None:
+            self.plot_background(data, background,
+                            zscale=zscale, contour=contour)
+        if title is not None:
+            self.suptitle(title)
+        if figname is not None:
+            self.savefig(figname)
+
+    def plot_background(self, data, background, scale=(5, 99),
+            zscale=('log', 'linear'), contour=True):
+        """Plot the image data with background and the subtracted background
+        light.
+
+        Args:
+            data (:class:`numpy.ndarray`): Image data to be background
+                subtracted.
+            background (:class:`numpy.ndarray`): Background light as a 2D array.
+        """
+        # find the minimum and maximum value of plotting
+
+        if zscale[0] == 'linear':
+            vmin = np.percentile(data, scale[0])
+            vmax = np.percentile(data, scale[1])
+            cax1 = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax,
+                        origin='lower')
+            # set colorbar
+            cbar1 = self.colorbar(cax1, cax=self.ax1c)
+        elif zscale[0] == 'log':
+            m = data <= 0
+            plotdata1 = np.zeros_like(data, dtype=np.float32)
+            plotdata1[m] = 0.1
+            plotdata1[~m] = np.log10(data[~m])
+            vmin = np.percentile(plotdata1[~m], scale[0])
+            vmax = np.percentile(plotdata1[~m], scale[1])
+            cax1 = self.ax1.imshow(plotdata1, cmap='gray', vmin=vmin, vmax=vmax,
+                        origin='lower')
+            # set colorbar
+            tick_lst = np.arange(int(np.ceil(vmin)), int(np.ceil(vmax)))
+            ticklabel_lst = ['$10^{}$'.format(i) for i in tick_lst]
+            cbar1 = self.colorbar(cax1, cax=self.ax1c, ticks=tick_lst)
+            cbar1.ax.set_yticklabels(ticklabel_lst)
+        else:
+            print('Unknown zscale:', zscale)
+
+
+        if zscale[1] == 'linear':
+            vmin = background.min()
+            vmax = background.max()
+            cax2 = self.ax2.imshow(background, cmap='viridis',
+                    vmin=vmin, vmax=vmax, origin='lower')
+            # set colorbar
+            cbar2 = self.colorbar(cax2, cax=self.ax2c)
+        elif zscale[1] == 'log':
+            m = background <= 0
+            plotdata2 = np.zeros_like(background, dtype=np.float32)
+            plotdata2[m] = 0.1
+            plotdata2[~m] = np.log10(background[~m])
+            vmin = max(0.1, background[~m].min())
+            vmax = plotdata2[~m].max()
+            cax2 = self.ax2.imshow(plotdata2, cmap='viridis',
+                    vmin=vmin, vmax=vmax, origin='lower')
+            # plot contour in background panel
+            if contour:
+                cs = self.ax2.contour(plotdata2, colors='r', linewidths=0.5)
+                self.ax2.clabel(cs, inline=1, fontsize=7, use_clabeltext=True)
+            # set colorbar
+            tick_lst = np.arange(int(np.ceil(vmin)), int(np.ceil(vmax)))
+            ticklabel_lst = ['$10^{}$'.format(i) for i in tick_lst]
+            cbar2 = self.colorbar(cax2, cax=self.ax2c, ticks=tick_lst)
+            cbar2.ax.set_yticklabels(ticklabel_lst)
+        else:
+            print('Unknown zscale:', zscale)
+
+        # set labels and ticks
+        self.ax1.set_ylabel('Y (pixel)', fontsize=8)
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X (pixel)', fontsize=8)
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
+            for tick in ax.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(8)
+            for tick in ax.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(8)
+        for cbar in [cbar1, cbar2]:
+            for tick in cbar.ax.get_yaxis().get_major_ticks():
+                tick.label2.set_fontsize(8)
+

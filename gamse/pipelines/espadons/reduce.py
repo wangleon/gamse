@@ -5,9 +5,10 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
+from scipy.ndimage.filters import median_filter
 
 from ...echelle.trace import load_aperture_set
-from ...echelle.imageproc import combine_images
+from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
@@ -15,7 +16,9 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
                                 )
-from .common import correct_overscan, select_calib_from_database
+from ...echelle.background import get_interorder_background
+from .common import (correct_overscan, select_calib_from_database,
+                    BackgroundFigure)
 from .trace import find_apertures
 from .flat import get_flat
 
@@ -327,7 +330,7 @@ def reduce_rawdata(config, logtable):
         # extract ThAr spectra
         spectra1d = extract_aperset(data, mask,
                         apertureset = aperset,
-                        lower_limit = -15,
+                        lower_limit = 15,
                         upper_limit = 15,
                         )
         message = '1D spectra extracted for {:d} orders'.format(len(spectra1d))
@@ -421,22 +424,11 @@ def reduce_rawdata(config, logtable):
                     else:
                         pixel_k = -1
 
-                    # determine the name of the output figure during lamp shift
-                    # finding.
-                    if mode == 'debug':
-                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
-                        figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(figpath, figname1)
-                        fig_scatter = os.path.join(figpath, figname2)
-                    else:
-                        fig_ccf     = None
-                        fig_scatter = None
-
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
                                 pixel_k     = pixel_k,
-                                fig_ccf     = fig_ccf,
-                                fig_scatter = fig_scatter,
+                                pixel_range = (-30, 30),
+                                mode        = mode,
                                 )
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
@@ -597,3 +589,71 @@ def reduce_rawdata(config, logtable):
         promotion = 'Select References: '
         ref_calib_lst = select_calib_manu(calib_lst,
                             promotion = promotion)
+
+    #################### Extract Science Spectrum ##############################
+    filter_sci = lambda item: item['obstype'] == 'OBJECT'
+    sci_items = list(filter(filter_sci, logtable))
+
+    for logitem in sci_items:
+
+        # logitem alias
+        frameid = logitem['frameid']
+        fileid  = logitem['fileid']
+        obstype = logitem['obstype']
+        obsdate = logitem['obsdate']
+        objname = logitem['object']
+        exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
+        message = 'FileID: {} ({}) OBJECT: {}'.format(fileid, obstype, objname)
+        logger.info(message)
+        print(message)
+
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
+        data, head = fits.getdata(filename, header=True)
+
+        data, mask = correct_overscan(data, head)
+        message = 'Overscan corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # subtract bias
+        data = data - bias
+        message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # correct flat field
+        satmask = (mask==4)
+        data1 = data/flat_sens
+        data[~satmask] = data1[~satmask]
+        # now non-saturated pixels are flat field corrected.
+        # saturated pixels are remained
+        message = 'Flat field corrected.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        background = get_interorder_background(data, aperset_A)
+        background = median_filter(background, size=(9, 1), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
+
+        #plot stray light
+        figname = 'bkg2d_{}.{}'.format(fileid, 'png')
+        figfilename = os.path.join(figpath, figname)
+        fig_bkg = BackgroundFigure(data, background,
+                    title = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
+        fig_bkg.close()
+
+        data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
