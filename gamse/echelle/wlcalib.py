@@ -595,7 +595,7 @@ class CalibWindow(tk.Frame):
             'title':        title,
             'aperture_min': self.spec['aperture'].min(),
             'aperture_max': self.spec['aperture'].max(),
-            'npixel':       self.spec['points'].max(),
+            'npixel':       self.spec[0]['wavelength'].size,
             # parameters of displaying
             'xlim':         {},
             'ylim':         {},
@@ -621,7 +621,7 @@ class CalibWindow(tk.Frame):
 
         for row in self.spec:
             aperture = row['aperture']
-            self.param['xlim'][aperture] = (0, row['points']-1)
+            self.param['xlim'][aperture] = (0, len(row['wavelength'])-1)
             self.param['ylim'][aperture] = (None, None)
 
         # determine widget size
@@ -864,8 +864,9 @@ class CalibWindow(tk.Frame):
         aperture = self.param['aperture']
         mask = (self.spec['aperture'] == aperture)
         specdata = self.spec[mask][0]
-        xdata = np.arange(specdata['points'])
         ydata = specdata['flux']
+        npoints = len(ydata)
+        xdata = np.arange(npoints)
 
         # redraw spectra in ax1
         ax1 = self.plot_frame.ax1
@@ -1806,6 +1807,11 @@ def find_local_peak(flux, x, width):
     # find the peak in a narrow range
 
     i1, i2 = max(0, i-half), min(flux.size, i+half+1)
+
+    if i2 - i1 <= 4:
+        # 4 is the number of free parameters in fitting function
+        return None
+
     # find the peak position
     imax = flux[i1:i2].argmax() + i1
     xdata = np.arange(i1,i2)
@@ -1816,6 +1822,10 @@ def find_local_peak(flux, x, width):
     p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
 
     res_lst = errfunc2(p1, xdata, ydata)
+
+    if res_lst.size-len(p0)-1 == 0:
+        return None
+
     std = math.sqrt((res_lst**2).sum()/(res_lst.size-len(p0)-1))
 
     return i1, i2, p1, std
@@ -2383,7 +2393,11 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             # find the nearest pixel to the calibration line
             diff = np.abs(wl - line[0])
             i = diff.argmin()
-            i1, i2, param, std = find_local_peak(flux, i, window_size)
+
+            result = find_local_peak(flux, i, window_size)
+            if result is None:
+                continue
+            i1, i2, param, std = result
 
             keep = auto_line_fitting_filter(param, i1, i2)
             if not keep:
@@ -2474,8 +2488,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             }
 
 def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
-        aperture_k=None, pixel_k=None,
-        fig_ccf=None, fig_scatter=None):
+        aperture_k=None, pixel_k=None, pixel_range=(-30, 30), mode='normal'):
     """Find the offset between two spectra.
 
     The aperture offset is defined as:
@@ -2492,8 +2505,8 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
             and **spec2**.
         pixel_k (int): Pixel direction code (1 or -1) between **spec1** and
             **spec2**.
-        fig_ccf (string): Name of figure for cross-correlation functions (CCFs).
-        fig_scatter (string): Name of figure for peak scatters.
+        pixel_range (int or tuple): Pixel range of the CCF.
+        mode (str):
 
     Returns:
         tuple: A tuple containing:
@@ -2502,7 +2515,37 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
             * **shift** (*float*): Pixel shift between the two spectra.
     """
 
-    pixel_shift_lst = np.arange(-100, 100)
+    if isinstance(pixel_range, int) or isinstance(pixel_range, float):
+        if pixel_range <=0:
+            print('Error: pixel_range must be positive')
+            raise ValueError
+        pixel_range = int(pixel_range)
+        pixel_shift_lst = np.arange(-pixel_range, pixel_range)
+    elif isinstance(pixel_range, list) or isinstance(pixel_range, tuple):
+        if len(pixel_range)<2:
+            print('Error: pixel_range must have length of 2')
+            raise ValueError
+        if pixel_range[0] >= pixel_range[1]:
+            print('Error: pixel_range error')
+            raise ValueError
+        pixel_shift_lst = np.arange(pixel_range[0], pixel_range[1])
+    else:
+        pass
+
+    if mode=='debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
+        plot_ccf     = True
+        plot_scatter = True
+        figname_ccf     = os.path.join(dbgpath,
+                                'lamp_ccf_{:+2d}_{:+03d}.png')
+        figname_scatter = os.path.join(dbgpath,
+                                'lamp_ccf_scatter.png')
+    else:
+        plot_ccf     = False
+        plot_scatter = False
+
     mean_lst    = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
     scatter_lst = {(1, 1):[], (1, -1):[], (-1, 1):[], (-1, -1):[]}
     all_scatter_lst = []
@@ -2558,7 +2601,7 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
     for aperture_k in search_aperture_k_lst:
         for aperture_offset in aperture_offset_lst:
             calc_pixel_shift_lst = {1: [], -1: []}
-            if fig_ccf is not None:
+            if plot_ccf:
                 fig2 = plt.figure(figsize=(10,8), dpi=150)
                 axes2 = { 1: fig2.add_subplot(211),
                          -1: fig2.add_subplot(212),
@@ -2595,16 +2638,16 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
                     # pack the pixel shift into a list
                     calc_pixel_shift_lst[pixel_k].append(calc_shift)
 
-                    if fig_ccf is not None:
+                    if plot_ccf:
                         axes2[pixel_k].plot(pixel_shift_lst, ccf_lst, alpha=0.4)
                     # pixel direction loop ends here
                 # order-by-order loop ends here
 
             # adjust the ccf figure and save
-            if fig_ccf is not None:
+            if plot_ccf:
                 for ax in axes2.values():
                     ax.set_xlim(pixel_shift_lst[0], pixel_shift_lst[-1])
-                fig2.savefig(fig_ccf.format(aperture_k, aperture_offset))
+                fig2.savefig(figname_ccf.format(aperture_k, aperture_offset))
                 plt.close(fig2)
 
             # convert calc_pixel_shift_lst to numpy array
@@ -2625,11 +2668,10 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
                 all_scatter_lst.append(std)
                 scatter_id_lst.append((aperture_k, aperture_offset, pixel_k))
 
-
     # direction loop ends here
 
     # plot the scatters of peaks and save it as a figure file
-    if fig_scatter is not None:
+    if plot_scatter:
         fig3 = plt.figure(dpi=150, figsize=(8,6))
         ax3 = fig3.gca()
         for key, scatters in scatter_lst.items():
@@ -2644,7 +2686,7 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
         ax3.set_xlabel('Aperture Offset')
         ax3.set_ylabel('Scatter (pixel)')
         ax3.legend(loc='lower right')
-        fig3.savefig(fig_scatter)
+        fig3.savefig(figname_scatter)
         plt.close(fig3)
 
     imin = np.argmin(all_scatter_lst)
@@ -2932,10 +2974,10 @@ def reference_self_wavelength(spec, calib):
     # calculate the wavelength for each aperture
     for row in spec:
         aperture = row['aperture']
-        npixel   = row['points']
+        npoints  = len(row['wavelength'])
         order = aperture*calib['k'] + calib['offset']
-        wavelength = get_wavelength(calib['coeff'], npixel,
-                    np.arange(npixel), np.repeat(order, npixel))
+        wavelength = get_wavelength(calib['coeff'], calib['npixel'],
+                    np.arange(npoints), np.repeat(order, npoints))
         row['order']      = order
         row['wavelength'] = wavelength
 
@@ -3066,7 +3108,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     # calculate the wavelength for each aperture
     for row in spec:
         aperture = row['aperture']
-        npoints  = row['points']
+        npoints  = len(row['wavelength'])
         order = aperture*k + offset
         wavelength = get_wavelength(coeff, npixel,
                         np.arange(npoints), np.repeat(order, npoints))
@@ -3273,7 +3315,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
 
         for row in spec:
             aperture = row['aperture']
-            npixel   = row['points']
+            npixel   = len(row['wavelength'])
             order = aperture*k + offset
             wl = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
 
