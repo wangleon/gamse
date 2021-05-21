@@ -9,6 +9,7 @@ import scipy.optimize as opt
 import astropy.io.fits as fits
 from astropy.table import Table
 import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header

@@ -17,6 +17,7 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 select_calib_auto, select_calib_manu,
                                 )
 from ...echelle.background import get_interorder_background
+from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from .common import (correct_overscan, select_calib_from_database,
                     BackgroundFigure)
 from .trace import find_apertures
@@ -637,7 +638,8 @@ def reduce_rawdata(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
-        background = get_interorder_background(data, aperset_A)
+        background = get_interorder_background(data, mask, aperset_A,
+                        distance=8)
         background = median_filter(background, size=(9, 1), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')
@@ -657,3 +659,10 @@ def reduce_rawdata(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
+
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        method = section.get('method')
+        if method == 'optimal':
+            result = extract_aperset_optimal(data, mask, background, aperset_A,
+                    gain=1.3, ron=4.15)
