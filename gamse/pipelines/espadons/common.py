@@ -358,3 +358,30 @@ class BackgroundFigure(BackgroundFigureCommon):
             for tick in cbar.ax.get_yaxis().get_major_ticks():
                 tick.label2.set_fontsize(8)
 
+class SpatialProfileFigure(Figure):
+    """Figure to plot the cross-dispersion profiles.
+
+    """
+    def __init__(self,
+            nrow = 2,
+            ncol = 5,
+            figsize = (12,8),
+            dpi = 200,
+            ):
+
+        # create figure
+        Figure.__init__(self, figsize=figsize, dpi=dpi)
+        self.canvas = FigureCanvasAgg(self)
+
+        # add axes
+        _w = 0.16
+        _h = 0.40
+        for irow in range(nrow):
+            for icol in range(ncol):
+                _x = 0.05 + icol*0.19
+                _y = 0.05 + (nrow-1-irow)*0.45
+
+                ax = self.add_axes([_x, _y, _w, _h])
+
+    def close(self):
+        plt.close(self)
