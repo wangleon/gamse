@@ -22,10 +22,10 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 select_calib_auto, select_calib_manu,
                                 )
 from .common import (get_bias, get_mask, correct_overscan,
-                    TraceFigure, BackgroundFigure,
+                    TraceFigure, BackgroundFigure, SpatialProfileFigure,
                      select_calib_from_database)
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg)
+                   smooth_aperpar_bkg, get_flat)
 
 def reduce_singlefiber(config, logtable):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
@@ -253,6 +253,7 @@ def reduce_singlefiber(config, logtable):
 
             section = config['reduce.flat']
 
+            '''
             flat_sens, flat_spec = get_fiber_flat(
                         data            = flat_data,
                         mask            = flat_mask,
@@ -269,6 +270,25 @@ def reduce_singlefiber(config, logtable):
                         fig_slit        = fig_slit,
                         slit_file       = slit_file,
                         )
+            '''
+            fig_spatial = SpatialProfileFigure()
+            flat_sens, flat_spec = get_flat(
+                    data        = flat_data,
+                    mask        = flat_mask,
+                    apertureset = aperset,
+                    nflat       = nflat,
+                    q_threshold     = section.getfloat('q_threshold'),
+                    smooth_A_func   = smooth_aperpar_A,
+                    smooth_c_func   = smooth_aperpar_c,
+                    smooth_bkg_func = smooth_aperpar_bkg,
+                    mode = 'debug',
+                    fig_spatial = fig_spatial,
+                    )
+            figname = 'spatial_profile_flat_{}.png'.format(flatname)
+            title = 'Spatial Profile of flat_{}'.format(flatname)
+            fig_spatial.suptitle(title)
+            fig_spatial.savefig(figname)
+            fig_spatial.close()
 
             # pack results and save to fits
             hdu_lst = fits.HDUList([
