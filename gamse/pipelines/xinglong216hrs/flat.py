@@ -157,7 +157,7 @@ def get_flat(data, mask, apertureset, nflat,
                 # plotting
                 ax.scatter(newx, newy, s=5, alpha=0.3, lw=0)
                 if ax2 is not None:
-                    ax2.scatter(newx, newy, s=5, alpha=0.3, lw=0)
+                    ax2.scatter(newx, newy, s=10, alpha=0.3, lw=0)
 
 
         # print a progress bar in terminal
@@ -193,7 +193,7 @@ def get_flat(data, mask, apertureset, nflat,
         ax.set_ylim(_y1, _y2)
         # temperary
         if ax2 is not None:
-            ax2.plot(profile_x, profile_y, color='k', lw=0.6)
+            ax2.plot(profile_x, profile_y, color='k', lw=1)
             ax2.grid(True, ls='--', lw=0.5)
             ax2.set_axisbelow(True)
             _x1, _x2 = p1-2, p2+2
