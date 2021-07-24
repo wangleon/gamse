@@ -1,4 +1,5 @@
 import os
+import math
 import logging
 
 logger = logging.getLogger(__name__)
@@ -74,7 +75,7 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             # summing the flux and save it to fluxsum
             fluxsum = (data[:,c1:c2]*newmask[:,c1:c2]).sum(axis=1)
             # summing the masks
-            fluxsat = (sat_mask[:,c1:c2]*newmask[:,c1:c2]).sum(axis=0)>0
+            fluxsat = (sat_mask[:,c1:c2]*newmask[:,c1:c2]).sum(axis=1)>0
 
 
         elif aper_loc.direct==1:
@@ -147,6 +148,340 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             }
             
     return spectra1d
+
+def extract_aperset_optimal(data, mask, background, apertureset,
+        ron, gain, profilex, disp_x_lst):
+    """Extract 1-D spectra from the input image using the optimal method.
+
+    Args:
+        data ():
+        mask ():
+    """
+
+    def get_profile(xnodes, ynodes, p1, p2, step):
+        xlst, ylst = [], []
+        for xmid in np.arange(p1, p2+1e-5, step):
+            x1, x2 = xmid-step/2, xmid+step/2
+            mask = (xnodes > x1)*(xnodes < x2)
+            mask = mask * (ynodes>0)
+            if mask.sum()<=3:
+                xlst.append(xmid)
+                ylst.append(0.0)
+            else:
+                ymean, _, _ = get_clip_mean(ynodes[mask], high=3, low=3,
+                                            maxiter=15)
+                xlst.append(xmid)
+                ylst.append(ymean)
+        xlst = np.array(xlst)
+        ylst = np.array(ylst)
+        return ylst
+
+    def errfunc(p, flux, interf, x):
+        return flux - fitfunc(p, interf, x)
+    def fitfunc(p, interf, x):
+        A, cen = p
+        return A*interf(x-cen)
+
+    p1 = profilex[0]
+    p2 = profilex[-1]
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
+
+    profilefunc_lst = []
+
+    for disp_x in disp_x_lst:
+        fig_loop = plt.figure(dpi=150, figsize=(10,4))
+        for iloop in range(2):
+            apernode_x_lst, apernode_y_lst = [], []
+            for y in np.arange(disp_x-20, disp_x+20+1e-3, 5):
+                y = int(y)
+                for aper, aperloc in sorted(apertureset.items()):
+                    cen = aperloc.position(y)
+                    intc = np.int(np.round(cen))
+                    x1 = int(intc + p1)
+                    x2 = int(intc + p2 + 1)
+                    x1 = max(x1, 0)
+                    x2 = min(x2, nx)
+                    if x2-x1 < (p2-p1)/2:
+                        continue
+                    indx = np.arange(x1, x2)
+                    flux = data[y, indx]
+    
+                    if iloop==0:
+                        A = flux.sum()
+                    else:
+                        para = [flux.sum(), cen]
+                        mask = np.ones_like(flux, dtype=np.bool)
+                        for ite in range(10):
+                            result = opt.least_squares(errfunc, para,
+                                        bounds=((-np.inf, cen-2),
+                                                (np.inf, cen+2)),
+                                        args = (flux[mask], interf, indx[mask]))
+                            newpara = result['x']
+                            fitprof = fitfunc(newpara, interf, indx)
+                            resprof = flux - fitprof
+                            std = resprof[mask].std()
+                            new_mask = (resprof < 3*std)*(resprof > -3*std)
+                            if new_mask.sum() == mask.sum():
+                                break
+                            mask = new_mask
+                            para = newpara
+                        A, cen = newpara
+    
+                    if A < 0:
+                        continue
+                    newx = indx - cen
+                    normflux = flux/A
+                    for vx, vy in zip(newx, normflux):
+                        apernode_x_lst.append(vx)
+                        apernode_y_lst.append(vy)
+        
+            apernode_x_lst = np.array(apernode_x_lst)
+            apernode_y_lst = np.array(apernode_y_lst)
+            profile = get_profile(
+                        apernode_x_lst, apernode_y_lst, p1, p2, 0.5)
+            interf = intp.InterpolatedUnivariateSpline(
+                        profilex, profile, k=3, ext=0)
+            newprofilex = np.arange(p1, p2+1e-3, 0.1)
+            newprofile = interf(newprofilex)
+        
+            ## plot in fig_loop
+            ax_loop = fig_loop.add_axes([0.07+iloop*0.5, 0.1, 0.4, 0.8])
+            ax_loop.scatter(apernode_x_lst, apernode_y_lst,
+                        c='gray', s=5, alpha=0.2)
+            ax_loop.plot(newprofilex, newprofile, '-', lw=1, c='C1')
+            #ax_loop.plot(profilex_lst, profile+profile_std, '--', lw=0.5, c='C1')
+            #ax_loop.plot(profilex_lst, profile-profile_std, '--', lw=0.5, c='C1')
+            ax_loop.set_xlim(profilex[0]-1, profilex[-1]+1)
+            ax_loop.set_ylim(-0.02, 0.15)
+            ax_loop.axvline(x=0, color='k', ls='--', lw=0.6)
+            ax_loop.axhline(y=0, color='k', ls='--', lw=0.6)
+            ax_loop.grid(True, ls='--', color='gray', lw=0.6)
+            ax_loop.set_axisbelow(True)
+            ax_loop.set_title('Loop {}'.format(iloop))
+
+            '''
+            fig_loop2 = plt.figure(dpi=150, figsize=(6,4))
+            ax_loop2 = fig_loop2.add_axes([0.1,0.1,0.8,0.8])
+            ax_loop2.scatter(apernode_x_lst, apernode_y_lst,
+                        c='gray', s=5, alpha=0.2)
+            ax_loop2.plot(newprofilex, newprofile, '-', lw=1, c='C1')
+            ax_loop2.set_xlim(profilex[0]-1, profilex[-1]+1)
+            ax_loop2.set_ylim(-0.02, 0.15)
+            ax_loop2.axvline(x=0, color='k', ls='--', lw=0.6)
+            ax_loop2.axhline(y=0, color='k', ls='--', lw=0.6)
+            ax_loop2.grid(True, ls='--', color='gray', lw=0.6)
+            ax_loop2.set_axisbelow(True)
+            title = 'Profile loop {} for Row {:04d}'.format(iloop, disp_x)
+            fig_loop2.suptitle(title)
+            figname = 'rowprofile_{:04d}_loop_{}.png'.format(disp_x, iloop)
+            fig_loop2.savefig(figname)
+            plt.close(fig_loop2)
+            '''
+
+        # loop ends here
+        profilefunc_lst.append(profile)
+
+        fig_loop.suptitle('Profile loop for Row {:04d}'.format(disp_x))
+        fig_loop.savefig('row_{:04d}_loops.png'.format(disp_x, iloop))
+        plt.close(fig_loop)
+
+    profilenode_lst = disp_x_lst
+    profilefunc_lst = np.array(profilefunc_lst)
+    npoints = profilefunc_lst.shape[1]
+
+    interprofilefunc_lst = {}
+    for y in ally:
+        profile = np.zeros(npoints)
+        for i in np.arange(npoints):
+            f = intp.InterpolatedUnivariateSpline(
+                    profilenode_lst, profilefunc_lst[:, i], k=3)
+            profile[i] = f(y)
+        interprofilefunc = intp.InterpolatedUnivariateSpline(
+                profilex, profile, k=3, ext=1)
+        interprofilefunc_lst[y] = interprofilefunc
+
+    fig_allprofile = plt.figure(figsize=(6,8), dpi=150)
+    ax_allprofile = fig_allprofile.add_axes([0.1, 0.1, 0.8, 0.8])
+    for y in range(0, ny, 16):
+        newx = np.arange(p1, p2, 0.1)
+        interf = interprofilefunc_lst[y]
+        ax_allprofile.plot(newx, interf(newx)+0.0001*y,
+                lw=0.6, alpha=0.4, color='C0')
+    ax_allprofile.grid(True, ls='--', lw=0.5)
+    ax_allprofile.set_axisbelow(True)
+    fig_allprofile.savefig('profile_stack.png')
+    plt.close(fig_allprofile)
+
+    flux_sum_lst = {}
+    flux_opt_lst = {}
+    flux_err_lst = {}
+    back_sum_lst = {}
+    for aper, aperloc in sorted(apertureset.items()):
+        flux_sum_lst[aper] = []
+        flux_opt_lst[aper] = []
+        flux_err_lst[aper] = []
+        back_sum_lst[aper] = []
+        dcen_lst = []
+        for y in ally:
+            interf = interprofilefunc_lst[y]
+            cen = aperloc.position(y)
+            intc = np.int(np.round(cen))
+            x1 = int(intc + p1)
+            x2 = int(intc + p2 + 1)
+            x1 = max(x1, 0)
+            x2 = min(x2, nx)
+            if x2-x1 < (p2-p1)/2:
+                flux_opt_lst[aper].append(0.0)
+                flux_sum_lst[aper].append(0.0)
+                flux_err_lst[aper].append(0.0)
+                back_sum_lst[aper].append(0.0)
+                continue
+            indx = np.arange(x1, x2)
+            flux = data[y, indx]
+            back = background[y, indx]
+            para = [flux.sum(), cen]
+            mask = np.ones_like(flux, dtype=np.bool)
+            for ite in range(10):
+                result = opt.least_squares(errfunc, para,
+                        bounds=((-np.inf, cen-0.5), (np.inf, cen+0.5)),
+                        args=(flux[mask], interf, indx[mask]))
+                newpara = result['x']
+                fitprof = fitfunc(newpara, interf, indx)
+                resprof = flux - fitprof
+                std = resprof[mask].std()
+                new_mask = resprof < 3*std
+                if new_mask.sum() == mask.sum():
+                    break
+                mask = new_mask
+                para = newpara
+
+            #var = np.maximum(flux+back, 0)+(ron/gain)**2
+            var = np.maximum(fitprof+back, 0)+(ron/gain)**2
+            mask = resprof < 3*np.sqrt(var)
+            s_lst = 1/var
+            normprof = fitprof/fitprof.sum()
+            fopt = (  (s_lst*normprof*flux)[mask].sum()  )/(
+                      (s_lst*normprof**2)[mask].sum()    )
+            vopt = (  normprof[mask].sum()               )/(
+                      (s_lst*normprof**2)[mask].sum()    )
+            ferr = math.sqrt(vopt)
+            fsum = flux.sum()
+            bsum = back.sum()
+            flux_opt_lst[aper].append(fopt)
+            flux_sum_lst[aper].append(fsum)
+            flux_err_lst[aper].append(ferr)
+            back_sum_lst[aper].append(bsum)
+
+            dcen_lst.append(cen-newpara[1])
+            #if aper==4 or aper==0:
+            if False:
+                if y%30==0:
+                    fig_pix = plt.figure(figsize=(18,10), dpi=150)
+                irow = int((y%30)/6)
+                icol = (y%30)%6
+                _x = 0.04 + icol*0.16
+                _y = 0.05 + (4-irow)*0.19
+                ax = fig_pix.add_axes([_x, _y, 0.14, 0.17])
+                #ax.plot(indx-para[1], fitprof, 'o-',
+                #        color='w', mec='C0', ms=4, lw=0.8)
+                #ax.plot(indx[mask]-para[1], fitprof[mask], 'o',
+                #        color='C0', ms=4)
+                newx = np.arange(indx[0], indx[-1], 0.1)
+                fitprofnew = fitfunc(newpara, interf, newx)
+                ax.plot(newx-newpara[1], fitprofnew, '-', color='C0', lw=0.5)
+                #ax.plot(newx-para[1], fitprofnew+1*std, '--', color='C0', lw=0.5)
+                #ax.plot(newx-para[1], fitprofnew-1*std, '--', color='C0', lw=0.5)
+                ax.fill_between(newx-newpara[1], fitprofnew+1*std, fitprofnew-1*std,
+                        facecolor='C0', alpha=0.1)
+                #ax.plot(indx[mask]-newpara[1], flux[mask], ls='-',
+                #        color='C1', lw=0.8, zorder=1, ms=2)
+                x1, x2 = ax.get_xlim()
+                y1, y2 = ax.get_ylim()
+                #ax.plot(indx-newpara[1], flux, '--', color='C1', lw=0.8, zorder=-1)
+                ax.errorbar(indx-newpara[1], flux, yerr=np.sqrt(var),
+                        fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
+                        ms=4, lw=0.6, zorder=-1)
+                ax.plot(indx[mask]-newpara[1], flux[mask], 'o',
+                        color='C1', zorder=1, ms=4)
+                ax.plot(indx-newpara[1], np.zeros_like(indx), '^',
+                        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
+                ax.plot(indx[mask]-newpara[1], np.zeros_like(indx[mask]), '^',
+                        zorder=1, ms=3, color='C1')
+                ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'Y=%d'%y,
+                        fontsize=9)
+                ax.text(0.35*x1+0.65*x2, 0.1*y1+0.9*y2, '%7g'%fsum,
+                        fontsize=9, color='C0')
+                ax.text(0.35*x1+0.65*x2, 0.2*y1+0.8*y2, '%7g'%fopt,
+                        fontsize=9, color='C1')
+                ax.set_xlim(x1, x2)
+                ax.set_ylim(y1, y2)
+                ax.axhline(y=0, c='k', ls='--', lw=0.5)
+                ax.axvline(x=0, c='k', ls='--', lw=0.5)
+                ax.axvline(x=cen-newpara[1], ls='-', lw=0.5, color='C1')
+                for tick in ax.xaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax.yaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                if y%30 == 29 or y == ny-1:
+                    if not os.path.exists('images'):
+                        os.mkdir('images')
+                    fig_pix.savefig('images/fitting_%02d_%04d_var.png'%(aper, y))
+                    plt.close(fig_pix)
+
+        flux_sum_lst[aper] = np.array(flux_sum_lst[aper])
+        flux_opt_lst[aper] = np.array(flux_opt_lst[aper])
+        back_sum_lst[aper] = np.array(back_sum_lst[aper])
+        flux_err_lst[aper] = np.array(flux_err_lst[aper])
+
+        #if aper==4:
+        if False:
+            fig2 = plt.figure()
+            ax2 = fig2.gca()
+            ax2.plot(dcen_lst)
+
+            fig_comp = plt.figure(figsize=(12,6), dpi=150)
+            ax_comp1 = fig_comp.add_axes([0.1,0.4,0.8,0.5])
+            ax_comp2 = fig_comp.add_axes([0.1,0.1,0.8,0.25])
+            ax_comp1.plot(flux_sum_lst[aper],
+                    lw=0.6, color='C0', alpha=0.6, label='Standard')
+            ax_comp1.plot(flux_opt_lst[aper],
+                    lw=0.6, color='C3', alpha=0.6, label='Optimal')
+            ax_comp2.plot(back_sum_lst[aper],
+                    lw=0.6, color='C0', alpha=0.6, label='Standard Background')
+            for ax in fig_comp.get_axes():
+                ax.set_xlim(0, ny-1)
+                ax.grid(True, ls='--', lw=0.5)
+                ax.set_axisbelow(True)
+                ax.legend(loc='upper right')
+            fig_comp.savefig('flux_comp_{:03d}.png'.format(aper))
+            plt.close(fig_comp)
+
+            for x in [600, 1050, 1400, 1960, 2700, 3300, 4000, 4200]:
+                fig_comp2 = plt.figure(figsize=(12,6), dpi=150)
+                ax_comp21 = fig_comp2.gca()
+                i1 = x-120
+                i2 = x+120
+                ax_comp21.plot(np.arange(i1, i2), flux_sum_lst[aper][i1:i2],
+                        lw=0.6, color='C0', alpha=0.6, label='Standard')
+                ax_comp21.plot(np.arange(i1, i2), flux_opt_lst[aper][i1:i2],
+                        lw=0.6, color='C1', alpha=0.6, label='Optimal')
+                ax_comp21.grid(True, ls='--', lw=0.5)
+                ax_comp21.set_axisbelow(True)
+                ax_comp21.set_xlim(i1, i2)
+                fig_comp2.savefig('flux_comp_{:03d}_zoom_{:04d}.png'.format(
+                    aper, x))
+                plt.close(fig_comp2)
+
+        print('Spectrum of Aperture {:3d} extracted'.format(aper))
+
+
+    return flux_opt_lst, flux_err_lst, flux_sum_lst, back_sum_lst
+
+
+
 
 def get_mean_profile(nodex_lst, nodey_lst, profx_lst):
     """Calculate the mean profiles for a series of (*x*, *y*) data.
