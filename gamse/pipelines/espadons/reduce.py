@@ -9,7 +9,6 @@ from scipy.ndimage.filters import median_filter
 
 from ...echelle.trace import load_aperture_set
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
-from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
@@ -19,9 +18,9 @@ from ...echelle.wlcalib import (wlcalib, recalib,
 from ...echelle.background import get_interorder_background
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from .common import (correct_overscan, select_calib_from_database,
-                    BackgroundFigure)
+                    BackgroundFigure, SpatialProfileFigure)
 from .trace import find_apertures
-from .flat import get_flat
+from .flat import get_flat, get_flat2, smooth_aperpar_A, smooth_aperpar_c, smooth_aperpar_bkg
 
 def reduce_rawdata(config, logtable):
 
@@ -238,7 +237,25 @@ def reduce_rawdata(config, logtable):
         ####################### Parse Flat Fielding ##########################
 
         # get sensitivity map and 1d spectra of flat
-        flat_sens, flatspec_lst = get_flat(flat_data, aperset)
+        #flat_sens, flatspec_lst = get_flat(flat_data, aperset)
+        flat_mask = np.zeros_like(flat_data, dtype=np.int16)
+        fig_spatial = SpatialProfileFigure()
+        flat_sens, flatspec_lst = get_flat2(flat_data, flat_mask,
+                    apertureset = aperset,
+                    nflat = 10,
+                    smooth_A_func   = smooth_aperpar_A,
+                    smooth_c_func   = smooth_aperpar_c,
+                    smooth_bkg_func = smooth_aperpar_bkg,
+                    mode = 'debug',
+                    fig_spatial = fig_spatial,
+                    )
+        figname = 'spatial_profile_flat.png'
+        title = 'Spatial Profile of flat'
+        fig_spatial.suptitle(title)
+        fig_spatial.savefig(figname)
+        fig_spatial.close()
+
+
         ny, nx = flat_sens.shape
 
         # pack the final 1-d spectra of flat
@@ -664,5 +681,19 @@ def reduce_rawdata(config, logtable):
         section = config['reduce.extract']
         method = section.get('method')
         if method == 'optimal':
-            result = extract_aperset_optimal(data, mask, background, aperset_A,
-                    gain=1.3, ron=4.15)
+            profilex = np.arange(-8, 8+1e-5, 0.5)
+
+            yc_lst = np.arange(384, ny, 384)
+            # ny = 4608. now yc_lst has 11 elements
+            yc_lst = np.insert(yc_lst, 0, 30)
+            # now yc_lst has 12 elements
+            #yc_lst = np.append(yc_lst, ny-30) # deprecated
+
+            result = extract_aperset_optimal(data, mask,
+                        background  = background,
+                        apertureset = aperset_A,
+                        gain        = 1.3,
+                        ron         = 4.15,
+                        profilex    = profilex,
+                        disp_x_lst  = yc_lst,
+                        )

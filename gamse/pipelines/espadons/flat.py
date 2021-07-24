@@ -77,10 +77,21 @@ def get_flat2(data, mask, apertureset, nflat,
         all_ynodes = []
 
 
-        ax = fig_spatial.get_axes()[ixc]
-        _x = 0.05+iyc%5*0.19
-        _y = (2-1-iyc//5)*0.45+0.05
-        ax = fig_slit.add_axes([_x, _y, 0.16, 0.40])
+        ax = fig_spatial.get_axes()[iyc]
+
+        # has 10 panels, draw 0, 4, 9
+        if iyc==0:
+            _x = 0.05
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        elif iyc==4:
+            _x = 0.05 + 1*0.32
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        elif iyc==9:
+            _x = 0.05 + 2*0.32
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        else:
+            ax2 = None
+
 
         order_cent_lst = np.array([aperloc.position(y)
             for aper, aperloc in sorted(apertureset.items())])
@@ -141,6 +152,8 @@ def get_flat2(data, mask, apertureset, nflat,
 
                 # plotting
                 ax.scatter(newx, newy, s=5, alpha=0.3, lw=0)
+                if ax2 is not None:
+                    ax2.scatter(newx, newy, s=10, alpha=0.3, lw=0)
 
         # print a progress bar in terminal
         n_finished = iyc + 1
@@ -171,9 +184,22 @@ def get_flat2(data, mask, apertureset, nflat,
         ax.set_axisbelow(True)
         _x1, _x2 = p1-2, p2+2
         _y1, _y2 = -0.2, 1.2
-        ax.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, 'Y={:4d}'.format(yc))
+        _text = 'Y={:4d}/{:4d}'.format(yc, ny)
+        ax.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
         ax.set_xlim(_x1, _x2)
         ax.set_ylim(_y1, _y2)
+        # temperary
+        if ax2 is not None:
+            ax2.plot(profile_x, profile_y, color='k', lw=1)
+            ax2.grid(True, ls='--', lw=0.5)
+            ax2.set_axisbelow(True)
+            _x1, _x2 = p1-2, p2+2
+            _y1, _y2 = -0.2, 1.2
+            _text = 'Y={:4d}/{:4d}'.format(yc, ny)
+            ax2.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
+            ax2.set_xlim(_x1, _x2)
+            ax2.set_ylim(_y1, _y2)
+
 
         profilex_lst.append(yc)
         profiley_lst.append(profile_y)
@@ -181,8 +207,8 @@ def get_flat2(data, mask, apertureset, nflat,
     # use light green color
     print(' \033[92m Completed\033[0m')
 
-    fig_slit.savefig('cross_dispersion_profile.png')
-    plt.close(fig_slit)
+    fig_show.savefig('spatialprofile_espadons.pdf')
+    plt.close(fig_show)
 
     profilex_lst = np.array(profilex_lst)
     profiley_lst = np.array(profiley_lst)
@@ -290,7 +316,6 @@ def get_flat2(data, mask, apertureset, nflat,
 
             # find A, c, bkg
             _m = (~_satmask)*(~_badmask)
-            print(y, x1, x2, xdata, ydata, _m)
             for ite in range(10):
                 p, ier = opt.leastsq(errfunc, p0,
                             args=(xdata[_m], ydata[_m], interf))

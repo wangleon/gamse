@@ -10,6 +10,8 @@ import astropy.io.fits as fits
 from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.figure import Figure
 
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
@@ -365,7 +367,7 @@ class SpatialProfileFigure(Figure):
     def __init__(self,
             nrow = 2,
             ncol = 5,
-            figsize = (12,8),
+            figsize = (12,5),
             dpi = 200,
             ):
 
