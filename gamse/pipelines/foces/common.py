@@ -94,8 +94,8 @@ def get_bias(config, logtable):
     Returns:
         tuple: A tuple containing:
 
-            * **bias** (:class:`numpy.ndarray`) – Output bias image.
-            * **bias_card_lst** (list) – List of FITS header cards related to
+            * **bias** (:class:`numpy.ndarray`) --- Output bias image.
+            * **bias_card_lst** (list) --- List of FITS header cards related to
               the bias correction.
             * **n_bias** (int) --- Number of bias images.
             * **ovrstd** (float) --- Standard deviation of overscan of bias.
@@ -140,8 +140,8 @@ def combine_bias(config, logtable):
     Returns:
         tuple: A tuple containing:
 
-            * **bias** (:class:`numpy.ndarray`) – Output bias image.
-            * **bias_card_lst** (list) – List of FITS header cards related to
+            * **bias** (:class:`numpy.ndarray`) --- Output bias image.
+            * **bias_card_lst** (list) --- List of FITS header cards related to
               the bias correction.
             * **n_bias** (int) --- Number of bias images.
             * **ovrstd** (float) --- Standard deviation of overscan of bias.
@@ -784,6 +784,49 @@ class BiasFigure(Figure):
         if title is not None:
             self.suptitle(title)
 
+def norm_profile(xdata, ydata, mask):
+    # define the fitting and error functions
+    def gaussian_bkg(A, center, sigma, bkg, x):
+        return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
+    def fitfunc(p, x):
+        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+    def errfunc(p, x, y, fitfunc):
+        return y - fitfunc(p, x)
+
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    # iterative fitting using gaussian + bkg function
+    A0 = ydata.max()-ydata.min()
+    c0 = (xdata[0]+xdata[-1])/2
+    b0 = ydata.min()
+    p0 = [A0, c0, 3.0, b0]
+    lower_bounds = [-np.inf, xdata[0],  0.3,    -np.inf]
+    upper_bounds = [np.inf,  xdata[-1], np.inf, ydata.max()]
+    _m = (~sat_mask)*(~bad_mask)
+
+    for i in range(10):
+        opt_result = opt.least_squares(errfunc, p0,
+                    args=(xdata[_m], ydata[_m], fitfunc),
+                    bounds=(lower_bounds, upper_bounds))
+        p1 = opt_result['x']
+        residuals = errfunc(p1, xdata, ydata, fitfunc)
+        std = residuals[_m].std(ddof=1)
+        _new_m = (np.abs(residuals) < 3*std)*_m
+        if _m.sum() == _new_m.sum():
+            break
+        _m = _new_m
+        p0 = p1
+
+    A, c, sigma, bkg = p1
+    newx = xdata - c
+    newy = ydata - bkg
+
+    param = (A, c, sigma, bkg, std)
+
+    if A < 1e-3:
+        return None
+    return newx, newy/A, param
 
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
@@ -971,6 +1014,34 @@ class BrightnessProfileFigure(Figure):
         # others
         ax1.set_xlabel('Pixel')
         ax2.set_xlabel('Order')
+
+    def close(self):
+        plt.close(self)
+
+class SpatialProfileFigure(Figure):
+    """Figure to plot the cross-dispersion profiles.
+
+    """
+    def __init__(self,
+            nrow = 2,
+            ncol = 3,
+            figsize = (12,8),
+            dpi = 200,
+            ):
+
+        # create figure
+        Figure.__init__(self, figsize=figsize, dpi=dpi)
+        self.canvas = FigureCanvasAgg(self)
+
+        # add axes
+        _w = 0.27
+        _h = 0.34
+        for irow in range(nrow):
+            for icol in range(ncol):
+                _x = 0.08 + icol*0.31
+                _y = 0.06 + (nrow-1-irow)*0.40
+
+                ax = self.add_axes([_x, _y, _w, _h])
 
     def close(self):
         plt.close(self)

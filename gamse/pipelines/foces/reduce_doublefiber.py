@@ -34,9 +34,10 @@ from ...echelle.background import (find_background, simple_debackground,
 from ...utils.obslog import parse_num_seq
 from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
                      TraceFigure, BackgroundFigure, BrightnessProfileFigure,
+                     SpatialProfileFigure,
                      )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg)
+                   smooth_aperpar_bkg, get_flat)
 
 def get_fiberobj_lst(string, delimiter='|'):
     """Split the object names for multiple fibers.
@@ -348,7 +349,8 @@ def reduce_doublefiber(config, logtable):
 
                 section = config['reduce.flat']
 
-                flat_sens, flat_spec = get_fiber_flat(
+                '''
+                flat_sens, flat_spec = get_flat(
                             data            = flat_data,
                             mask            = flat_mask,
                             apertureset     = aperset,
@@ -364,6 +366,25 @@ def reduce_doublefiber(config, logtable):
                             fig_slit        = fig_slit,
                             slit_file       = slit_file,
                             )
+                '''
+                fig_spatial = SpatialProfileFigure()
+                flat_sens, flat_spec = get_flat(
+                        data        = flat_data,
+                        mask        = flat_mask,
+                        apertureset = aperset,
+                        nflat       = nflat,
+                        q_threshold     = section.getfloat('q_threshold'),
+                        smooth_A_func   = smooth_aperpar_A,
+                        smooth_c_func   = smooth_aperpar_c,
+                        smooth_bkg_func = smooth_aperpar_bkg,
+                        mode = 'debug',
+                        fig_spatial = fig_spatial,
+                        )
+                figname = 'spatial_profile_flat_{}.png'.format(flatname)
+                title = 'Spatial Profile of flat_{}'.format(flatname)
+                fig_spatial.suptitle(title)
+                fig_spatial.savefig(figname)
+                fig_spatial.close()
 
                 flat_corr = flat_data/flat_sens
                 section = config['reduce.extract']
