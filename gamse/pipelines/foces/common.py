@@ -20,6 +20,7 @@ from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 
 def correct_overscan(data, mask=None, direction=None):
@@ -784,6 +785,60 @@ class BiasFigure(Figure):
         if title is not None:
             self.suptitle(title)
 
+
+class ProfileNormalizer(ProfileNormalizerCommon):
+    def __init__(self, xdata, ydata, mask):
+        self.xdata = xdata
+        self.ydata = ydata
+        self.mask  = mask
+
+        sat_mask = (self.mask&4 > 0)
+        bad_mask = (self.mask&2 > 0)
+
+        # iterative fitting using gaussian + bkg function
+        A0 = self.ydata.max()-self.ydata.min()
+        c0 = (self.xdata[0]+self.xdata[-1])/2
+        b0 = self.ydata.min()
+        p0 = [A0, c0, 3.0, b0]
+        lower_bounds = [-np.inf, self.xdata[0],  0.3,    -np.inf]
+        upper_bounds = [np.inf,  self.xdata[-1], np.inf, self.ydata.max()]
+        _m = (~sat_mask)*(~bad_mask)
+
+        for i in range(10):
+            opt_result = opt.least_squares(self.errfunc, p0,
+                        args=(self.xdata[_m], self.ydata[_m]),
+                        bounds=(lower_bounds, upper_bounds))
+            p1 = opt_result['x']
+            residuals = self.errfunc(p1, self.xdata, self.ydata)
+            std = residuals[_m].std(ddof=1)
+            _new_m = (np.abs(residuals) < 3*std)*_m
+            if _m.sum() == _new_m.sum():
+                break
+            _m = _new_m
+            p0 = p1
+    
+        A, c, sigma, bkg = p1
+        self.x = self.xdata - c
+        self.y = (self.ydata - bkg)/A
+    
+        self.param = p1
+        self.std = std
+
+        #if A < 1e-3:
+        #    return None
+    def is_succ(self):
+        A, center, sigma, bkg = self.param
+        std = self.std
+
+        if A>0 and 1<sigma<5 and A/std>10:
+            return True
+        else:
+            return False
+
+    def fitfunc(self, param, x):
+        A, center, sigma, bkg = param
+        return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
+
 def norm_profile(xdata, ydata, mask):
     # define the fitting and error functions
     def gaussian_bkg(A, center, sigma, bkg, x):
@@ -1025,7 +1080,7 @@ class SpatialProfileFigure(Figure):
     def __init__(self,
             nrow = 2,
             ncol = 3,
-            figsize = (12,8),
+            figsize = (12,6),
             dpi = 200,
             ):
 
@@ -1035,11 +1090,11 @@ class SpatialProfileFigure(Figure):
 
         # add axes
         _w = 0.27
-        _h = 0.34
+        _h = 0.40
         for irow in range(nrow):
             for icol in range(ncol):
                 _x = 0.08 + icol*0.31
-                _y = 0.06 + (nrow-1-irow)*0.40
+                _y = 0.06 + (nrow-1-irow)*0.45
 
                 ax = self.add_axes([_x, _y, _w, _h])
 

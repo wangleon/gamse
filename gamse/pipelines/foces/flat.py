@@ -16,7 +16,7 @@ import matplotlib.ticker as tck
 from ...echelle.flat import SpatialProfile
 from ...utils.onedarray import get_local_minima
 from ...utils.regression import iterative_polyfit
-from .common import norm_profile
+from .common import norm_profile, ProfileNormalizer
 
 def get_flat(data, mask, apertureset, nflat,
         smooth_A_func, smooth_c_func, smooth_bkg_func,
@@ -123,39 +123,34 @@ def get_flat(data, mask, apertureset, nflat,
             if np.nonzero(mnodes>0)[0].size>3:
                 continue
 
-            results = norm_profile(xnodes, ynodes, mnodes)
-            # in case returns None results
-            if results is None:
-                continue
+            normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
+            newx = normed_prof.x
+            newy = normed_prof.y
+            param = normed_prof.param
+            std   = normed_prof.std
+            A, center, sigma, bkg = param
 
-            # unpack the results
-            newx, newy, param = results
-            A, c, sigma, bkg, std = param
-
-            '''
             '''
             fig0 = plt.figure()
             ax01 = fig0.add_subplot(211)
             ax02 = fig0.add_subplot(212)
             ax01.plot(xnodes, ynodes, 'o')
-            plotx = np.linspace(xnodes[0], xnodes[-1], 50)
-            ploty = gaussian_bkg(param[0], param[1], param[2], param[3], plotx)
-            #ploty = gaussian_gen_bkg(param[0], param[1], param[2], param[3], param[4], plotx)
-            #fwhm = 2*param[2]*math.pow(math.log(2), 1/param[3])
-            #label = 'A={:.2f}\nc={:.1f}\na={:.2f}\nb={:.2f}\nbkg={:.2f}\nstd={:.2f}\nfwhm={:.2f}'.format(
-            #        param[0], param[1], param[2], param[3], param[4], param[5], fwhm)
+            plotx, ploty = normed_prof.linspace()
             label = 'A={:.2f}\nc={:.1f}\ns={:.2f}\nbkg={:.2f}\nstd={:.2f}'.format(
-                    param[0], param[1], param[2], param[3], param[4])
-            ax01.plot(plotx, ploty, '-', label=label)
+                    param[0], param[1], param[2], param[3], std)
+            if normed_prof.is_succ():
+                ls = '-'
+            else:
+                ls = '--'
+            ax01.plot(plotx, ploty, ls=ls, label=label)
             ax02.plot(newx, newy, 'o')
             ax01.legend()
             figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
             fig0.savefig(figname)
             plt.close(fig0)
             '''
-            '''
 
-            if A/std > 30 and bkg > 0:
+            if normed_prof.is_succ():
                 for _newx, _newy in zip(newx, newy):
                     all_xnodes.append(_newx)
                     all_ynodes.append(_newy)
