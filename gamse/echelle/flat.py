@@ -2760,3 +2760,16 @@ class SpatialProfile(object):
         mu, cov = self.gpr.predict(test_x, return_cov=True)
         test_y = mu.flatten()
         return test_y
+
+
+class ProfileNormalizerCommon(object):
+    def __init__(self):
+        pass
+
+    def linspace(self, n=100):
+        newx = np.linspace(self.xdata[0], self.xdata[-1], n)
+        newy = self.fitfunc(self.param, newx)
+        return newx, newy
+
+    def errfunc(self, param, x, y):
+        return y - self.fitfunc(param, x)
