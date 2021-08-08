@@ -367,10 +367,8 @@ def make_obslog():
 
         # print log item with colors
         string = fmt_str.format(
-                    '[{:d}]'.format(frameid), fileid,
-                    '({:3s})'.format(imgtype),
-                    objectname, i2, exptime,
-                    obsdate.isoformat()[0:23],
+                    '[{:d}]'.format(frameid), fileid, '({:3s})'.format(imgtype),
+                    objectname, i2, exptime, obsdate.isoformat()[0:23],
                     saturation, quantile95)
         print(print_wrapper(string, item))
 

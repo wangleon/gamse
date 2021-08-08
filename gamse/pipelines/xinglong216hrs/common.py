@@ -21,6 +21,7 @@ from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.onedarray import iterative_savgol_filter
@@ -952,6 +953,62 @@ class BrightnessProfileFigure(Figure):
 
     def close(self):
         plt.close(self)
+
+
+class ProfileNormalizer(ProfileNormalizerCommon):
+    def __init__(self, xdata, ydata, mask):
+        self.xdata = xdata
+        self.ydata = ydata
+        self.mask  = mask
+
+        sat_mask = (self.mask&4 > 0)
+        bad_mask = (self.mask&2 > 0)
+
+        # iterative fitting using fitfunc
+        A0 = self.ydata.max()-self.ydata.min()
+        c0 = (self.xdata[0]+self.xdata[-1])/2
+        b0 = self.ydata.min()
+        p0 = [A0, c0, 5.0, 4.0, b0]
+        lower_bounds = [-np.inf, self.xdata[0],  0.5,    0.5,    -np.inf]
+        upper_bounds = [np.inf,  self.xdata[-1], np.inf, np.inf, self.ydata.max()]
+        _m = (~sat_mask)*(~bad_mask)
+
+        for i in range(10):
+            opt_result = opt.least_squares(self.errfunc, p0,
+                        args=(self.xdata[_m], self.ydata[_m]),
+                        bounds=(lower_bounds, upper_bounds))
+            p1 = opt_result['x']
+            residuals = self.errfunc(p1, self.xdata, self.ydata)
+            std = residuals[_m].std(ddof=1)
+            _new_m = (np.abs(residuals) < 3*std)*_m
+            if _m.sum() == _new_m.sum():
+                break
+            _m = _new_m
+            p0 = p1
+    
+        A, c, alpha, beta, bkg = p1
+        self.x = self.xdata - c
+        self.y = (self.ydata - bkg)/A
+        
+        self.param = p1
+        self.std = std
+
+    def is_succ(self):
+        A, center, alpha, beta, bkg = self.param
+        std = self.std
+
+        if A>0 and A/std>10 and alpha<10 and beta<10 and \
+            (bkg>0 or (bkg<0 and abs(bkg)<A/10)):
+            return True
+        else:
+            return False
+
+    def fitfunc(self, param, x):
+        """Use Generalized Gaussian.
+        """
+        A, center, alpha, beta, bkg = param
+        return A*np.exp(-np.power(np.abs(x-center)/alpha, beta)) + bkg
+
 
 def norm_profile(xdata, ydata, mask):
     # define the fitting and error functions

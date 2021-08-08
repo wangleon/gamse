@@ -16,7 +16,7 @@ import matplotlib.ticker as tck
 from ...echelle.flat import SpatialProfile
 from ...utils.onedarray import get_local_minima
 from ...utils.regression import iterative_polyfit
-from .common import norm_profile
+from .common import norm_profile, ProfileNormalizer
 
 def get_flat(data, mask, apertureset, nflat,
         smooth_A_func, smooth_c_func, smooth_bkg_func,
@@ -122,6 +122,14 @@ def get_flat(data, mask, apertureset, nflat,
             if np.nonzero(mnodes>0)[0].size>3:
                 continue
 
+            normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
+            newx = normed_prof.x
+            newy = normed_prof.y
+            '''
+            param = normed_prof.param
+            std   = normed_prof.std
+            A, center, alpha, beta, bkg = param
+
             results = norm_profile(xnodes, ynodes, mnodes)
             # in case returns None results
             if results is None:
@@ -130,29 +138,30 @@ def get_flat(data, mask, apertureset, nflat,
             # unpack the results
             newx, newy, param = results
             A, c, alpha, beta, bkg, std = param
+            fig0 = plt.figure()
+            ax01 = fig0.add_subplot(211)
+            ax02 = fig0.add_subplot(212)
+            ax01.plot(xnodes, ynodes, 'o')
+            plotx, ploty = normed_prof.linspace()
+            fwhm = 2*param[2]*math.pow(math.log(2), 1/param[3])
+            label = 'A={:.2f}\nc={:.1f}\na={:.2f}\nb={:.2f}\nbkg={:.2f}\nstd={:.2f}\nfwhm={:.2f}'.format(
+                    param[0], param[1], param[2], param[3], param[4], param[5], fwhm)
+            if normed_prof.is_succ():
+                ls = '-'
+            else:
+                ls = '--'
+            ax01.plot(plotx, ploty, ls=ls, label=label)
+            ax02.plot(newx, newy, 'o')
+            ax01.legend()
+            figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
+            fig0.savefig(figname)
+            plt.close(fig0)
+            '''
 
-            if A/std > 30 and bkg > 0:
+            if normed_prof.is_succ():
                 for _newx, _newy in zip(newx, newy):
                     all_xnodes.append(_newx)
                     all_ynodes.append(_newy)
-                '''
-                fig0 = plt.figure()
-                ax01 = fig0.add_subplot(211)
-                ax02 = fig0.add_subplot(212)
-                ax01.plot(xnodes, ynodes, 'o')
-                plotx = np.linspace(xnodes[0], xnodes[-1], 50)
-                #ploty = gaussian_bkg(param[0], param[1], param[2], param[3], plotx)
-                ploty = gaussian_gen_bkg(param[0], param[1], param[2], param[3], param[4], plotx)
-                fwhm = 2*param[2]*math.pow(math.log(2), 1/param[3])
-                label = 'A={:.2f}\nc={:.1f}\na={:.2f}\nb={:.2f}\nbkg={:.2f}\nstd={:.2f}\nfwhm={:.2f}'.format(
-                        param[0], param[1], param[2], param[3], param[4], param[5], fwhm)
-                ax01.plot(plotx, ploty, '-', label=label)
-                ax02.plot(newx, newy, 'o')
-                ax01.legend()
-                figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
-                fig0.savefig(figname)
-                plt.close(fig0)
-                '''
 
                 # plotting
                 ax.scatter(newx, newy, s=5, alpha=0.3, lw=0)
@@ -171,7 +180,7 @@ def get_flat(data, mask, apertureset, nflat,
 
         string = '>'*int(ratio*nchar)
         string = string.ljust(nchar, '-')
-        prompt = 'Constructing slit function'
+        prompt = 'Constructing spatial profile'
         string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
         sys.stdout.write(string)
         sys.stdout.flush()
@@ -608,7 +617,7 @@ def get_flat(data, mask, apertureset, nflat,
             y1s = max(0,  np.round(lbound-2, 1))
             y2s = min(ny, np.round(ubound+2, 1))
             xdata2 = np.arange(y1s, y2s, 0.1)
-            flatmod = fitfunc([A,c,bkg], xdata2, interf)
+            flatmod = fitfunc([A,c,b], xdata2, interf)
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
