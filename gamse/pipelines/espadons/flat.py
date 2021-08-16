@@ -19,7 +19,7 @@ import astropy.io.fits as fits
 from ...echelle.flat import SpatialProfile
 from ...utils.regression import iterative_polyfit
 from ...utils.onedarray import iterative_savgol_filter, get_local_minima
-from .common import norm_profile, get_mean_profile
+from .common import norm_profile, ProfileNormalizer, get_mean_profile
 
 def get_flat2(data, mask, apertureset, nflat,
         smooth_A_func,
@@ -122,10 +122,9 @@ def get_flat2(data, mask, apertureset, nflat,
             ynodes = data[y, i1:i2]
             mnodes = mask[y, i1:i2]
 
-            results = norm_profile(xnodes, ynodes)
-            # in case returns None results
-            if results is None:
-                continue
+            normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
+            newx = normed_prof.x
+            newy = normed_prof.y
 
             # unpack the results
             newx, newy, param = results

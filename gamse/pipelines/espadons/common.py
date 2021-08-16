@@ -13,6 +13,7 @@ import matplotlib.ticker as tck
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
+from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.regression import get_clip_mean
@@ -87,6 +88,35 @@ def correct_overscan(data, header):
     mask = mask[:,20:nx-20]
     return ovrdata, mask
 
+class ProfileNormalizer(ProfileNormalizerCommon):
+    def __init__(self, xdata, ydata, mask):
+        self.xdata = xdata
+        self.ydata = ydata
+        self.mask  = mask
+
+        sat_mask = (mask&4 > 0)
+        bad_mask = (mask&2 > 0)
+
+        x1, x2 = xdata[0], xdata[-1]
+        y1, y2 = ydata[0], ydata[-1]
+        background = (x-x1)/(x2-x1)*(y2-y1)+y1
+        newydata = ydata - background
+
+        v0, p1, yp1, p2, yp2 = find_local_peak(xdata, newydata)
+        Amean = (yp1+yp2)/2
+
+        self.x = xdata - v0
+        self.y = newydata/Amean
+
+        self.param = (v0, p1, p2, Amean, background.mean())
+
+    def is_succ(self):
+        v0, p1, p2, Amean, bmean = self.param
+        if A>bmean and bmean>0 and b<np.percentile(self.ydata, 20):
+            return True
+        else:
+            return False
+        
 
 def norm_profile(x, y):
     """Normalize the decker profile.
@@ -118,6 +148,8 @@ def norm_profile(x, y):
 
 
 def find_local_peak(x, y):
+    """Find positions of peak for ESPADONS six-peak profile.
+    """
     n = x.size
     f = intp.InterpolatedUnivariateSpline(x, y, k=3)
     # find central valley. index=v0
