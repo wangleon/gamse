@@ -89,9 +89,15 @@ def reduce_doublefiber(config, logtable):
     # if mulit-fiber, get fiber offset list from config file
     fiber_offsets = [float(v) for v in section.get('fiberoffset').split(',')]
     section = config['reduce']
-    midpath     = section.get('midproc')
-    odspath     = section.get('onedspec')
-    figpath     = section.get('report')
+    midpath = section.get('midpath', None)
+    if midpath is None:
+        midpath = section.get('midproc')    # old style
+    odspath     = section.get('odspath', None)
+    if odspath is None:
+        odspath = section.get('onedspec')   # old style
+    figpath     = section.get('figpath', None)
+    if figpath is None:
+        figpath = section.get('report')     # old style
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
@@ -368,23 +374,40 @@ def reduce_doublefiber(config, logtable):
                             )
                 '''
                 fig_spatial = SpatialProfileFigure()
-                flat_sens, flat_spec = get_flat(
-                        data        = flat_data,
-                        mask        = flat_mask,
-                        apertureset = aperset,
-                        nflat       = nflat,
+                flat_sens, flatspec_lst = get_flat(
+                        data            = flat_data,
+                        mask            = flat_mask,
+                        apertureset     = aperset,
+                        nflat           = nflat,
                         q_threshold     = section.getfloat('q_threshold'),
                         smooth_A_func   = smooth_aperpar_A,
                         smooth_c_func   = smooth_aperpar_c,
                         smooth_bkg_func = smooth_aperpar_bkg,
-                        mode = 'debug',
-                        fig_spatial = fig_spatial,
+                        mode            = 'debug',
+                        fig_spatial     = fig_spatial,
                         )
-                figname = 'spatial_profile_flat_{}.png'.format(flatname)
-                title = 'Spatial Profile of flat_{}'.format(flatname)
+                figname = os.path.join(figpath,
+                            'spatial_profile_flat_{}_{}.png'.format(
+                            fiber, flatname))
+                title = 'Spatial Profile of flat_{}_{}'.format(
+                            fiber, flatname)
                 fig_spatial.suptitle(title)
                 fig_spatial.savefig(figname)
                 fig_spatial.close()
+
+                ny, nx = flat_sens.shape
+
+                # pack 1-d spectra of flat
+                flatspectable = [(aper, flatspec) for aper, flatspec
+                                    in sorted(flatspec_lst.items())]
+
+                # define the datatype of flat 1d spectra
+                flatspectype = np.dtype(
+                            {'names':   ['aperture', 'flux'],
+                             'formats': [np.int32, (np.float32, nx)],
+                             })
+                flatspectable = np.array(flatspectable, dtype=flatspectype)
+
 
                 flat_corr = flat_data/flat_sens
                 section = config['reduce.extract']
