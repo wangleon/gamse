@@ -74,9 +74,12 @@ def make_config():
         config.set('data', 'fiberoffset', str(9))
 
     config.add_section('reduce')
-    config.set('reduce', 'midproc',     'midproc')
-    config.set('reduce', 'report',      'report')
-    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'midpath',     'midproc')
+    config.set('reduce', 'figpath',     'images')
+    config.set('reduce', 'odspath',     'onedspec')
+    #config.set('reduce', 'midproc',     'midproc')   # old style
+    #config.set('reduce', 'report',      'report')    # old style
+    #config.set('reduce', 'onedspec',    'onedspec')   # old style
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
@@ -85,7 +88,7 @@ def make_config():
     # section of bias correction
     sectname = 'reduce.bias'
     config.add_section(sectname)
-    config.set(sectname, 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set(sectname, 'bias_file',     '${reduce:midpath}/bias.fits')
     config.set(sectname, 'cosmic_clip',   str(10))
     config.set(sectname, 'maxiter',       str(5))
     config.set(sectname, 'smooth',        'yes')

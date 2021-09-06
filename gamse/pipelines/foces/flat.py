@@ -126,11 +126,11 @@ def get_flat(data, mask, apertureset, nflat,
             normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
             newx = normed_prof.x
             newy = normed_prof.y
+            '''
             param = normed_prof.param
             std   = normed_prof.std
             A, center, sigma, bkg = param
 
-            '''
             fig0 = plt.figure()
             ax01 = fig0.add_subplot(211)
             ax02 = fig0.add_subplot(212)
@@ -172,7 +172,7 @@ def get_flat(data, mask, apertureset, nflat,
 
         string = '>'*int(ratio*nchar)
         string = string.ljust(nchar, '-')
-        prompt = 'Constructing slit function'
+        prompt = 'Constructing spatial profile'
         string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
         sys.stdout.write(string)
         sys.stdout.flush()
@@ -264,6 +264,9 @@ def get_flat(data, mask, apertureset, nflat,
         if plot_aperpar:
             if iaper%5==0:
                 fig_aperpar = plt.figure(figsize=(15,8), dpi=150)
+            # fig_aperpar2 for paper
+            fig_aperpar2 = plt.figure(figsize=(12, 3.5), dpi=200)
+
 
         aper_position = all_positions[aper]
         aper_lbound, aper_ubound = all_boundaries[aper]
@@ -421,6 +424,9 @@ def get_flat(data, mask, apertureset, nflat,
                 irow = iaper%5
                 _x, _y = 0.04+ipara*0.32, (4-irow)*0.19+0.05
                 ax1 = fig_aperpar.add_axes([_x, _y, 0.28, 0.17])
+                if aper in [83, 21]:
+                    ax21 = fig_aperpar2.add_axes([0.05+ipara*0.32, 0.35, 0.27, 0.62])
+                    ax22 = fig_aperpar2.add_axes([0.05+ipara*0.32, 0.06, 0.27, 0.26])
 
                 # make a copy of ax1 and plot the residuals in the background
                 ax2 = ax1.twinx()
@@ -428,10 +434,19 @@ def get_flat(data, mask, apertureset, nflat,
                         alpha=0.4, zorder=-2)
                 ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
                         alpha=0.4, zorder=-3)
+                if aper in [83, 21]:
+                    ax22.plot(xpiece_lst, ypiece_res_lst, color='k', lw=0.5,
+                            alpha=0.4, zorder=-2)
+                    ax22.axhline(y=0, color='k', ls='--', lw=0.5,
+                            alpha=0.4, zorder=-3)
+
                 # plot rejected points with gray dots
                 _m = mask_rej_lst>0
                 if _m.sum()>0:
                     ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                            color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+                    if aper in [83, 21]:
+                        ax22.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
                             color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
 
                 # plot data points
@@ -439,14 +454,24 @@ def get_flat(data, mask, apertureset, nflat,
                 # plot fitted value
                 ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
                     lw=1, alpha=0.8, zorder=2)
+                if aper in [83, 21]:
+                    ax21.plot(newx_lst, ypara, '-', color='C0', lw=1, zorder=1)
+                    ax21.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
+                        lw=1, alpha=0.8, zorder=2)
 
+                            
                 #ax1.plot(newx_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
                 #        lw=0.5, ms=3, alpha=0.5)
                 _y1, _y2 = ax1.get_ylim()
                 if ipara == 0:
                     ax1.text(0.05*nx, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
                             fontsize=10)
+                    if aper in [83, 21]:
+                        ax21.text(0.05*nx, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
+                                fontsize=10)
                 ax1.text(0.9*nx, 0.15*_y1+0.85*_y2, 'ACB'[ipara], fontsize=10)
+                if aper in [83, 21]:
+                    ax21.text(0.9*nx, 0.15*_y1+0.85*_y2, 'ACB'[ipara], fontsize=10)
 
                 # fill the fitting regions
                 for group in group_lst:
@@ -457,6 +482,10 @@ def get_flat(data, mask, apertureset, nflat,
                 ax1.set_ylim(_y1, _y2)
                 if iaper%5<4:
                     ax1.set_xticklabels([])
+                if aper in [83, 21]:
+                    ax21.set_xlim(0, nx-1)
+                    ax21.set_ylim(_y1, _y2)
+
 
                 for tick in ax1.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
@@ -479,6 +508,27 @@ def get_flat(data, mask, apertureset, nflat,
                     ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
                     ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
                     ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+
+                if aper in [83, 21]:
+                    for tick in ax21.xaxis.get_major_ticks():
+                        tick.label1.set_fontsize(10)
+                    for tick in ax21.yaxis.get_major_ticks():
+                        tick.label1.set_fontsize(10)
+                    for tick in ax22.yaxis.get_major_ticks():
+                        tick.label2.set_fontsize(10)
+                    if nx<3000:
+                        ax21.xaxis.set_major_locator(tck.MultipleLocator(500))
+                        ax21.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                        ax22.xaxis.set_major_locator(tck.MultipleLocator(500))
+                        ax22.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                    else:
+                        ax21.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                        ax21.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                        ax22.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                        ax22.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                    ax21.set_xticklabels([])
+                    ax21.set_xlim(0, nx-1)
+                    ax22.set_xlim(0, nx-1)
 
                 ########### plot flat parametres for every order ##############
                 if False:
@@ -551,6 +601,9 @@ def get_flat(data, mask, apertureset, nflat,
                 fig_aperpar.savefig(figname_aperpar(aper))
                 plt.close(fig_aperpar)
                 has_aperpar_fig = False
+            if aper in [83, 21]:
+                fig_aperpar2.savefig('aperpar2_{}.pdf'.format(aper))
+                plt.close(fig_aperpar2)
 
         # find columns to be corrected in this order
         correct_x_lst = []
@@ -609,7 +662,7 @@ def get_flat(data, mask, apertureset, nflat,
             y1s = max(0,  np.round(lbound-2, 1))
             y2s = min(ny, np.round(ubound+2, 1))
             xdata2 = np.arange(y1s, y2s, 0.1)
-            flatmod = fitfunc([A,c,bkg], xdata2, interf)
+            flatmod = fitfunc([A,c,b], xdata2, interf)
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
@@ -624,7 +677,22 @@ def get_flat(data, mask, apertureset, nflat,
                     correct_x_lst[0], correct_x_lst[-1],
                     (t2-t1)*1e3
                     )
-        print(message)
+        logger.info(message)
+        #print(message)
+
+        ratio = min(iaper/(len(apertureset)-1), 1.0)
+        term_size = os.get_terminal_size()
+        nchar = term_size.columns - 60
+
+        string = '>'*int(ratio*nchar)
+        string = string.ljust(nchar, '-')
+        prompt = 'Calculating flat field'
+        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+        sys.stdout.write(string)
+        sys.stdout.flush()
+
+    # use light green color
+    print(' \033[92m Completed\033[0m')
 
     ###################### aperture loop ends here ########################
     if plot_aperpar and has_aperpar_fig:
@@ -633,19 +701,7 @@ def get_flat(data, mask, apertureset, nflat,
         plt.close(fig_aperpar)
         has_aperpar_fig = False
 
-    # pack the final 1-d spectra of flat
-    flatspectable = [(aper, flatspec_lst[aper])
-                     for aper in sorted(apertureset.keys())]
-
-    # define the datatype of flat 1d spectra
-    flatspectype = np.dtype(
-                    {'names':   ['aperture', 'flux'],
-                     'formats': [np.int32, (np.float32, nx)],}
-                    )
-    flatspectable = np.array(flatspectable, dtype=flatspectype)
-
-
-    return flatdata, flatspectable
+    return flatdata, flatspec_lst
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of

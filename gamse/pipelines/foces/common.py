@@ -266,7 +266,7 @@ def combine_bias(config, logtable):
     # plot the bias
     bias_fig = BiasFigure(data=bias_combine, title='Bias Mean')
     # save and close the figure
-    figpath = config['reduce']['report']
+    figpath = config['reduce']['figpath']
     figfilename = os.path.join(figpath, 'bias_mean.png')
     bias_fig.savefig(figfilename)
     plt.close(bias_fig)
@@ -792,24 +792,24 @@ class ProfileNormalizer(ProfileNormalizerCommon):
         self.ydata = ydata
         self.mask  = mask
 
-        sat_mask = (self.mask&4 > 0)
-        bad_mask = (self.mask&2 > 0)
+        sat_mask = (mask&4 > 0)
+        bad_mask = (mask&2 > 0)
 
-        # iterative fitting using gaussian + bkg function
-        A0 = self.ydata.max()-self.ydata.min()
-        c0 = (self.xdata[0]+self.xdata[-1])/2
-        b0 = self.ydata.min()
+        # iterative fitting using fitfunc
+        A0 = ydata.max() - ydata.min()
+        c0 = (xdata[0] + xdata[-1])/2
+        b0 = ydata.min()
         p0 = [A0, c0, 3.0, b0]
-        lower_bounds = [-np.inf, self.xdata[0],  0.3,    -np.inf]
-        upper_bounds = [np.inf,  self.xdata[-1], np.inf, self.ydata.max()]
+        lower_bounds = [-np.inf, xdata[0],  0.3,    -np.inf]
+        upper_bounds = [np.inf,  xdata[-1], np.inf, ydata.max()]
         _m = (~sat_mask)*(~bad_mask)
 
         for i in range(10):
             opt_result = opt.least_squares(self.errfunc, p0,
-                        args=(self.xdata[_m], self.ydata[_m]),
+                        args=(xdata[_m], ydata[_m]),
                         bounds=(lower_bounds, upper_bounds))
             p1 = opt_result['x']
-            residuals = self.errfunc(p1, self.xdata, self.ydata)
+            residuals = self.errfunc(p1, xdata, ydata)
             std = residuals[_m].std(ddof=1)
             _new_m = (np.abs(residuals) < 3*std)*_m
             if _m.sum() == _new_m.sum():
@@ -818,14 +818,12 @@ class ProfileNormalizer(ProfileNormalizerCommon):
             p0 = p1
     
         A, c, sigma, bkg = p1
-        self.x = self.xdata - c
-        self.y = (self.ydata - bkg)/A
+        self.x = xdata - c
+        self.y = (ydata - bkg)/A
     
         self.param = p1
         self.std = std
 
-        #if A < 1e-3:
-        #    return None
     def is_succ(self):
         A, center, sigma, bkg = self.param
         std = self.std
@@ -836,6 +834,8 @@ class ProfileNormalizer(ProfileNormalizerCommon):
             return False
 
     def fitfunc(self, param, x):
+        """Use Gaussian function.
+        """
         A, center, sigma, bkg = param
         return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
 
