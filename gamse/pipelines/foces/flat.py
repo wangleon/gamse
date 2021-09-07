@@ -255,6 +255,18 @@ def get_flat(data, mask, apertureset, nflat,
 
     ###################### loop for every aperture ########################
 
+    # define the function of refreshing the second progress bar
+    def refresh_progressbar2(iaper):
+        ratio = min(iaper/(len(apertureset)-1), 1.0)
+        term_size = os.get_terminal_size()
+        nchar = term_size.columns - 60
+        string = '>'*int(ratio*nchar)
+        string = string.ljust(nchar, '-')
+        prompt = 'Calculating flat field'
+        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+        sys.stdout.write(string)
+        sys.stdout.flush()
+
 
     for iaper, (aper, aperloc) in enumerate(sorted(apertureset.items())):
         fitpar_lst  = [] # stores (A, c, b). it has the same length as newx_lst
@@ -264,9 +276,9 @@ def get_flat(data, mask, apertureset, nflat,
         if plot_aperpar:
             if iaper%5==0:
                 fig_aperpar = plt.figure(figsize=(15,8), dpi=150)
-            # fig_aperpar2 for paper
-            fig_aperpar2 = plt.figure(figsize=(12, 3.5), dpi=200)
-
+            if aper in [83, 21]:
+                # fig_aperpar2 for paper
+                fig_aperpar2 = plt.figure(figsize=(12, 3.5), dpi=200)
 
         aper_position = all_positions[aper]
         aper_lbound, aper_ubound = all_boundaries[aper]
@@ -354,8 +366,8 @@ def get_flat(data, mask, apertureset, nflat,
         if break_aperture:
             message = ('Aperture {:3d}: Skipped because of '
                        'break_aperture=True').format(aper)
-            logger.debug(message)
-            print(message)
+            logger.info(message)
+            refresh_progressbar2(iaper)
             continue
 
         fitpar_lst = np.array(fitpar_lst)
@@ -363,15 +375,15 @@ def get_flat(data, mask, apertureset, nflat,
         if np.isnan(fitpar_lst[:,0]).sum()>0.5*nx:
             message = ('Aperture {:3d}: Skipped because of too many NaN '
                        'values in aperture parameters').format(aper)
-            logger.debug(message)
-            print(message)
+            logger.info(message)
+            refresh_progressbar2(iaper)
             continue
 
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
             message = ('Aperture {:3d}: Skipped because of too few real '
                        'values in aperture parameters').format(aper)
-            logger.debug(message)
-            print(message)
+            logger.info(message)
+            refresh_progressbar2(iaper)
             continue
 
         # pick up NaN positions in fitpar_lst and generate fitmask.
@@ -390,8 +402,8 @@ def get_flat(data, mask, apertureset, nflat,
 
         if len(group_lst) == 0:
             message = ('Aperture {:3d}: Skipped'.format(aper))
-            print(message)
-            logger.debug(message)
+            logger.info(message)
+            refresh_progressbar2(iaper)
             continue
 
         # loop for A, c, bkg. Smooth these parameters
@@ -680,16 +692,7 @@ def get_flat(data, mask, apertureset, nflat,
         logger.info(message)
         #print(message)
 
-        ratio = min(iaper/(len(apertureset)-1), 1.0)
-        term_size = os.get_terminal_size()
-        nchar = term_size.columns - 60
-
-        string = '>'*int(ratio*nchar)
-        string = string.ljust(nchar, '-')
-        prompt = 'Calculating flat field'
-        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
-        sys.stdout.write(string)
-        sys.stdout.flush()
+        refresh_progressbar2(iaper)
 
     # use light green color
     print(' \033[92m Completed\033[0m')
