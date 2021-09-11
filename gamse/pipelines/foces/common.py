@@ -12,6 +12,7 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
@@ -22,6 +23,8 @@ from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
+from ...echelle.wlcalib import get_calib_from_header
+from ...utils.download import get_file
 
 def correct_overscan(data, mask=None, direction=None):
     """Correct overscan for an input image and update related information in the
@@ -309,7 +312,7 @@ def combine_bias(config, logtable):
         # plot the smoothed bias
         bias_fig = BiasFigure(data=bias_smooth, title='Bias Smoothed')
         # save and close the figure
-        figpath = config['reduce']['report']
+        figpath = config['reduce']['figpath']
         figfilename = os.path.join(figpath, 'bias_smooth.png')
         bias_fig.savefig(figfilename)
         plt.close(bias_fig)
@@ -411,6 +414,49 @@ def print_wrapper(string, item):
     else:
         return string
 
+def select_calib_from_database(index_file, dateobs):
+    """Select wavelength calibration file in database.
+
+    Args:
+        index_file (str): Index file of saved calibration files.
+        dateobs (str): .
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **spec** (:class:`numpy.dtype`): An array of previous calibrated
+              spectra.
+            * **calib** (dict): Previous calibration results.
+    """
+
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
+
+    input_date = dateutil.parser.parse(dateobs)
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[irow]
+    fileid = row['fileid']      # selected fileid
+    md5 = row['md5']
+
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    logger.info(message)
+
+    filepath = os.path.join('foces', 'wlcalib_{}.fits'.format(fileid))
+
+    filename = get_file(filepath, md5)
+
+    # load spec, calib, and aperset from selected FITS file
+    hdu_lst = fits.open(filename)
+    head = hdu_lst[0].header
+    spec = hdu_lst[1].data
+    hdu_lst.close()
+
+    calib = get_calib_from_header(head)
+
+    return spec, calib
 
 def get_primary_header(input_lst):
     """Return a list of header records with length of 80 characters.

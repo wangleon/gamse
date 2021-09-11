@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
-from astropy.time import TimeDelta
+from astropy.time import Time
 from scipy.ndimage.filters import median_filter
 
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
@@ -14,7 +14,7 @@ from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                             mosaic_spec)
 from ...echelle.extract import extract_aperset
-from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
+from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
@@ -23,10 +23,11 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ...echelle.background import (find_background, simple_debackground,
                                    get_interorder_background)
 from ...utils.obslog import parse_num_seq
-from .common import (print_wrapper, get_mask, get_bias,
-                    correct_overscan, TraceFigure, BackgroundFigure,
-                    SpatialProfileFigure,
-                    )
+from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
+                     select_calib_from_database,
+                     TraceFigure, BackgroundFigure,
+                     SpatialProfileFigure,
+                     )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg, get_flat)
 
@@ -464,6 +465,9 @@ def reduce_singlefiber(config, logtable):
         imgtype = logitem['imgtype']
         objname = logitem['object']
         exptime = logitem['exptime']
+        obsdate = logitem['obsdate']
+        if isinstance(obsdate, Time):
+            obsdate = obsdate.isot
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
@@ -542,8 +546,8 @@ def reduce_singlefiber(config, logtable):
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
                 # find previous calibration results
-                database_path = section.get('database_path')
-                database_path = os.path.expanduser(database_path)
+                index_file = os.path.join(os.path.dirname(__file__),
+                                '../../data/calib/wlcalib_foces.dat')
 
                 message = ('Searching for archive wavelength calibration'
                            'file in "{}"'.format(database_path))
@@ -551,11 +555,12 @@ def reduce_singlefiber(config, logtable):
                 print(screen_prefix + message)
 
                 ref_spec, ref_calib = select_calib_from_database(
-                        database_path, statime_key, head[statime_key])
+                        index_file, obsdate)
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = 'Archive wavelength calibration file not found'
+                    message = ('Did not find any archive wavelength'
+                                'calibration file')
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -595,22 +600,11 @@ def reduce_singlefiber(config, logtable):
                     else:
                         pixel_k = -1
 
-                    # determine the name of the output figure during lamp shift
-                    # finding.
-                    if mode == 'debug':
-                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
-                        figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(figpath, figname1)
-                        fig_scatter = os.path.join(figpath, figname2)
-                    else:
-                        fig_ccf     = None
-                        fig_scatter = None
-
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
                                 pixel_k     = pixel_k,
-                                fig_ccf     = fig_ccf,
-                                fig_scatter = fig_scatter,
+                                pixel_range = (-30, 30),
+                                mode        = mode,
                                 )
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
@@ -704,7 +698,7 @@ def reduce_singlefiber(config, logtable):
                     ])
 
         # save in midpath as a wlcalib reference file
-        fname = 'wlcalib.{}.fits'.format(fileid)
+        fname = 'wlcalib_{}.fits'.format(fileid)
         filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
