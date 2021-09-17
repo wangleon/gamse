@@ -936,13 +936,17 @@ class CalibWindow(tk.Frame):
                                  self.param['aperture_max']+1)
 
         kwargs = {
-                'offset': self.param['offset'],
-                'k':      self.param['k'],
-                'coeff':  self.param['coeff'],
-                'npixel': self.param['npixel'],
-                'std':    self.param['std'],
-                'nuse':   self.param['nuse'],
-                'ntot':   self.param['ntot'],
+                'offset':   self.param['offset'],
+                'k':        self.param['k'],
+                'coeff':    self.param['coeff'],
+                'npixel':   self.param['npixel'],
+                'std':      self.param['std'],
+                'nuse':     self.param['nuse'],
+                'ntot':     self.param['ntot'],
+                'xorder':   self.param['xorder'],
+                'yorder':   self.param['yorder'],
+                'clipping': self.param['clipping'],
+                'maxiter':  self.param['maxiter'],
                 }
 
         if self.param['mode']=='fit':
@@ -1547,7 +1551,8 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         list1 = identlist[aperture]
         if list1.size >= 2:
             fit_order = min(list1.size-1, 2)
-            local_coeff = np.polyfit(list1['pixel'], list1['wavelength'], deg=fit_order)
+            local_coeff = np.polyfit(list1['pixel'], list1['wavelength'],
+                            deg=fit_order)
             rough_wl = np.polyval(local_coeff, x)
 
     # guess wavelength from global wavelength solution
@@ -2055,6 +2060,11 @@ class CalibFigure(Figure):
         self._ax3._residual_text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
                                   '', fontsize=13)
 
+        # draw fitting parameters in ax3
+        bbox = self._ax2.get_position()
+        self._ax2._fitpar_text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
+                                  '', fontsize=13)
+
     def plot_solution(self, identlist, aperture_lst, plot_ax1=False,  **kwargs):
         """Plot the wavelength solution.
 
@@ -2074,13 +2084,17 @@ class CalibFigure(Figure):
                 fitting.
             ntot (int): Number of lines identified.
         """
-        coeff  = kwargs.pop('coeff')
-        k      = kwargs.pop('k')
-        offset = kwargs.pop('offset')
-        npixel = kwargs.pop('npixel')
-        std    = kwargs.pop('std')
-        nuse   = kwargs.pop('nuse')
-        ntot   = kwargs.pop('ntot')
+        coeff    = kwargs.pop('coeff')
+        k        = kwargs.pop('k')
+        offset   = kwargs.pop('offset')
+        npixel   = kwargs.pop('npixel')
+        std      = kwargs.pop('std')
+        nuse     = kwargs.pop('nuse')
+        ntot     = kwargs.pop('ntot')
+        xorder   = kwargs.pop('xorder')
+        yorder   = kwargs.pop('yorder')
+        clipping = kwargs.pop('clipping')
+        maxiter  = kwargs.pop('maxiter')
 
         label_size = 13  # fontsize for x, y labels
         tick_size  = 12  # fontsize for x, y ticks
@@ -2115,15 +2129,17 @@ class CalibFigure(Figure):
 
         for aperture in aperture_lst:
             order = k*aperture + offset
-            color = 'C%d'%(order%10)
+            color = 'C{}'.format(order%10)
 
             # plot pixel vs. wavelength
             if plot_ax1:
                 wave = allwave_lst[aperture]
                 if wave_scale=='reciprocal':
-                    self._ax1.plot(x, 1/wave, color=color, ls='-', alpha=0.8, lw=0.8)
+                    self._ax1.plot(x, 1/wave,
+                            color=color, ls='-', alpha=0.8, lw=0.8)
                 else:
-                    self._ax1.plot(x, wave, color=color, ls='-', alpha=0.8, lw=0.8)
+                    self._ax1.plot(x, wave,
+                            color=color, ls='-', alpha=0.8, lw=0.8)
 
             # plot identified lines
             if aperture in identlist:
@@ -2151,13 +2167,18 @@ class CalibFigure(Figure):
                 self._ax2.scatter(repeat_aper_lst[mask], res_lst[mask],
                                   c=color, s=20, lw=0, alpha=0.8)
                 self._ax2.scatter(repeat_aper_lst[~mask], res_lst[~mask],
-                                  c='w', s=16, lw=0.7, alpha=0.8, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.8, ec=color)
                 self._ax3.scatter(pix_lst[mask], res_lst[mask],
                                   c=color, s=20, lw=0, alpha=0.8)
                 self._ax3.scatter(pix_lst[~mask], res_lst[~mask],
-                                  c='w', s=16, lw=0.7, alpha=0.8, edgecolor=color)
+                                  c='w', s=16, lw=0.7, alpha=0.8, ec=color)
 
-        self._ax3._residual_text.set_text('R.M.S. = %.5f, N = %d/%d'%(std, nuse, ntot))
+        # refresh texts in the residual panels
+        text = 'R.M.S. = {:.5f}, N = {}/{}'.format(std, nuse, ntot)
+        self._ax3._residual_text.set_text(text)
+        text = u'Xorder = {}, Yorder = {}, clipping = \xb1{:g}, Niter = {}'.format(
+                xorder, yorder, clipping, maxiter)
+        self._ax2._fitpar_text.set_text(text)
 
         # adjust layout for ax1
         if plot_ax1:
@@ -2452,6 +2473,10 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                       std          = new_std,
                       nuse         = new_nuse,
                       ntot         = new_ntot,
+                      xorder       = xorder,
+                      yorder       = yorder,
+                      clipping     = clipping,
+                      maxiter      = maxiter,
                       )
     fig.savefig(figfilename)
     plt.close(fig)
