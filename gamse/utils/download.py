@@ -112,12 +112,14 @@ def get_gamse_cloud_url():
     """Get the url of gamse cloud.
 
     """
-    if time.timezone==-28800:
-        # timezone is UTC+8, probably in China
-        # return Aliyun url
-        return 'https://gamse.oss-cn-beijing.aliyuncs.com/'
+    tz = time.timezone//3600
+    if tz==-8:
+        # UTC+8, probably in China
+        # connect amazon aws china
+        # aliyun url: 'https://gamse.oss-cn-beijing.aliyuncs.com/'
+        return 'https://gamse-bj.s3.cn-north-1.amazonaws.com.cn/'
     else:
-        # for the rest of the world, return Amazon AWS url
+        # rest of the world
         return 'https://gamse.s3.eu-central-1.amazonaws.com/'
 
 
