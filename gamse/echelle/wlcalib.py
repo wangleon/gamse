@@ -1824,7 +1824,9 @@ def find_local_peak(flux, x, width):
     # determine the initial parameters for gaussian fitting + background
     p0 = [ydata.max()-ydata.min(), imax, 3., ydata.min()]
     # least square fitting
-    p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
+    #p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
+    p1, cov, info, mesg, ier = opt.leastsq(errfunc2, p0[:],
+                                    args=(xdata,ydata), full_output=True)
 
     res_lst = errfunc2(p1, xdata, ydata)
 
