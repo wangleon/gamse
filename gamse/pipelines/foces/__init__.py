@@ -56,9 +56,6 @@ def make_config():
             print('Invalid input: {}'.format(string))
             continue
 
-    # general database path for this instrument
-    dbpath = '~/.gamse/FOCES'
-
     # create config object
     config = configparser.ConfigParser()
 
@@ -119,7 +116,6 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'no')
     config.set(sectname, 'window_size',      str(13))
@@ -142,7 +138,6 @@ def make_config():
     distance = {'single': 6, 'double': 2}[fibermode]
     config.set(sectname, 'distance',      str(distance))
     config.set(sectname, 'yorder',        str(6))
-    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
 
     # section of spectra extraction
     sectname = 'reduce.extract'
