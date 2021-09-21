@@ -835,7 +835,8 @@ def reduce_singlefiber(config, logtable):
         print(screen_prefix + message)
 
         # get background lights
-        background = get_interorder_background(data, master_aperset)
+        background = get_interorder_background(data,
+                            apertureset = master_aperset)
         background = median_filter(background, size=(9,1), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')

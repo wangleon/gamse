@@ -2,6 +2,7 @@ import os
 import re
 import math
 import shutil
+import struct
 import logging
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,7 @@ from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
                      TraceFigure, BackgroundFigure, BrightnessProfileFigure,
                      SpatialProfileFigure,
                      )
-from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg, get_flat)
+from .flat import get_flat
 
 def get_fiberobj_lst(string, delimiter='|'):
     """Split the object names for multiple fibers.
@@ -60,15 +60,16 @@ def get_fiberobj_string(fiberobj_lst, nfiber):
     result_lst = []
     for ifiber in range(nfiber):
         fiber = chr(ifiber+65)
+        fibercode = struct.pack('>i', -257981040+ifiber).decode()
         found = False
         for fiberobj in fiberobj_lst:
             if fiberobj[0]==ifiber:
-                string = '({:s}) {:s}'.format(fiber, fiberobj[1])
+                string = '{:s}  {:s}'.format(fibercode, fiberobj[1])
                 result_lst.append(string)
                 found = True
                 break
         if not found:
-            string = '({:s}) ---- '.format(fiber)
+            string = '{:s}  ---- '.format(fibercode)
             result_lst.append(string)
     return ' '.join(result_lst)
 
@@ -184,7 +185,19 @@ def reduce_doublefiber(config, logtable):
     flat_raw_lst  = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_info_lst = {fiber: {} for fiber in sorted(flat_groups.keys())}
     flat_data_bkg = {fiber: {} for fiber in sorted(flat_groups.keys())}
+    flat_bkg_lst  = {fiber: {} for fiber in sorted(flat_groups.keys())}
     aperset_lst   = {fiber: {} for fiber in sorted(flat_groups.keys())}
+
+    ######### define the datatype of flat 1d spectra ########
+    if bias is None:
+        ndisp = 2048
+    else:
+        ncros, ndisp = bias.shape
+
+    flatspectype = np.dtype(
+                {'names':   ['aperture', 'flux'],
+                 'formats': [np.int32, (np.float32, ndisp)],
+                 })
 
     # first combine the flats
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
@@ -201,9 +214,10 @@ def reduce_doublefiber(config, logtable):
             trace_figname = os.path.join(figpath,
                     'trace_flat_{}_{}.{}'.format(fiber, flatname, fig_format))
 
-            # get flat_data and mask_array for each flat group
+            # prepare image arrays and tables either in debug or normal mode
             if mode=='debug' and os.path.exists(flat_filename) \
                 and os.path.exists(aperset_filename):
+                # in debug mode and all required files exist
                 # read flat data and mask array
                 hdu_lst = fits.open(flat_filename)
                 flat_data = hdu_lst[0].data
@@ -213,12 +227,13 @@ def reduce_doublefiber(config, logtable):
                 flat_sens = hdu_lst[4].data
                 flat_corr = hdu_lst[5].data
                 flat_spec = hdu_lst[6].data
-                flat_oned = hdu_lst[].data
                 exptime   = hdu_lst[0].header[exptime_key]
                 hdu_lst.close()
                 aperset = load_aperture_set(aperset_filename)
             else:
-                # if the above conditions are not satisfied, combine each flat
+                # in normal mode, or any required file does not exist
+
+                # combine each flat
                 data_lst = []
                 head_lst = []
                 exptime_lst = []
@@ -382,11 +397,9 @@ def reduce_doublefiber(config, logtable):
                         apertureset     = aperset,
                         nflat           = nflat,
                         q_threshold     = section.getfloat('q_threshold'),
-                        smooth_A_func   = smooth_aperpar_A,
-                        smooth_c_func   = smooth_aperpar_c,
-                        smooth_bkg_func = smooth_aperpar_bkg,
                         mode            = 'debug',
                         fig_spatial     = fig_spatial,
+                        flatname        = '{}_{}'.format(fiber, flatname),
                         )
                 figname = os.path.join(figpath,
                             'spatial_profile_flat_{}_{}.png'.format(
@@ -397,40 +410,14 @@ def reduce_doublefiber(config, logtable):
                 fig_spatial.savefig(figname)
                 fig_spatial.close()
 
-                ny, nx = flat_sens.shape
 
                 # pack 1-d spectra of flat
                 flat_spec = [(aper, flatspec) for aper, flatspec
                                 in sorted(flatspec_lst.items())]
-
-                # define the datatype of flat 1d spectra
-                flatspectype = np.dtype(
-                            {'names':   ['aperture', 'flux'],
-                             'formats': [np.int32, (np.float32, nx)],
-                             })
                 flat_spec = np.array(flat_spec, dtype=flatspectype)
 
-
                 flat_corr = flat_data/flat_sens
-                section = config['reduce.extract']
-                flat_1d = extract_aperset(flat_corr, flat_mask,
-                            apertureset = aperset,
-                            lower_limit = section.getfloat('lower_limit'),
-                            upper_limit = section.getfloat('upper_limit'),
-                            )
-                table = [(aper, row['flux_sum'])
-                            for aper, row in sorted(flat_1d.items())]
-                flat_oned = np.array(table, dtype=flatspectype)
 
-                section = config['reduce.extract']
-                flat_raw1d = extract_aperset(flat_data, flat_mask,
-                            apertureset = aperset,
-                            lower_limit = section.getfloat('lower_limit'),
-                            upper_limit = section.getfloat('upper_limit'),
-                            )
-                table = [(aper, row['flux_sum'])
-                            for aper, row in sorted(flat_raw1d.items())]
-                flat_raw1d = np.array(table, dtype=flatspectype)
                 
                 head.append(('HIERARCH GAMSE FILECONTENT 0', 'FLAT COMBINED'))
                 head.append(('HIERARCH GAMSE FILECONTENT 1', 'FLAT MASK'))
@@ -450,6 +437,33 @@ def reduce_doublefiber(config, logtable):
                             fits.BinTableHDU(flat_spec),
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
+
+            #### mode swith ends here
+
+            # prepare flat_oned, a table containing self-corrected 1d spectra
+            # of flat
+            section = config['reduce.extract']
+            flat_1d = extract_aperset(flat_corr, flat_mask,
+                        apertureset = aperset,
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+            table = [(aper, row['flux_sum'])
+                        for aper, row in sorted(flat_1d.items())]
+            flat_oned = np.array(table, dtype=flatspectype)
+
+            # prepare flat_raw1d, a table containing non-corrected 1d spectra
+            # of flat
+            section = config['reduce.extract']
+            flat_raw1d = extract_aperset(flat_data, flat_mask,
+                        apertureset = aperset,
+                        lower_limit = section.getfloat('lower_limit'),
+                        upper_limit = section.getfloat('upper_limit'),
+                        )
+            table = [(aper, row['flux_sum'])
+                        for aper, row in sorted(flat_raw1d.items())]
+            flat_raw1d = np.array(table, dtype=flatspectype)
+
 
             '''
             # correct background for flat
@@ -489,6 +503,7 @@ def reduce_doublefiber(config, logtable):
             flat_oned_lst[fiber][flatname] = flat_oned
             flat_raw_lst[fiber][flatname]  = flat_raw1d
             flat_info_lst[fiber][flatname] = {'exptime': exptime}
+            flat_bkg_lst[fiber][flatname]  = flat_data
             aperset_lst[fiber][flatname]   = aperset
 
             # continue to the next colored flat
@@ -504,6 +519,7 @@ def reduce_doublefiber(config, logtable):
 
     for ifiber in range(n_fiber):
         fiber = chr(ifiber+65)
+        fibercode = struct.pack('>i', -257981040+ifiber).decode()
         fiber_flat_lst = flat_groups[fiber]
 
         # determine the mosaiced flat filename
@@ -579,7 +595,7 @@ def reduce_doublefiber(config, logtable):
             # mosaic 1d spectra of flats
             flat_spec = mosaic_spec(flat_spec_lst[fiber],
                                         master_aperset[fiber])
-            flat_1d  = mosaic_spec(flat_oned_lst[fiber],
+            flat_oned = mosaic_spec(flat_oned_lst[fiber],
                                         master_aperset[fiber])
             flat_raw = mosaic_spec(flat_raw_lst[fiber],
                                         master_aperset[fiber])
@@ -1206,9 +1222,8 @@ def reduce_doublefiber(config, logtable):
     back_flat_1d = {}
     for fiber, fiber_flat_lst in sorted(flat_groups.items()):
         for flatname, item_lst in sorted(fiber_flat_lst.items()):
-            data = flat_data_lst[fiber][flatname]
-            mask = flat_mask_lst[fiber][flatname]
-            background = get_interorder_background(data, mask,
+            data = flat_bkg_lst[fiber][flatname]
+            background = get_interorder_background(data,
                                 apertureset = master_aperset[fiber])
             background = median_filter(background, size=(9,1), mode='nearest')
             background = savitzky_golay_2d(background, window_length=(21, 101),
@@ -1330,7 +1345,8 @@ def reduce_doublefiber(config, logtable):
         variance_map = variance_map + data**2/master_flatdsum_0
 
         # get background lights
-        background = get_interorder_background(data, master_aperset[fiber])
+        background = get_interorder_background(data,
+                        apertureset = master_aperset[fiber])
         background = median_filter(background, size=(9,1), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')
