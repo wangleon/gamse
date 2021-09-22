@@ -10,6 +10,8 @@ from scipy.signal import savgol_filter
 import scipy.optimize as opt
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.integrate import simps
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
@@ -18,11 +20,166 @@ from ...utils.onedarray import get_local_minima
 from ...utils.regression import iterative_polyfit
 from .common import norm_profile, ProfileNormalizer
 
+class AperparSinglePlotter(object):
+    def __init__(self, ndisp, plot=False):
+        self.plot = plot
+        self.ndisp = ndisp
+
+    def update_figure(self):
+        if self.plot:
+            self.fig = plt.figure(figsize=(12, 3.5), dpi=200)
+
+    def plot_aperpar(self, aper, ipara, newx_lst, ypara, group_lst,
+            aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst):
+
+        if self.plot:
+            allx = np.arange(self.ndisp)
+            i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
+            ax1 = self.fig.add_axes([0.05+ipara*0.32, 0.35, 0.27, 0.62])
+            ax2 = self.fig.add_axes([0.05+ipara*0.32, 0.06, 0.27, 0.26])
+            ax2.plot(xpiece_lst, ypiece_res_lst, color='k', lw=0.5,
+                   alpha=0.4, zorder=-2)
+            ax2.axhline(y=0, color='k', ls='--', lw=0.5,
+                    alpha=0.4, zorder=-3)
+
+            # plot rejected points with gray dots
+            _m = mask_rej_lst>0
+            if _m.sum()>0:
+                ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                    color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+
+            ax1.plot(newx_lst, ypara, '-', color='C0', lw=1, zorder=1)
+            ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
+                lw=1, alpha=0.8, zorder=2)
+
+            _y1, _y2 = ax1.get_ylim()
+            if ipara == 0:
+                ax1.text(0.05*self.ndisp, 0.15*_y1+0.85*_y2,
+                        'Aperture {}'.format(aper), fontsize=10)
+
+            ax1.text(0.9*self.ndisp, 0.15*_y1+0.85*_y2,
+                    'ACB'[ipara], fontsize=10)
+            ax1.set_xlim(0, self.ndisp-1)
+            ax1.set_ylim(_y1, _y2)
+
+            for tick in ax1.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(10)
+            for tick in ax1.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(10)
+            for tick in ax2.yaxis.get_major_ticks():
+                tick.label2.set_fontsize(10)
+            if self.ndisp<3000:
+                ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
+                ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
+                ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            else:
+                ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+            ax1.set_xticklabels([])
+            ax1.set_xlim(0, self.ndisp-1)
+            ax2.set_xlim(0, self.ndisp-1)
+
+    def savefig(self, figname):
+        if self.plot:
+            self.fig.savefig(figname)
+            plt.close(self.fig)
+
+class AperparPlotter(object):
+    def __init__(self, ndisp, plot=False):
+        self.plot = plot
+        self.ndisp = ndisp
+
+    def update_figure(self, iaper):
+        self.iaper = iaper
+        if self.plot and self.iaper%5==0:
+            self.fig = plt.figure(figsize=(15, 8), dpi=150)
+
+    def plot_aperpar(self, aper, ipara, newx_lst, ypara, group_lst,
+            aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst):
+
+        if self.plot:
+            allx = np.arange(self.ndisp)
+            i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
+
+            # create ax1 for plotting parameters
+            irow = self.iaper%5
+            _x, _y = 0.04+ipara*0.32, (4-irow)*0.19+0.05
+            ax1 = self.fig.add_axes([_x, _y, 0.28, 0.17])
+
+            # make a copy of ax1 and plot the residuals in the background
+            ax2 = ax1.twinx()
+            ax2.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
+                alpha=0.4, zorder=-2)
+            ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
+                alpha=0.4, zorder=-3)
+
+            # plot rejected points with gray dots
+            _m = mask_rej_lst>0
+            if _m.sum()>0:
+                ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                    color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+
+            # plot data points
+            ax1.plot(newx_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
+            # plot fitted value
+            ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
+                lw=1, alpha=0.8, zorder=2)
+
+            _y1, _y2 = ax1.get_ylim()
+            if ipara == 0:
+                ax1.text(0.05*self.ndisp, 0.15*_y1+0.85*_y2,
+                        'Aperture {}'.format(aper), fontsize=10)
+
+            ax1.text(0.9*self.ndisp, 0.15*_y1+0.85*_y2,
+                    'ACB'[ipara], fontsize=10)
+
+            # fill the fitting regions
+            for group in group_lst:
+                i1, i2 = newx_lst[group[0]], newx_lst[group[-1]]
+                ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
+
+            ax1.set_xlim(0, self.ndisp-1)
+            ax1.set_ylim(_y1, _y2)
+            if self.iaper%5<4:
+                ax1.set_xticklabels([])
+
+            for tick in ax1.xaxis.get_major_ticks():
+                tick.label1.set_fontsize(7)
+            for tick in ax1.yaxis.get_major_ticks():
+                tick.label1.set_fontsize(7)
+            for tick in ax2.yaxis.get_major_ticks():
+                tick.label2.set_fontsize(4)
+                tick.label2.set_color('gray')
+                tick.label2.set_alpha(0.6)
+            for tickline in ax2.yaxis.get_ticklines():
+                tickline.set_color('gray')
+                tickline.set_alpha(0.6)
+            if self.ndisp<3000:
+                ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
+                ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
+                ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            else:
+                ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+
+    def savefig(self, figname):
+        if self.plot and self.iaper%5==4:
+            self.fig.savefig(figname)
+            plt.close(self.fig)
+
+
 def get_flat(data, mask, apertureset, nflat,
-        smooth_A_func, smooth_c_func, smooth_bkg_func,
+        #smooth_A_func, smooth_c_func, smooth_bkg_func,
         slit_step = 0,
         q_threshold=30, mode='normal',
         fig_spatial=None,
+        flatname = None,
         ):
     """ Get flat.
     """
@@ -124,8 +281,11 @@ def get_flat(data, mask, apertureset, nflat,
                 continue
 
             normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
+
+
             newx = normed_prof.x
             newy = normed_prof.y
+            newm = normed_prof.m
             '''
             param = normed_prof.param
             std   = normed_prof.std
@@ -135,6 +295,7 @@ def get_flat(data, mask, apertureset, nflat,
             ax01 = fig0.add_subplot(211)
             ax02 = fig0.add_subplot(212)
             ax01.plot(xnodes, ynodes, 'o')
+            ax01.plot(xnodes[mnodes>0], ynodes[mnodes>0], 'x')
             plotx, ploty = normed_prof.linspace()
             label = 'A={:.2f}\nc={:.1f}\ns={:.2f}\nbkg={:.2f}\nstd={:.2f}'.format(
                     param[0], param[1], param[2], param[3], std)
@@ -143,22 +304,26 @@ def get_flat(data, mask, apertureset, nflat,
             else:
                 ls = '--'
             ax01.plot(plotx, ploty, ls=ls, label=label)
-            ax02.plot(newx, newy, 'o')
+            ax02.plot(newx, newy, 'o', mec='C0', mfc='none')
+            ax02.plot(newx[newm], newy[newm], 'o', c='C0')
             ax01.legend()
             figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
+            if flatname is not None:
+                figname = '{}_{}'.format(flatname, figname)
+            figname = os.path.join(dbgpath, figname)
             fig0.savefig(figname)
             plt.close(fig0)
             '''
 
             if normed_prof.is_succ():
-                for _newx, _newy in zip(newx, newy):
+                for _newx, _newy in zip(newx[newm], newy[newm]):
                     all_xnodes.append(_newx)
                     all_ynodes.append(_newy)
 
                 # plotting
-                ax.scatter(newx, newy, s=5, alpha=0.3, lw=0)
+                ax.scatter(newx[newm], newy[newm], s=5, alpha=0.3, lw=0)
                 if ax2 is not None:
-                    ax2.scatter(newx, newy, s=10, alpha=0.3, lw=0)
+                    ax2.scatter(newx[newm], newy[newm], s=10, alpha=0.3, lw=0)
 
 
         # print a progress bar in terminal
@@ -180,9 +345,17 @@ def get_flat(data, mask, apertureset, nflat,
         all_xnodes = np.array(all_xnodes)
         all_ynodes = np.array(all_ynodes)
 
-        spatial_profile = SpatialProfile(all_xnodes, all_ynodes)
-        profile_y = spatial_profile(profile_x)
+        # spatial profile modeling with Gaussian Process Regression (GPR)
+        input_train_x = all_xnodes.reshape(-1,1)
+        input_train_y = all_ynodes.reshape(-1,1)
+        kernel = RBF(length_scale=3.0) + WhiteKernel(0.1)
+        gpr = GaussianProcessRegressor(kernel=kernel)
+        gpr.fit(input_train_x, input_train_y)
+        test_x = profile_x.reshape(-1,1)
+        mu, cov = gpr.predict(test_x, return_cov=True)
+        profile_y = mu.flatten()
 
+        # plotting
         ax.plot(profile_x, profile_y, color='k', lw=0.6)
         ax.grid(True, ls='--', lw=0.5)
         ax.set_axisbelow(True)
@@ -267,18 +440,18 @@ def get_flat(data, mask, apertureset, nflat,
         sys.stdout.write(string)
         sys.stdout.flush()
 
+    aperpar_plotter = AperparPlotter(plot=plot_aperpar, ndisp=nx)
 
     for iaper, (aper, aperloc) in enumerate(sorted(apertureset.items())):
         fitpar_lst  = [] # stores (A, c, b). it has the same length as newx_lst
         aperpar_lst = []
 
-        # prepare the figure for plotting the parameters of each aperture
-        if plot_aperpar:
-            if iaper%5==0:
-                fig_aperpar = plt.figure(figsize=(15,8), dpi=150)
-            if aper in [83, 21]:
-                # fig_aperpar2 for paper
-                fig_aperpar2 = plt.figure(figsize=(12, 3.5), dpi=200)
+        # plot aperpar every 5 orders
+        aperpar_plotter.update_figure(iaper)
+        # plot aperpar for specified orders
+        aperpar_single_plotter = AperparSinglePlotter(
+                                   plot=(aper in [83, 21]), ndisp=nx)
+        aperpar_single_plotter.update_figure()
 
         aper_position = all_positions[aper]
         aper_lbound, aper_ubound = all_boundaries[aper]
@@ -291,7 +464,6 @@ def get_flat(data, mask, apertureset, nflat,
         # loop for every newx. find the fitting parameters for each column
         # prepar the blank parameter for insert
         blank_p = np.array([np.NaN, np.NaN, np.NaN])
-
 
         for ix, x in enumerate(newx_lst):
             pos      = aper_position[x]
@@ -412,13 +584,13 @@ def get_flat(data, mask, apertureset, nflat,
 
             if ipara == 0:
                 # fit for A
-                res = smooth_A_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, nx)
             elif ipara == 1:
                 # fit for c
-                res = smooth_c_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, nx)
             else:
                 # fit for bkg
-                res = smooth_bkg_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, nx)
 
             # extract smoothing results
             aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
@@ -426,197 +598,17 @@ def get_flat(data, mask, apertureset, nflat,
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
 
-            if plot_aperpar:
-                ########### plot flat parametres every 5 orders ##############
-                has_aperpar_fig = True
-                i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
-                # plot the parameters
+            # plot aperpar
+            aperpar_plotter.plot_aperpar(aper, ipara, newx_lst, ypara, group_lst,
+                    aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst)
+            aperpar_single_plotter.plot_aperpar(aper, ipara, newx_lst, ypara,
+                    group_lst, aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst)
 
-                # create ax1 for plotting parameters
-                irow = iaper%5
-                _x, _y = 0.04+ipara*0.32, (4-irow)*0.19+0.05
-                ax1 = fig_aperpar.add_axes([_x, _y, 0.28, 0.17])
-                if aper in [83, 21]:
-                    ax21 = fig_aperpar2.add_axes([0.05+ipara*0.32, 0.35, 0.27, 0.62])
-                    ax22 = fig_aperpar2.add_axes([0.05+ipara*0.32, 0.06, 0.27, 0.26])
+        # save aperpar figures
+        aperpar_plotter.savefig(figname_aperpar(aper))
+        aperpar_single_plotter.savefig('aperpar2var_{}.png'.format(aper))
 
-                # make a copy of ax1 and plot the residuals in the background
-                ax2 = ax1.twinx()
-                ax2.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
-                        alpha=0.4, zorder=-2)
-                ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
-                        alpha=0.4, zorder=-3)
-                if aper in [83, 21]:
-                    ax22.plot(xpiece_lst, ypiece_res_lst, color='k', lw=0.5,
-                            alpha=0.4, zorder=-2)
-                    ax22.axhline(y=0, color='k', ls='--', lw=0.5,
-                            alpha=0.4, zorder=-3)
-
-                # plot rejected points with gray dots
-                _m = mask_rej_lst>0
-                if _m.sum()>0:
-                    ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                            color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
-                    if aper in [83, 21]:
-                        ax22.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                            color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
-
-                # plot data points
-                ax1.plot(newx_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
-                # plot fitted value
-                ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                    lw=1, alpha=0.8, zorder=2)
-                if aper in [83, 21]:
-                    ax21.plot(newx_lst, ypara, '-', color='C0', lw=1, zorder=1)
-                    ax21.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                        lw=1, alpha=0.8, zorder=2)
-
-                            
-                #ax1.plot(newx_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
-                #        lw=0.5, ms=3, alpha=0.5)
-                _y1, _y2 = ax1.get_ylim()
-                if ipara == 0:
-                    ax1.text(0.05*nx, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
-                            fontsize=10)
-                    if aper in [83, 21]:
-                        ax21.text(0.05*nx, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
-                                fontsize=10)
-                ax1.text(0.9*nx, 0.15*_y1+0.85*_y2, 'ACB'[ipara], fontsize=10)
-                if aper in [83, 21]:
-                    ax21.text(0.9*nx, 0.15*_y1+0.85*_y2, 'ACB'[ipara], fontsize=10)
-
-                # fill the fitting regions
-                for group in group_lst:
-                    i1, i2 = newx_lst[group[0]], newx_lst[group[-1]]
-                    ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
-
-                ax1.set_xlim(0, nx-1)
-                ax1.set_ylim(_y1, _y2)
-                if iaper%5<4:
-                    ax1.set_xticklabels([])
-                if aper in [83, 21]:
-                    ax21.set_xlim(0, nx-1)
-                    ax21.set_ylim(_y1, _y2)
-
-
-                for tick in ax1.xaxis.get_major_ticks():
-                    tick.label1.set_fontsize(7)
-                for tick in ax1.yaxis.get_major_ticks():
-                    tick.label1.set_fontsize(7)
-                for tick in ax2.yaxis.get_major_ticks():
-                    tick.label2.set_fontsize(4)
-                    tick.label2.set_color('gray')
-                    tick.label2.set_alpha(0.6)
-                for tickline in ax2.yaxis.get_ticklines():
-                    tickline.set_color('gray')
-                    tickline.set_alpha(0.6)
-                if nx<3000:
-                    ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
-                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                    ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
-                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                else:
-                    ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                    ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
-
-                if aper in [83, 21]:
-                    for tick in ax21.xaxis.get_major_ticks():
-                        tick.label1.set_fontsize(10)
-                    for tick in ax21.yaxis.get_major_ticks():
-                        tick.label1.set_fontsize(10)
-                    for tick in ax22.yaxis.get_major_ticks():
-                        tick.label2.set_fontsize(10)
-                    if nx<3000:
-                        ax21.xaxis.set_major_locator(tck.MultipleLocator(500))
-                        ax21.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                        ax22.xaxis.set_major_locator(tck.MultipleLocator(500))
-                        ax22.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                    else:
-                        ax21.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                        ax21.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                        ax22.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                        ax22.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                    ax21.set_xticklabels([])
-                    ax21.set_xlim(0, nx-1)
-                    ax22.set_xlim(0, nx-1)
-
-                ########### plot flat parametres for every order ##############
-                if False:
-                    if ipara == 0:
-                        fig5 = plt.figure(figsize=(8,5), dpi=150)
-                        axes5_lst = [
-                            fig5.add_axes([0.08, 0.57, 0.36, 0.41]),
-                            fig5.add_axes([0.56, 0.57, 0.36, 0.41]),
-                            fig5.add_axes([0.08, 0.10, 0.36, 0.41]),
-                            fig5.add_axes([0.56, 0.10, 0.36, 0.41]),
-                        ]
-                    i1 = newx_lst[group_lst[0][0]]
-                    i2 = newx_lst[group_lst[-1][-1]]
-                    ax51 = axes5_lst[ipara]
-
-                    # make a copy of ax1 and plot the residuals in the background
-                    ax52 = ax51.twinx()
-                    ax52.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
-                                alpha=0.6, zorder=-2)
-                    ax52.axhline(y=0, color='gray', ls='--', lw=0.5, alpha=0.6,
-                                zorder=-3)
-                    # plot rejected points with gray dots
-                    _m = mask_rej_lst>0
-                    if _m.sum()>0:
-                        ax52.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                                color='gray', lw=0.5, ms=2, alpha=0.6,
-                                zorder=-1)
-                    # adjust ticks and labels for ax52
-                    for tick in ax52.yaxis.get_major_ticks():
-                        tick.label2.set_fontsize(10)
-                        tick.label2.set_color('gray')
-                        tick.label2.set_alpha(0.8)
-                    for tickline in ax52.yaxis.get_ticklines():
-                        tickline.set_color('gray')
-                        tickline.set_alpha(0.8)
-
-                    # plot data points in ax51
-                    ax51.plot(newx_lst, ypara, '-', color='C0', lw=0.8,
-                                alpha=1.0, zorder=1)
-                    # plot fitted value
-                    ax51.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                                lw=1, alpha=0.8, zorder=2)
-                    _y1, _y2 = ax51.get_ylim()
-                    ax51.set_xlim(0, nx-1)
-                    ax51.text(0.05*nx, 0.15*_y1+0.85*_y2,
-                            'ACB'[ipara]+' (Aper %d)'%aper,
-                            fontsize=13)
-                    if ipara in [2, 3]:
-                        ax51.set_xlabel('X', fontsize=13)
-
-                    for tick in ax51.xaxis.get_major_ticks():
-                        tick.label1.set_fontsize(11)
-                    for tick in ax51.yaxis.get_major_ticks():
-                        tick.label1.set_fontsize(11)
-                    if nx<3000:
-                        ax51.xaxis.set_major_locator(tck.MultipleLocator(500))
-                        ax51.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                    else:
-                        ax51.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                        ax51.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                    if ipara == 3:
-                        figname1 = figname_aperpar(aper)
-                        figname2 = '.'.join(figname1.split('.')[0:-1])+'i.pdf'
-                        fig5.savefig(figname2)
-                        plt.close(fig5)
-
-        if plot_aperpar:
-            # save and close the figure
-            if iaper%5==4:
-                fig_aperpar.savefig(figname_aperpar(aper))
-                plt.close(fig_aperpar)
-                has_aperpar_fig = False
-            if aper in [83, 21]:
-                fig_aperpar2.savefig('aperpar2_{}.pdf'.format(aper))
-                plt.close(fig_aperpar2)
-
+        '''
         # find columns to be corrected in this order
         correct_x_lst = []
         for x in allx:
@@ -641,6 +633,8 @@ def get_flat(data, mask, apertureset, nflat,
 
         # find the left and right boundaries of the correction region
         x1, x2 = correct_x_lst[0], correct_x_lst[-1]
+        '''
+        correct_x_lst = allx
 
         # now loop over columns in correction region
         for x in correct_x_lst:
@@ -668,6 +662,15 @@ def get_flat(data, mask, apertureset, nflat,
             flatmask = corr_mask*~_satmask*~_badmask
 
             flatdata[y1:y2, x][flatmask] = flat[flatmask]
+
+            # for debug
+            if aper==11 and x>400 and x<600:
+                print(x, A, c, b, fitfunc([A,c,b], xdata, interf))
+                print(corr_mask)
+                print(_satmask)
+                print(_badmask)
+                print(flat[flatmask])
+
 
             # extract the 1d spectra of the modeled flat using super-sampling
             # integration
@@ -698,11 +701,7 @@ def get_flat(data, mask, apertureset, nflat,
     print(' \033[92m Completed\033[0m')
 
     ###################### aperture loop ends here ########################
-    if plot_aperpar and has_aperpar_fig:
-        # there's unsaved figure in memory. save and close the figure
-        fig_aperpar.savefig(figname_aperpar(aper))
-        plt.close(fig_aperpar)
-        has_aperpar_fig = False
+    aperpar_plotter.savefig(figname_aperpar(aper+1000))
 
     return flatdata, flatspec_lst
 
