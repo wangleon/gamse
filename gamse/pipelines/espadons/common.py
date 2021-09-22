@@ -99,7 +99,7 @@ class ProfileNormalizer(ProfileNormalizerCommon):
 
         x1, x2 = xdata[0], xdata[-1]
         y1, y2 = ydata[0], ydata[-1]
-        background = (x-x1)/(x2-x1)*(y2-y1)+y1
+        background = (xdata-x1)/(x2-x1)*(y2-y1)+y1
         newydata = ydata - background
 
         v0, p1, yp1, p2, yp2 = find_local_peak(xdata, newydata)
@@ -107,12 +107,13 @@ class ProfileNormalizer(ProfileNormalizerCommon):
 
         self.x = xdata - v0
         self.y = newydata/Amean
+        self.m = np.ones_like(self.x, dtype=np.bool)
 
         self.param = (v0, p1, p2, Amean, background.mean())
 
     def is_succ(self):
-        v0, p1, p2, Amean, bmean = self.param
-        if A>bmean and bmean>0 and b<np.percentile(self.ydata, 20):
+        v0, p1, p2, Amean, b = self.param
+        if Amean>b and b>0 and b<np.percentile(self.ydata, 20):
             return True
         else:
             return False
@@ -409,11 +410,11 @@ class SpatialProfileFigure(Figure):
 
         # add axes
         _w = 0.16
-        _h = 0.40
+        _h = 0.39
         for irow in range(nrow):
             for icol in range(ncol):
                 _x = 0.05 + icol*0.19
-                _y = 0.05 + (nrow-1-irow)*0.45
+                _y = 0.08 + (nrow-1-irow)*0.45
 
                 ax = self.add_axes([_x, _y, _w, _h])
 

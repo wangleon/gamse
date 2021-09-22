@@ -125,13 +125,10 @@ def get_flat2(data, mask, apertureset, nflat,
             normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
             newx = normed_prof.x
             newy = normed_prof.y
+            newm = normed_prof.m
 
-            # unpack the results
-            newx, newy, param = results
-            v0, _p1, _p2, A, bkg = param
-
-            if A>bkg and bkg>0 and bkg<np.percentile(ynodes, 20):
-                for _newx, _newy in zip(newx, newy):
+            if normed_prof.is_succ():
+                for _newx, _newy in zip(newx[newm], newy[newm]):
                     all_xnodes.append(_newx)
                     all_ynodes.append(_newy)
 
@@ -150,9 +147,9 @@ def get_flat2(data, mask, apertureset, nflat,
                 '''
 
                 # plotting
-                ax.scatter(newx, newy, s=5, alpha=0.3, lw=0)
+                ax.scatter(newx[newm], newy[newm], s=5, alpha=0.3, lw=0)
                 if ax2 is not None:
-                    ax2.scatter(newx, newy, s=10, alpha=0.3, lw=0)
+                    ax2.scatter(newx[newm], newy[newm], s=10, alpha=0.3, lw=0)
 
         # print a progress bar in terminal
         n_finished = iyc + 1
@@ -541,7 +538,7 @@ def get_flat2(data, mask, apertureset, nflat,
             x1s = max(0,  np.round(lbound-2, 1))
             x2s = min(nx, np.round(ubound+2, 1))
             xdata2 = np.arange(x1s, x2s, 0.1)
-            flatmod = fitfunc([A,c,bkg], xdata2, interf)
+            flatmod = fitfunc([A,c,b], xdata2, interf)
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
@@ -565,18 +562,7 @@ def get_flat2(data, mask, apertureset, nflat,
         plt.close(fig_aperpar)
         has_aperpar_fig = False
 
-    # pack the final 1-d spectra of flat
-    flatspectable = [(aper, flatspec_lst[aper])
-                     for aper in sorted(apertureset.keys())]
-
-    # define the datatype of flat 1d spectra
-    flatspectype = np.dtype(
-                    {'names':   ['aperture', 'flux'],
-                     'formats': [np.int32, (np.float32, ny)],}
-                    )
-    flatspectable = np.array(flatspectable, dtype=flatspectype)
-
-    return flatdata, flatspectable
+    return flatdata, flatspec_lst
 
 def get_flat(data, aperture_set, mode='normal'):
     """Get flat fielding for CFHT/ESPaDOnS data.
