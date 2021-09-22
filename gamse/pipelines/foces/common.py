@@ -866,7 +866,8 @@ class ProfileNormalizer(ProfileNormalizerCommon):
         A, c, sigma, bkg = p1
         self.x = xdata - c
         self.y = (ydata - bkg)/A
-    
+        self.m = _m
+
         self.param = p1
         self.std = std
 
