@@ -118,6 +118,17 @@ def reduce_singlefiber(config, logtable):
     flat_info_lst = {}
     aperset_lst   = {}
 
+    ######### define the datatype of flat 1d spectra ########
+    if bias is None:
+        ndisp = 2048
+    else:
+        ncros, ndisp = bias.shape
+
+    flatspectype = np.dtype(
+                {'names':   ['aperture', 'flux'],
+                 'formats': [np.int32, (np.float32, ndisp)],
+                 })
+
     # first combine the flats
     for flatname, item_lst in sorted(flat_groups.items()):
         # number of flat fieldings
@@ -323,17 +334,9 @@ def reduce_singlefiber(config, logtable):
             fig_spatial.savefig(figname)
             fig_spatial.close()
 
-            ny, nx = flat_sens.shape
-
             # pack 1-d spectra of flat
             flat_spec = [(aper, flatspec) for aper, flatspec
                             in sorted(flatspec_lst.items())]
-
-            # define the datatype of flat 1d spectra
-            flatspectype = np.dtype(
-                        {'names':   ['aperture', 'flux'],
-                         'formats': [np.int32, (np.float32, nx)],
-                         })
             flat_spec = np.array(flat_spec, dtype=flatspectype)
 
             head.append(('HIERARCH GAMSE FILECONTENT 0', 'FLAT COMBINED'))
@@ -456,6 +459,18 @@ def reduce_singlefiber(config, logtable):
     # filter ThAr frames
     filter_thar = lambda item: item['object'].lower() == 'thar'
 
+    # start and end point in pixel and order for the 2d ThAr fit
+    pixel_range = (101, 2006)
+    order_range = (61, 149)
+
+    # range in which the 2d thar fit is performed 
+    def wlfit_filter(item):
+        if pixel_range[0] <= item['pixel'] <= pixel_range[1] and \
+           order_range[0] <= item['order'] <= order_range[1]:
+            return True
+        else:
+            return False
+
     thar_items = list(filter(filter_thar, logtable))
 
     for ithar, logitem in enumerate(thar_items):
@@ -478,8 +493,7 @@ def reduce_singlefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        fname = '{}.fits'.format(fileid)
-        filename = os.path.join(rawpath, fname)
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
