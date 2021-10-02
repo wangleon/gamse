@@ -222,6 +222,16 @@ def make_obslog():
                     'thar;', ';thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
+    # read loginfo from log file ('.txt')
+    loginfo = {}
+    for fname in os.listdir('./'):
+        if fname[-4:]=='.txt':
+            loginfo = read_logfile(fname)
+            message = 'Read log from "{}"'.format(fname)
+            print(message)
+            break
+    print(loginfo)
+
     # if the obsinfo file exists, read and pack the information
     addinfo_lst = {}
     obsinfo_file = config['data'].get('obsinfo_file')
@@ -245,6 +255,8 @@ def make_obslog():
 
         # find maximum length of object
         maxobjlen = max([len(row['object']) for row in addinfo_table])
+    elif len(loginfo)>0:
+        maxobjlen = max([len(item['object']) for key, item in loginfo.items()])
     else:
         maxobjlen = 12
 
@@ -338,6 +350,10 @@ def make_obslog():
         if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
             and addinfo_lst[frameid]['object'] is not np.ma.masked):
             objectname = addinfo_lst[frameid]['object']
+        elif frameid in loginfo:
+            objectname = loginfo[frameid]['object']
+        else:
+            pass
 
         # change to regular name
         for regname in regular_names:
@@ -433,6 +449,133 @@ def make_obslog():
     for row in logtable.pformat_all():
         outfile.write(row+os.linesep)
     outfile.close()
+
+def read_logfile(filename):
+    """Read ascii log file.
+
+    Args:
+        filename (str): Name of log file.
+    Returns:
+        dict: 
+
+    """
+
+    loginfo = {}
+
+    pattern1 = '([\d\-]+)'                  # pattern for fileid
+    pattern2 = '([a-zA-Z0-9+-_\s]+)'        # pattern for object name
+    pattern3 = '(\d{2}:\d{2}:\d{2})'        # pattern for begin time
+    pattern4 = '([\d\.]+)'                  # pattern for exptime
+    pattern5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # pattern for ra
+    pattern6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # pattern for dec
+    pattern_bias = '{}\s*(bias)\s*{}\s*{}'.format(
+            pattern1, pattern3, pattern4)
+    pattern_thar = '{}\s*(thar)\s*{}\s*{}'.format(
+            pattern1, pattern3, pattern4)
+    pattern_flat = '{}\s*(flat)\s*{}\s*{}'.format(
+            pattern1, pattern3, pattern4)
+    pattern_star = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
+            pattern1, pattern2, pattern3, pattern4, pattern5, pattern6)
+
+    infile = open(filename, encoding='gbk')
+    for row in infile:
+        row = row.strip()
+
+        mobj_bias = re.match(pattern_bias, row.lower())
+        mobj_thar = re.match(pattern_thar, row.lower())
+        mobj_flat = re.match(pattern_flat, row.lower())
+        mobj_star = re.match(pattern_star, row)
+
+        if mobj_bias is None and mobj_thar is None and \
+            mobj_flat is None and mobj_star is None:
+            continue
+
+        for mobj in [mobj_bias, mobj_thar, mobj_flat, mobj_star]:
+            if mobj is not None:
+                idstring   = mobj.group(1)
+                timestr    = mobj.group(3)
+                exptimestr = mobj.group(4)
+                break
+
+        # parse object name
+        if mobj_bias:
+            objname = 'Bias'
+        elif mobj_thar:
+            objname = 'ThAr'
+        elif mobj_flat:
+            objname = 'Flat'
+        elif mobj_star:
+            objname = mobj.group(2)
+        else:
+            raise ValueError
+
+        # parse exptime
+        if '.' in exptimestr:
+            exptime = float(exptimestr)
+        else:
+            exptime = int(exptimestr)
+
+        # parse fileid
+        id_prefix = int(idstring[0:8])
+        yy = int(idstring[0:4])
+        mm = int(idstring[4:6])
+        dd = int(idstring[6:8])
+        # get the range of frameids if there is '-' in idstring
+        if '-' in idstring[8:]:
+            group = idstring[8:].split('-')
+            frameid1 = int(group[0])
+            frameid2 = int(group[1])
+        else:
+            frameid1 = int(idstring[8:])
+            frameid2 = frameid1
+
+        # parse begin time of exposure
+        m1 = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+        hour   = int(m1.group(1))
+        minute = int(m1.group(2))
+        second = int(m1.group(3))
+        if hour >= 24:
+            hour = hour-24
+            dt   = datetime.timedelta(days=1)
+        else:
+            dt   = datetime.timedelta(days=0)
+        obstime = datetime.datetime(yy, mm, dd, hour, minute, second) + dt
+
+        if mobj_star:
+            # convert ra string to float in degree
+            rastr = mobj.group(5)
+            m2 = re.match('(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', rastr)
+            rah = int(m2.group(1))
+            ram = int(m2.group(2))
+            ras = float(m2.group(3))
+            ra = (rah + ram/60 + ras/3600)*15
+
+            # convert dec string to float in degree
+            decstr = mobj.group(6)
+            m3 = re.match('([+-])(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', decstr)
+            ded = int(m3.group(2))
+            dem = int(m3.group(3))
+            des = float(m3.group(4))
+            dec = ded + dem/60 + des/3600
+            if m3.group(1)=='-':
+                dec = -dec
+        else:
+            ra, dec = None, None
+
+        for frameid in range(frameid1, frameid2+1):
+            #fileid = int('{}{:03d}'.format(id_prefix, frameid))
+            loginfo[frameid] = {
+                    'object': objname,
+                    'obstime': obstime if frameid==frameid1 else None,
+                    'exptime': exptime,
+                    'ra': ra,
+                    'dec': dec,
+                    }
+
+    infile.close()
+    return loginfo
+
+
 
 def read_obsinfo(filename):
     """Read obsinfo file and convert it to a Astropy table.
