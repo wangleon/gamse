@@ -564,7 +564,8 @@ def reduce_singlefiber(config, logtable):
                                 '../../data/calib/wlcalib_foces.dat')
 
                 message = ('Searching for archive wavelength calibration'
-                           'file in "{}"'.format(database_path))
+                           'file in "{}"'.format(
+                               os.path.basename(database_path)))
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
@@ -590,6 +591,7 @@ def reduce_singlefiber(config, logtable):
                         maxiter     = section.getint('maxiter'),
                         clipping    = section.getfloat('clipping'),
                         q_threshold = section.getfloat('q_threshold'),
+                        fit_filter  = wlfit_filter,
                         )
                 else:
                     # if success, run recalib
@@ -651,6 +653,7 @@ def reduce_singlefiber(config, logtable):
                         window_size      = window_size,
                         q_threshold      = q_threshold,
                         direction        = direction,
+                        fit_filter       = wlfit_filter,
                         )
             else:
                 message = 'No database searching. Identify lines manually'
@@ -669,6 +672,7 @@ def reduce_singlefiber(config, logtable):
                     maxiter       = section.getint('maxiter'),
                     clipping      = section.getfloat('clipping'),
                     q_threshold   = section.getfloat('q_threshold'),
+                    fit_filter    = wlfit_filter,
                     )
 
             # then use this ThAr as the reference
@@ -691,6 +695,7 @@ def reduce_singlefiber(config, logtable):
                 window_size      = ref_calib['window_size'],
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
+                fit_filter       = wlfit_filter,
                 )
 
         # add more infos in calib

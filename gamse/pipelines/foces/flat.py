@@ -15,7 +15,6 @@ from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ...echelle.flat import SpatialProfile
 from ...utils.onedarray import get_local_minima
 from ...utils.regression import iterative_polyfit
 from .common import norm_profile, ProfileNormalizer

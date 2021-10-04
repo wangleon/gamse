@@ -886,7 +886,8 @@ def reduce_doublefiber(config, logtable):
                                     '../../data/calib/wlcalib_foces.dat')
 
                     message = ('Searching for archive wavelength calibration '
-                               'file in "{}"'.format(os.path.basename(index_file)))
+                               'file in "{}"'.format(
+                                   os.path.basename(index_file)))
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
                     
