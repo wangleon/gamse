@@ -7,6 +7,8 @@ logger = logging.getLogger(__name__)
 import dateutil.parser
 
 import numpy as np
+import scipy.signal as sg
+import scipy.interpolate as intp
 from scipy.signal import savgol_filter
 from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
@@ -24,7 +26,8 @@ from ...echelle.trace import TraceFigureCommon
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
-from ...utils.onedarray import iterative_savgol_filter
+from ...utils.download import get_file
+from ...utils.onedarray import iterative_savgol_filter, get_edge_bin
 
 
 def get_region_lst(header, readout_mode):
@@ -587,11 +590,11 @@ def correct_overscan(data, header, readout_mode=None):
 
     return newdata, card_lst
 
-def select_calib_from_database(database_path, dateobs):
+def select_calib_from_database(index_file, dateobs):
     """Select wavelength calibration file in database.
 
     Args:
-        path (str): Path to search for the calibration files.
+        index_file (str): Index file of saved calibration files.
         dateobs (str): .
 
     Returns:
@@ -602,8 +605,7 @@ def select_calib_from_database(database_path, dateobs):
             * **calib** (dict): Previous calibration results.
     """
     
-    indexfile = os.path.join(database_path, 'index.dat')
-    calibtable = Table.read(indexfile, format='ascii.fixed_width_two_line')
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
 
     input_date = dateutil.parser.parse(dateobs)
 
@@ -625,18 +627,20 @@ def select_calib_from_database(database_path, dateobs):
                 for t in calibtable[mask]['obsdate']]
     irow = np.abs(timediff).argmin()
     row = calibtable[mask][irow]
-    fileid = row['fileid']
+    fileid = row['fileid']  # selected fileid
+    md5    = row['md5']
 
-    filename = 'wlcalib_{}.fits'.format(fileid)
-    filepath = os.path.join(database_path, filename)
-    message = 'Select {} from database as ThAr reference'.format(filename)
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
     logger.info(message)
 
+    filepath = os.path.join('xinglong216hrs', 'wlcalib_{}.fits'.format(fileid))
+    filename = get_file(filepath, md5)
+
     # load spec, calib, and aperset from selected FITS file
-    f = fits.open(filepath)
-    head = f[0].header
-    spec = f[1].data
-    f.close()
+    hdu_lst = fits.open(filename)
+    head = hdu_lst[0].header
+    spec = hdu_lst[1].data
+    hdu_lst.close()
 
     calib = get_calib_from_header(head)
 
@@ -970,7 +974,7 @@ class ProfileNormalizer(ProfileNormalizerCommon):
         b0 = ydata.min()
         p0 = [A0, c0, 5.0, 4.0, b0]
         lower_bounds = [-np.inf, xdata[0],  0.5,    0.5,    -np.inf]
-        upper_bounds = [np.inf,  xdata[-1], np.inf, np.inf, ydata.max()]
+        upper_bounds = [np.inf,  xdata[-1], np.inf, 100., ydata.max()]
         _m = (~sat_mask)*(~bad_mask)
 
         for i in range(10):
@@ -989,6 +993,7 @@ class ProfileNormalizer(ProfileNormalizerCommon):
         A, c, alpha, beta, bkg = p1
         self.x = xdata - c
         self.y = (ydata - bkg)/A
+        self.m = _m
         
         self.param = p1
         self.std = std
@@ -1119,3 +1124,98 @@ class SpatialProfileFigure(Figure):
 
     def close(self):
         plt.close(self)
+
+def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
+    figname = kwargs.pop('figname', 'bkg_{:04d}.png')
+    distance = kwargs.pop('distance', 7)
+
+    if mask is None:
+        mask = np.zeros_like(data, dtype=np.int32)
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
+
+    bkg_image = np.zeros_like(data, dtype=np.float32)
+    plot_x = [10, 509, 2505]
+
+    saturated_cols = [610, 3422, 3595]
+    masked_x = []
+    for col in saturated_cols:
+        for x in np.arange(col-4, col+4):
+            masked_x.append(x)
+
+    for x in allx:
+        if x in masked_x:
+            continue
+
+        if x in plot_x:
+            plot = True
+            fig1 = plt.figure(figsize=(12,8))
+            ax01 = fig1.add_subplot(211)
+            ax02 = fig1.add_subplot(212)
+        else:
+            plot = False
+        mask_rows = np.zeros_like(ally, dtype=bool)
+        for aper, aperloc in sorted(apertureset.items()):
+            ycen = aperloc.position(x)
+            if plot:
+                ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+                ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+    
+            imask = np.abs(ally - ycen) < distance
+            mask_rows += imask
+        if plot:
+            ax01.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
+        x_lst, y_lst = [], []
+        for (y1, y2) in get_edge_bin(~mask_rows):
+            if plot:
+                ax01.plot(ally[y1:y2], data[y1:y2,x],
+                            color='C0', alpha=1, lw=0.7)
+                ax02.plot(ally[y1:y2], data[y1:y2,x],
+                            color='C0', alpha=1, lw=0.7)
+            if y2 - y1 > 1:
+                yflux = data[y1:y2, x]
+                ymask = mask[y1:y2, x]
+                xlist = np.arange(y1, y2)
+    
+                # block the highest point and calculate mean
+                _m = xlist == y1 + np.argmax(yflux)
+                mean = yflux[~_m].mean()
+                std  = yflux[~_m].std()
+                if yflux.max() < mean + 3.*std:
+                    meany = yflux.mean()
+                    meanx = (y1+y2-1)/2
+                else:
+                    meanx = xlist[~_m].mean()
+                    meany = mean
+            else:
+                meany = data[y1,x]
+                meanx = y1
+            x_lst.append(meanx)
+            y_lst.append(meany)
+        x_lst = np.array(x_lst)
+        y_lst = np.array(y_lst)
+        y_lst = np.maximum(y_lst, 0)
+        y_lst = sg.medfilt(y_lst, 3)
+        f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
+        bkg = f(ally)
+        bkg_image[:, x] = bkg
+        if plot:
+            ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+            ax01.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            ax02.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            _y1, _y2 = ax02.get_ylim()
+            ax02.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
+            ax02.set_ylim(_y1, _y2)
+            ax01.set_xlim(0, ny-1)
+            ax02.set_xlim(0, ny-1)
+            fig1.savefig(figname.format(x))
+            plt.close(fig1)
+
+    for y in np.arange(ally):
+        m = 0
+        func = intp.InterpolateUnivariateSpline(allx, bkg_img[y, :], k=3)
+        bkg_img = 0
+    return bkg_image
