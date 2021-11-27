@@ -1390,7 +1390,7 @@ def select_background_from_database(path, **args):
     elif objtype == 'star':
         mask = []
         for row in table:
-            if row['object'].lower()==obj:
+            if row['object']==obj:
                 mask.append(True)
             else:
                 mask.append(False)
