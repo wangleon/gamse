@@ -269,7 +269,9 @@ def combine_bias(config, logtable):
     # plot the bias
     bias_fig = BiasFigure(data=bias_combine, title='Bias Mean')
     # save and close the figure
-    figpath = config['reduce']['figpath']
+    figpath = config['reduce'].get('figpath', None)
+    if figpath is None:
+        figpath = config['reduce'].get('report') # old style
     figfilename = os.path.join(figpath, 'bias_mean.png')
     bias_fig.savefig(figfilename)
     plt.close(bias_fig)
@@ -312,7 +314,9 @@ def combine_bias(config, logtable):
         # plot the smoothed bias
         bias_fig = BiasFigure(data=bias_smooth, title='Bias Smoothed')
         # save and close the figure
-        figpath = config['reduce']['figpath']
+        figpath = config['reduce'].get('figpath', None)
+        if figpath is None:
+            figpath = config['reduce'].get('report')    # old style
         figfilename = os.path.join(figpath, 'bias_smooth.png')
         bias_fig.savefig(figfilename)
         plt.close(bias_fig)
