@@ -12,6 +12,7 @@ from scipy.ndimage.filters import gaussian_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 import scipy.optimize as opt
 import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 import matplotlib.dates  as mdates
@@ -20,7 +21,10 @@ from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
+from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
+from ...echelle.wlcalib import get_calib_from_header
+from ...utils.download import get_file
 
 def correct_overscan(data, mask=None, direction=None):
     """Correct overscan for an input image and update related information in the
@@ -94,8 +98,8 @@ def get_bias(config, logtable):
     Returns:
         tuple: A tuple containing:
 
-            * **bias** (:class:`numpy.ndarray`) – Output bias image.
-            * **bias_card_lst** (list) – List of FITS header cards related to
+            * **bias** (:class:`numpy.ndarray`) --- Output bias image.
+            * **bias_card_lst** (list) --- List of FITS header cards related to
               the bias correction.
             * **n_bias** (int) --- Number of bias images.
             * **ovrstd** (float) --- Standard deviation of overscan of bias.
@@ -140,8 +144,8 @@ def combine_bias(config, logtable):
     Returns:
         tuple: A tuple containing:
 
-            * **bias** (:class:`numpy.ndarray`) – Output bias image.
-            * **bias_card_lst** (list) – List of FITS header cards related to
+            * **bias** (:class:`numpy.ndarray`) --- Output bias image.
+            * **bias_card_lst** (list) --- List of FITS header cards related to
               the bias correction.
             * **n_bias** (int) --- Number of bias images.
             * **ovrstd** (float) --- Standard deviation of overscan of bias.
@@ -265,7 +269,9 @@ def combine_bias(config, logtable):
     # plot the bias
     bias_fig = BiasFigure(data=bias_combine, title='Bias Mean')
     # save and close the figure
-    figpath = config['reduce']['report']
+    figpath = config['reduce'].get('figpath', None)
+    if figpath is None:
+        figpath = config['reduce'].get('report') # old style
     figfilename = os.path.join(figpath, 'bias_mean.png')
     bias_fig.savefig(figfilename)
     plt.close(bias_fig)
@@ -308,7 +314,9 @@ def combine_bias(config, logtable):
         # plot the smoothed bias
         bias_fig = BiasFigure(data=bias_smooth, title='Bias Smoothed')
         # save and close the figure
-        figpath = config['reduce']['report']
+        figpath = config['reduce'].get('figpath', None)
+        if figpath is None:
+            figpath = config['reduce'].get('report')    # old style
         figfilename = os.path.join(figpath, 'bias_smooth.png')
         bias_fig.savefig(figfilename)
         plt.close(bias_fig)
@@ -410,6 +418,49 @@ def print_wrapper(string, item):
     else:
         return string
 
+def select_calib_from_database(index_file, dateobs):
+    """Select wavelength calibration file in database.
+
+    Args:
+        index_file (str): Index file of saved calibration files.
+        dateobs (str): .
+
+    Returns:
+        tuple: A tuple containing:
+
+            * **spec** (:class:`numpy.dtype`): An array of previous calibrated
+              spectra.
+            * **calib** (dict): Previous calibration results.
+    """
+
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
+
+    input_date = dateutil.parser.parse(dateobs)
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[irow]
+    fileid = row['fileid']      # selected fileid
+    md5 = row['md5']
+
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    logger.info(message)
+
+    filepath = os.path.join('foces', 'wlcalib_{}.fits'.format(fileid))
+
+    filename = get_file(filepath, md5)
+
+    # load spec, calib, and aperset from selected FITS file
+    hdu_lst = fits.open(filename)
+    head = hdu_lst[0].header
+    spec = hdu_lst[1].data
+    hdu_lst.close()
+
+    calib = get_calib_from_header(head)
+
+    return spec, calib
 
 def get_primary_header(input_lst):
     """Return a list of header records with length of 80 characters.
@@ -785,6 +836,104 @@ class BiasFigure(Figure):
             self.suptitle(title)
 
 
+class ProfileNormalizer(ProfileNormalizerCommon):
+    def __init__(self, xdata, ydata, mask):
+        self.xdata = xdata
+        self.ydata = ydata
+        self.mask  = mask
+
+        sat_mask = (mask&4 > 0)
+        bad_mask = (mask&2 > 0)
+
+        # iterative fitting using fitfunc
+        A0 = ydata.max() - ydata.min()
+        c0 = (xdata[0] + xdata[-1])/2
+        b0 = ydata.min()
+        p0 = [A0, c0, 3.0, b0]
+        lower_bounds = [-np.inf, xdata[0],  0.3,    -np.inf]
+        upper_bounds = [np.inf,  xdata[-1], np.inf, ydata.max()]
+        _m = (~sat_mask)*(~bad_mask)
+
+        for i in range(10):
+            opt_result = opt.least_squares(self.errfunc, p0,
+                        args=(xdata[_m], ydata[_m]),
+                        bounds=(lower_bounds, upper_bounds))
+            p1 = opt_result['x']
+            residuals = self.errfunc(p1, xdata, ydata)
+            std = residuals[_m].std(ddof=1)
+            _new_m = (np.abs(residuals) < 3*std)*_m
+            if _m.sum() == _new_m.sum():
+                break
+            _m = _new_m
+            p0 = p1
+    
+        A, c, sigma, bkg = p1
+        self.x = xdata - c
+        self.y = (ydata - bkg)/A
+        self.m = _m
+
+        self.param = p1
+        self.std = std
+
+    def is_succ(self):
+        A, center, sigma, bkg = self.param
+        std = self.std
+
+        if A>0 and 1<sigma<5 and A/std>10:
+            return True
+        else:
+            return False
+
+    def fitfunc(self, param, x):
+        """Use Gaussian function.
+        """
+        A, center, sigma, bkg = param
+        return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
+
+def norm_profile(xdata, ydata, mask):
+    # define the fitting and error functions
+    def gaussian_bkg(A, center, sigma, bkg, x):
+        return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
+    def fitfunc(p, x):
+        return gaussian_bkg(p[0], p[1], p[2], p[3], x)
+    def errfunc(p, x, y, fitfunc):
+        return y - fitfunc(p, x)
+
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    # iterative fitting using gaussian + bkg function
+    A0 = ydata.max()-ydata.min()
+    c0 = (xdata[0]+xdata[-1])/2
+    b0 = ydata.min()
+    p0 = [A0, c0, 3.0, b0]
+    lower_bounds = [-np.inf, xdata[0],  0.3,    -np.inf]
+    upper_bounds = [np.inf,  xdata[-1], np.inf, ydata.max()]
+    _m = (~sat_mask)*(~bad_mask)
+
+    for i in range(10):
+        opt_result = opt.least_squares(errfunc, p0,
+                    args=(xdata[_m], ydata[_m], fitfunc),
+                    bounds=(lower_bounds, upper_bounds))
+        p1 = opt_result['x']
+        residuals = errfunc(p1, xdata, ydata, fitfunc)
+        std = residuals[_m].std(ddof=1)
+        _new_m = (np.abs(residuals) < 3*std)*_m
+        if _m.sum() == _new_m.sum():
+            break
+        _m = _new_m
+        p0 = p1
+
+    A, c, sigma, bkg = p1
+    newx = xdata - c
+    newy = ydata - bkg
+
+    param = (A, c, sigma, bkg, std)
+
+    if A < 1e-3:
+        return None
+    return newx, newy/A, param
+
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
     """
@@ -971,6 +1120,34 @@ class BrightnessProfileFigure(Figure):
         # others
         ax1.set_xlabel('Pixel')
         ax2.set_xlabel('Order')
+
+    def close(self):
+        plt.close(self)
+
+class SpatialProfileFigure(Figure):
+    """Figure to plot the cross-dispersion profiles.
+
+    """
+    def __init__(self,
+            nrow = 2,
+            ncol = 3,
+            figsize = (12,6),
+            dpi = 200,
+            ):
+
+        # create figure
+        Figure.__init__(self, figsize=figsize, dpi=dpi)
+        self.canvas = FigureCanvasAgg(self)
+
+        # add axes
+        _w = 0.27
+        _h = 0.40
+        for irow in range(nrow):
+            for icol in range(ncol):
+                _x = 0.08 + icol*0.31
+                _y = 0.06 + (nrow-1-irow)*0.45
+
+                ax = self.add_axes([_x, _y, _w, _h])
 
     def close(self):
         plt.close(self)

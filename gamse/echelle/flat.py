@@ -13,6 +13,9 @@ import scipy.optimize as opt
 import scipy.signal as sg
 from scipy.integrate import simps
 
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
+
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
@@ -1918,7 +1921,6 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
         plt.close(fig)
         has_aperpar_fig = False
 
-
     return flatdata, flatspectable
 
 
@@ -2738,3 +2740,36 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         # build the sensitivity map
         flatmap[imgmask] = data[imgmask]/fitimg[imgmask]
     return flatmap
+
+
+
+class SpatialProfile(object):
+
+    def __init__(self, xnodes, ynodes):
+
+        input_train_x = xnodes.reshape(-1,1)
+        input_train_y = ynodes.reshape(-1,1)
+
+        kernel = RBF(length_scale=3.0) + WhiteKernel(0.1)
+        self.gpr = GaussianProcessRegressor(kernel=kernel)
+        self.gpr.fit(input_train_x, input_train_y)
+
+
+    def __call__(self, profile_x):
+        test_x = profile_x.reshape(-1,1)
+        mu, cov = self.gpr.predict(test_x, return_cov=True)
+        test_y = mu.flatten()
+        return test_y
+
+
+class ProfileNormalizerCommon(object):
+    def __init__(self):
+        pass
+
+    def linspace(self, n=100):
+        newx = np.linspace(self.xdata[0], self.xdata[-1], n)
+        newy = self.fitfunc(self.param, newx)
+        return newx, newy
+
+    def errfunc(self, param, x, y):
+        return y - self.fitfunc(param, x)

@@ -13,7 +13,7 @@ from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                                 mosaic_spec)
-from ...echelle.background import find_background, get_interorder_background
+#from ...echelle.background import find_background, get_interorder_background
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
@@ -22,10 +22,11 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 select_calib_auto, select_calib_manu,
                                 )
 from .common import (get_bias, get_mask, correct_overscan,
-                    TraceFigure, BackgroundFigure,
+                    TraceFigure, BackgroundFigure, SpatialProfileFigure,
                      select_calib_from_database)
+from .common import get_interorder_background
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg)
+                   smooth_aperpar_bkg, get_flat)
 
 def reduce_singlefiber(config, logtable):
     """Reduce the single fiber data of Xinglong 2.16m HRS.
@@ -109,6 +110,17 @@ def reduce_singlefiber(config, logtable):
     flat_spec_lst = {}
     flat_info_lst = {}
     aperset_lst   = {}
+
+    ######### define the datatype of flat 1d spectra ########
+    if bias is None:
+        ndisp = 4096
+    else:
+        ncros, ndisp = bias.shape
+
+    flatspectype = np.dtype(
+                {'names':   ['aperture', 'flux'],
+                 'formats': [np.int32, (np.float32, ndisp)],
+                 })
 
     # first combine the flats
     for flatname, logitem_lst in flat_groups.items():
@@ -253,6 +265,7 @@ def reduce_singlefiber(config, logtable):
 
             section = config['reduce.flat']
 
+            '''
             flat_sens, flat_spec = get_fiber_flat(
                         data            = flat_data,
                         mask            = flat_mask,
@@ -269,6 +282,31 @@ def reduce_singlefiber(config, logtable):
                         fig_slit        = fig_slit,
                         slit_file       = slit_file,
                         )
+            '''
+            fig_spatial = SpatialProfileFigure()
+            flat_sens, flatspec_lst = get_flat(
+                    data            = flat_data,
+                    mask            = flat_mask,
+                    apertureset     = aperset,
+                    nflat           = nflat,
+                    q_threshold     = section.getfloat('q_threshold'),
+                    smooth_A_func   = smooth_aperpar_A,
+                    smooth_c_func   = smooth_aperpar_c,
+                    smooth_bkg_func = smooth_aperpar_bkg,
+                    mode            = 'debug',
+                    fig_spatial     = fig_spatial,
+                    flatname        = 'flat_{}'.format(flatname),
+                    )
+            figname = 'spatial_profile_flat_{}.png'.format(flatname)
+            title = 'Spatial Profile of flat_{}'.format(flatname)
+            fig_spatial.suptitle(title)
+            fig_spatial.savefig(figname)
+            fig_spatial.close()
+
+            # pack 1-d spectra of flat
+            flat_spec = [(aper, flatspec) for aper, flatspec
+                            in sorted(flatspec_lst.items())]
+            flat_spec = np.array(flat_spec, dtype=flatspectype)
 
             # pack results and save to fits
             hdu_lst = fits.HDUList([
@@ -463,20 +501,22 @@ def reduce_singlefiber(config, logtable):
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
                 # find previouse calibration results
-                database_path = section.get('database_path')
-                database_path = os.path.expanduser(database_path)
+                index_file = os.path.join(os.path.dirname(__file__),
+                                '../../data/calib/wlcalib_xinglong216hrs.dat')
 
                 message = ('Searching for archive wavelength calibration'
-                           'file in "{}"'.format(database_path))
+                           'file in "{}"'.format(
+                               os.path.basename(index_file)))
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
                 ref_spec, ref_calib = select_calib_from_database(
-                            database_path, head[statime_key])
+                            index_file, head[statime_key])
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = 'Archive wavelength calibration file not found'
+                    message = ('Did not find nay archive wavelength'
+                               'calibration file')
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -516,22 +556,11 @@ def reduce_singlefiber(config, logtable):
                     else:
                         pixel_k = -1
 
-                    # determine the name of the output figure during lamp shift
-                    # finding.
-                    if mode == 'debug':
-                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
-                        figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(figpath, figname1)
-                        fig_scatter = os.path.join(figpath, figname2)
-                    else:
-                        fig_ccf     = None
-                        fig_scatter = None
-
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
                                 pixel_k     = pixel_k,
-                                fig_ccf     = fig_ccf,
-                                fig_scatter = fig_scatter,
+                                pixel_range = (-50, 50),
+                                mode        = mode,
                                 )
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
@@ -882,8 +911,8 @@ def reduce_singlefiber(config, logtable):
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux
                     np.zeros(n, dtype=np.float32),  # error
-                    np.zeros(n, dtype=np.int16),    # mask
                     back_flux,                      # background
+                    np.zeros(n, dtype=np.int16),    # mask
                     )
             spec.append(row)
         spec = np.array(spec, dtype=spectype)

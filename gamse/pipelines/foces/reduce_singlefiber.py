@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 import astropy.io.fits as fits
-from astropy.time import TimeDelta
+from astropy.time import Time
 from scipy.ndimage.filters import median_filter
 
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
@@ -14,7 +14,7 @@ from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
                             mosaic_spec)
 from ...echelle.extract import extract_aperset
-from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
+from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
@@ -23,10 +23,13 @@ from ...echelle.wlcalib import (wlcalib, recalib, select_calib_from_database,
 from ...echelle.background import (find_background, simple_debackground,
                                    get_interorder_background)
 from ...utils.obslog import parse_num_seq
-from .common import (print_wrapper, get_mask, get_bias,
-                    correct_overscan, TraceFigure, BackgroundFigure)
+from .common import (print_wrapper, get_mask, get_bias, correct_overscan,
+                     select_calib_from_database,
+                     TraceFigure, BackgroundFigure,
+                     SpatialProfileFigure,
+                     )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg)
+                   smooth_aperpar_bkg, get_flat)
 
 def reduce_singlefiber(config, logtable):
     """Data reduction for single-fiber configuration.
@@ -46,9 +49,15 @@ def reduce_singlefiber(config, logtable):
     direction   = section.get('direction')
 
     section = config['reduce']
-    midpath     = section.get('midproc')
-    odspath     = section.get('onedspec')
-    figpath     = section.get('report')
+    midpath     = section.get('midpath', None)
+    if midpath is None:
+        midpath = section.get('midproc')    # old style
+    odspath     = section.get('odspath', None)
+    if odspath is None:
+        odspath = section.get('onedspec')   # old style
+    figpath     = section.get('figpath', None)
+    if figpath is None:
+        figpath = section.get('report')     # old style
     mode        = section.get('mode')
     fig_format  = section.get('fig_format')
     oned_suffix = section.get('oned_suffix')
@@ -108,6 +117,17 @@ def reduce_singlefiber(config, logtable):
     flat_spec_lst = {}
     flat_info_lst = {}
     aperset_lst   = {}
+
+    ######### define the datatype of flat 1d spectra ########
+    if bias is None:
+        ndisp = 2048
+    else:
+        ncros, ndisp = bias.shape
+
+    flatspectype = np.dtype(
+                {'names':   ['aperture', 'flux'],
+                 'formats': [np.int32, (np.float32, ndisp)],
+                 })
 
     # first combine the flats
     for flatname, item_lst in sorted(flat_groups.items()):
@@ -275,6 +295,7 @@ def reduce_singlefiber(config, logtable):
 
             section = config['reduce.flat']
 
+            '''
             flat_sens, flat_spec = get_fiber_flat(
                         data            = flat_data,
                         mask            = flat_mask,
@@ -291,6 +312,39 @@ def reduce_singlefiber(config, logtable):
                         fig_slit        = fig_slit,
                         slit_file       = slit_file,
                         )
+            '''
+
+            fig_spatial = SpatialProfileFigure()
+            flat_sens, flatspec_lst = get_flat(
+                    data            = flat_data,
+                    mask            = flat_mask,
+                    apertureset     = aperset,
+                    nflat           = nflat,
+                    q_threshold     = section.getfloat('q_threshold'),
+                    smooth_A_func   = smooth_aperpar_A,
+                    smooth_c_func   = smooth_aperpar_c,
+                    smooth_bkg_func = smooth_aperpar_bkg,
+                    mode            = 'debug',
+                    fig_spatial     = fig_spatial,
+                    )
+            figname = os.path.join(figpath,
+                        'spatial_profile_flat_{}.png'.format(flatname))
+            title = 'Spatial Profile of flat_{}'.format(flatname)
+            fig_spatial.suptitle(title)
+            fig_spatial.savefig(figname)
+            fig_spatial.close()
+
+            # pack 1-d spectra of flat
+            flat_spec = [(aper, flatspec) for aper, flatspec
+                            in sorted(flatspec_lst.items())]
+            flat_spec = np.array(flat_spec, dtype=flatspectype)
+
+            head.append(('HIERARCH GAMSE FILECONTENT 0', 'FLAT COMBINED'))
+            head.append(('HIERARCH GAMSE FILECONTENT 1', 'FLAT MASK'))
+            head.append(('HIERARCH GAMSE FILECONTENT 2', 'FLAT NORM'))
+            head.append(('HIERARCH GAMSE FILECONTENT 3', 'FLAT DSUM'))
+            head.append(('HIERARCH GAMSE FILECONTENT 4', 'FLAT SENSITIVITY'))
+            head.append(('HIERARCH GAMSE FILECONTENT 5', 'FLAT ONEDSPEC'))
 
             # pack results and save to fits
             hdu_lst = fits.HDUList([
@@ -405,6 +459,18 @@ def reduce_singlefiber(config, logtable):
     # filter ThAr frames
     filter_thar = lambda item: item['object'].lower() == 'thar'
 
+    # start and end point in pixel and order for the 2d ThAr fit
+    pixel_range = (101, 2006)
+    order_range = (61, 149)
+
+    # range in which the 2d thar fit is performed 
+    def wlfit_filter(item):
+        if pixel_range[0] <= item['pixel'] <= pixel_range[1] and \
+           order_range[0] <= item['order'] <= order_range[1]:
+            return True
+        else:
+            return False
+
     thar_items = list(filter(filter_thar, logtable))
 
     for ithar, logitem in enumerate(thar_items):
@@ -414,6 +480,9 @@ def reduce_singlefiber(config, logtable):
         imgtype = logitem['imgtype']
         objname = logitem['object']
         exptime = logitem['exptime']
+        obsdate = logitem['obsdate']
+        if isinstance(obsdate, Time):
+            obsdate = obsdate.isot
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
@@ -424,8 +493,7 @@ def reduce_singlefiber(config, logtable):
         logger.info(message)
         print(message)
 
-        fname = '{}.fits'.format(fileid)
-        filename = os.path.join(rawpath, fname)
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
@@ -492,20 +560,22 @@ def reduce_singlefiber(config, logtable):
             # this is the first ThAr frame in this observing run
             if section.getboolean('search_database'):
                 # find previous calibration results
-                database_path = section.get('database_path')
-                database_path = os.path.expanduser(database_path)
+                index_file = os.path.join(os.path.dirname(__file__),
+                                '../../data/calib/wlcalib_foces.dat')
 
                 message = ('Searching for archive wavelength calibration'
-                           'file in "{}"'.format(database_path))
+                           'file in "{}"'.format(
+                               os.path.basename(database_path)))
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
                 ref_spec, ref_calib = select_calib_from_database(
-                        database_path, statime_key, head[statime_key])
+                        index_file, obsdate)
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = 'Archive wavelength calibration file not found'
+                    message = ('Did not find any archive wavelength'
+                                'calibration file')
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -521,6 +591,7 @@ def reduce_singlefiber(config, logtable):
                         maxiter     = section.getint('maxiter'),
                         clipping    = section.getfloat('clipping'),
                         q_threshold = section.getfloat('q_threshold'),
+                        fit_filter  = wlfit_filter,
                         )
                 else:
                     # if success, run recalib
@@ -545,22 +616,11 @@ def reduce_singlefiber(config, logtable):
                     else:
                         pixel_k = -1
 
-                    # determine the name of the output figure during lamp shift
-                    # finding.
-                    if mode == 'debug':
-                        figname1 = 'lamp_ccf_{:+2d}_{:+03d}.png'
-                        figname2 = 'lamp_ccf_scatter.png'
-                        fig_ccf     = os.path.join(figpath, figname1)
-                        fig_scatter = os.path.join(figpath, figname2)
-                    else:
-                        fig_ccf     = None
-                        fig_scatter = None
-
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
                                 pixel_k     = pixel_k,
-                                fig_ccf     = fig_ccf,
-                                fig_scatter = fig_scatter,
+                                pixel_range = (-30, 30),
+                                mode        = mode,
                                 )
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
@@ -593,6 +653,7 @@ def reduce_singlefiber(config, logtable):
                         window_size      = window_size,
                         q_threshold      = q_threshold,
                         direction        = direction,
+                        fit_filter       = wlfit_filter,
                         )
             else:
                 message = 'No database searching. Identify lines manually'
@@ -611,6 +672,7 @@ def reduce_singlefiber(config, logtable):
                     maxiter       = section.getint('maxiter'),
                     clipping      = section.getfloat('clipping'),
                     q_threshold   = section.getfloat('q_threshold'),
+                    fit_filter    = wlfit_filter,
                     )
 
             # then use this ThAr as the reference
@@ -633,6 +695,7 @@ def reduce_singlefiber(config, logtable):
                 window_size      = ref_calib['window_size'],
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
+                fit_filter       = wlfit_filter,
                 )
 
         # add more infos in calib
@@ -654,7 +717,7 @@ def reduce_singlefiber(config, logtable):
                     ])
 
         # save in midpath as a wlcalib reference file
-        fname = 'wlcalib.{}.fits'.format(fileid)
+        fname = 'wlcalib_{}.fits'.format(fileid)
         filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
 
@@ -791,7 +854,8 @@ def reduce_singlefiber(config, logtable):
         print(screen_prefix + message)
 
         # get background lights
-        background = get_interorder_background(data, master_aperset)
+        background = get_interorder_background(data,
+                            apertureset = master_aperset)
         background = median_filter(background, size=(9,1), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')

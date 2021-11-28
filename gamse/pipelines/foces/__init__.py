@@ -56,9 +56,6 @@ def make_config():
             print('Invalid input: {}'.format(string))
             continue
 
-    # general database path for this instrument
-    dbpath = '~/.gamse/FOCES'
-
     # create config object
     config = configparser.ConfigParser()
 
@@ -74,9 +71,12 @@ def make_config():
         config.set('data', 'fiberoffset', str(9))
 
     config.add_section('reduce')
-    config.set('reduce', 'midproc',     'midproc')
-    config.set('reduce', 'report',      'report')
-    config.set('reduce', 'onedspec',    'onedspec')
+    config.set('reduce', 'midpath',     'midproc')
+    config.set('reduce', 'figpath',     'images')
+    config.set('reduce', 'odspath',     'onedspec')
+    #config.set('reduce', 'midproc',     'midproc')   # old style
+    #config.set('reduce', 'report',      'report')    # old style
+    #config.set('reduce', 'onedspec',    'onedspec')   # old style
     config.set('reduce', 'mode',        'normal')
     config.set('reduce', 'oned_suffix', 'ods')
     config.set('reduce', 'fig_format',  'png')
@@ -85,7 +85,7 @@ def make_config():
     # section of bias correction
     sectname = 'reduce.bias'
     config.add_section(sectname)
-    config.set(sectname, 'bias_file',     '${reduce:midproc}/bias.fits')
+    config.set(sectname, 'bias_file',     '${reduce:midpath}/bias.fits')
     config.set(sectname, 'cosmic_clip',   str(10))
     config.set(sectname, 'maxiter',       str(5))
     config.set(sectname, 'smooth',        'yes')
@@ -116,7 +116,6 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'no')
     config.set(sectname, 'window_size',      str(13))
@@ -139,7 +138,6 @@ def make_config():
     distance = {'single': 6, 'double': 2}[fibermode]
     config.set(sectname, 'distance',      str(distance))
     config.set(sectname, 'yorder',        str(6))
-    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
 
     # section of spectra extraction
     sectname = 'reduce.extract'

@@ -16,8 +16,10 @@ from ...echelle.extract import extract_aperset
 from ...echelle.flat import get_slit_flat
 from ...utils.obslog import parse_num_seq
 from ...utils.onedarray import iterative_savgol_filter
-from .common import (print_wrapper, parse_3ccd_images, mosaic_3_images,
+
+from .common import (print_wrapper, parse_3ccd_images, mosaic_3ccd_images,
                     BiasFigure, TraceFigure)
+from .flat import smooth_flux
 
 def reduce_post2004(config, logtable):
     """
@@ -272,31 +274,35 @@ def reduce_post2004(config, logtable):
         flat_group_lst = {}
         for iccd in range(nccd):
 
-            key = 'flat CCD%d'%(iccd+1)
-            sel_string = sel_lst[key] if key in sel_lst else ''
-            prompt = '\033[{1}mSelect flats for CCD {0} [{2}]: \033[0m'.format(
-                      iccd+1, (34, 32, 31)[iccd], sel_string)
+            key = 'flat CCD{}'.format(iccd+1)
+            prompt = '\033[{}mSelect flats for CCD {}: {{}}\033[0m'.format(
+                        (34, 32, 31)[iccd], iccd+1)
 
-            # read selected files from terminal
-            while(True):
-                input_string = input(prompt)
-                if len(input_string.strip())==0:
-                    # nothing input
-                    if key in sel_lst:
-                        # nothing input but already in selection list
-                        flat_group_lst[iccd] = parse_num_seq(sel_lst[key])
-                        break
+            if key in sel_lst:
+                #  flats have already been selected
+                print(prompt.format(sel_lst[key]))
+                flat_group_lst[iccd] = parse_num_seq(sel_lst[key])
+            else:
+                # read selected files from terminal
+                while(True):
+                    input_string = input(prompt.format(''))
+                    if len(input_string.strip())==0:
+                        # nothing input
+                        if key in sel_lst:
+                            # nothing input but already in selection list
+                            flat_group_lst[iccd] = parse_num_seq(sel_lst[key])
+                            break
+                        else:
+                            # repeat prompt
+                            continue
                     else:
-                        # repeat prompt
-                        continue
-                else:
-                    # something input
-                    frameid_lst = parse_num_seq(input_string)
-                    # pack
-                    flat_group_lst[iccd] = frameid_lst
-                    # put input string into selection list
-                    sel_lst[key] = input_string.strip()
-                    break
+                        # something input
+                        frameid_lst = parse_num_seq(input_string)
+                        # pack
+                        flat_group_lst[iccd] = frameid_lst
+                        # put input string into selection list
+                        sel_lst[key] = input_string.strip()
+                        break
 
         # now combine flat images
 
@@ -316,7 +322,8 @@ def reduce_post2004(config, logtable):
             # in different files
             for logitem in logtable:
                 if logitem['frameid'] in frameid_lst:
-                    filename = os.path.join(rawpath, logitem['fileid']+'.fits')
+                    fname = '{}.fits'.format(logitem['fileid'])
+                    filename = os.path.join(rawpath, fname)
                     hdu_lst = fits.open(filename)
                     data_lst, mask_lst = parse_3ccd_images(hdu_lst)
                     hdu_lst.close()
@@ -372,7 +379,7 @@ def reduce_post2004(config, logtable):
         flatmask3 = flatmask_lst[2].T
 
         # mosaic flat data
-        flatdata, flatmask = mosaic_3_images(
+        flatdata, flatmask = mosaic_3ccd_images(
                                 data_lst = (flatdata1, flatdata2, flatdata3),
                                 mask_lst = (flatmask1, flatmask2, flatmask3),
                                 )
@@ -399,7 +406,7 @@ def reduce_post2004(config, logtable):
     flatdbkg3 = simple_debackground(flatdata3, flatmask3, xnodes, smooth=20,
                     deg=3, maxiter=10)
 
-    allimage, allmask = mosaic_3_images(
+    allimage, allmask = mosaic_3ccd_images(
                         data_lst = (flatdbkg1, flatdbkg2, flatdbkg3),
                         mask_lst = (flatmask1, flatmask2, flatmask3),
                         )
@@ -422,6 +429,7 @@ def reduce_post2004(config, logtable):
     tracefig.suptitle('Trace for all 3 CCDs', fontsize=15)
     figfile = os.path.join(figpath, 'trace.png')
     tracefig.savefig(figfile)
+    tracefig.close()
 
     trcfile = os.path.join(midpath, 'trace.trc')
     aperset.save_txt(trcfile)
@@ -434,23 +442,26 @@ def reduce_post2004(config, logtable):
                         [fits.PrimaryHDU(allimage.T),
                          fits.ImageHDU(allmask.T),
                         ])
-    trace_hdu_lst.writeto(config['reduce.trace'].get('file'), overwrite=True)
+    trace_filename = config['reduce.trace'].get('file')
+    trace_hdu_lst.writeto(trace_filename, overwrite=True)
 
     ######################### Extract flat spectrum ############################
 
-    spectra1d = extract_aperset(flatdata, flatmask,
-                    apertureset = aperset,
-                    lower_limit = 6,
-                    upper_limit = 6,
-                    )
+    #spectra1d = extract_aperset(flatdata, flatmask,
+    #                apertureset = aperset,
+    #                lower_limit = 6,
+    #                upper_limit = 6,
+    #                )
 
     flatmap = get_slit_flat(flatdata, flatmask,
+                nflat = min([len(flat_group_lst[iccd]) for iccd in range(nccd)]),
                 apertureset = aperset,
-                spectra1d   = spectra1d,
+                #spectra1d   = spectra1d,
                 lower_limit = 6,
                 upper_limit = 6,
                 deg         = 7,
                 q_threshold = 20**2,
+                smooth_flux_func = smooth_flux,
                 figfile     = 'spec_%02d.png',
                 )
     fits.writeto('flat_resp.fits', flatmap, overwrite=True)

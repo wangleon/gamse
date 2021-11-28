@@ -858,78 +858,132 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     if mask is None:
         mask = np.zeros_like(data, dtype=np.int32)
 
+
+    # check if all apertures in apertureset are along the same direction
+    all_direct = set([aperloc.direct for aper, aperloc
+                            in apertureset.items()])
+    if len(all_direct) != 1:
+        print('Error: Direction of apertures are not along the same direction')
+        raise ValueError
+    # determine the main dispersion direction. Y=0, X=1
+    direct = list(all_direct)[0]
+
+
     ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
 
     bkg_image = np.zeros_like(data, dtype=np.float32)
-    allrows = np.arange(ny)
 
-    plot_x = []
-    for x in np.arange(nx):
-        if x in plot_x:
-            plot = True
-            fig1 = plt.figure(figsize=(12,8))
-            ax01 = fig1.add_subplot(211)
-            ax02 = fig1.add_subplot(212)
-        else:
-            plot = False
-        mask_rows = np.zeros_like(allrows, dtype=np.bool)
-        for aper, aperloc in sorted(apertureset.items()):
-            ycen = aperloc.position(x)
-            if plot:
-                ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
-                ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
-    
-            imask = np.abs(allrows - ycen) < distance
-            mask_rows += imask
-        if plot:
-            ax01.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
-        x_lst, y_lst = [], []
-        for (y1, y2) in get_edge_bin(~mask_rows):
-            if plot:
-                ax01.plot(allrows[y1:y2], data[y1:y2,x],
-                            color='C0', alpha=1, lw=0.7)
-                ax02.plot(allrows[y1:y2], data[y1:y2,x],
-                            color='C0', alpha=1, lw=0.7)
-            if y2-y1>1:
-                yflux = data[y1:y2, x]
-                ymask = mask[y1:y2, x]
-                xlist = np.arange(y1, y2)
-
-                # block the highest point and calculate mean
-                _m = xlist == y1 + np.argmax(yflux)
-                mean = yflux[~_m].mean()
-                std  = yflux[~_m].std()
-                if yflux.max() < mean + 3.*std:
-                    meany = yflux.mean()
-                    meanx = (y1+y2-1)/2
-                else:
-                    meanx = xlist[~_m].mean()
-                    meany = mean
+    if direct == 1:
+        # main dispersion direction is X
+        plot_x = []
+        for x in allx:
+            if x in plot_x:
+                plot = True
+                fig1 = plt.figure(figsize=(12,8))
+                ax01 = fig1.add_subplot(211)
+                ax02 = fig1.add_subplot(212)
             else:
-                meany = data[y1,x]
-                meanx = y1
-            x_lst.append(meanx)
-            y_lst.append(meany)
-        x_lst = np.array(x_lst)
-        y_lst = np.array(y_lst)
-        y_lst = np.maximum(y_lst, 0)
-        y_lst = sg.medfilt(y_lst, 3)
-        f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
-        bkg = f(allrows)
-        bkg_image[:, x] = bkg
-        if plot:
-            ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
-            ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
-            ax01.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
-            ax02.plot(allrows, bkg, ls='-', color='C3', lw=0.7, alpha=1)
-            _y1, _y2 = ax02.get_ylim()
-            ax02.plot(allrows, data[:, x], color='C0', alpha=0.3, lw=0.7)
-            ax02.set_ylim(_y1, _y2)
-            ax01.set_xlim(0, ny-1)
-            ax02.set_xlim(0, ny-1)
-            fig1.savefig(figname.format(x))
-            plt.close(fig1)
+                plot = False
+            mask_rows = np.zeros_like(ally, dtype=bool)
+            for aper, aperloc in sorted(apertureset.items()):
+                ycen = aperloc.position(x)
+                if plot:
+                    ax01.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+                    ax02.axvline(x=ycen, color='C0', ls='--', lw=0.5, alpha=0.4)
+        
+                imask = np.abs(ally - ycen) < distance
+                mask_rows += imask
+            if plot:
+                ax01.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
+            x_lst, y_lst = [], []
+            for (y1, y2) in get_edge_bin(~mask_rows):
+                if plot:
+                    ax01.plot(ally[y1:y2], data[y1:y2,x],
+                                color='C0', alpha=1, lw=0.7)
+                    ax02.plot(ally[y1:y2], data[y1:y2,x],
+                                color='C0', alpha=1, lw=0.7)
+                if y2 - y1 > 1:
+                    yflux = data[y1:y2, x]
+                    ymask = mask[y1:y2, x]
+                    xlist = np.arange(y1, y2)
     
+                    # block the highest point and calculate mean
+                    _m = xlist == y1 + np.argmax(yflux)
+                    mean = yflux[~_m].mean()
+                    std  = yflux[~_m].std()
+                    if yflux.max() < mean + 3.*std:
+                        meany = yflux.mean()
+                        meanx = (y1+y2-1)/2
+                    else:
+                        meanx = xlist[~_m].mean()
+                        meany = mean
+                else:
+                    meany = data[y1,x]
+                    meanx = y1
+                x_lst.append(meanx)
+                y_lst.append(meany)
+            x_lst = np.array(x_lst)
+            y_lst = np.array(y_lst)
+            y_lst = np.maximum(y_lst, 0)
+            y_lst = sg.medfilt(y_lst, 3)
+            f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
+            bkg = f(ally)
+            bkg_image[:, x] = bkg
+            if plot:
+                ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+                ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
+                ax01.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+                ax02.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+                _y1, _y2 = ax02.get_ylim()
+                ax02.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
+                ax02.set_ylim(_y1, _y2)
+                ax01.set_xlim(0, ny-1)
+                ax02.set_xlim(0, ny-1)
+                fig1.savefig(figname.format(x))
+                plt.close(fig1)
+    elif direct == 0:
+        # main dispersion direction is Y
+        for y in ally:
+            mask_cols = np.zeros(nx, dtype=bool)
+            for aper, aperloc in sorted(apertureset.items()):
+                xcen = aperloc.position(y)
+                imask = np.abs(allx - xcen) < distance
+                mask_cols += imask
+            x_lst, y_lst = [], []
+            for (x1, x2) in get_edge_bin(~mask_cols):
+                if x2 - x1 > 1:
+                    yflux = data[y, x1:x2]
+                    ymask = mask[y, x1:x2]
+                    xlist = np.arange(x1, x2)
+
+                    # block the highest point and calculate mean
+                    _m = xlist == x1 + np.argmax(yflux)
+                    mean = yflux[~_m].mean()
+                    std  = yflux[~_m].std()
+                    if yflux.max() < mean + 3.*std:
+                        meany = yflux.mean()
+                        meanx = (x1+x2-1)/2
+                    else:
+                        meanx = xlist[~_m].mean()
+                        meany = mean
+                else:
+                    meany = data[y, x1]
+                    meanx = x1
+                x_lst.append(meanx)
+                y_lst.append(meany)
+            x_lst = np.array(x_lst)
+            y_lst = np.array(y_lst)
+            y_lst = np.maximum(y_lst, 0)
+            y_lst = sg.medfilt(y_lst, 3)
+            f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
+            bkg = f(allx)
+            bkg_image[y, :] = bkg
+    else:
+        print('Error: Direction error: {}'.format(direct))
+        raise ValueError
+ 
     return bkg_image
 
 
@@ -1336,7 +1390,7 @@ def select_background_from_database(path, **args):
     elif objtype == 'star':
         mask = []
         for row in table:
-            if row['object'].lower()==obj:
+            if row['object']==obj:
                 mask.append(True)
             else:
                 mask.append(False)

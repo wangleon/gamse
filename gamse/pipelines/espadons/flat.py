@@ -7,176 +7,26 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 from scipy.signal import savgol_filter
+import scipy.interpolate as intp
 import scipy.optimize as opt
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.integrate import simps
-from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
-from ...utils.onedarray import get_local_minima
+import astropy.io.fits as fits
+
+from ...echelle.flat import SpatialProfile
 from ...utils.regression import iterative_polyfit
-from .common import norm_profile, ProfileNormalizer
+from ...utils.onedarray import iterative_savgol_filter, get_local_minima
+from .common import norm_profile, ProfileNormalizer, get_mean_profile
 
-class AperparSinglePlotter(object):
-    def __init__(self, ndisp, plot=False):
-        self.plot = plot
-        self.ndisp = ndisp
-
-    def update_figure(self):
-        if self.plot:
-            self.fig = plt.figure(figsize=(12, 3.5), dpi=200)
-
-    def plot_aperpar(self, aper, ipara, newx_lst, ypara, group_lst,
-            aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst):
-
-        if self.plot:
-            allx = np.arange(self.ndisp)
-            i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
-            ax1 = self.fig.add_axes([0.05+ipara*0.32, 0.35, 0.27, 0.62])
-            ax2 = self.fig.add_axes([0.05+ipara*0.32, 0.06, 0.27, 0.26])
-            ax2.plot(xpiece_lst, ypiece_res_lst, color='k', lw=0.5,
-                   alpha=0.4, zorder=-2)
-            ax2.axhline(y=0, color='k', ls='--', lw=0.5,
-                    alpha=0.4, zorder=-3)
-
-            # plot rejected points with gray dots
-            _m = mask_rej_lst>0
-            if _m.sum()>0:
-                ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                    color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
-
-            ax1.plot(newx_lst, ypara, '-', color='C0', lw=1, zorder=1)
-            ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                lw=1, alpha=0.8, zorder=2)
-
-            _y1, _y2 = ax1.get_ylim()
-            if ipara == 0:
-                ax1.text(0.05*self.ndisp, 0.15*_y1+0.85*_y2,
-                        'Aperture {}'.format(aper), fontsize=10)
-
-            ax1.text(0.9*self.ndisp, 0.15*_y1+0.85*_y2,
-                    'ACB'[ipara], fontsize=10)
-            ax1.set_xlim(0, self.ndisp-1)
-            ax1.set_ylim(_y1, _y2)
-
-            for tick in ax1.xaxis.get_major_ticks():
-                tick.label1.set_fontsize(10)
-            for tick in ax1.yaxis.get_major_ticks():
-                tick.label1.set_fontsize(10)
-            for tick in ax2.yaxis.get_major_ticks():
-                tick.label2.set_fontsize(10)
-            if self.ndisp<3000:
-                ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
-                ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
-                ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
-            else:
-                ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
-            ax1.set_xticklabels([])
-            ax1.set_xlim(0, self.ndisp-1)
-            ax2.set_xlim(0, self.ndisp-1)
-
-    def savefig(self, figname):
-        if self.plot:
-            self.fig.savefig(figname)
-            plt.close(self.fig)
-
-class AperparPlotter(object):
-    def __init__(self, ndisp, plot=False):
-        self.plot = plot
-        self.ndisp = ndisp
-
-    def update_figure(self, iaper):
-        self.iaper = iaper
-        if self.plot and self.iaper%5==0:
-            self.fig = plt.figure(figsize=(15, 8), dpi=150)
-
-    def plot_aperpar(self, aper, ipara, newx_lst, ypara, group_lst,
-            aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst):
-
-        if self.plot:
-            allx = np.arange(self.ndisp)
-            i1, i2 = newx_lst[group_lst[0][0]], newx_lst[group_lst[-1][-1]]
-
-            # create ax1 for plotting parameters
-            irow = self.iaper%5
-            _x, _y = 0.04+ipara*0.32, (4-irow)*0.19+0.05
-            ax1 = self.fig.add_axes([_x, _y, 0.28, 0.17])
-
-            # make a copy of ax1 and plot the residuals in the background
-            ax2 = ax1.twinx()
-            ax2.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
-                alpha=0.4, zorder=-2)
-            ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
-                alpha=0.4, zorder=-3)
-
-            # plot rejected points with gray dots
-            _m = mask_rej_lst>0
-            if _m.sum()>0:
-                ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
-                    color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
-
-            # plot data points
-            ax1.plot(newx_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
-            # plot fitted value
-            ax1.plot(allx[i1:i2], aperpar[i1:i2], '-', color='C1',
-                lw=1, alpha=0.8, zorder=2)
-
-            _y1, _y2 = ax1.get_ylim()
-            if ipara == 0:
-                ax1.text(0.05*self.ndisp, 0.15*_y1+0.85*_y2,
-                        'Aperture {}'.format(aper), fontsize=10)
-
-            ax1.text(0.9*self.ndisp, 0.15*_y1+0.85*_y2,
-                    'ACB'[ipara], fontsize=10)
-
-            # fill the fitting regions
-            for group in group_lst:
-                i1, i2 = newx_lst[group[0]], newx_lst[group[-1]]
-                ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
-
-            ax1.set_xlim(0, self.ndisp-1)
-            ax1.set_ylim(_y1, _y2)
-            if self.iaper%5<4:
-                ax1.set_xticklabels([])
-
-            for tick in ax1.xaxis.get_major_ticks():
-                tick.label1.set_fontsize(7)
-            for tick in ax1.yaxis.get_major_ticks():
-                tick.label1.set_fontsize(7)
-            for tick in ax2.yaxis.get_major_ticks():
-                tick.label2.set_fontsize(4)
-                tick.label2.set_color('gray')
-                tick.label2.set_alpha(0.6)
-            for tickline in ax2.yaxis.get_ticklines():
-                tickline.set_color('gray')
-                tickline.set_alpha(0.6)
-            if self.ndisp<3000:
-                ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
-                ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
-                ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
-                ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
-            else:
-                ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
-                ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
-                ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
-
-    def savefig(self, figname):
-        if self.plot and self.iaper%5==4:
-            self.fig.savefig(figname)
-            plt.close(self.fig)
-
-def get_flat(data, mask, apertureset, nflat,
-        smooth_A_func, smooth_c_func, smooth_bkg_func,
+def get_flat2(data, mask, apertureset, nflat,
+        smooth_A_func,
+        smooth_c_func,
+        smooth_bkg_func,
         q_threshold=30, mode='normal',
         fig_spatial=None,
-        flatname = None,
         ):
     """ Get flat.
     """
@@ -187,22 +37,23 @@ def get_flat(data, mask, apertureset, nflat,
             os.mkdir(dbgpath)
         plot_aperpar = True
         figname_aperpar = lambda aper: os.path.join(dbgpath,
-                                'aperpar_{}_{:03d}.png'.format(flatname, aper))
+                                'aperpar_{:03d}.png'.format(aper))
         save_aperpar = True
         filename_aperpar = lambda aper: os.path.join(dbgpath,
-                                'aperpar_{}_{:03d}.dat'.format(flatname, aper))
+                                'aperpar_{:03d}.dat'.format(aper))
     else:
         plot_aperpar = False
         save_aperpar = False
 
     ny, nx = data.shape
     allx = np.arange(nx)
+    ally = np.arange(ny)
 
     # calculate order positions and boundaries and save them in dicts
-    all_positions  = apertureset.get_positions(allx)
-    all_boundaries = apertureset.get_boundaries(allx)
+    all_positions  = apertureset.get_positions(ally)
+    all_boundaries = apertureset.get_boundaries(ally)
 
-    p1, p2, pstep = -12, 12, 0.1
+    p1, p2, pstep = -16, 16, 0.1
     profile_x = np.arange(p1+1, p2-1+1e-4, pstep)
     profilex_lst = []
     profiley_lst = []
@@ -211,42 +62,38 @@ def get_flat(data, mask, apertureset, nflat,
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
 
-    x0 = 48
+    y0 = 54
     winsize = 500
-    xc_lst = np.arange(x0, nx, winsize)
-    # n = 9
+    yc_lst = np.arange(y0, ny, winsize)
+    # n = 10
 
     fig_show = plt.figure(figsize=(12, 3), dpi=200)
 
-    for ixc, xc in enumerate(xc_lst):
-        xc = int(xc)
-        x = xc
+    for iyc, yc in enumerate(yc_lst):
+        yc = int(yc)
+        y = yc
         # initialize the mean profiles
         all_xnodes = []
         all_ynodes = []
 
-        ax = fig_spatial.get_axes()[ixc]
 
-        # has 9 panels, draw 0, 4, 8
-        if ixc==0:
+        ax = fig_spatial.get_axes()[iyc]
+
+        # has 10 panels, draw 0, 4, 9
+        if iyc==0:
             _x = 0.05
             ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
-        elif ixc==4:
+        elif iyc==4:
             _x = 0.05 + 1*0.32
             ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
-        elif ixc==8:
+        elif iyc==9:
             _x = 0.05 + 2*0.32
             ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
         else:
             ax2 = None
 
-        #minixc_lst = np.arange(xc-8, xc+8+1e-3, 8)
-        #for ix, x in enumerate(minixc_lst):
-        #    x = int(x)
-        #    if x == 0 or x == nx:
-        #        continue
 
-        order_cent_lst = np.array([aperloc.position(x)
+        order_cent_lst = np.array([aperloc.position(y)
             for aper, aperloc in sorted(apertureset.items())])
         order_dist_lst = np.diff(order_cent_lst)
         # now size of order_dist_lst = size of order_cent_lst - 1
@@ -267,77 +114,53 @@ def get_flat(data, mask, apertureset, nflat,
             i2 = cent + min(rwin, abs(p2))
             i1, i2 = int(round(i1)), int(round(i2))
             i1 = max(i1, 0)
-            i2 = min(i2, ny)
+            i2 = min(i2, nx)
             if i2 - i1 < 10:
                 continue
 
             xnodes = np.arange(i1, i2)
-            ynodes = data[i1:i2, x]
-            mnodes = mask[i1:i2, x]
-            if np.nonzero(mnodes>0)[0].size>3:
-                continue
+            ynodes = data[y, i1:i2]
+            mnodes = mask[y, i1:i2]
 
             normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
-
             newx = normed_prof.x
             newy = normed_prof.y
             newm = normed_prof.m
-            '''
-            param = normed_prof.param
-            std   = normed_prof.std
-            A, center, alpha, beta, bkg = param
-
-            results = norm_profile(xnodes, ynodes, mnodes)
-            # in case returns None results
-            if results is None:
-                continue
-
-            # unpack the results
-            newx, newy, param = results
-            A, c, alpha, beta, bkg, std = param
-            fig0 = plt.figure()
-            ax01 = fig0.add_subplot(211)
-            ax02 = fig0.add_subplot(212)
-            ax01.plot(xnodes, ynodes, 'o')
-            plotx, ploty = normed_prof.linspace()
-            fwhm = 2*param[2]*math.pow(math.log(2), 1/param[3])
-            label = 'A={:.2f}\nc={:.1f}\na={:.2f}\nb={:.2f}\nbkg={:.2f}\nstd={:.2f}\nfwhm={:.2f}'.format(
-                    param[0], param[1], param[2], param[3], param[4], param[5], fwhm)
-            if normed_prof.is_succ():
-                ls = '-'
-            else:
-                ls = '--'
-            ax01.plot(plotx, ploty, ls=ls, label=label)
-            ax02.plot(newx, newy, 'o')
-            ax01.legend()
-            figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
-            fig0.savefig(figname)
-            plt.close(fig0)
-            '''
 
             if normed_prof.is_succ():
                 for _newx, _newy in zip(newx[newm], newy[newm]):
                     all_xnodes.append(_newx)
                     all_ynodes.append(_newy)
 
+                '''
+                fig0 = plt.figure()
+                ax01 = fig0.add_subplot(211)
+                ax02 = fig0.add_subplot(212)
+                label = 'A={:.2f}\nv0={:.1f}\np1={:.2f}\np2={:.2f}\nbkg={:.2f}'.format(
+                        param[3], param[0], param[1], param[2], param[4])
+                ax01.plot(xnodes, ynodes, 'o', label=label)
+                ax02.plot(newx, newy, 'o')
+                ax01.legend()
+                figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(y, i1, i2)
+                fig0.savefig(figname)
+                plt.close(fig0)
+                '''
+
                 # plotting
                 ax.scatter(newx[newm], newy[newm], s=5, alpha=0.3, lw=0)
                 if ax2 is not None:
                     ax2.scatter(newx[newm], newy[newm], s=10, alpha=0.3, lw=0)
 
-
         # print a progress bar in terminal
-        #n_finished = ixc*6 + ix + 1
-        #n_total    = xc_lst.size*6
-        n_finished = ixc + 1
-        n_total    = xc_lst.size
+        n_finished = iyc + 1
+        n_total    = yc_lst.size
         ratio = min(n_finished/n_total, 1.0)
         term_size = os.get_terminal_size()
         nchar = term_size.columns - 60
 
         string = '>'*int(ratio*nchar)
         string = string.ljust(nchar, '-')
-        prompt = 'Constructing spatial profile'
+        prompt = 'Constructing slit function'
         string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
         sys.stdout.write(string)
         sys.stdout.flush()
@@ -345,23 +168,19 @@ def get_flat(data, mask, apertureset, nflat,
         all_xnodes = np.array(all_xnodes)
         all_ynodes = np.array(all_ynodes)
 
-        # spatial profile modeling with Gaussian Process Regression (GPR)
-        input_train_x = all_xnodes.reshape(-1,1)
-        input_train_y = all_ynodes.reshape(-1,1)
-        kernel = RBF(length_scale=3.0) + WhiteKernel(0.1)
-        gpr = GaussianProcessRegressor(kernel=kernel)
-        gpr.fit(input_train_x, input_train_y)
-        test_x = profile_x.reshape(-1,1)
-        mu, cov = gpr.predict(test_x, return_cov=True)
-        profile_y = mu.flatten()
-        #profile_y = spatial_profile(profile_x)
+        _m = (all_ynodes>-0.05)*(all_ynodes<1.2)
+        all_xnodes = all_xnodes[_m]
+        all_ynodes = all_ynodes[_m]
+
+        spatial_profile = SpatialProfile(all_xnodes, all_ynodes)
+        profile_y = spatial_profile(profile_x)
 
         ax.plot(profile_x, profile_y, color='k', lw=0.6)
         ax.grid(True, ls='--', lw=0.5)
         ax.set_axisbelow(True)
         _x1, _x2 = p1-2, p2+2
         _y1, _y2 = -0.2, 1.2
-        _text = 'X={:4d}/{:4d}'.format(xc, nx)
+        _text = 'Y={:4d}/{:4d}'.format(yc, ny)
         ax.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
         ax.set_xlim(_x1, _x2)
         ax.set_ylim(_y1, _y2)
@@ -372,18 +191,19 @@ def get_flat(data, mask, apertureset, nflat,
             ax2.set_axisbelow(True)
             _x1, _x2 = p1-2, p2+2
             _y1, _y2 = -0.2, 1.2
-            _text = 'X={:4d}/{:4d}'.format(xc, nx)
+            _text = 'Y={:4d}/{:4d}'.format(yc, ny)
             ax2.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
             ax2.set_xlim(_x1, _x2)
             ax2.set_ylim(_y1, _y2)
 
-        profilex_lst.append(xc)
+
+        profilex_lst.append(yc)
         profiley_lst.append(profile_y)
 
     # use light green color
     print(' \033[92m Completed\033[0m')
 
-    fig_show.savefig('spatialprofile_xinglong216hrs.pdf')
+    fig_show.savefig('spatialprofile_espadons.pdf')
     plt.close(fig_show)
 
     profilex_lst = np.array(profilex_lst)
@@ -392,17 +212,17 @@ def get_flat(data, mask, apertureset, nflat,
 
     interprofilefunc_lst = {}
     corr_mask_array = []
-    for x in allx:
+    for y in ally:
         # calculate interpolated profie in this x
         profile = np.zeros(npoints)
         for i in np.arange(npoints):
             f = InterpolatedUnivariateSpline(
                     profilex_lst, profiley_lst[:, i], k=3, ext=3)
-            profile[i] = f(x)
+            profile[i] = f(y)
         interprofilefunc = InterpolatedUnivariateSpline(
                 profile_x, profile, k=3, ext=3)
-        interprofilefunc_lst[x] = interprofilefunc
-        
+        interprofilefunc_lst[y] = interprofilefunc
+
         ilst = np.nonzero(profile>0.1)[0]
         il = profile_x[ilst[0]]
         ir = profile_x[ilst[-1]]
@@ -411,7 +231,7 @@ def get_flat(data, mask, apertureset, nflat,
     ##################
 
     flatdata = np.ones_like(data, dtype=np.float32)
-    flatspec_lst = {aper: np.full(nx, np.nan) for aper in apertureset}
+    flatspec_lst = {aper: np.full(ny, np.nan) for aper in apertureset}
 
     # define fitting and error functions
     def fitfunc(param, xdata, interf):
@@ -421,37 +241,20 @@ def get_flat(data, mask, apertureset, nflat,
         return ydata - fitfunc(param, xdata, interf)
 
     # prepare an x list
-    newx_lst = np.arange(0, nx-1, 10)
-    if newx_lst[-1] != nx-1:
-        newx_lst = np.append(newx_lst, nx-1)
-
+    newy_lst = np.arange(0, ny-1, 10)
+    if newy_lst[-1] != ny-1:
+        newy_lst = np.append(newy_lst, ny-1)
 
     ###################### loop for every aperture ########################
-
-    # define the function of refreshing the second progress bar
-    def refresh_progressbar2(iaper):
-        ratio = min(iaper/(len(apertureset)-1), 1.0)
-        term_size = os.get_terminal_size()
-        nchar = term_size.columns - 60
-        string = '>'*int(ratio*nchar)
-        string = string.ljust(nchar, '-')
-        prompt = 'Calculating flat field'
-        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
-        sys.stdout.write(string)
-        sys.stdout.flush()
-
-    aperpar_plotter = AperparPlotter(plot=plot_aperpar, ndisp=nx)
 
     for iaper, (aper, aperloc) in enumerate(sorted(apertureset.items())):
         fitpar_lst  = [] # stores (A, c, b). it has the same length as newx_lst
         aperpar_lst = []
 
-        # plot aperpar every 5 orders
-        aperpar_plotter.update_figure(iaper)
-        # plot aperpar for specified orders
-        aperpar_single_plotter = AperparSinglePlotter(
-                                   plot=(aper in [83, 21]), ndisp=nx)
-        aperpar_single_plotter.update_figure()
+        # prepare the figure for plotting the parameters of each aperture
+        if plot_aperpar:
+            if iaper%5==0:
+                fig_aperpar = plt.figure(figsize=(15,8), dpi=150)
 
         aper_position = all_positions[aper]
         aper_lbound, aper_ubound = all_boundaries[aper]
@@ -465,30 +268,30 @@ def get_flat(data, mask, apertureset, nflat,
         # prepar the blank parameter for insert
         blank_p = np.array([np.NaN, np.NaN, np.NaN])
 
-        for ix, x in enumerate(newx_lst):
-            pos      = aper_position[x]
+        for iy, y in enumerate(newy_lst):
+            pos      = aper_position[y]
             # skip this column if central position excess the CCD range
-            if pos<0 or pos>ny:
+            if pos<0 or pos>nx:
                 fitpar_lst.append(blank_p)
                 continue
 
             # determine lower and upper bounds
-            lbound = aper_lbound[x]
-            ubound = aper_ubound[x]
-            y1 = int(max(0,  lbound))
-            y2 = int(min(ny, ubound))
+            lbound = aper_lbound[y]
+            ubound = aper_ubound[y]
+            x1 = int(max(0,  lbound))
+            x2 = int(min(nx, ubound))
 
-            if y2-y1<=4:
+            if x2-x1<=4:
                 fitpar_lst.append(blank_p)
                 continue
 
             # construct fitting data (xdata, ydata)
-            xdata = np.arange(y1, y2)
-            ydata = data[y1:y2, x]
+            xdata = np.arange(x1, x2)
+            ydata = data[y, x1:x2]
 
             # calculate saturation mask and bad-pixel mask
-            _satmask = sat_mask[y1:y2, x]
-            _badmask = bad_mask[y1:y2, x]
+            _satmask = sat_mask[y, x1:x2]
+            _badmask = bad_mask[y, x1:x2]
             # skip this column if too many saturated or bad pixels
             if _satmask.sum()>=3 or _badmask.sum()>=3:
                 fitpar_lst.append(blank_p)
@@ -496,15 +299,15 @@ def get_flat(data, mask, apertureset, nflat,
             # estimate the SNR
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
-            _i2 = min(ny, _icen+6)
-            sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
+            _i2 = min(nx, _icen+6)
+            sn = math.sqrt(max(0,np.median(ydata[_i1-x1:_i2-x1])*nflat))
             # skip this column if sn is too low
             if sn < q_threshold:
                 fitpar_lst.append(blank_p)
                 continue
 
             # begin fitting
-            interf = interprofilefunc_lst[x]
+            interf = interprofilefunc_lst[y]
             p0 = [ydata.max()-ydata.min(), pos, max(0,ydata.min())]
 
             # find A, c, bkg
@@ -523,12 +326,12 @@ def get_flat(data, mask, apertureset, nflat,
             snr = p[0]/std
 
             # p[0]: amplitude; p[1]: pos, p[2]:background
-            succ = p[0]>0 and y1<p[1]<y2 and snr>5 and ier<=4
+            succ = p[0]>0 and x1<p[1]<x2 and snr>5 and ier<=4
 
             if succ:
                 if not is_first_correct:
                     is_first_correct = True
-                    if x > 0.25*nx:
+                    if y > 0.25*ny:
                         break_aperture = True
                         break
                 fitpar_lst.append(p)
@@ -539,23 +342,23 @@ def get_flat(data, mask, apertureset, nflat,
             message = ('Aperture {:3d}: Skipped because of '
                        'break_aperture=True').format(aper)
             logger.debug(message)
-            refresh_progressbar2(iaper)
+            print(message)
             continue
 
         fitpar_lst = np.array(fitpar_lst)
 
-        if np.isnan(fitpar_lst[:,0]).sum()>0.5*nx:
+        if np.isnan(fitpar_lst[:,0]).sum()>0.5*ny:
             message = ('Aperture {:3d}: Skipped because of too many NaN '
                        'values in aperture parameters').format(aper)
             logger.debug(message)
-            refresh_progressbar2(iaper)
+            print(message)
             continue
 
         if (~np.isnan(fitpar_lst[:,0])).sum()<10:
             message = ('Aperture {:3d}: Skipped because of too few real '
                        'values in aperture parameters').format(aper)
             logger.debug(message)
-            refresh_progressbar2(iaper)
+            print(message)
             continue
 
         # pick up NaN positions in fitpar_lst and generate fitmask.
@@ -570,12 +373,12 @@ def get_flat(data, mask, apertureset, nflat,
         # filter out short segments
         # every index in group is index in newx_lst, NOT real pixel numbers
         group_lst = [group for group in group_lst
-                     if newx_lst[group[-1]] - newx_lst[group[0]] > nx/10]
+                     if newy_lst[group[-1]] - newy_lst[group[0]] > ny/10]
 
         if len(group_lst) == 0:
             message = ('Aperture {:3d}: Skipped'.format(aper))
-            logger.info(message)
-            refresh_progressbar2(iaper)
+            print(message)
+            logger.debug(message)
             continue
 
         # loop for A, c, bkg. Smooth these parameters
@@ -584,13 +387,13 @@ def get_flat(data, mask, apertureset, nflat,
 
             if ipara == 0:
                 # fit for A
-                res = smooth_A_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_A_func(newy_lst, ypara, fitmask, group_lst, ny)
             elif ipara == 1:
                 # fit for c
-                res = smooth_c_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_c_func(newy_lst, ypara, fitmask, group_lst, ny)
             else:
                 # fit for bkg
-                res = smooth_bkg_func(newx_lst, ypara, fitmask, group_lst, nx)
+                res = smooth_bkg_func(newy_lst, ypara, fitmask, group_lst, ny)
 
             # extract smoothing results
             aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst = res
@@ -598,144 +401,448 @@ def get_flat(data, mask, apertureset, nflat,
             # pack this parameter for every pixels
             aperpar_lst.append(aperpar)
 
-            # plot aperpar
-            aperpar_plotter.plot_aperpar(aper, ipara, newx_lst, ypara, group_lst,
-                    aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst)
-            aperpar_single_plotter.plot_aperpar(aper, ipara, newx_lst, ypara,
-                    group_lst, aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst)
+            if plot_aperpar:
+                ########### plot flat parametres every 5 orders ##############
+                has_aperpar_fig = True
+                i1, i2 = newy_lst[group_lst[0][0]], newy_lst[group_lst[-1][-1]]
+                # plot the parameters
 
-        # save aperpar figures
-        aperpar_plotter.savefig(figname_aperpar(aper))
-        aperpar_single_plotter.savefig('aperpar2var_{}.png'.format(aper))
+                # create ax1 for plotting parameters
+                irow = iaper%5
+                _x, _y = 0.04+ipara*0.32, (4-irow)*0.19+0.05
+                ax1 = fig_aperpar.add_axes([_x, _y, 0.28, 0.17])
 
-        '''
+                # make a copy of ax1 and plot the residuals in the background
+                ax2 = ax1.twinx()
+                ax2.plot(xpiece_lst, ypiece_res_lst, color='gray', lw=0.5,
+                        alpha=0.4, zorder=-2)
+                ax2.axhline(y=0, color='gray', ls='--', lw=0.5,
+                        alpha=0.4, zorder=-3)
+                # plot rejected points with gray dots
+                _m = mask_rej_lst>0
+                if _m.sum()>0:
+                    ax2.plot(xpiece_lst[_m], ypiece_res_lst[_m], 'o',
+                            color='gray', lw=0.5, ms=2, alpha=0.4, zorder=-1)
+
+                # plot data points
+                ax1.plot(newy_lst, ypara, '-', color='C0', lw=0.5, zorder=1)
+                # plot fitted value
+                ax1.plot(ally[i1:i2], aperpar[i1:i2], '-', color='C1',
+                    lw=1, alpha=0.8, zorder=2)
+
+                #ax1.plot(newy_lst[~fitmask], ypara[~fitmask], 'o', color='C3',
+                #        lw=0.5, ms=3, alpha=0.5)
+                _y1, _y2 = ax1.get_ylim()
+                if ipara == 0:
+                    ax1.text(0.05*ny, 0.15*_y1+0.85*_y2, 'Aperture %d'%aper,
+                            fontsize=10)
+                ax1.text(0.9*ny, 0.15*_y1+0.85*_y2, 'ACB'[ipara], fontsize=10)
+
+                # fill the fitting regions
+                for group in group_lst:
+                    i1, i2 = newy_lst[group[0]], newy_lst[group[-1]]
+                    ax1.fill_betweenx([_y1, _y2], i1, i2, color='C0', alpha=0.1)
+
+                ax1.set_xlim(0, ny-1)
+                ax1.set_ylim(_y1, _y2)
+                if iaper%5<4:
+                    ax1.set_xticklabels([])
+
+                for tick in ax1.xaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax1.yaxis.get_major_ticks():
+                    tick.label1.set_fontsize(7)
+                for tick in ax2.yaxis.get_major_ticks():
+                    tick.label2.set_fontsize(4)
+                    tick.label2.set_color('gray')
+                    tick.label2.set_alpha(0.6)
+                for tickline in ax2.yaxis.get_ticklines():
+                    tickline.set_color('gray')
+                    tickline.set_alpha(0.6)
+                if ny<3000:
+                    ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
+                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                    ax2.xaxis.set_major_locator(tck.MultipleLocator(500))
+                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(100))
+                else:
+                    ax1.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                    ax1.xaxis.set_minor_locator(tck.MultipleLocator(500))
+                    ax2.xaxis.set_major_locator(tck.MultipleLocator(1000))
+                    ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
+
+                ########### plot flat parametres for every order ##############
+                if False:
+                    pass
+
+        if plot_aperpar:
+            # save and close the figure
+            if iaper%5==4:
+                fig_aperpar.savefig(figname_aperpar(aper))
+                plt.close(fig_aperpar)
+                has_aperpar_fig = False
+
         # find columns to be corrected in this order
-        correct_x_lst = []
-        for x in allx:
-            pos    = aper_position[x]
-            lbound = aper_lbound[x]
-            ubound = aper_ubound[x]
+        correct_y_lst = []
+        for y in ally:
+            pos    = aper_position[y]
+            lbound = aper_lbound[y]
+            ubound = aper_ubound[y]
 
-            y1 = int(max(0,  lbound))
-            y2 = int(min(ny, ubound))
-            if (y2-y1)<5:
+            x1 = int(max(0,  lbound))
+            x2 = int(min(nx, ubound))
+            if (x2-x1)<5:
                 continue
-            xdata = np.arange(y1, y2)
-            ydata = data[y1:y2, x]
-            _satmask = sat_mask[y1:y2, x]
-            _badmask = bad_mask[y1:y2, x]
+            xdata = np.arange(x1, x2)
+            ydata = data[y, x1:x2]
+            _satmask = sat_mask[y, x1:x2]
+            _badmask = bad_mask[y, x1:x2]
             _icen = int(round(pos))
             _i1 = max(0, _icen-5)
-            _i2 = min(ny, _icen+6)
-            sn = math.sqrt(max(0,np.median(ydata[_i1-y1:_i2-y1])*nflat))
+            _i2 = min(nx, _icen+6)
+            sn = math.sqrt(max(0,np.median(ydata[_i1-x1:_i2-x1])*nflat))
             if sn>q_threshold and _satmask.sum()<3 and _badmask.sum()<3:
-                correct_x_lst.append(x)
+                correct_y_lst.append(y)
 
         # find the left and right boundaries of the correction region
-        x1, x2 = correct_x_lst[0], correct_x_lst[-1]
-        '''
-        correct_x_lst = allx
+        y1, y2 = correct_y_lst[0], correct_y_lst[-1]
 
         # now loop over columns in correction region
-        for x in correct_x_lst:
-            interf = interprofilefunc_lst[x]
-            pos    = aper_position[x]
-            lbound = aper_lbound[x]
-            ubound = aper_ubound[x]
+        for y in correct_y_lst:
+            interf = interprofilefunc_lst[y]
+            pos    = aper_position[y]
+            lbound = aper_lbound[y]
+            ubound = aper_ubound[y]
 
-            y1 = int(max(0,  lbound))
-            y2 = int(min(ny, ubound))
-            xdata = np.arange(y1, y2)
-            ydata = data[y1:y2, x]
-            _satmask = sat_mask[y1:y2, x]
-            _badmask = bad_mask[y1:y2, x]
+            x1 = int(max(0,  lbound))
+            x2 = int(min(nx, ubound))
+            xdata = np.arange(x1, x2)
+            ydata = data[y, x1:x2]
+            _satmask = sat_mask[y, x1:x2]
+            _badmask = bad_mask[y, x1:x2]
 
             # correct flat for this column
-            A = aperpar_lst[0][x]
-            c = aperpar_lst[1][x]
-            b = aperpar_lst[2][x]
+            A = aperpar_lst[0][y]
+            c = aperpar_lst[1][y]
+            b = aperpar_lst[2][y]
 
-            lcorr, rcorr = corr_mask_array[x]
+            lcorr, rcorr = corr_mask_array[y]
             normx = xdata-c
             corr_mask = (normx > lcorr)*(normx < rcorr)
             flat = ydata/fitfunc([A,c,b], xdata, interf)
             flatmask = corr_mask*~_satmask*~_badmask
 
-            flatdata[y1:y2, x][flatmask] = flat[flatmask]
+            flatdata[y, x1:x2][flatmask] = flat[flatmask]
 
             # extract the 1d spectra of the modeled flat using super-sampling
             # integration
-            y1s = max(0,  np.round(lbound-2, 1))
-            y2s = min(ny, np.round(ubound+2, 1))
-            xdata2 = np.arange(y1s, y2s, 0.1)
+            x1s = max(0,  np.round(lbound-2, 1))
+            x2s = min(nx, np.round(ubound+2, 1))
+            xdata2 = np.arange(x1s, x2s, 0.1)
             flatmod = fitfunc([A,c,b], xdata2, interf)
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspec_lst[aper][x] = simps(flatmod, x=xdata2)
+            flatspec_lst[aper][y] = simps(flatmod, x=xdata2)
 
         t2 = time.time()
         message = ('Aperture {:3d}: {:2d} group{:1s}; '
                    'correct {:4d} pixels from {:4d} to {:4d}; '
                    't = {:6.1f} ms').format(
                     aper, len(group_lst), (' ','s')[len(group_lst)>1],
-                    len(correct_x_lst),
-                    correct_x_lst[0], correct_x_lst[-1],
+                    len(correct_y_lst),
+                    correct_y_lst[0], correct_y_lst[-1],
                     (t2-t1)*1e3
                     )
-        logger.info(message)
-        #print(message)
+        print(message)
 
-        refresh_progressbar2(iaper)
+    ###################### aperture loop ends here ########################
+    if plot_aperpar and has_aperpar_fig:
+        # there's unsaved figure in memory. save and close the figure
+        fig_aperpar.savefig(figname_aperpar(aper))
+        plt.close(fig_aperpar)
+        has_aperpar_fig = False
+
+    return flatdata, flatspec_lst
+
+def get_flat(data, aperture_set, mode='normal'):
+    """Get flat fielding for CFHT/ESPaDOnS data.
+
+    Args:
+        data ():
+        aperture_set ():
+        mode (str):
+
+    """
+
+    if mode == 'debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
+        plot_aperpar = True
+        figname_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{:03d}.png'.format(aper))
+        save_aperpar = True
+        filename_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{:03d}.dat'.format(aper))
+    else:
+        plot_aperpar = False
+        save_aperpar = False
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
+
+    x_lst = {}
+    A_lst = {}
+    c_lst = {}
+    b_lst = {}
+   
+    profilex_lst = []
+    profilefunc_lst = []
+    p1, p2 = -15, 15
+    pstep = 0.5
+
+    winsize = 128
+    yc_lst = np.arange(winsize/2, ny, winsize)
+
+    for iyc, yc in enumerate(yc_lst):
+        yc = int(yc)
+        # initialize the mean profiles
+        all_xnodes = np.array([])
+        all_ynodes = np.array([])
+    
+        fig = plt.figure(dpi=200)
+        ax = fig.gca()
+    
+        miniyc_lst = np.arange(yc-48, yc+48+1e-3, 16)
+        for iy, y in enumerate(miniyc_lst):
+            y = int(y)
+            if y == 0 or y == ny:
+                continue
+
+
+            order_cent_lst = np.array([aperloc.position(y)
+                    for aper, aperloc in sorted(aperture_set.items())])
+            order_dist_lst = np.diff(order_cent_lst)
+            # now size of order_dist_lst = size of order_cent_lst - 1
+            order_dist_lst = np.insert(order_dist_lst, 0, order_dist_lst[0])
+            order_dist_lst = np.append(order_dist_lst, order_dist_lst[-1])
+            # now size of order_dist_lst = size of order_cent_lst + 1
+            order_hwin_lst = order_dist_lst/2
+            # size of order_hwin_lst = size of order_cent_lst + 1
+    
+            for iaper, (aper, aperloc) in enumerate(
+                    sorted(aperture_set.items())):
+                cent = order_cent_lst[iaper]
+                lwin = order_hwin_lst[iaper]
+                rwin = order_hwin_lst[iaper+1]
+    
+                ceni = int(round(cent))
+                i1 = cent - min(lwin, 18)
+                i2 = cent + min(rwin, 18)
+                i1, i2 = int(round(i1)), int(round(i2))
+                i1 = max(i1, 0)
+                i2 = min(i2, nx)
+                if i2 - i1 < 10:
+                    continue
+                xnodes = np.arange(i1, i2)
+                ynodes = data[y, i1:i2]
+
+                results = norm_profile(xnodes, ynodes)
+                # in case returns None results
+                if results is None:
+                    continue
+
+                # unpack the results
+                newx, newy, param = results
+
+                # pack A and background to result list
+                if aper not in x_lst:
+                    x_lst[aper] = []
+                    A_lst[aper] = []
+                    c_lst[aper] = []
+                    b_lst[aper] = []
+    
+                x_lst[aper].append(y)
+                c_lst[aper].append(param[0]-cent)
+                A_lst[aper].append(param[3])
+                b_lst[aper].append(param[4])
+    
+                all_xnodes = np.append(all_xnodes, newx)
+                all_ynodes = np.append(all_ynodes, newy)
+    
+                # plotting
+                ax.scatter(newx, newy, s=1, alpha=0.1)
+
+            # print a progress bar in terminal
+            n_finished = iyc*6 + iy + 1
+            n_total    = yc_lst.size*6
+            ratio = min(n_finished/n_total, 1.0)
+            term_size = os.get_terminal_size()
+            nchar = term_size.columns - 60
+
+            string = '>'*int(ratio*nchar)
+            string = string.ljust(nchar, '-')
+            prompt = 'Constructing slit function'
+            string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+            sys.stdout.write(string)
+            sys.stdout.flush()
+    
+        all_xnodes = np.array(all_xnodes)
+        all_ynodes = np.array(all_ynodes)
+        xlst, ylst = get_mean_profile(all_xnodes, all_ynodes, p1, p2, pstep)
+        # filter out NaN values
+        m = np.isnan(ylst)
+    
+        # for plotting a smoothed curve in the figure
+        f = intp.InterpolatedUnivariateSpline(xlst[~m], ylst[~m], k=3, ext=1)
+        newx = np.arange(p1-2, p2+2+1e-5, 0.1)
+        newy = f(newx)
+        ax.plot(newx, newy, ls='-', color='k', lw=0.7)
+        ax.grid(True, ls='--', lw=0.5)
+        ax.set_axisbelow(True)
+        ax.set_xlim(-18, 18)
+        ax.set_ylim(-0.2, 1.2)
+        fig.savefig('slit_{:04d}.png'.format(yc))
+        plt.close(fig)
+
+        profilex = yc
+        profilex_lst.append(profilex)
+        profilefunc_lst.append(f(xlst))
 
     # use light green color
     print(' \033[92m Completed\033[0m')
 
-    ###################### aperture loop ends here ########################
-    aperpar_plotter.savefig(figname_aperpar(aper))
+    profilenode_lst = xlst
+    profilex_lst = np.array(profilex_lst)
+    profilefunc_lst = np.array(profilefunc_lst)
+    npoints = profilefunc_lst.shape[1]
+
+    interprofilefunc_lst = {}
+    for y in ally:
+        profile = np.zeros(npoints)
+        for i in np.arange(npoints):
+            f = intp.InterpolatedUnivariateSpline(
+                    profilex_lst, profilefunc_lst[:, i], k=3)
+            profile[i] = f(y)
+        interprofilefunc = intp.InterpolatedUnivariateSpline(
+                profilenode_lst, profile, k=3)
+        interprofilefunc_lst[y] = interprofilefunc
+
+    flatdata = np.ones_like(data, dtype=np.float32)
+    flatspec_lst = {aper: np.full(ny, np.nan) for aper in aperture_set}
+
+    ally = np.arange(0, ny)
+    for iaper, (aper, aperloc) in enumerate(sorted(aperture_set.items())):
+
+        # in debug mode, save aperpar in ascii files
+        if save_aperpar:
+            filename = filename_aperpar(aper)
+            outfile = open(filename, 'w')
+            for x, A, b, c in zip(x_lst[aper], A_lst[aper],
+                                  b_lst[aper], c_lst[aper]):
+                outfile.write('{:4d} {:+16.8e} {:+16.8e} {:+16.8e}'.format(
+                                x, A, b, c)+os.linesep)
+            outfile.close()
+            title = 'aperpar for Aperture {:03d}'.format(aper)
+            message = 'savefile: "{}": {}'.format(filename, title)
+            logger.info(message)
+
+
+        x_lst[aper] = np.array(x_lst[aper])
+        A_lst[aper] = np.array(A_lst[aper])
+        c_lst[aper] = np.array(c_lst[aper])
+        b_lst[aper] = np.array(b_lst[aper])
+
+        ypos = aperloc.position(ally)
+        m = (ypos > 0)*(ypos < nx)
+        newx = ally[m]
+        newA = smooth_aperpar_A(x_lst[aper], A_lst[aper],
+                                npoints=ny, newx=newx)
+        newb = smooth_aperpar_bkg(x_lst[aper], b_lst[aper],
+                                npoints=ny, newx=newx)
+    
+        ################## plot aper par ####################
+        if plot_aperpar:
+            fig = plt.figure(dpi=150, figsize=(8, 6))
+            ax1 = fig.add_subplot(211)
+            ax2 = fig.add_subplot(212)
+            ax1.plot(x_lst[aper], A_lst[aper], lw=0.5)
+            ax2.plot(x_lst[aper], b_lst[aper], lw=0.5)
+            ax1.plot(newx, newA, lw=0.5, color='C3')
+            ax2.plot(newx, newb, lw=0.5, color='C3')
+            for ax in fig.get_axes():
+                ax.set_xlim(0, ny-1)
+                ax.grid(True, ls='--')
+                ax.set_axisbelow(True)
+            ax1.set_ylabel('A')
+            ax2.set_ylabel('background')
+            title = 'Aperture Parameters for Aperture {:03d}'.format(aper)
+            figname = figname_aperpar(aper)
+            fig.savefig(figname)
+            plt.close(fig)
+            message = 'savefig: "{}": {}'.format(figname, title)
+            logger.info(message)
+    
+        # find columns to be corrected
+        ypos = aperloc.position(ally)
+        correct_y_lst = []
+        for y in ally:
+            pos = ypos[y]
+            correct_y_lst.append(y)
+
+        # loop over rows in the correction region
+        for x, A, b in zip(newx, newA, newb):
+            c = aperloc.position(x)
+            intc = int(round(c))
+            x1 = max(intc-15, 0)
+            x2 = min(intc+15, nx)
+            #index = np.searchsorted(profilex_lst, x)
+            #index = min(max(index, 1), profilex_lst.size-2)
+            #i1 = index-1
+            #i2 = index+2
+            #interx_lst = profilex_lst[i1:i2]
+            #intery_lst = np.zeros((3,x2-x1))
+            #for i, profilex in enumerate(interx_lst):
+            #    profilefunc = profilefunc_lst[profilex]
+            #    intery_lst[i,:] = profilefunc(np.arange(x1, x2)-c)
+
+            #intery_lst = np.zeros((profilex_lst.size, x2-x1))
+            #for i, profilex in enumerate(profilex_lst):
+            #    profilefunc = profilefunc_lst[profilex]
+            #    intery_lst[i,:] = profilefunc(np.arange(x1, x2)-c)
+
+            #profile = np.zeros(x2-x1)
+            #for ix in np.arange(x2-x1):
+            #    f = intp.InterpolatedUnivariateSpline(
+            #            profilex_lst, intery_lst[:,ix], k=3)
+            #    profile[ix] = f(x)
+
+            interprofilefunc = interprofilefunc_lst[x]
+            profile = interprofilefunc(np.arange(x1, x2)-c)
+            newprofile = profile*A + b
+            flatdata[x, x1:x2] = data[x, x1:x2]/newprofile
+            densex = np.arange(x1, x2, 0.1)
+            densep = interprofilefunc(densex-c)
+            flatspec_lst[aper][x] = simps(densep*A+b, x=densex)
+
+        ratio = min(iaper/(len(aperture_set)-1), 1.0)
+        term_size = os.get_terminal_size()
+        nchar = term_size.columns - 60
+
+        string = '>'*int(ratio*nchar)
+        string = string.ljust(nchar, '-')
+        prompt = 'Calculating flat field'
+        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+        sys.stdout.write(string)
+        sys.stdout.flush()
+
+    # use light green color
+    print(' \033[92m Completed\033[0m')
 
     return flatdata, flatspec_lst
 
-def gaussian_bkg(A, center, fwhm, bkg, x):
-    s = fwhm/2./math.sqrt(2*math.log(2))
-    return A*np.exp(-(x-center)**2/2./s**2) + bkg
-
-def gaussian_gen_bkg(A, center, alpha, beta, bkg, x):
-    return A*np.exp(-np.power(np.abs(x-center)/alpha, beta)) + bkg
-
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
-    """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
-    the fiber flat-fielding.
-
-    Args:
-        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
-        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
-        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
-        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
-            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        npoints (int): Length of flat.
-
-    Returns:
-        tuple: A tuple containing:
-
-            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
-              paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
-              parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
-              parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
-
-    See Also:
-
-        * :func:`gamse.echelle.flat.get_fiber_flat`
-        * :func:`smooth_aperpar_k`
-        * :func:`smooth_aperpar_c`
-        * :func:`smooth_aperpar_bkg`
-    
-    """
-
     has_fringe_lst = []
     aperpar = np.array([np.nan]*npoints)
     xpiece_lst     = np.array([np.nan]*newx_lst.size)
@@ -869,7 +976,55 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
 
-def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints):
+
+def smooth_aperpar_A_old(x, y, npoints, newx):
+    #coeff, yfit, _, mask, _ = iterative_polyfit(x, y, deg=11)
+    p1, p2 = x[0], x[-1]
+    xspan = p2 - p1
+
+    f = intp.InterpolatedUnivariateSpline(x, y, k=3)
+    xnew = np.arange(x[0], x[-1]+1e-3)
+    ynew = f(xnew)
+    ysmooth, _, _, _ = iterative_savgol_filter(ynew, winlen=101, order=3,
+                    upper_clip=3, lower_clip=3)
+    imax, ymax = get_local_minima(-ysmooth, window=5)
+
+    if len(imax)>0:
+        xmax = xnew[imax]
+    else:
+        xmax = []
+
+    npixbin = npoints//8
+    bins = np.linspace(p1, p2, int(p2-p1)//npixbin+2)
+    hist, _ = np.histogram(xmax, bins)
+
+    n_nonzerobins = np.nonzero(hist)[0].size
+    n_zerobins = hist.size - n_nonzerobins
+
+    if n_zerobins <=1 or n_zerobins < n_nonzerobins or n_nonzerobins >=3:
+        has_fringe = True
+    else:
+        has_fringe = False
+
+    if has_fringe:
+        if   xspan > npoints/2: deg = 4
+        elif xspan > npoints/4: deg = 3
+        elif xspan > npoints/8: deg = 2
+        else:                   deg = 1
+    else:
+        deg = 5
+
+    # pick up the points with y>0
+    posmask = (y>0)*(x<4200)
+
+    coeff, _, _, m, std = iterative_polyfit(
+            x[posmask]/npoints, np.log(y[posmask]), deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+    aperpar = np.exp(np.polyval(coeff, newx/npoints))
+
+    return aperpar
+
+def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *k* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
     the fiber flat-fielding.
 
@@ -956,39 +1111,6 @@ def smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints):
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
-
-def smooth_aperpar_c(newx_lst, ypara, fitmask, group_lst, npoints):
-    """Smooth *c* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
-    the fiber flat-fielding.
-
-    Args:
-        newx_lst (:class:`numpy.ndarray`): Sampling pixels of the 2D profile.
-        ypara (:class:`numpy.ndarray`): Array of *A* at the sampling pixels.
-        fitmask (:class:`numpy.ndarray`): Mask array of **ypara**.
-        group_lst (list): Groups of (*x*:sub:`1`, *x*:sub:`2`, ... *x*:sub:`N`)
-            in each segment, where *x*:sub:`i` are indices in **newx_lst**.
-        npoints (int): Length of flat.
-
-    Returns:
-        tuple: A tuple containing:
-
-            * **aperpar** (:class:`numpy.ndarray`) – Reconstructed profile
-              paramters at all pixels.
-            * **xpiece_lst** (:class:`numpy.ndarray`) – Reconstructed profile
-              parameters at sampling pixels in **newx_lst** for plotting.
-            * **ypiece_res_lst** (:class:`numpy.ndarray`) – Residuals of profile
-              parameters at sampling pixels in **newx_lst** for plotting.
-            * **mask_rej_lst** (:class:`numpy.ndarray`) – Mask of sampling pixels
-              in **newx_lst** participating in fitting or smoothing.
-
-    See Also:
-
-        * :func:`gamse.echelle.flat.get_fiber_flat`
-        * :func:`smooth_aperpar_A`
-        * :func:`smooth_aperpar_k`
-        * :func:`smooth_aperpar_bkg`
-    """
-    return smooth_aperpar_k(newx_lst, ypara, fitmask, group_lst, npoints)
 
 def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *bkg* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
@@ -1087,3 +1209,22 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
             mask_rej_lst[group]   = ~_m
 
     return aperpar, xpiece_lst, ypiece_res_lst, mask_rej_lst
+
+def smooth_aperpar_bkg_old(x, y, npoints, newx):
+    p1, p2 = x[0], x[-1]
+    xspan = p2 - p1
+
+    if   xspan > npoints/2: deg = 4
+    elif xspan > npoints/4: deg = 3
+    elif xspan > npoints/8: deg = 2
+    else:                   deg = 1
+
+    # pick up the points with y>0
+    posmask = (y>0)*(x<4200)
+
+    coeff, _, _, m, std = iterative_polyfit(
+            x[posmask]/npoints, np.log(y[posmask]), deg=deg, maxiter=10,
+            lower_clip=3, upper_clip=3)
+    aperpar = np.exp(np.polyval(coeff, newx/npoints))
+    return aperpar
+

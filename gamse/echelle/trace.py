@@ -24,7 +24,7 @@ class ApertureLocation(object):
     """Location of an echelle order.
 
     Attributes:
-        direction (int): 0 if along Y axis; 1 if along X axis.
+        direct (int): 0 if along Y axis; 1 if along X axis.
         position (:class:`numpy.polynomial`): Polynomial of aperture location.
         
     """
@@ -52,11 +52,11 @@ class ApertureLocation(object):
 
         # sort the nodes according to x coordinates
         xnodes, ynodes = np.array(xnodes), np.array(ynodes)
-        if self.direction == 0:
+        if self.direct == 0:
             # order is along y axis
             xnodes = xnodes[ynodes.argsort()]
             ynodes = np.sort(ynodes)
-        elif self.direction == 1:
+        elif self.direct == 1:
             # order is along x axis
             ynodes = ynodes[xnodes.argsort()]
             xnodes = np.sort(xnodes)
@@ -148,66 +148,73 @@ class ApertureLocation(object):
         Returns:
             *float*: coordinate of the center pixel.
         """
-        h, w = self.shape
+        ny, nx = self.shape
         if self.direct == 0:
             # aperture along Y direction
-            center = self.position(h/2.)
+            center = self.position(ny/2)
         elif self.direct == 1:
             # aperture along X direction
-            center = self.position(w/2.)
+            center = self.position(nx/2)
         else:
             print('Cannot recognize direction: '+self.direct)
         return center
 
     def __str__(self):
-        h, w = self.shape
+        ny, nx = self.shape
         if self.direct == 0:
             # aperture along Y direction
             axis = 'y'
-            centerpix = self.position(h/2.)
-            coord = (centerpix, h/2.)
+            centerpix = self.position(ny/2)
+            coord = (centerpix, ny/2)
         elif self.direct == 1:
             # aperture along X direction
             axis = 'x'
-            centerpix = self.position(w/2.)
-            coord = (w/2., centerpix)
-        return 'Echelle aperture centered at ({:5.1f}, {:5.1f}) along {:s} axis. shape=({},{})'.format(
-                coord[0], coord[1], axis, h, w)
+            centerpix = self.position(nx/2)
+            coord = (nx/2, centerpix)
+        else:
+            raise ValueError
+        return ('Echelle aperture centered at ({:5.1f}, {:5.1f}) '
+                'along {:s} axis. shape=({},{})').format(
+                coord[0], coord[1], axis, ny, nx)
 
     def to_string(self):
         """Convert aperture information to string.
         """
 
-        string  = '%8s = %d'%('direct', self.direct)+os.linesep
-        string += '%8s = %s'%('shape',  str(self.shape))+os.linesep
+        string  = '{:8s} = {}'.format('direct', self.direct)+os.linesep
+        string += '{:8s} = {}'.format('shape',  str(self.shape))+os.linesep
 
-        strlst = ['%+15.10e'%c for c in self.position.coef]
-        string += 'position = [%s]'%(', '.join(strlst))+os.linesep
+        strlst = ['{:+15.10e}'.format(c) for c in self.position.coef]
+        str1 = '[{}]'.format(', '.join(strlst))
+        string += '{:8s} = {}'.format('position', str1)+os.linesep
 
         # write domain of polynomial
         domain = self.position.domain
-        string += '  domain = [%f, %f]'%(domain[0], domain[1])+os.linesep
+        domain_str = '[{}, {}]'.format(domain[0], domain[1])
+        string += '{:8s} = {}'.format('domain', domain_str)+os.linesep
 
         # find nodes
         for key in ['lower', 'center', 'upper']:
-            key1 = 'nodes_%s'%key
+            key1 = 'nodes_{}'.format(key)
             if hasattr(self, key1):
                 nodes = getattr(self, key1)
-                strlst = ['(%g, %g)'%(x,y) for x, y in nodes]
-                string += '%6s = [%s]%s'%(key1, ', '.join(strlst), os.linesep)
+                strlst = ['({:g}, {:g})'.format(x,y) for x, y in nodes]
+                str1 = ', '.join(strlst)
+                string += '{:6s} = [{}]'.format(key1, str1) + os.linesep
 
         # find coefficients
         for key in ['lower', 'center', 'upper']:
-            key1 = 'coeff_%s'%key
+            key1 = 'coeff_{}'.format(key)
             if hasattr(self, key1):
                 coeff = getattr(self, key1)
-                strlst = ['%+15.10e'%c for c in coeff]
-                string += '%6s = [%s]%s'%(key1, ', '.join(strlst), os.linesep)
+                strlst = ['{:+15.10e}'.format(c) for c in coeff]
+                str1 = ', '.join(strlst)
+                string += '{:6s} = [{}]'.format(key1, str1) + os.linesep
 
         for key in ['nsat','mean','median','max']:
             if hasattr(self, key):
                 value = getattr(self, key)
-                string += '%8s = %g'%(key, value)+os.linesep
+                string += '{:8s} = {}'.format(key, value) + os.linesep
 
         return string
 
@@ -276,7 +283,7 @@ class ApertureSet(object):
     def __str__(self):
         string = ''
         for aper, aper_loc in sorted(self._dict.items()):
-            string += 'APERTURE LOCATION %d%s'%(aper, os.linesep)
+            string += 'APERTURE LOCATION {}'.format(aper) + os.linesep
             string += aper_loc.to_string()
         return string
 
@@ -337,7 +344,7 @@ class ApertureSet(object):
             domain = aper_loc.position.domain
             d1, d2 = int(domain[0]), int(domain[1])+1
 
-            outfile.write('# aperture %3d'%aper + os.linesep)
+            outfile.write('# aperture {:3d}'.format(aper) + os.linesep)
 
             if aper_loc.direct == 1:
                 # write text in the left edge

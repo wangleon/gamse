@@ -16,6 +16,7 @@ setup(
                     'gamse/utils',
                     'gamse/echelle',
                     'gamse/pipelines',
+                    'gamse/pipelines/espadons',
                     'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
                     'gamse/pipelines/hds',
@@ -25,7 +26,9 @@ setup(
                     'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {
-                    'gamse': ['data/config/*',
-                              'data/linelist/*',]
+                    'gamse': ['data/calib/*',
+                              'data/config/*',
+                              'data/linelist/*',
+                              ]
                     },
     )
