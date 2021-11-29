@@ -134,6 +134,7 @@ def make_config():
     sectname = 'reduce.background'
     config.add_section(sectname)
     config.set(sectname, 'subtract',      'yes')
+    config.set(sectname, 'database_path', '~/.gamse/foces/background')
     config.set(sectname, 'ncols',         str(9))
     distance = {'single': 6, 'double': 2}[fibermode]
     config.set(sectname, 'distance',      str(distance))
