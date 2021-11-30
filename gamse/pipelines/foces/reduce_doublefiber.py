@@ -56,17 +56,15 @@ def get_fiberobj_lst(string, delimiter='|'):
                                 enumerate(object_lst)))
     return fiberobj_lst
 
-def get_fiberobj_string(fiberobj_lst, nfiber, medium):
+def get_fiberobj_string(fiberobj_lst, nfiber):
     result_lst = []
     for ifiber in range(nfiber):
 
-        if medium == 'log':
-            fibername = chr(ifiber+65)
-            fibercode = '[{}]'.format(fibername)
-        elif medium == 'cmd':
-            fibercode = struct.pack('>i', -257981040+ifiber).decode()
-        else:
-            raise ValueError
+        fibername = chr(ifiber+65)
+        fibercode = '[{}]'.format(fibername)
+
+        #fibercode = struct.pack('>i', -257981040+ifiber).decode()
+        # but not all PCs can display these characters
 
         found = False
         for fiberobj in fiberobj_lst:
@@ -289,7 +287,7 @@ def reduce_doublefiber(config, logtable):
 
                     # print info
                     fiberobj_lst = get_fiberobj_lst(logitem['object'], '|')
-                    fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber, 'cmd')
+                    fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
                     string = fmt_str.format(
                             '[{:d}]'.format(logitem['frameid']),
                             logitem['fileid'], fiberobj_str,
@@ -797,16 +795,14 @@ def reduce_doublefiber(config, logtable):
         screen_prefix = '    - '
 
         fiberobj_lst = get_fiberobj_lst(logitem['object'], '|')
-        fiberobj_str_cmd = get_fiberobj_string(fiberobj_lst, n_fiber, 'cmd')
-        fiberobj_str_log = get_fiberobj_string(fiberobj_lst, n_fiber, 'log')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
         # now all objects in fiberobj_lst must be ThAr
 
         message = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
-        message_cmd = message.format(fileid, imgtype, fiberobj_str_cmd)
-        message_log = message.format(fileid, imgtype, fiberobj_str_log)
-        logger.info(message_log)
-        print(message_cmd)
+        message = message.format(fileid, imgtype, fiberobj_str)
+        logger.info(message)
+        print(message)
 
         # read raw data
         filename = os.path.join(rawpath, '{}.fits'.format(fileid))
@@ -1287,24 +1283,22 @@ def reduce_doublefiber(config, logtable):
 
         # split the object names and make obj_lst
         fiberobj_lst = get_fiberobj_lst(objects, '|')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
         # filter out images with multi-fibers
         if len(fiberobj_lst) != 1:
             continue
         ifiber, objname = fiberobj_lst[0]
         fiber = chr(ifiber+65)
-        fibercode_cmd = struct.pack('>i', -257981040+ifiber).decode()
-        fibercode_log = '[{}]'.format(fiber)
 
         # filter out Flat and ThAr
         if objname.lower()[0:4] in ['flat', 'thar']:
             continue
 
         message = 'FileID: {} ({}) OBJECT: {}'
-        message_cmd = message.format(fileid, imgtype, fiberobj_str_cmd)
-        message_log = message.format(fileid, imgtype, fiberobj_str_log)
-        logger.info(message_log)
-        print(message_cmd)
+        message = message.format(fileid, imgtype, fiberobj_str)
+        logger.info(message)
+        print(message)
 
         # read raw data
         filename = os.path.join(rawpath, '{}.fits'.format(fileid))
@@ -1587,8 +1581,7 @@ def reduce_doublefiber(config, logtable):
             continue
 
         fiberobj_lst = get_fiberobj_lst(objects, '|')
-        fiberobj_str_cmd = get_fiberobj_string(fiberobj_lst, n_fiber, 'cmd')
-        fiberobj_str_log = get_fiberobj_string(fiberobj_lst, n_fiber, 'log')
+        fiberobj_str = get_fiberobj_string(fiberobj_lst, n_fiber)
 
         # filter out non-sci but not Comb/Comb files
         if imgtype != 'sci':
@@ -1604,10 +1597,9 @@ def reduce_doublefiber(config, logtable):
 
 
         message = 'FileID: {} ({}) OBJECT: {}'
-        message_cmd = message.format(fileid, imgtype, fiberobj_str_cmd)
-        message_log = message.format(fileid, imgtype, fiberobj_str_log)
-        logger.info(message_log)
-        print(message_cmd)
+        message = message.format(fileid, imgtype, fiberobj_str)
+        logger.info(message)
+        print(message)
 
         # read raw data
         filename = os.path.join(rawpath, '{}.fits'.format(fileid))
