@@ -488,11 +488,12 @@ def reduce_singlefiber(config, logtable):
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
-        message = fmt_str.format(fileid, imgtype, objname)
+        fmtstr = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmtstr.format(fileid, imgtype, objname)
         logger.info(message)
         print(message)
 
+        # read raw data
         filename = os.path.join(rawpath, '{}.fits'.format(fileid))
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
@@ -525,16 +526,21 @@ def reduce_singlefiber(config, logtable):
         head.append(('HIERARCH GAMSE BACKGROUND CORRECTED', False))
 
         section = config['reduce.extract']
+        lower_limit = section.getfloat('lower_limit')
+        upper_limit = section.getfloat('upper_limit')
+
         spectra1d = extract_aperset(data, mask,
                     apertureset = master_aperset,
-                    lower_limit = section.getfloat('lower_limit'),
-                    upper_limit = section.getfloat('upper_limit'),
+                    lower_limit = lower_limit,
+                    upper_limit = upper_limit,
                     )
-        head = master_aperset.to_fitsheader(head)
-        message = '1D spectra extracted for {:d} orders'.format(len(spectra1d))
+        fmtstr = '1D spectra extracted for {:d} orders'
+        message = fmtstr.format(len(spectra1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
-    
+        head = master_aperset.to_fitsheader(head)
+
+        # pack to a structured array
         spec = []
         for aper, item in sorted(spectra1d.items()):
             flux_sum = item['flux_sum']
@@ -563,9 +569,9 @@ def reduce_singlefiber(config, logtable):
                 index_file = os.path.join(os.path.dirname(__file__),
                                 '../../data/calib/wlcalib_foces.dat')
 
-                message = ('Searching for archive wavelength calibration'
-                           'file in "{}"'.format(
-                               os.path.basename(database_path)))
+                fmtstr = ('Searching for archive wavelength calibration '
+                           'file in "{}"')
+                message = fmtstr.format(os.path.basename(index_file))
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
@@ -574,7 +580,7 @@ def reduce_singlefiber(config, logtable):
     
                 if ref_spec is None or ref_calib is None:
 
-                    message = ('Did not find any archive wavelength'
+                    message = ('Did not find any archive wavelength '
                                 'calibration file')
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
@@ -625,8 +631,12 @@ def reduce_singlefiber(config, logtable):
                     aperture_koffset = (result[0], result[1])
                     pixel_koffset    = (result[2], result[3])
 
-                    message = 'Aperture offset = {}; Pixel offset = {}'.format(
-                                aperture_koffset, pixel_koffset)
+                    fmtstr = ('Aperture offset = ({}, {}); '
+                                'Pixel offset = ({}, {:.3f})')
+                    message = fmtstr.format(aperture_koffset[0],
+                                            aperture_koffset[1],
+                                            pixel_koffset[0],
+                                            pixel_koffset[1])
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
 
@@ -706,6 +716,10 @@ def reduce_singlefiber(config, logtable):
         # reference the ThAr spectra
         spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
+        # add the fit_filter keywords to card_lst
+        card_lst.append(('PIXEL_RANGE', str(pixel_range)))
+        card_lst.append(('ORDER_RANGE', str(order_range)))
+
         prefix = 'HIERARCH GAMSE WLCALIB '
         for key, value in card_lst:
             head.append((prefix+key, value))
@@ -731,7 +745,7 @@ def reduce_singlefiber(config, logtable):
 
 
     # format for print fitting summary
-    fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
+    fmtstr = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
     section = config['reduce.wlcalib']
     auto_selection = section.getboolean('auto_selection')
 
@@ -749,7 +763,7 @@ def reduce_singlefiber(config, logtable):
 
         # print ThAr summary and selected calib
         for frameid, calib in sorted(calib_lst.items()):
-            string = fmt_string.format(frameid, calib['fileid'],
+            string = fmtstr.format(frameid, calib['fileid'],
                         calib['exptime'], calib['nuse'], calib['ntot'],
                         calib['std'])
             if calib['fileid'] in ref_fileid_lst:
@@ -803,7 +817,6 @@ def reduce_singlefiber(config, logtable):
         if imgtype != 'sci':
             continue
 
-        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
 
         message = 'FileID: {} ({}) OBJECT: {}'.format(
                     fileid, imgtype, objname)
@@ -811,6 +824,7 @@ def reduce_singlefiber(config, logtable):
         print(message)
 
         # read raw data
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
         data, head = fits.getdata(filename, header=True)
         if data.ndim == 3:
             data = data[0,:,:]
