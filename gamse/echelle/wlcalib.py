@@ -15,7 +15,8 @@ import scipy.interpolate as intp
 import scipy.optimize as opt
 
 import matplotlib
-matplotlib.use('TkAgg')
+if 'GAMSE_HEADLESS' not in os.environ:
+    matplotlib.use('TkAgg')
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
