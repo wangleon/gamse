@@ -111,7 +111,7 @@ def make_config():
     config.set('data', 'exptime_key',  exptime_key)
     config.set('data', 'readout_mode', readout_mode)
     config.set('data', 'direction',    direction)
-    config.set('data', 'obsinfo_file', 'obsinfo.txt')
+    #config.set('data', 'obsinfo_file', 'obsinfo.txt')
     config.set('data', 'fibermode',    fibermode)
     if fibermode == 'double':
         config.set('data', 'fiberoffset', str(-12))
@@ -203,6 +203,214 @@ def make_config():
 
     print('Config file written to {}'.format(filename))
 
+def parse_idstring(idstring):
+    def parse_idstr(_idstr):
+        if   len(_idstr)>8: return int(_idstr[8:])
+        elif len(_idstr)>4: return int(_idstr[4:])
+        else: return int(_idstr)
+
+    if '-' in idstring:
+        g = idstring.split('-')
+        id1, id2 = g[0], g[1]
+        id1 = parse_idstr(id1)
+        id2 = parse_idstr(id2)
+        return range(id1, id2+1)
+    else:
+        id1 = parse_idstr(idstring)
+        return [id1]
+
+def parse_timestr(timestr, date):
+    mobj = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+    yy, mm, dd = date
+    h = int(mobj.group(1))
+    m = int(mobj.group(2))
+    s = int(mobj.group(3))
+    if h >= 24:
+        h = h - 24
+        dt = datetime.timedelta(days=1)
+    else:
+        dt = datetime.timedelta(days=0)
+    obstime = datetime.datetime(yy, mm, dd, h, m, s) + dt
+    return obstime.isoformat()
+
+def parse_logfile_singlefiber(filename, date):
+
+    logtable = Table(dtype=[
+                    ('frameid', 'i2'),
+                    ('fileid',  'S11'),
+                    ('imgtype', 'S3'),
+                    ('object',  'S50'),
+                    ('exptime', 'f4'),
+                    ('obsdate', 'S23'),
+            ], masked=True)
+
+    ptn1 = '([a-zA-Z]?[\d\-]+)'                 # for id string
+    ptn2 = '([a-zA-Z0-9+-_\[\]\s]+)'            # object name
+    ptn3 = '(\d{2}:\d{2}:\d{2})'                # time string
+    ptn4 = '([\.\d]+)'                          # exptime
+    ptn5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # ra
+    ptn6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # dec
+
+    yy, mm, dd = date
+    file1 = open(filename, encoding='gbk')
+    for row in file1:
+        row = row.strip()
+
+        # match Bias, Flat and ThAr
+        is_match = False
+        for objname in ['Bias', 'Flat', 'ThAr']:
+            pattern = '{}\s*({})\s*{}\s*{}'.format(
+                        ptn1, objname.lower(), ptn3, ptn4)
+            mobj = re.match(pattern, row.lower())
+            if mobj:
+                id_lst = parse_idstring(mobj.group(1))
+                obstime = parse_timestr(mobj.group(3), date)
+                exptime = float(mobj.group(4))
+                for iframe, frameid in enumerate(id_lst):
+                    fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                    if iframe==0:
+                        item = (frameid, fileid, 'cal', objname,
+                                    exptime, obstime)
+                        mask = (False, False, False, False,
+                                    False, False)
+                    else:
+                        item = (frameid, fileid, 'cal', objname,
+                                    exptime, '')
+                        mask = (False, False, False, False,
+                                    False, True)
+                    logtable.add_row(item)
+                is_match = True
+                break
+
+        if is_match:
+            continue
+
+        # match science objects
+        pattern = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
+                    ptn1, ptn2, ptn3, ptn4, ptn5, ptn6)
+        mobj = re.match(pattern, row)
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            objname = mobj.group(2).strip()
+            obstime = parse_timestr(mobj.group(3), date)
+            exptime = float(mobj.group(4))
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, 'sci', objname,
+                            exptime, obstime)
+                    mask = (False, False, False, False,
+                            False, False)
+                else:
+                    item = (frameid, fileid, 'sci', objname,
+                            exptime, '')
+                    mask = (False, False, False, False,
+                            False, True)
+                logtable.add_row(item)
+            continue
+
+        print('Match error:', row)
+    file1.close()
+
+    return logtable
+
+
+def parse_logfile_doublefiber(filename, date):
+
+    logtable = Table(dtype=[
+                    ('frameid',     'i2'),
+                    ('fileid',      'S11'),
+                    ('imgtype',     'S3'),
+                    ('object',      'S80'),
+                    ('object_A',    'S50'),
+                    ('object_B',    'S50'),
+                    ('exptime',     'f4'),
+                    ('obsdate',     'S23'),
+            ], mased=True)
+
+    ptn1 = '([a-zA-Z]?[\d\-]+)'                 # for id string
+    ptn2 = '([a-zA-Z0-9+-_\s]+)'            # object name
+    ptn3 = '(\d{2}:\d{2}:\d{2})'                # time string
+    ptn4 = '([\.\d]+)'                          # exptime
+    ptn5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # ra
+    ptn6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # dec
+
+    yy, mm, dd = date
+    file1 = open(logfile, encoding='gbk')
+    for row in file1:
+        row = row.strip()
+
+        # match Bias
+        pattern = '{}\s*(bias)\s*{}\s*{}'.format(ptn1, ptn3, ptn4)
+        mobj = re.match(pattern, row.lower())
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            obstime = parse_timestr(mobj.group(3), date)
+            exptime = float(mobj.group(4))
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, 'cal', 'Bias', '', '',
+                            exptime, obstime)
+                    mask = (False, False, False, False, False, False,
+                            False, False)
+                else:
+                    item = (frameid, fileid, 'cal', 'Bias', '', '',
+                            exptime, '')
+                    mask = (False, False, False, False, False, False,
+                            False, True)
+                logtable.add_row(item)
+            continue
+
+
+        # match other frames
+        pattern = '{}\s*\[A\]\s*{}\s*\[B\]\s*{}\s*{}\s*{}'.format(
+                ptn1, ptn2, ptn2, ptn3, ptn4)
+        mobj = re.match(pattern, row)
+        if mobj:
+            id_lst = parse_id_string(mobj.group(1))
+            objname_A = mobj.group(2).strip()
+            objname_B = mobj.group(3).strip()
+            if objname_A.lower() in ['flat', 'thar', 'comb', '']:
+                imgtype = 'cal'
+            else:
+                imgtype = 'sci'
+            obstime = parse_timestr(mobj.group(4), date)
+            exptime = float(mobj.group(5))
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, imgtype, '', objname_A, objname_B,
+                            exptime, obstime)
+                    mask = (False, False, False, False, False, False,
+                            False, False)
+                else:
+                    item = (frameid, fileid, imgtype, '', objname_A, objname_B,
+                            exptime, '')
+                    mask = (False, False, False, False, False, False,
+                            False, True)
+                logtable.add_row(item)
+            continue
+
+        print('Match error:', row)
+    file1.close()
+
+    maxlen_A = max([len(row['object_A']) for row in logtable])
+    maxlen_B = max([len(row['object_B']) for row in logtable])
+    for row in logtable:
+        if row['object']!='Bias':
+            row['object'] = '[A] {} [B] {}'.format(
+                            row['object_A'].ljust(maxlen_A),
+                            row['object_B'].ljust(maxlen_B))
+    logtable.remove_column(['object_A','object_B'])
+
+    return logtable
+
+
+
 def make_obslog():
     """Scan the raw data, and generate a log file containing the detail
     information for each frame.
@@ -222,21 +430,40 @@ def make_obslog():
                     'thar;', ';thar']
     regular_names = ('Bias', 'Flat', 'ThAr', 'I2')
 
-    # read loginfo from log file ('.txt')
-    loginfo = {}
+    # read original log file
+    # search file in the current folder
+    logfile = None
     for fname in os.listdir('./'):
-        if fname[-4:]=='.txt':
-            loginfo = read_logfile(fname)
-            message = 'Read log from "{}"'.format(fname)
-            print(message)
+        mobj = re.match('(\d{8})\.txt', fname)
+        if mobj:
+            logfile = fname
+            datestr = mobj.group(1)
+            date = (int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
             break
-    print(loginfo)
+    # logfile not found
+    if logfile is None:
+        print('Error: could not find log file')
+        exit()
+
+    fibermode = config['data']['fibermode']
+    if fibermode == 'single':
+        logtable = parse_logfile_singlefiber(logfile, date)
+    elif fibermode == 'double':
+        logtable = parse_logfile_doublefiber(logfile, date)
+    message = 'Read log from "{}"'.format(logfile)
+    print(message)
+    logfilename = 'log.{0:04d}-{1:02d}-{2:02d}.txt'.format(*date)
+    logtable.write(logfilename, format='ascii.fixed_width_two_line',
+                    overwrite=True)
+
+    maxobjlen = max([len(row['object']) for row in logtable])
 
     # if the obsinfo file exists, read and pack the information
     addinfo_lst = {}
-    obsinfo_file = config['data'].get('obsinfo_file')
-    has_obsinfo = os.path.exists(obsinfo_file)
+    obsinfo_file = config['data'].get('obsinfo_file', None)
+    has_obsinfo = obsinfo_file is not None and os.path.exists(obsinfo_file)
     if has_obsinfo:
+        # has obsinfo file
         # method 1 (deprecated)
         #io_registry.register_reader('obslog', Table, read_obslog)
         #addinfo_table = Table.read(obsinfo_file, format='obslog')
@@ -253,83 +480,57 @@ def make_obslog():
         real_obsdate_lst = []
         delta_t_lst = []
 
-        # find maximum length of object
-        maxobjlen = max([len(row['object']) for row in addinfo_table])
-    elif len(loginfo)>0:
-        maxobjlen = max([len(item['object']) for key, item in loginfo.items()])
-    else:
-        maxobjlen = 12
+    statime_key = config['data'].get('statime_key')
+    exptime_key = config['data'].get('exptime_key')
 
-    # scan the raw files
-    fname_lst = sorted(os.listdir(rawpath))
-
-    # prepare logtable
-    logtable = Table(dtype=[
-                        ('frameid', 'i2'),
-                        ('fileid',  'S11'),
-                        ('imgtype', 'S3'),
-                        ('object',  'S{:d}'.format(maxobjlen)),
-                        ('i2',      'S1'),
-                        ('exptime', 'f4'),
-                        ('obsdate', 'S23'),
-                        ('nsat',    'i4'),
-                        ('q95',     'i4'),
-                ])
+    nsat_lst = []
+    q95_lst  = []
 
     fmt_str = ('  - {:5s} {:11s} {:5s} ' + '{{:<{}s}}'.format(maxobjlen) +
-                ' {:1s}I2 {:>7} {:23s} {:>7} {:>5}')
+                #' {:1s}I2 {:>7} {:23s} {:>7} {:>5}')
+                ' {:>7} {:23s} {:>7} {:>5}')
     head_str = fmt_str.format('frameid', 'fileid', 'type', 'object', '',
                                 'exptime', 'obsdate', 'nsat', 'q95')
     print(head_str)
 
-    prev_frameid = -1
-    prev_fits_endtime = None
     # start scanning the raw files
-    for fname in fname_lst:
-        if not fname.endswith('.fits'):
-            continue
-        fileid  = fname[0:-5]
-        filename = os.path.join(rawpath, fname)
+    for logitem in logtable:
+        frameid    = logitem['frameid']
+        fileid     = logitem['fileid']
+        imgtype    = logitem['imgtype']
+        objectname = logitem['object']
+        exptime    = logitem['exptime']
+
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
         data, head = fits.getdata(filename, header=True)
 
         # get science region
         y1, y2, x1, x2 = get_sci_region(head)
         data = data[y1:y2, x1:x2]
 
-        # find frameid for different name conventions
-        if re.match('\d{11}$', fileid) or re.match('\d{12}$', fileid):
-            frameid = int(fileid[8:])
-        else:
-            frameid = 0
-            print('Error: unknown FileID: {}'.format(fileid))
-        if frameid <= prev_frameid:
-            print('Warning: frameid {} > prev_frameid {}'.format(
-                    frameid, prev_frameid))
-
         # get obsdate from FITS header
-        statime_key = config['data'].get('statime_key')
         obsdate = dateutil.parser.parse(head[statime_key])
 
         # get exposure time from FITS header
-        exptime_key = config['data'].get('exptime_key')
-        exptime = head[exptime_key]
+        exptime_fits = head[exptime_key]
+        if abs(exptime - exptime_fits)>1.0:
+            print('Error: Exposure time do not match: {} - {}'.format(
+                    exptime, exptime_fits))
 
         # for post 2019 data, there's another keyword "EXPOEND" to record
         # exposur end time.
         if 'EXPOEND' in head:
             obsdate2 = dateutil.parser.parse(head['EXPOEND'])
             calc_exptime = (obsdate2-obsdate).seconds
-            if abs(calc_exptime - exptime)>10:
+
+            if abs(calc_exptime - exptime)>5:
+                # this usually caused by the error in start time
                 print('Warning: TIME difference of {} error: '
                         'EXPOEND - {} = {:.2f}, exptime = {:.2f}'
                         ''.format(fileid, statime_key, calc_exptime, exptime))
-
-            if prev_fits_endtime is not None:
-                if obsdate < prev_fits_endtime:
-                    # exposure start time does not up-to-date. calculate the
-                    # start time according to the exposure end time and exptime.
-                    obsdate = obsdate2 - datetime.timedelta(seconds=exptime)
-            prev_fits_endtime = obsdate2
+                # re-calculate the start time according to the exposure
+                # end time and exptime.
+                obsdate = obsdate2 - datetime.timedelta(seconds=int(exptime))
 
         # parse obsdate, and calculate the time offset
         if (frameid in addinfo_lst and 'obsdate' in addinfo_table.colnames
@@ -341,33 +542,39 @@ def make_obslog():
             real_obsdate_lst.append(real_obsdate)
             delta_t_lst.append(delta_t.total_seconds())
 
+        # update obsdate into log file
+        obsdatestr = obsdate.isoformat()[0:23]
+        if len(obsdatestr)==19:
+            obsdatestr += '.000'
+        logitem['obsdate'] = obsdatestr
 
         # parse object name
-        if 'OBJECT' in head:
-            objectname = head['OBJECT'].strip()
-        else:
-            objectname = ''
-        if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
-            and addinfo_lst[frameid]['object'] is not np.ma.masked):
-            objectname = addinfo_lst[frameid]['object']
-        elif frameid in loginfo:
-            objectname = loginfo[frameid]['object']
-        else:
-            pass
+        #if 'OBJECT' in head:
+        #    objectname = head['OBJECT'].strip()
+        #else:
+        #    objectname = ''
 
-        # change to regular name
-        for regname in regular_names:
-            if objectname.lower() == regname.lower():
-                objectname = regname
-                break
+        #if (frameid in addinfo_lst and 'object' in addinfo_table.colnames
+        #    and addinfo_lst[frameid]['object'] is not np.ma.masked):
+        #    objectname = addinfo_lst[frameid]['object']
+        #elif frameid in loginfo:
+        #    objectname = loginfo[frameid]['object']
+        #else:
+        #    pass
 
-        # parse I2 cell
-        i2 = ('-', '+')[objectname.lower()=='i2']
-        if (frameid in addinfo_lst and 'i2' in addinfo_table.colnames
-            and addinfo_lst[frameid]['i2'] is not np.ma.masked):
-            i2 = addinfo_lst[frameid]['i2']
+        ## change to regular name
+        #for regname in regular_names:
+        #    if objectname.lower() == regname.lower():
+        #        objectname = regname
+        #        break
 
-        imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
+        ## parse I2 cell
+        #i2 = ('-', '+')[objectname.lower()=='i2']
+        #if (frameid in addinfo_lst and 'i2' in addinfo_table.colnames
+        #    and addinfo_lst[frameid]['i2'] is not np.ma.masked):
+        #    i2 = addinfo_lst[frameid]['i2']
+
+        #imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # determine the total number of saturated pixels
         saturation = (data>=65535).sum()
@@ -375,24 +582,32 @@ def make_obslog():
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))
 
-        item = [frameid, fileid, imgtype, objectname, i2, exptime,
-                obsdate.isoformat()[0:23], saturation, quantile95]
-        logtable.add_row(item)
-        # get table Row object. (not elegant!)
-        item = logtable[-1]
+        nsat_lst.append(saturation)
+        q95_lst.append(quantile95)
+
+        #item = [frameid, fileid, imgtype, objectname, i2, exptime,
+        #        obsdate.isoformat()[0:23], saturation, quantile95]
+        #logtable.add_row(item)
+        ## get table Row object. (not elegant!)
+        #item = logtable[-1]
 
         # print log item with colors
         string = fmt_str.format(
-                    '[{:d}]'.format(frameid), fileid, '({:3s})'.format(imgtype),
-                    objectname, i2, exptime, obsdate.isoformat()[0:23],
+                    '[{:d}]'.format(frameid), fileid,
+                    '({:3s})'.format(imgtype),
+                    objectname, exptime, obsdate.isoformat()[0:23],
                     saturation, quantile95)
-        print(print_wrapper(string, item))
-
-        prev_frameid = frameid
+        print(print_wrapper(string, logitem))
 
     # sort by obsdate
     #logtable.sort('obsdate')
+    logtable.add_column(nsat_lst, name='saturation')
+    logtable.add_column(q95_lst, name='q95')
+    logtable['object'].info.format = '%-{}s'.format(maxobjlen)
+    logtable.write(logfilename, format='ascii.fixed_width_two_line',
+                    overwrite=True)
 
+    exit()
     if has_obsinfo and len(real_obsdate_lst)>0:
         # determine the time offset as median value
         time_offset = np.median(np.array(delta_t_lst))
@@ -433,10 +648,10 @@ def make_obslog():
         outfilename = outname
 
     # set display formats
-    logtable['imgtype'].info.format = '^s'
-    logtable['object'].info.format = '<s'
-    logtable['i2'].info.format = '^s'
-    logtable['exptime'].info.format = 'g'
+    #logtable['imgtype'].info.format = '^s'
+    #logtable['object'].info.format = '<s'
+    #logtable['i2'].info.format = '^s'
+    #logtable['exptime'].info.format = 'g'
 
     # save the logtable
     # method 1: deprecated
