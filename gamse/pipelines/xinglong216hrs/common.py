@@ -1137,9 +1137,11 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     ally = np.arange(ny)
 
     bkg_image = np.zeros_like(data, dtype=np.float32)
-    plot_x = [10, 509, 2505]
+    #plot_x = [10, 509, 2505]
+    plot_x = []
 
-    saturated_cols = [610, 3422, 3595]
+    #saturated_cols = [610, 3422, 3595]
+    saturated_cols = []
     masked_x = []
     for col in saturated_cols:
         for x in np.arange(col-4, col+4):

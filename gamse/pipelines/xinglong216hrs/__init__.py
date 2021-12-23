@@ -328,23 +328,31 @@ def parse_logfile_doublefiber(filename, date):
                     ('object_B',    'S50'),
                     ('exptime',     'f4'),
                     ('obsdate',     'S23'),
-            ], mased=True)
+            ], masked=True)
 
-    ptn1 = '([a-zA-Z]?[\d\-]+)'                 # for id string
-    ptn2 = '([a-zA-Z0-9+-_\s]+)'            # object name
-    ptn3 = '(\d{2}:\d{2}:\d{2})'                # time string
-    ptn4 = '([\.\d]+)'                          # exptime
-    ptn5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # ra
-    ptn6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # dec
+    ptn_lst = {
+            'id':      '([a-zA-Z]?[\d\-]+)',                 # for id string
+            'objname': '([a-zA-Z0-9+-_\s]+)',                # object name
+            'btime':   '(\d{2}:\d{2}:\d{2})',                # time string
+            'exptime': '([\.\d]+)',                          # exptime
+            'ra':      '(\d{2}:\d{2}:\d{2}\.?\d?\d?)',       # ra
+            'dec':     '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',   # dec
+            }
+
+    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+                    '\s*{btime}\s*{exptime}'
+                    '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
+    pattern_cal = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+                    '\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     yy, mm, dd = date
-    file1 = open(logfile, encoding='gbk')
+    file1 = open(filename, encoding='gbk')
     for row in file1:
         row = row.strip()
 
         # match Bias
-        pattern = '{}\s*(bias)\s*{}\s*{}'.format(ptn1, ptn3, ptn4)
-        mobj = re.match(pattern, row.lower())
+        mobj = re.match(pattern_bias, row.lower())
         if mobj:
             id_lst = parse_idstring(mobj.group(1))
             obstime = parse_timestr(mobj.group(3), date)
@@ -365,18 +373,17 @@ def parse_logfile_doublefiber(filename, date):
             continue
 
 
-        # match other frames
-        pattern = '{}\s*\[A\]\s*{}\s*\[B\]\s*{}\s*{}\s*{}'.format(
-                ptn1, ptn2, ptn2, ptn3, ptn4)
-        mobj = re.match(pattern, row)
+        # match sci frames (any rows with ra, dec coordinates)
+        mobj = re.match(pattern_sci, row)
         if mobj:
-            id_lst = parse_id_string(mobj.group(1))
+            id_lst = parse_idstring(mobj.group(1))
             objname_A = mobj.group(2).strip()
             objname_B = mobj.group(3).strip()
+            imgtype = 'sci'
+
             if objname_A.lower() in ['flat', 'thar', 'comb', '']:
-                imgtype = 'cal'
-            else:
-                imgtype = 'sci'
+                print('Error: [A] {} in sci frames'.format(objectname_A))
+
             obstime = parse_timestr(mobj.group(4), date)
             exptime = float(mobj.group(5))
             for iframe, frameid in enumerate(id_lst):
@@ -395,8 +402,44 @@ def parse_logfile_doublefiber(filename, date):
                 logtable.add_row(item)
             continue
 
+        # match cal frames (any rows without coordinates)
+        mobj = re.match(pattern_cal, row)
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            objname_A = mobj.group(2).strip()
+            objname_B = mobj.group(3).strip()
+            imgtype = 'cal'
+
+            if objname_A.lower() not in ['flat', 'thar', 'comb', '']:
+                print('Error: Unknown object in fiber [A]: {}'.format(
+                    objectname_A))
+            if objname_B.lower() not in ['flat', 'thar', 'comb', '']:
+                print('Error: Unknown object in fiber [B]: {}'.format(
+                    objectname_B))
+
+            obstime = parse_timestr(mobj.group(4), date)
+            exptime = float(mobj.group(5))
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, imgtype, '', objname_A, objname_B,
+                            exptime, obstime)
+                    mask = (False, False, False, False, False, False,
+                            False, False)
+                else:
+                    item = (frameid, fileid, imgtype, '', objname_A, objname_B,
+                            exptime, '')
+                    mask = (False, False, False, False, False, False,
+                            False, True)
+                logtable.add_row(item)
+            continue
+
+        # match is over. row does not match any case above
         print('Match error:', row)
+
     file1.close()
+
 
     maxlen_A = max([len(row['object_A']) for row in logtable])
     maxlen_B = max([len(row['object_B']) for row in logtable])
@@ -405,7 +448,7 @@ def parse_logfile_doublefiber(filename, date):
             row['object'] = '[A] {} [B] {}'.format(
                             row['object_A'].ljust(maxlen_A),
                             row['object_B'].ljust(maxlen_B))
-    logtable.remove_column(['object_A','object_B'])
+    logtable.remove_columns(['object_A','object_B'])
 
     return logtable
 
@@ -514,8 +557,10 @@ def make_obslog():
         # get exposure time from FITS header
         exptime_fits = head[exptime_key]
         if abs(exptime - exptime_fits)>1.0:
-            print('Error: Exposure time do not match: {} - {}'.format(
-                    exptime, exptime_fits))
+            print(('Error: FileID {}: '
+                    'Exposure time do not match. '
+                    '{} in log, {} in FITS').format(
+                    fileid, exptime, exptime_fits))
 
         # for post 2019 data, there's another keyword "EXPOEND" to record
         # exposur end time.
