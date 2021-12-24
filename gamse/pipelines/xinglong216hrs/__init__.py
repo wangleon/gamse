@@ -16,6 +16,7 @@ from ..common import load_obslog, load_config
 from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
+from .reduce_doublefiber_post2021oct import reduce_doublefiber_post2021oct
 
 def make_config():
     """Generate a config file for reducing the data taken with Xinglong 2.16m
@@ -244,12 +245,21 @@ def parse_logfile_singlefiber(filename, date):
                     ('obsdate', 'S23'),
             ], masked=True)
 
-    ptn1 = '([a-zA-Z]?[\d\-]+)'                 # for id string
-    ptn2 = '([a-zA-Z0-9+-_\[\]\s]+)'            # object name
-    ptn3 = '(\d{2}:\d{2}:\d{2})'                # time string
-    ptn4 = '([\.\d]+)'                          # exptime
-    ptn5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # ra
-    ptn6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # dec
+    ptn_lst = {
+            'id':       '([a-zA-Z]?[\d\-]+)',                 # for id string
+            'objname':  '([a-zA-Z0-9+-_\[\]\s]+)',            # object name
+            'btime':    '(\d{2}:\d{2}:\d{2})',                # time string
+            'exptime':  '([\.\d]+)',                          # exptime
+            'ra':       '(\d{2}:\d{2}:\d{2}\.?\d?\d?)',       # ra
+            'dec':      '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',   # dec
+            }
+    patterns = {
+            'Bias': '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst),
+            'Flat': '{id}\s*(flat)\s*{btime}\s*{exptime}'.format(**ptn_lst),
+            'ThAr': '{id}\s*(thar)\s*{btime}\s*{exptime}'.format(**ptn_lst),
+            }
+    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+                    '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
 
     yy, mm, dd = date
     file1 = open(filename, encoding='gbk')
@@ -258,9 +268,8 @@ def parse_logfile_singlefiber(filename, date):
 
         # match Bias, Flat and ThAr
         is_match = False
-        for objname in ['Bias', 'Flat', 'ThAr']:
-            pattern = '{}\s*({})\s*{}\s*{}'.format(
-                        ptn1, objname.lower(), ptn3, ptn4)
+        for objname, pattern in patterns.items():
+            # loop over bias, flat, and thar
             mobj = re.match(pattern, row.lower())
             if mobj:
                 id_lst = parse_idstring(mobj.group(1))
@@ -287,9 +296,7 @@ def parse_logfile_singlefiber(filename, date):
             continue
 
         # match science objects
-        pattern = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
-                    ptn1, ptn2, ptn3, ptn4, ptn5, ptn6)
-        mobj = re.match(pattern, row)
+        mobj = re.match(pattern_sci, row)
         if mobj:
             id_lst = parse_idstring(mobj.group(1))
             objname = mobj.group(2).strip()
@@ -880,14 +887,22 @@ def reduce_rawdata():
 
     # read obslog and config
     config = load_config('Xinglong216HRS\S*\.cfg$')
-    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
+    logtable = load_obslog('log.\S*\.txt$', fmt='astropy')
 
     fibermode = config['data']['fibermode']
 
     if fibermode == 'single':
         reduce_singlefiber(config, logtable)
     elif fibermode == 'double':
-        reduce_doublefiber(config, logtable)
+        # find obsdate
+        obsdate = dateutil.parser.parse(logtable[0]['obsdate'])
+
+        # since 2021 Oct, another config is used for double fiber
+        if obsdate.date() > datetime.date(2021, 10, 20):
+            reduce_doublefiber_post2021oct(config, logtable)
+        else:
+            reduce_doublefiber(config, logtable)
+
     else:
         print('Invalid fibermode:', fibermode)
 
