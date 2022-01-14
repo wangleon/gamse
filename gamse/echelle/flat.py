@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import math
 import multiprocessing as mp
@@ -2773,3 +2774,35 @@ class ProfileNormalizerCommon(object):
 
     def errfunc(self, param, x, y):
         return y - self.fitfunc(param, x)
+
+def save_crossprofile(filename, disp_x_lst, p1, p2, pstep, profile):
+
+    head = fits.Header()
+    head.append(('NDISP', disp_x_lst.size))
+    for ix, x in enumerate(disp_x_lst):
+        head.append(('IDISP{:02d}'.format(ix), x))
+
+    head.append(('P_START', p1))
+    head.append(('P_END',   p2))
+    head.append(('P_STEP',  pstep))
+    
+    hdulst = fits.HDUList([
+                fits.PrimaryHDU(profile, header=head)
+                ])
+    hdulst.writeto(filename, overwrite=True)
+
+def read_crossprofile(filename):
+    data, head = fits.getdata(filename, header=True)
+    ndisp = head['NDISP']
+    disp_x_lst = []
+    for i in range(ndisp):
+        key = 'IDISP{:02d}'.format(i)
+        disp_x_lst.append(head[key])
+    disp_x_lst = np.array(disp_x_lst)
+
+    p1    = head['P_START']
+    p2    = head['P_END']
+    pstep = head['P_STEP']
+    profilex = np.arange(p1, p2+1e-4, pstep)
+    profile = data
+    return disp_x_lst, profilex, profile
