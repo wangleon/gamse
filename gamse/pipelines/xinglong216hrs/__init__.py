@@ -16,7 +16,7 @@ from ..common import load_obslog, load_config
 from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
-from .reduce_doublefiber_post2021oct import reduce_doublefiber_post2021oct
+from .reduce_doublefiber_phase3 import reduce_doublefiber_phase3
 
 def make_config():
     """Generate a config file for reducing the data taken with Xinglong 2.16m
@@ -187,6 +187,8 @@ def make_config():
     config.add_section(sectname)
     config.set(sectname, 'extract', 
             "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
+    method = {'single':'optimal', 'double':'sum'}[fibermode]
+    config.set(sectname, 'method',      method)
     config.set(sectname, 'upper_limit', str(7))
     config.set(sectname, 'lower_limit', str(7))
 
@@ -899,7 +901,7 @@ def reduce_rawdata():
 
         # since 2021 Oct, another config is used for double fiber
         if obsdate.date() > datetime.date(2021, 10, 20):
-            reduce_doublefiber_post2021oct(config, logtable)
+            reduce_doublefiber_phase3(config, logtable)
         else:
             reduce_doublefiber(config, logtable)
 
