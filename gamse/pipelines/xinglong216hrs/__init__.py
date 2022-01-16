@@ -391,7 +391,7 @@ def parse_logfile_doublefiber(filename, date):
             imgtype = 'sci'
 
             if objname_A.lower() in ['flat', 'thar', 'comb', '']:
-                print('Error: [A] {} in sci frames'.format(objectname_A))
+                print('Error: [A] {} in sci frames'.format(objname_A))
 
             obstime = parse_timestr(mobj.group(4), date)
             exptime = float(mobj.group(5))
