@@ -15,7 +15,8 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import (espadons, feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
+from . import (espadons, feros, foces, harps, hds, hires, levy, lhrs, sarg,
+                uves, xinglong216hrs)
 
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
@@ -26,6 +27,7 @@ instrument_lst = [
     ('lhrs',            'LAMOST',           'HRS'),
     ('feros',           'MPG/ESO-2.2m',     'FEROS'),
     ('espadons',        'CFHT',             'ESPaDOnS'),
+    ('uves',            'VLT',              'UVES'),
     ]
 
 def reduce_echelle():

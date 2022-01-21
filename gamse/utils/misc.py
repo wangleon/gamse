@@ -3,6 +3,7 @@ import re
 import sys
 import logging
 logger = logging.getLogger(__name__)
+import datetime
 import getpass
 import platform
 import distro
@@ -120,6 +121,30 @@ def extract_date(string):
     datestr = '{:04d}-{:02d}-{:02d}'.format(year, month, day)
     try:
         day = datetime.datetime.strptime(datestr, '%Y-%m-%d')
-        return None
-    except:
         return datestr
+    except:
+        return None
+
+def get_date_from_cmd(default_date=None):
+    """ Get date from command line.
+
+    Args:
+        guess_date (str): An initial guess of the date.
+    """
+
+    while(True):
+        prompt = 'YYYY-MM-DD' if default_date is None else default_date
+
+        string = input('Date of observation [{}]: '.format(prompt))
+        input_date = extract_date(string)
+        if input_date is None:
+            if default_date is None:
+                continue
+            else:
+                input_date = default_date
+                break
+        else:
+            break
+   
+    input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
+    return input_datetime.date()
