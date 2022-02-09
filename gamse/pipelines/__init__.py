@@ -210,12 +210,21 @@ def show_onedspec():
                 )
     config.read(config_file_lst)
 
+    order0 = None # the default order to be displayed
+    skip_args = []
     filename_lst = []
-    for arg in sys.argv[2:]:
+
+    for iarg, arg in enumerate(sys.argv[2:]):
+
+        if iarg in skip_args:
+            continue
 
         # first, check if argument is a filename.
         if os.path.exists(arg):
             filename_lst.append(arg)
+        elif arg=='-o' or arg=='--order':
+            order0 = int(sys.argv[iarg+3])
+            skip_args.append(iarg+1)
         # if not a filename, try to find the corresponding items in obslog
         else:
             if config is None:
@@ -332,7 +341,9 @@ def show_onedspec():
         else:
             pass
 
-    order0 = list(spec_lst[0][0].keys())[0]
+    # find the order to be displayed
+    if order0 is None:
+        order0 = list(spec_lst[0][0].keys())[0]
     plot_order(order0)
 
     fig.canvas.mpl_connect('key_press_event', on_key)
