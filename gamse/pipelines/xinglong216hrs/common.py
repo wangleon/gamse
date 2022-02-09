@@ -25,7 +25,7 @@ from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
-from ...echelle.wlcalib import get_calib_from_header
+from ...echelle.wlcalib import get_calib_from_header, get_wavelength
 from ...utils.download import get_file
 from ...utils.onedarray import iterative_savgol_filter, get_edge_bin
 
@@ -1128,6 +1128,7 @@ class SpatialProfileFigure(Figure):
 def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     figname = kwargs.pop('figname', 'bkg_{:04d}.png')
     distance = kwargs.pop('distance', 7)
+    tharpollution_lst = kwargs.pop('tharpollution_lst', [])
 
     if mask is None:
         mask = np.zeros_like(data, dtype=np.int32)
@@ -1137,18 +1138,18 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     ally = np.arange(ny)
 
     bkg_image = np.zeros_like(data, dtype=np.float32)
-    plot_x = [10, 509, 2505]
+    #plot_x = [10, 509, 2505]
+    plot_x = []
 
-    saturated_cols = [610, 3422, 3595]
-    masked_x = []
-    for col in saturated_cols:
-        for x in np.arange(col-4, col+4):
-            masked_x.append(x)
+    # construct a mask of strong thar lines
+    strong_mask = np.zeros_like(data, dtype=np.bool)
+    for (x, y) in tharpollution_lst:
+        strong_mask[0:y+60, x-5:x+5] = True
 
+    # scan each column along dispersion direction
     for x in allx:
-        if x in masked_x:
-            continue
 
+        # plotting specific columns
         if x in plot_x:
             plot = True
             fig1 = plt.figure(figsize=(12,8))
@@ -1156,6 +1157,8 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
             ax02 = fig1.add_subplot(212)
         else:
             plot = False
+
+        # initialize mask
         mask_rows = np.zeros_like(ally, dtype=bool)
         for aper, aperloc in sorted(apertureset.items()):
             ycen = aperloc.position(x)
@@ -1165,8 +1168,12 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     
             imask = np.abs(ally - ycen) < distance
             mask_rows += imask
+        # now mask_rows is ready. in-order pixels>0, out-of-order pixels=0
+
         if plot:
             ax01.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
+
+        # prepare x_lst and y_lst for background node points selection
         x_lst, y_lst = [], []
         for (y1, y2) in get_edge_bin(~mask_rows):
             if plot:
@@ -1196,16 +1203,24 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
             y_lst.append(meany)
         x_lst = np.array(x_lst)
         y_lst = np.array(y_lst)
+        # filter out nagetive values
         y_lst = np.maximum(y_lst, 0)
+        # perform median filter
         y_lst = sg.medfilt(y_lst, 3)
+        # get background for this column by interpolating
         f = intp.InterpolatedUnivariateSpline(x_lst, y_lst, k=3, ext=3)
-        bkg = f(ally)
-        bkg_image[:, x] = bkg
+
+        valid_y = ally[~strong_mask[:,x]]
+        bkg = f(valid_y)
+        bkg_image[valid_y, x] = bkg
+        # plotting
         if plot:
             ax01.plot(x_lst, y_lst, 'o', color='C3', ms=3)
             ax02.plot(x_lst, y_lst, 'o', color='C3', ms=3)
-            ax01.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
-            ax02.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            #ax01.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            #ax02.plot(ally, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            ax01.plot(valid_y, bkg, ls='-', color='C3', lw=0.7, alpha=1)
+            ax02.plot(valid_y, bkg, ls='-', color='C3', lw=0.7, alpha=1)
             _y1, _y2 = ax02.get_ylim()
             ax02.plot(ally, data[:, x], color='C0', alpha=0.3, lw=0.7)
             ax02.set_ylim(_y1, _y2)
@@ -1214,8 +1229,84 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
             fig1.savefig(figname.format(x))
             plt.close(fig1)
 
-    for y in np.arange(ally):
-        m = 0
-        func = intp.InterpolateUnivariateSpline(allx, bkg_img[y, :], k=3)
-        bkg_img = 0
+    # for debug
+    #fits.writeto('mask.fits',np.int16(strong_mask), overwrite=True)
+
+    # scan each row and fill the pixels contaiminated by thar lines
+    if strong_mask.sum()>0:
+        for y in ally:
+            m = strong_mask[y, :]
+            if m.sum()>0:
+                func = intp.InterpolatedUnivariateSpline(
+                        allx[~m], bkg_image[y,:][~m], k=1)
+                bkg_image[y,:][m] = func(allx[m])
+
+    # for debug
+    #fits.writeto('bkg.fits', bkg_image, overwrite=True)
+
     return bkg_image
+
+def get_tharpollution_lst(calib, apertureset):
+
+    tharpollution_lst = []
+
+    k      = calib['k']
+    offset = calib['offset']
+    xorder = calib['xorder']
+    yorder = calib['yorder']
+    npixel = calib['npixel']
+    coeff  = calib['coeff']
+    strong_lines = [
+            6965.4307, # order 86
+            7067.2181, # order 85
+            7147.0416, # order 84
+            7272.9359, # order 83, 82
+            7383.9805, # order 82, 81
+            7503.8691, 7514.6518, # order 80
+            7635.1060, # order 79
+            7723.7611, 7724.2072, # order 78. close doublet.
+                                  # sometimes appear to be a single one
+            7948.1764, # order 76, 75
+            8006.1567, 8014.7857, # order 75
+            8103.6931, 8115.3110, # order 74
+            8264.5225, # order 73
+            8408.2096, 8424.6475, # order 71
+            8521.4422, # order 70
+            8667.9442, # order 69
+            9122.9674, # order 66
+            9224.4992, # order 65
+            9354.2198, # order 64
+            9657.7863, # order 62
+            9784.5028, # order 61
+            ]
+
+    # get wavelength range of every order
+    wvrange_lst = {}
+    for aper, aperloc in sorted(apertureset.items()):
+        order = aper*k + offset
+        wv = get_wavelength(coeff, npixel,
+                np.array([0, npixel-1]),
+                np.array([order, order])
+                )
+        wvrange_lst[aper] = (wv.min(), wv.max())
+
+    allx = np.arange(npixel)
+    # loop over apertures
+    for aper, wvrange in sorted(wvrange_lst.items()):
+        order = aper*k + offset
+        # loop over strong lines
+        for wv in strong_lines:
+            if wvrange[0] < wv < wvrange[1]:
+                wvlist = get_wavelength(coeff, npixel, allx,
+                            np.repeat(order, npixel))
+                if wvlist[0] < wvlist[-1]:
+                    f = intp.InterpolatedUnivariateSpline(wvlist, allx, k=1)
+                else:
+                    f = intp.InterpolatedUnivariateSpline(wvlist[::-1], allx[::-1], k=1)
+                x0 = f(wv)
+                y0 = apertureset[aper].position(x0)
+                x = int(np.round(x0))
+                y = int(np.round(y0))
+                tharpollution_lst.append((x, y))
+
+    return tharpollution_lst

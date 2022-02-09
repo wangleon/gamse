@@ -12,9 +12,11 @@ import scipy.interpolate as intp
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
 from ...echelle.flat  import (get_fiber_flat, mosaic_flat_auto, mosaic_images,
-                                mosaic_spec)
+                                mosaic_spec,
+                                save_crossprofile, read_crossprofile,
+                                )
 #from ...echelle.background import find_background, get_interorder_background
-from ...echelle.extract import extract_aperset
+from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
                                 reference_spec_wavelength,
@@ -24,7 +26,7 @@ from ...echelle.wlcalib import (wlcalib, recalib,
 from .common import (get_bias, get_mask, correct_overscan,
                     TraceFigure, BackgroundFigure, SpatialProfileFigure,
                      select_calib_from_database)
-from .common import get_interorder_background
+from .common import get_interorder_background, get_tharpollution_lst
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
                    smooth_aperpar_bkg, get_flat)
 
@@ -123,6 +125,11 @@ def reduce_singlefiber(config, logtable):
                  })
 
     # first combine the flats
+    p1, p2, pstep = -11, 11, 0.1
+    profile_x = np.arange(p1, p2+1e-4, pstep)
+    disp_x_lst = np.arange(48, ndisp, 500)
+
+    all_profile_lst = {}
     for flatname, logitem_lst in flat_groups.items():
         nflat = len(logitem_lst)       # number of flat fieldings
 
@@ -135,10 +142,13 @@ def reduce_singlefiber(config, logtable):
                             'trace_flat_{}.reg'.format(flatname))
         trace_figname = os.path.join(figpath,
                         'trace_flat_{}.{}'.format(flatname, fig_format))
+        profile_filename = os.path.join(midpath,
+                            'profile_flat_{}.fits'.format(flatname))
 
         # get flat_data and mask_array
         if mode=='debug' and os.path.exists(flat_filename) \
-            and os.path.exists(aperset_filename):
+            and os.path.exists(aperset_filename) \
+            and os.path.exists(profile_filename):
             # read flat data and mask array
             hdu_lst = fits.open(flat_filename)
             flat_data = hdu_lst[0].data
@@ -149,6 +159,8 @@ def reduce_singlefiber(config, logtable):
             exptime   = hdu_lst[0].header[exptime_key]
             hdu_lst.close()
             aperset = load_aperture_set(aperset_filename)
+            _, _, profile_lst = read_crossprofile(profile_filename)
+            all_profile_lst[flatname] = profile_lst
         else:
             # if the above conditions are not satisfied, comine each flat
             data_lst = []
@@ -193,7 +205,7 @@ def reduce_singlefiber(config, logtable):
                             '[{:d}]'.format(logitem['frameid']),
                             logitem['fileid'], logitem['object'],
                             logitem['exptime'], logitem['obsdate'],
-                            logitem['nsat'], logitem['q95'])
+                            logitem['saturation'], logitem['q95'])
                 print(message)
 
                 data_lst.append(data)
@@ -283,8 +295,9 @@ def reduce_singlefiber(config, logtable):
                         slit_file       = slit_file,
                         )
             '''
+
             fig_spatial = SpatialProfileFigure()
-            flat_sens, flatspec_lst = get_flat(
+            flat_sens, flatspec_lst, profile_lst = get_flat(
                     data            = flat_data,
                     mask            = flat_mask,
                     apertureset     = aperset,
@@ -296,6 +309,8 @@ def reduce_singlefiber(config, logtable):
                     mode            = 'debug',
                     fig_spatial     = fig_spatial,
                     flatname        = 'flat_{}'.format(flatname),
+                    profile_x       = profile_x,
+                    disp_x_lst      = disp_x_lst,
                     )
             figname = 'spatial_profile_flat_{}.png'.format(flatname)
             title = 'Spatial Profile of flat_{}'.format(flatname)
@@ -307,6 +322,11 @@ def reduce_singlefiber(config, logtable):
             flat_spec = [(aper, flatspec) for aper, flatspec
                             in sorted(flatspec_lst.items())]
             flat_spec = np.array(flat_spec, dtype=flatspectype)
+
+            # save cross-profiles
+            all_profile_lst[flatname] = profile_lst
+            save_crossprofile(profile_filename, disp_x_lst,
+                                p1, p2, pstep, profile_lst)
 
             # pack results and save to fits
             hdu_lst = fits.HDUList([
@@ -397,6 +417,12 @@ def reduce_singlefiber(config, logtable):
 
         master_aperset.save_txt(trac_file)
         master_aperset.save_reg(treg_file)
+
+
+
+    ############## averaeg cross-order profiles  ###############
+    profile = np.array([all_profile_lst[flatname] for flatname in flat_groups])
+    profile = profile.mean(axis=0)
 
     ############################## Extract ThAr ################################
 
@@ -773,6 +799,16 @@ def reduce_singlefiber(config, logtable):
     extr_filter = eval(extr_filter)
     extr_items = list(filter(extr_filter, logtable))
 
+
+    ##################### find thar pollution_lst ###########
+    section = config['reduce.background']
+    thar_pollution = section.getboolean('thar_pollution', False)
+    if thar_pollution:
+        tharpollution_lst = get_tharpollution_lst(
+                            ref_calib_lst[0], master_aperset)
+    else:
+        tharpollution_lst = []
+
     #################### Extract Science Spectrum ##############################
     for logitem in extr_items:
 
@@ -824,13 +860,14 @@ def reduce_singlefiber(config, logtable):
         ny, nx = data.shape
         allx = np.arange(nx)
         # get background lights
-        background = get_interorder_background(data, mask, master_aperset)
+        background = get_interorder_background(data, mask, master_aperset,
+                        tharpollution_lst = tharpollution_lst)
         for y in np.arange(ny):
             m = mask[y,:]==0
             f = intp.InterpolatedUnivariateSpline(
                     allx[m], background[y,:][m], k=3)
             background[y,:][~m] = f(allx[~m])
-        background = median_filter(background, size=(9,1), mode='nearest')
+        background = median_filter(background, size=(9,5), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')
 
@@ -871,51 +908,86 @@ def reduce_singlefiber(config, logtable):
 
         # extract 1d spectrum
         section = config['reduce.extract']
-        lower_limit = section.getfloat('lower_limit')
-        upper_limit = section.getfloat('upper_limit')
-
-        # extract 1d spectra of the object
-        spectra1d = extract_aperset(data, mask,
+        method = section.get('method')
+        if method == 'optimal':
+            result = extract_aperset_optimal(data, mask,
+                        background  = background,
                         apertureset = master_aperset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
+                        gain        = 1.02,
+                        ron         = 3.29,
+                        profilex    = profile_x,
+                        disp_x_lst  = disp_x_lst,
+                        main_disp   = 'x',
+                        profile_lst = profile,
                     )
-        message = '1D spectra of {} orders extracted'.format(len(spectra1d))
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
+            flux_opt_lst = result[0]
+            flux_err_lst = result[1]
+            back_opt_lst = result[2]
+            flux_sum_lst = result[3]
+            back_sum_lst = result[4]
 
-        # extract 1d spectra for straylight/background light
-        background1d = extract_aperset(background, mask,
-                        apertureset = master_aperset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
-                    )
-        message = '1D straylight of {} orders extracted'.format(
-                    len(background1d))
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
+            # pack spectrum
+            spec = []
+            for aper in sorted(flux_opt_lst.keys()):
+                n = flux_opt_lst[aper].size
 
-        prefix = 'HIERARCH GAMSE EXTRACTION '
-        head.append((prefix + 'LOWER LIMIT', lower_limit))
-        head.append((prefix + 'UPPER LIMIT', upper_limit))
+                row = (aper, 0, n,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_opt_lst[aper],             # flux
+                        flux_err_lst[aper],             # error
+                        back_opt_lst[aper],             # background
+                        np.zeros(n, dtype=np.int16),    # mask
+                        )
+                spec.append(row)
+            spec = np.array(spec, dtype=spectype)
 
-        # pack spectrum
-        spec = []
-        for aper, item in sorted(spectra1d.items()):
-            flux_sum = item['flux_sum']
-            n = flux_sum.size
-            # background 1d flux
-            back_flux = background1d[aper]['flux_sum']
+        elif method == 'sum':
+            lower_limit = section.getfloat('lower_limit')
+            upper_limit = section.getfloat('upper_limit')
 
-            row = (aper, 0, n,
-                    np.zeros(n, dtype=np.float64),  # wavelength
-                    flux_sum,                       # flux
-                    np.zeros(n, dtype=np.float32),  # error
-                    back_flux,                      # background
-                    np.zeros(n, dtype=np.int16),    # mask
-                    )
-            spec.append(row)
-        spec = np.array(spec, dtype=spectype)
+            # extract 1d spectra of the object
+            spectra1d = extract_aperset(data, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            norder = len(spectra1d)
+            message = '1D spectra of {} orders extracted'.format(norder)
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            # extract 1d spectra for straylight/background light
+            background1d = extract_aperset(background, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            message = '1D straylight of {} orders extracted'.format(
+                        len(background1d))
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            prefix = 'HIERARCH GAMSE EXTRACTION '
+            head.append((prefix + 'LOWER LIMIT', lower_limit))
+            head.append((prefix + 'UPPER LIMIT', upper_limit))
+
+            # pack spectrum
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                n = flux_sum.size
+                # background 1d flux
+                back_flux = background1d[aper]['flux_sum']
+            
+                row = (aper, 0, n,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux
+                        np.zeros(n, dtype=np.float32),  # error
+                        back_flux,                      # background
+                        np.zeros(n, dtype=np.int16),    # mask
+                        )
+                spec.append(row)
+            spec = np.array(spec, dtype=spectype)
 
         # wavelength calibration
         weight_lst = get_calib_weight_lst(ref_calib_lst,

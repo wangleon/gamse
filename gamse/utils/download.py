@@ -91,11 +91,10 @@ def download_file(url, filename, show_progress=True):
         str4 = 'ETA: {}'.format(eta)
 
         n = term_size.columns-len(str1)-len(str2)-len(str3)-len(str4)-20
-        progressbar = '>'*int(ratio*n)
-        progressbar = progressbar.ljust(n, '-')
+        progbar = '>'*int(ratio*n)
+        progbar = progbar.ljust(n, '-')
 
-        msg = '\r {} |{}| {} {} {}'.format(
-                str1, progressbar, str2, str3, str4)
+        msg = '\r {} |{}| {} {} {}'.format(str1, progbar, str2, str3, str4)
         sys.stdout.write(msg)
         sys.stdout.flush()
 

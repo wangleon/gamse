@@ -19,10 +19,12 @@ setup(
                     'gamse/pipelines/espadons',
                     'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
+                    'gamse/pipelines/harps',
                     'gamse/pipelines/hds',
                     'gamse/pipelines/hires',
                     'gamse/pipelines/levy',
                     'gamse/pipelines/lhrs',
+                    'gamse/pipelines/uves',
                     'gamse/pipelines/xinglong216hrs',
                    ],
     package_data = {

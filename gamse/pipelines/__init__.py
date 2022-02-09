@@ -15,7 +15,8 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import (espadons, feros, foces, hds, hires, levy, lhrs, sarg, xinglong216hrs)
+from . import (espadons, feros, foces, harps, hds, hires, levy, lhrs, sarg,
+                uves, xinglong216hrs)
 
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
@@ -26,6 +27,7 @@ instrument_lst = [
     ('lhrs',            'LAMOST',           'HRS'),
     ('feros',           'MPG/ESO-2.2m',     'FEROS'),
     ('espadons',        'CFHT',             'ESPaDOnS'),
+    ('uves',            'VLT',              'UVES'),
     ]
 
 def reduce_echelle():
@@ -210,18 +212,27 @@ def show_onedspec():
                 )
     config.read(config_file_lst)
 
+    order0 = None # the default order to be displayed
+    skip_args = []
     filename_lst = []
-    for arg in sys.argv[2:]:
+
+    for iarg, arg in enumerate(sys.argv[2:]):
+
+        if iarg in skip_args:
+            continue
 
         # first, check if argument is a filename.
         if os.path.exists(arg):
             filename_lst.append(arg)
+        elif arg=='-o' or arg=='--order':
+            order0 = int(sys.argv[iarg+3])
+            skip_args.append(iarg+1)
         # if not a filename, try to find the corresponding items in obslog
         else:
             if config is None:
-                config = load_config('\S*\.cfg$')
+                config = common.load_config('\S*\.cfg$')
             if logtable is None:
-                logtable = load_obslog('\S*\.obslog$')
+                logtable = common.load_obslog('\S*\.obslog$')
 
             # if arg is a number, find the corresponding filename in obslog
             if arg.isdigit():
@@ -232,7 +243,7 @@ def show_onedspec():
                         # get the path to the 1d spectra
                         odspath = section.get('odspath', None)
                         if odspath is None:
-                            odspath = section.get('oned_spec')
+                            odspath = section.get('onedspec')
 
                         # get the filename suffix for 1d spectra
                         oned_suffix = config['reduce'].get('oned_suffix')
@@ -332,7 +343,9 @@ def show_onedspec():
         else:
             pass
 
-    order0 = list(spec_lst[0][0].keys())[0]
+    # find the order to be displayed
+    if order0 is None:
+        order0 = list(spec_lst[0][0].keys())[0]
     plot_order(order0)
 
     fig.canvas.mpl_connect('key_press_event', on_key)
