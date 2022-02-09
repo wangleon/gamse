@@ -219,9 +219,9 @@ def show_onedspec():
         # if not a filename, try to find the corresponding items in obslog
         else:
             if config is None:
-                config = load_config('\S*\.cfg$')
+                config = common.load_config('\S*\.cfg$')
             if logtable is None:
-                logtable = load_obslog('\S*\.obslog$')
+                logtable = common.load_obslog('\S*\.obslog$')
 
             # if arg is a number, find the corresponding filename in obslog
             if arg.isdigit():
@@ -232,7 +232,7 @@ def show_onedspec():
                         # get the path to the 1d spectra
                         odspath = section.get('odspath', None)
                         if odspath is None:
-                            odspath = section.get('oned_spec')
+                            odspath = section.get('onedspec')
 
                         # get the filename suffix for 1d spectra
                         oned_suffix = config['reduce'].get('oned_suffix')
