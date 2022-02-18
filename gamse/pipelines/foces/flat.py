@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import math
+import shutil
 import logging
 logger = logging.getLogger(__name__)
 
@@ -336,7 +337,9 @@ def get_flat(data, mask, apertureset, nflat,
         n_finished = ixc + 1
         n_total    = xc_lst.size
         ratio = min(n_finished/n_total, 1.0)
-        term_size = os.get_terminal_size()
+        #term_size = os.get_terminal_size()
+        term_size = shutil.get_terminal_size(fallback=(120, 50))
+
         nchar = term_size.columns - 60
 
         string = '>'*int(ratio*nchar)
@@ -435,7 +438,8 @@ def get_flat(data, mask, apertureset, nflat,
     # define the function of refreshing the second progress bar
     def refresh_progressbar2(iaper):
         ratio = min(iaper/(len(apertureset)-1), 1.0)
-        term_size = os.get_terminal_size()
+        #term_size = os.get_terminal_size()
+        term_size = shutil.get_terminal_size(fallback=(120, 50))
         nchar = term_size.columns - 60
         string = '>'*int(ratio*nchar)
         string = string.ljust(nchar, '-')
