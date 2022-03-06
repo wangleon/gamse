@@ -48,6 +48,7 @@ def make_config():
    
     input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
 
+    '''
     # determine the fiber mode
     while(True):
         string = input(
@@ -61,7 +62,9 @@ def make_config():
         else:
             print('Invalid input: {}'.format(string))
             continue
+    '''
 
+    '''
     # select readout mode
     readout_mode_lst = [
                     'Left Top & Bottom',
@@ -81,15 +84,16 @@ def make_config():
         else:
             print('Invalid selection:', string)
             continue
-
-
     direction = {
             'Left Top & Bottom': 'xr-',
             'Left Bottom & Right Top': 'xr-',
             }[readout_mode]
+    '''
+    direction = 'xr-'
+
 
     # general database path for this instrument
-    dbpath = '~/.gamse/Xinglong216.HRS'
+    #dbpath = '~/.gamse/Xinglong216.HRS'
 
     # create config object
     config = configparser.ConfigParser()
@@ -110,12 +114,12 @@ def make_config():
     config.set('data', 'rawpath',      'rawdata')
     config.set('data', 'statime_key',  statime_key)
     config.set('data', 'exptime_key',  exptime_key)
-    config.set('data', 'readout_mode', readout_mode)
+    #config.set('data', 'readout_mode', readout_mode)
     config.set('data', 'direction',    direction)
     #config.set('data', 'obsinfo_file', 'obsinfo.txt')
-    config.set('data', 'fibermode',    fibermode)
-    if fibermode == 'double':
-        config.set('data', 'fiberoffset', str(-12))
+    #config.set('data', 'fibermode',    fibermode)
+    #if fibermode == 'double':
+    #    config.set('data', 'fiberoffset', str(-12))
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
@@ -159,7 +163,7 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
+    #config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'yes')
     config.set(sectname, 'window_size',      str(13))
@@ -180,15 +184,15 @@ def make_config():
     config.set(sectname, 'ncols',         str(9))
     config.set(sectname, 'distance',      str(7))
     config.set(sectname, 'yorder',        str(7))
-    config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
+    #config.set(sectname, 'database_path', os.path.join(dbpath, 'background'))
 
     # section of spectra extraction
     sectname = 'reduce.extract'
     config.add_section(sectname)
-    config.set(sectname, 'extract', 
-            "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
-    method = {'single':'optimal', 'double':'sum'}[fibermode]
-    config.set(sectname, 'method',      method)
+    #config.set(sectname, 'extract', 
+    #        "lambda row: row['imgtype']=='sci' or row['object'].lower()=='i2'")
+    #method = {'single':'optimal', 'double':'sum'}[fibermode]
+    config.set(sectname, 'method',      'optimal')
     config.set(sectname, 'upper_limit', str(7))
     config.set(sectname, 'lower_limit', str(7))
 
@@ -497,11 +501,14 @@ def make_obslog():
         print('Error: could not find log file')
         exit()
 
-    fibermode = config['data']['fibermode']
-    if fibermode == 'single':
-        logtable = parse_logfile_singlefiber(logfile, date)
-    elif fibermode == 'double':
-        logtable = parse_logfile_doublefiber(logfile, date)
+    logtable, fibermode = parse_logfile(logfile, date)
+
+    #fibermode = config['data']['fibermode']
+    #if fibermode == 'single':
+    #    logtable = parse_logfile_singlefiber(logfile, date)
+    #elif fibermode == 'double':
+    #    logtable = parse_logfile_doublefiber(logfile, date)
+
     message = 'Read log from "{}"'.format(logfile)
     print(message)
     logfilename = 'log.{0:04d}-{1:02d}-{2:02d}.txt'.format(*date)
@@ -535,14 +542,19 @@ def make_obslog():
     statime_key = config['data'].get('statime_key')
     exptime_key = config['data'].get('exptime_key')
 
-    nsat_lst = []
-    q95_lst  = []
+    nsat_lst    = []
+    q95_lst     = []
+    binning_lst = []
+    amp_lst     = []
+    gain_lst    = []
+    speed_lst   = []
 
-    fmt_str = ('  - {:5s} {:11s} {:5s} ' + '{{:<{}s}}'.format(maxobjlen) +
+    fmt_str = ('  - {:7s} {:11s} {:5s} ' + '{{:<{}s}}'.format(maxobjlen) +
                 #' {:1s}I2 {:>7} {:23s} {:>7} {:>5}')
-                ' {:>7} {:23s} {:>7} {:>5}')
-    head_str = fmt_str.format('frameid', 'fileid', 'type', 'object', '',
-                                'exptime', 'obsdate', 'nsat', 'q95')
+                ' {:>7} {:23s} {:<7} {:<4} {:<4} {:>5} {:>7} {:>5}')
+    head_str = fmt_str.format('frameid', 'fileid', 'type', 'object',
+                'exptime', 'obsdate', 'binning', 'amp', 'gain', 'speed',
+                'nsat', 'q95')
     print(head_str)
 
     # start scanning the raw files
@@ -630,14 +642,33 @@ def make_obslog():
 
         #imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
+        # find CCD binning
+        binning = '(1, 1)'
+
+        # CCD readout amplifier. optional amplifiers are:
+        # 'LT&B' (Left Top & Bottom),
+        # 'LBRT' (Left Bottom & Right Top)
+        amp = 'LTB'
+
+        # CCD readout gain
+        gain = 'STD'
+
+        # readout speed. optional modes are: 50k, 100k, 200k, 500k, 1M
+        speed = '100k'
+
         # determine the total number of saturated pixels
-        saturation = (data>=65535).sum()
+        nsat = (data>=65535).sum()
 
         # find the 95% quantile
-        quantile95 = int(np.round(np.percentile(data, 95)))
+        q95 = int(np.round(np.percentile(data, 95)))
 
-        nsat_lst.append(saturation)
-        q95_lst.append(quantile95)
+        binning_lst.append(binning)
+        amp_lst.append(amp)
+        gain_lst.append(gain)
+        speed_lst.append(speed)
+        nsat_lst.append(nsat)
+        q95_lst.append(q95)
+        
 
         #item = [frameid, fileid, imgtype, objectname, i2, exptime,
         #        obsdate.isoformat()[0:23], saturation, quantile95]
@@ -650,12 +681,16 @@ def make_obslog():
                     '[{:d}]'.format(frameid), fileid,
                     '({:3s})'.format(imgtype),
                     objectname, exptime, obsdate.isoformat()[0:23],
-                    saturation, quantile95)
+                    binning, amp, gain, speed, nsat, q95)
         print(print_wrapper(string, logitem))
 
     # sort by obsdate
     #logtable.sort('obsdate')
-    logtable.add_column(nsat_lst, name='saturation')
+    logtable.add_column(binning_lst, name='binning')
+    logtable.add_column(amp_lst, name='amp')
+    logtable.add_column(gain_lst, name='gain')
+    logtable.add_column(speed_lst, name='speed')
+    logtable.add_column(nsat_lst, name='nsat')
     logtable.add_column(q95_lst, name='q95')
     logtable['object'].info.format = '%-{}s'.format(maxobjlen)
     logtable.write(logfilename, format='ascii.fixed_width_two_line',
@@ -718,6 +753,179 @@ def make_obslog():
     for row in logtable.pformat_all():
         outfile.write(row+os.linesep)
     outfile.close()
+
+def parse_logfile(filename, date):
+
+    logtable = Table(dtype=[
+                    ('frameid',     'i2'),
+                    ('fileid',      'S11'),
+                    ('imgtype',     'S3'),
+                    ('object',      'S80'),
+                    ('object_A',    'S50'),
+                    ('object_B',    'S50'),
+                    ('exptime',     'f4'),
+                    ('obsdate',     'S23'),
+            ], masked=True)
+
+    ptn_lst = {
+            # id sting
+            'id':       '([a-zA-Z]?[\d\-]+)',
+            # object name including double-fiber objects
+            'objname':  '([a-zA-Z0-9+-_\[\]\s]+)',
+            # object name excluding double-fiber objects
+            'objname2': '([a-zA-Z0-9+-_\s]+)',
+            # begin time string
+            'btime':    '(\d{2}:\d{2}:\d{2})',
+            # exptime
+            'exptime':  '([\.\d]+)',
+            # ra and dec
+            'ra':       '(\d{2}:\d{2}:\d{2}\.?\d?\d?)',
+            'dec':      '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',
+            }
+
+    # determine 3 types of match patterns
+    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+                    '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
+    pattern_2objects = ('\[A\]\s*{objname2}\s*'
+                        '\[B\]\s*{objname2}').format(**ptn_lst)
+    pattern_cal = ('{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
+
+    # pattern cal can also match pattern_sci and pattern_bias. so match
+    # pattern_bias first, thn pattern_sci, and finally pattern_cal
+
+    yy, mm, dd = date
+    file1 = open(filename, encoding='gbk')
+    for row in file1:
+        row = row.strip()
+
+        # match Bias
+        mobj = re.match(pattern_bias, row.lower())
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            obstime = parse_timestr(mobj.group(3), date)
+            exptime = float(mobj.group(4))
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, 'cal', 'Bias', '', '',
+                            exptime, obstime)
+                    mask = (False, False, False, False, False, False,
+                            False, False)
+                else:
+                    item = (frameid, fileid, 'cal', 'Bias', '', '',
+                            exptime, '')
+                    mask = (False, False, False, False, False, False,
+                            False, True)
+                logtable.add_row(item)
+            continue
+
+        # match sci frames (any rows with ra, dec coordinates)
+        mobj = re.match(pattern_sci, row)
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            objname = mobj.group(2).strip()
+            obstime = parse_timestr(mobj.group(3), date)
+            exptime = float(mobj.group(4))
+            imgtype = 'sci'
+
+            mobj2 = re.match(pattern_2objects, objname)
+            if mobj2:
+                # overwritten objname
+                objname   = ''
+                # generate object names for two fibers respectively
+                objname_A = mobj2.group(1).strip()
+                objname_B = mobj2.group(2).strip()
+
+                if objname_A.lower() in ['flat', 'thar', 'comb', '']:
+                    print('Error: [A] {} in sci frames'.format(objname_A))
+            else:
+                objname_A = ''
+                objname_B = ''
+
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, imgtype, objname,
+                            objname_A, objname_B, exptime, obstime)
+                    mask = (False, False, False, False,
+                            False, False, False, False)
+                else:
+                    item = (frameid, fileid, imgtype, objname,
+                            objname_A, objname_B, exptime, '')
+                    mask = (False, False, False, False,
+                            False, False, False, True)
+                logtable.add_row(item)
+            continue
+
+        # match cal frames (any rows without coordinates)
+        mobj = re.match(pattern_cal, row)
+        if mobj:
+            id_lst = parse_idstring(mobj.group(1))
+            objname = mobj.group(2).strip()
+            obstime = parse_timestr(mobj.group(3), date)
+            exptime = float(mobj.group(4))
+            imgtype = 'cal'
+
+            mobj2 = re.match(pattern_2objects, objname)
+            if mobj2:
+                # overwritten objname
+                objname   = ''
+                # generate object names for two fibers respectively
+                objname_A = mobj2.group(1).strip()
+                objname_B = mobj2.group(2).strip()
+
+                if objname_A.lower() not in ['flat', 'thar', 'comb', '']:
+                    print('Error: Unknown object in fiber [A]: {}'.format(
+                        objectname_A))
+                if objname_B.lower() not in ['flat', 'thar', 'comb', '']:
+                    print('Error: Unknown object in fiber [B]: {}'.format(
+                        objectname_B))
+            else:
+                objname_A = ''
+                objname_B = ''
+
+            for iframe, frameid in enumerate(id_lst):
+                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                                yy, mm, dd, frameid)
+                if iframe==0:
+                    item = (frameid, fileid, imgtype, objname,
+                            objname_A, objname_B, exptime, obstime)
+                    mask = (False, False, False, False,
+                            False, False, False, False)
+                else:
+                    item = (frameid, fileid, imgtype, objname,
+                            objname_A, objname_B, exptime, '')
+                    mask = (False, False, False, False,
+                            False, False, False, True)
+                logtable.add_row(item)
+            continue
+
+        # match is over. row does not match any case above
+        print('Match error:', row)
+
+    file1.close()
+
+    # determine fibermode = 'single' or 'double'
+    maxlen_A = max([len(row['object_A']) for row in logtable])
+    maxlen_B = max([len(row['object_B']) for row in logtable])
+    if maxlen_A == 0 and maxlen_B == 0:
+        fibermode = 'single'
+    else:
+        fibermode = 'double'
+
+        for row in logtable:
+            if len(row['object'])==0:
+                row['object'] = '[A] {} [B] {}'.format(
+                                row['object_A'].ljust(maxlen_A),
+                                row['object_B'].ljust(maxlen_B))
+    logtable.remove_columns(['object_A','object_B'])
+
+    return logtable, fibermode
+
+
+
 
 def read_logfile(filename):
     """Read ascii log file.
