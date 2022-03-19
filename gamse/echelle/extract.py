@@ -847,3 +847,208 @@ def optimal_extract(data, mask, apertureset):
                     flux_sum, flux_opt))
     spec = np.array(spec, dtype=spectype)
 
+
+def extract_aperset_optimal_multifiber(data, mask, background,
+        apertureset_lst, ron, gain, main_disp, profilex, disp_x_lst,
+        extract_fiber, all_profile_lst=None):
+    """Extract 1-D spectra from the input image using the optimal method.
+
+    Args:
+        data ():
+        mask ():
+    """
+
+    fiber_lst = sorted(list(apertureset_lst.keys()))
+
+    def errfunc(p, flux, interf, x):
+        return flux - fitfunc(p, interf, x)
+    def fitfunc(p, interf, x):
+        A, cen = p
+        return A*interf(x-cen)
+    def errfunc2(p, flux, interf_lst, cen_lst, x):
+        return flux - fitfunc2(p, interf_lst, cen_lst, x)
+    def fitfunc2(p, interf_lst, cen_lst, x):
+        y = np.zeros_like(x, dtype=np.float32)
+        for i in range(len(interf_lst)):
+            A = p[i]
+            interf = interf_lst[i]
+            cen = cen_lst[i]
+            y += A*interf(x-cen)
+        return y
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
+
+    # determine pixel number along the main-dispersion and cross-dispesion
+    # directions
+    ndisp = {'x':nx, 'y':ny}[main_disp]
+    ncros = {'x':ny, 'y':nx}[main_disp]
+
+    p1 = profilex[0]
+    p2 = profilex[-1]
+
+    if all_profile_lst is None:
+        pass
+    else:
+        pass
+
+    profilex_lst = disp_x_lst
+
+    for fiber in fiber_lst:
+        all_profile_lst[fiber] = np.array(all_profile_lst[fiber])
+
+
+    # interprofilefunc list should be an fiber dict
+    all_interprofilefunc_lst = {}
+    for fiber in fiber_lst:
+        profile_lst = all_profile_lst[fiber]
+        npoints = profile_lst.shape[1]
+
+        interprofilefunc_lst = {}
+        for idisp in np.arange(ndisp):
+            profile = np.zeros(npoints)
+            for i in np.arange(npoints):
+                f = intp.InterpolatedUnivariateSpline(
+                        profilex_lst, profile_lst[:, i], k=3, ext=3)
+                profile[i] = f(idisp)
+            interprofilefunc = intp.InterpolatedUnivariateSpline(
+                    profilex, profile, k=3, ext=3)
+            interprofilefunc_lst[idisp] = interprofilefunc
+        all_interprofilefunc_lst[fiber] = interprofilefunc_lst
+
+
+    allpos_lst = []
+    for fiber in fiber_lst:
+        apertureset = apertureset_lst[fiber]
+        for aper, aperloc in sorted(apertureset.items()):
+            pos = aperloc.position(ndisp//2)
+            allpos_lst.append((fiber, aper, pos))
+    allpos_lst = sorted(allpos_lst, key=lambda item: item[2])
+    allaper_lst = [(fiber, aper) for fiber, aper, pos in allpos_lst]
+    naper = len(allaper_lst)
+
+    apertureset = apertureset_lst[extract_fiber]
+    interprofilefunc_lst = all_interprofilefunc_lst[extract_fiber]
+
+    flux_sum_lst = {}
+    flux_opt_lst = {}
+    flux_err_lst = {}
+    back_sum_lst = {}
+    back_opt_lst = {}
+    for aper, aperloc in sorted(apertureset.items()):
+        flux_sum_lst[aper] = []
+        flux_opt_lst[aper] = []
+        flux_err_lst[aper] = []
+        back_sum_lst[aper] = []
+        back_opt_lst[aper] = []
+
+        idx = allaper_lst.index((extract_fiber, aper))
+
+        for idisp in np.arange(ndisp):
+            interf = interprofilefunc_lst[idisp]
+            interf_lst = [interf]
+            cen = aperloc.position(idisp)
+            cen_lst = [cen]
+            intc = np.int(np.round(cen))
+            i1 = int(intc + p1)
+            i2 = int(intc + p2 + 1)
+            i1 = max(i1, 0)
+            i2 = min(i2, ncros)
+            if i2-i1 < (p2-p1)/2:
+                flux_opt_lst[aper].append(0.0)
+                flux_sum_lst[aper].append(0.0)
+                flux_err_lst[aper].append(0.0)
+                back_sum_lst[aper].append(0.0)
+                continue
+            indx = np.arange(i1, i2)
+            if main_disp == 'x':
+                flux = data[indx, idisp]
+                back = background[indx, idisp]
+            elif main_disp == 'y':
+                flux = data[idisp, indx]
+                back = background[idisp, indx]
+            else:
+                raise ValueError
+            para_lst = [flux.max()]
+            # extend
+            if idx > 0:
+                fiber1, aper1 = allaper_lst[idx-1]
+                interf1 = all_interprofilefunc_lst[fiber1][idisp]
+                interf_lst.append(interf1)
+                aperloc1 = apertureset_lst[fiber1][aper1]
+                cen1 = aperloc1.position(idisp)
+                cen_lst.append(cen1)
+                intc1 = np.int(np.round(cen1))
+                i1 = max(intc1 - 2, 0)
+                indx = np.arange(i1, i2)
+                if main_disp == 'x':
+                    flux = data[indx, idisp]
+                    back = background[indx, idisp]
+                elif main_disp == 'y':
+                    flux = data[idisp, indx]
+                    back = background[idisp, indx]
+                else:
+                    raise ValueError
+                para_lst.append(flux[2])
+
+            if idx < naper-1:
+                fiber2, aper2 = allaper_lst[idx+1]
+                interf2 = all_interprofilefunc_lst[fiber2][idisp]
+                interf_lst.append(interf2)
+                aperloc2 = apertureset_lst[fiber2][aper2]
+                cen2 = aperloc2.position(idisp)
+                cen_lst.append(cen2)
+                intc2 = np.int(np.round(cen2))
+                i2 = min(intc2 + 2, ncros)
+                indx = np.arange(i1, i2)
+                if main_disp == 'x':
+                    flux = data[indx, idisp]
+                    back = background[indx, idisp]
+                elif main_disp == 'y':
+                    flux = data[idisp, indx]
+                    back = background[idisp, indx]
+                else:
+                    raise ValueError
+                para_lst.append(flux[-2])
+
+
+            mask = np.ones_like(flux, dtype=np.bool)
+            for ite in range(10):
+                result = opt.least_squares(errfunc2, para_lst,
+                        args=(flux[mask], interf_lst, cen_lst, indx[mask]))
+                newpara_lst = result['x']
+                fitprof = fitfunc2(newpara_lst, interf_lst, cen_lst, indx)
+                resprof = flux - fitprof
+                std = resprof[mask].std()
+                new_mask = resprof < 3*std
+                if new_mask.sum() == mask.sum():
+                    break
+                mask = new_mask
+                para_lst = newpara_lst
+
+            single_prof = fitfunc2(newpara_lst[0:1], interf_lst[0:1],
+                            cen_lst[0:1], indx)
+            frac = np.maximum(single_prof/fitprof, 0)
+
+            var = np.maximum(fitprof+back, 0)+(ron/gain)**2
+            mask = resprof < 3*np.sqrt(var)
+            s_lst = 1/var
+            normprof = frac*fitprof/fitprof.sum()
+            ssum = (s_lst*normprof**2)[mask].sum()
+            fopt = ((s_lst*normprof*flux)[mask].sum())/ssum
+            vopt = (normprof[mask].sum()             )/ssum
+            bopt = ((s_lst*normprof*back)[mask].sum())/ssum
+            ferr = math.sqrt(np.maximum(vopt,0))
+            fsum = flux.sum()
+            bsum = back.sum()
+            flux_opt_lst[aper].append(fopt)
+            flux_sum_lst[aper].append(fsum)
+            flux_err_lst[aper].append(ferr)
+            back_sum_lst[aper].append(bsum)
+            back_opt_lst[aper].append(bopt)
+        print('Spectrum of Fiber {}, Aperture {:3d} extracted'.format(
+                extract_fiber, aper))
+
+    return (flux_opt_lst, flux_err_lst, back_opt_lst,
+            flux_sum_lst, back_sum_lst)
