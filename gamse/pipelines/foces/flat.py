@@ -179,10 +179,8 @@ class AperparPlotter(object):
 
 def get_flat(data, mask, apertureset, nflat,
         #smooth_A_func, smooth_c_func, smooth_bkg_func,
-        slit_step = 0,
-        q_threshold=30, mode='normal',
-        fig_spatial=None,
-        flatname = '',
+        slit_step = 0, q_threshold=30, mode='normal',
+        fig_spatial=None, flatname=None, profile_x=None, disp_x_lst=None,
         ):
     """ Get flat.
     """
@@ -210,23 +208,27 @@ def get_flat(data, mask, apertureset, nflat,
     all_positions  = apertureset.get_positions(allx)
     all_boundaries = apertureset.get_boundaries(allx)
 
-    p1, p2, pstep = -10, 10, 0.1
-    profile_x = np.arange(p1+1, p2-1+1e-4, pstep)
-    profilex_lst = []
-    profiley_lst = []
+    #p1, p2, pstep = -10, 10, 0.1
+    #profile_x = np.arange(p1+1, p2-1+1e-4, pstep)
+    p1 = profile_x[0]  - 1
+    p2 = profile_x[-1] + 1
+
+    #profilex_lst = []
+    #profiley_lst = []
+    profile_lst = []
 
     # find saturation mask
     sat_mask = (mask&4 > 0)
     bad_mask = (mask&2 > 0)
 
-    x0 = 32
-    winsize = 400
-    xc_lst = np.arange(x0, nx, winsize)
+    #x0 = 32
+    #winsize = 400
+    #xc_lst = np.arange(x0, nx, winsize)
     # n = 6
 
     fig_show = plt.figure(figsize=(12, 3), dpi=200)
 
-    for ixc, xc in enumerate(xc_lst):
+    for ixc, xc in enumerate(disp_x_lst):
         xc = int(xc)
         x = xc
         # initialize the mean profiles
@@ -287,7 +289,6 @@ def get_flat(data, mask, apertureset, nflat,
 
             normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
 
-
             newx = normed_prof.x
             newy = normed_prof.y
             newm = normed_prof.m
@@ -335,11 +336,10 @@ def get_flat(data, mask, apertureset, nflat,
         #n_finished = ixc*6 + ix + 1
         #n_total    = xc_lst.size*6
         n_finished = ixc + 1
-        n_total    = xc_lst.size
+        n_total    = disp_x_lst.size
         ratio = min(n_finished/n_total, 1.0)
         #term_size = os.get_terminal_size()
         term_size = shutil.get_terminal_size(fallback=(120, 50))
-
         nchar = term_size.columns - 60
 
         string = '>'*int(ratio*nchar)
@@ -384,8 +384,7 @@ def get_flat(data, mask, apertureset, nflat,
             ax2.set_xlim(_x1, _x2)
             ax2.set_ylim(_y1, _y2)
 
-        profilex_lst.append(xc)
-        profiley_lst.append(profile_y)
+        profile_lst.append(profile_y)
 
     # use light green color
     print(' \033[92m Completed\033[0m')
@@ -393,9 +392,9 @@ def get_flat(data, mask, apertureset, nflat,
     fig_show.savefig('spatialprofile_foces.pdf')
     plt.close(fig_show)
 
-    profilex_lst = np.array(profilex_lst)
-    profiley_lst = np.array(profiley_lst)
-    npoints = profiley_lst.shape[1]
+    profilex_lst = np.array(disp_x_lst)
+    profile_lst = np.array(profile_lst)
+    npoints = profile_lst.shape[1]
 
     interprofilefunc_lst = {}
     corr_mask_array = []
@@ -404,7 +403,7 @@ def get_flat(data, mask, apertureset, nflat,
         profile = np.zeros(npoints)
         for i in np.arange(npoints):
             f = InterpolatedUnivariateSpline(
-                    profilex_lst, profiley_lst[:, i], k=3, ext=3)
+                    profilex_lst, profile_lst[:, i], k=3, ext=3)
             profile[i] = f(x)
         interprofilefunc = InterpolatedUnivariateSpline(
                 profile_x, profile, k=3, ext=3)
@@ -785,7 +784,7 @@ def get_flat(data, mask, apertureset, nflat,
 
     ###################### aperture loop ends here ########################
 
-    return flatdata, flatspec_lst
+    return flatdata, flatspec_lst, profile_lst
 
 def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
     """Smooth *A* of the four 2D profile parameters (*A*, *k*, *c*, *bkg*) of
