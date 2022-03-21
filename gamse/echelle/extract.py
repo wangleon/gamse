@@ -154,8 +154,22 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     """Extract 1-D spectra from the input image using the optimal method.
 
     Args:
-        data ():
-        mask ():
+        data (:class:`numpy.ndarray`): Input Image data with background
+            subtracted.
+        mask (:class:`numpy.ndarray`): Image mask with the same shape as
+            **data**.
+        background (:class:`numpy.ndarray`): Backgroud Image with the same
+            shape as **data**.
+        apertureset (:class:`~gamse.echelle.trace.ApertureSet`): Apertures.
+        ron (float): Readout Noise in unit of e-.
+        gain (float): CCD gain in unit of e-/ADU.
+        profilex (:class:`numpy.ndarray`): The sampling points of cross-order
+            profiles.
+        disp_x_lst (:class:`numpy.ndarray`): An array of the profile sampling
+            position along the main-dispersion direction.
+        main_disp (str): Axes of the main dispersion direction ("x" or "y").
+        profile_lst (:class:`numpy.ndarray`): Cross order profile array.
+
     """
 
     def get_profile(xnodes, ynodes, p1, p2, step):
@@ -176,11 +190,16 @@ def extract_aperset_optimal(data, mask, background, apertureset,
         ylst = np.array(ylst)
         return ylst
 
+    # fitting and error function of profile fitting, with central positions
+    # and amplitude as the free parameters.
     def errfunc(p, flux, interf, x):
         return flux - fitfunc(p, interf, x)
     def fitfunc(p, interf, x):
         A, cen = p
         return A*interf(x-cen)
+
+    # fitting and error function of profile fitting, with central positions
+    # fixed, and only the amplitudes as the free parameter.
     def errfunc2(p, flux, interf, x):
         return flux - fitfunc2(p, interf, x)
     def fitfunc2(p, interf, x):
@@ -196,11 +215,13 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     ndisp = {'x':nx, 'y':ny}[main_disp]
     ncros = {'x':ny, 'y':nx}[main_disp]
 
+    # left and right ends of profile sampling
     p1 = profilex[0]
     p2 = profilex[-1]
 
     if profile_lst is None:
-        # produce profile
+        # cross-order profile is not given. generate profile with the input
+        # image.
 
         profile_lst = []
 
@@ -310,6 +331,8 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     else:
         pass
 
+    # get a list of cross-order profile interpolation function for every x
+    # along the main-dispersion direction.
     profilex_lst = disp_x_lst
     profile_lst = np.array(profile_lst)
     npoints = profile_lst.shape[1]
@@ -339,6 +362,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
 
     
 
+    # initialize result arrays
     flux_sum_lst = {}
     flux_opt_lst = {}
     flux_err_lst = {}
@@ -394,6 +418,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 mask = new_mask
                 para = newpara
 
+            # Horne 1986, PASP, 98, 609 Formula 7-9
             #var = np.maximum(flux+back, 0)+(ron/gain)**2
             var = np.maximum(fitprof+back, 0)+(ron/gain)**2
             mask = resprof < 3*np.sqrt(var)
@@ -854,17 +879,40 @@ def extract_aperset_optimal_multifiber(data, mask, background,
     """Extract 1-D spectra from the input image using the optimal method.
 
     Args:
-        data ():
-        mask ():
+        data (:class:`numpy.ndarray`): Input Image data with background
+            subtracted.
+        mask (:class:`numpy.ndarray`): Image mask with the same shape as
+            **data**.
+        background (:class:`numpy.ndarray`): Backgroud Image with the same
+            shape as **data**.
+        apertureset_lst (list): Apertures of different fibers. A list of
+            :class:`~gamse.echelle.trace.ApertureSet` instances.
+        ron (float): Readout Noise in unit of e-.
+        gain (float): CCD gain in unit of e-/ADU.
+        main_disp (str): Axes of the main dispersion direction ("x" or "y").
+        profilex (:class:`numpy.ndarray`): The sampling points of cross-order
+            profiles.
+        disp_x_lst (:class:`numpy.ndarray`): An array of the profile sampling
+            position along the main-dispersion direction.
+        extract_fiber (str): The fiber for which the 1-d spectra to be
+            extracted.
+        all_profile_lst (:class:`numpy.ndarray`): A dict of cross order
+            profile array in different orders.
     """
 
+    # list of all fibers in apertureset_lst
     fiber_lst = sorted(list(apertureset_lst.keys()))
 
+    # fitting and error function of profile fitting, with central positions
+    # and amplitude as the free parameters.
     def errfunc(p, flux, interf, x):
         return flux - fitfunc(p, interf, x)
     def fitfunc(p, interf, x):
         A, cen = p
         return A*interf(x-cen)
+
+    # fitting and error function of profile fitting, with central positions
+    # fixed, and only the amplitudes as the free parameter.
     def errfunc2(p, flux, interf_lst, cen_lst, x):
         return flux - fitfunc2(p, interf_lst, cen_lst, x)
     def fitfunc2(p, interf_lst, cen_lst, x):
@@ -885,6 +933,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
     ndisp = {'x':nx, 'y':ny}[main_disp]
     ncros = {'x':ny, 'y':nx}[main_disp]
 
+    # left and right ends of profile sampling
     p1 = profilex[0]
     p2 = profilex[-1]
 
@@ -895,6 +944,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
 
     profilex_lst = disp_x_lst
 
+    # convert all elements in all_profile_lst into numpy array
     for fiber in fiber_lst:
         all_profile_lst[fiber] = np.array(all_profile_lst[fiber])
 
@@ -902,6 +952,8 @@ def extract_aperset_optimal_multifiber(data, mask, background,
     # interprofilefunc list should be an fiber dict
     all_interprofilefunc_lst = {}
     for fiber in fiber_lst:
+        # get a list of cross-order profile interpolation function for every x
+        # along the main-dispersion direction.
         profile_lst = all_profile_lst[fiber]
         npoints = profile_lst.shape[1]
 
@@ -917,7 +969,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
             interprofilefunc_lst[idisp] = interprofilefunc
         all_interprofilefunc_lst[fiber] = interprofilefunc_lst
 
-
+    # sort all orders based on their positions along the cross-order direction
     allpos_lst = []
     for fiber in fiber_lst:
         apertureset = apertureset_lst[fiber]
@@ -925,12 +977,16 @@ def extract_aperset_optimal_multifiber(data, mask, background,
             pos = aperloc.position(ndisp//2)
             allpos_lst.append((fiber, aper, pos))
     allpos_lst = sorted(allpos_lst, key=lambda item: item[2])
+    # sort apertures based on pos
     allaper_lst = [(fiber, aper) for fiber, aper, pos in allpos_lst]
+    # number of all orders (apertures)
     naper = len(allaper_lst)
 
+    # focus on the fiber to be extracted.
     apertureset = apertureset_lst[extract_fiber]
     interprofilefunc_lst = all_interprofilefunc_lst[extract_fiber]
 
+    # initialize result arrays
     flux_sum_lst = {}
     flux_opt_lst = {}
     flux_err_lst = {}
@@ -971,7 +1027,9 @@ def extract_aperset_optimal_multifiber(data, mask, background,
             else:
                 raise ValueError
             para_lst = [flux.max()]
-            # extend
+            # extend the interf_lst and cen_lst
+
+            # get the fiber and aperture of the left order
             if idx > 0:
                 fiber1, aper1 = allaper_lst[idx-1]
                 interf1 = all_interprofilefunc_lst[fiber1][idisp]
@@ -992,6 +1050,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
                     raise ValueError
                 para_lst.append(flux[2])
 
+            # get the fiber and aperture of the left order
             if idx < naper-1:
                 fiber2, aper2 = allaper_lst[idx+1]
                 interf2 = all_interprofilefunc_lst[fiber2][idisp]
@@ -1027,10 +1086,12 @@ def extract_aperset_optimal_multifiber(data, mask, background,
                 mask = new_mask
                 para_lst = newpara_lst
 
+            # calculate fraction of light from this order.
             single_prof = fitfunc2(newpara_lst[0:1], interf_lst[0:1],
                             cen_lst[0:1], indx)
             frac = np.maximum(single_prof/fitprof, 0)
 
+            # Horne 1986, PASP, 98, 609 Formula 7-9
             var = np.maximum(fitprof+back, 0)+(ron/gain)**2
             mask = resprof < 3*np.sqrt(var)
             s_lst = 1/var
