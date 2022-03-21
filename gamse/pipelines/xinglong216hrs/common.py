@@ -30,18 +30,23 @@ from ...utils.download import get_file
 from ...utils.onedarray import iterative_savgol_filter, get_edge_bin
 
 
-def get_region_lst(header, readout_mode):
+def get_region_lst(header, amp):
     """Get a list of (science, overscan) rectangles of the CCD regions based on
     input header and readout mode.
 
     Args:
         header (:class:`astropy.io.fits.Header`): FITS header.
-        readout_mode (str): Readout Mode of CCD.
+        amp (str): Readout Amplifier of CCD.
 
     Returns:
         tuple: A tuple of region indices ``((sci1, ovr1), (sci2, ovr2), ...)``,
         where ``sciN`` and ``ovrN`` are indices ``(y1, y2, x1, x2)`` of the N-th
         science region and overscan region.
+    
+    Supported *amp* include
+
+        * 'Left Top & Bottom' (LTB)
+        * 'Left Bottom & Right Top' (LBRT)
 
     See also:
 
@@ -54,7 +59,7 @@ def get_region_lst(header, readout_mode):
     naxis2 = header['NAXIS2']     # size along Y axis
     x1, y1, xbin, ybin, cover, rover = get_ccd_geometry(header)
 
-    if readout_mode in ['Left Top & Bottom', 'Left Bottom & Right Top']:
+    if amp in ['LTB', 'LBRT']:
         # 2 regions vertically
         # science & overscan region
         sci1 = (y1, y1+(naxis2-rover)//2, x1, x1+(naxis1-cover))
@@ -65,7 +70,7 @@ def get_region_lst(header, readout_mode):
 
         return ((sci1, ovr1), (sci2, ovr2))
     else:
-        print('Error: Wrong Readout Mode:', readout_mode)
+        print('Error: Unsupported Readout Amplifier:', amp)
         raise ValueError
 
 def get_sci_region(header):
@@ -261,7 +266,6 @@ def combine_bias(config, logtable):
     """
 
     rawpath      = config['data']['rawpath']
-    readout_mode = config['data']['readout_mode']
 
     # determine number of cores to be used
     ncores = config['reduce'].get('ncores')
@@ -297,7 +301,7 @@ def combine_bias(config, logtable):
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
-        data, card_lst = correct_overscan(data, head, readout_mode)
+        data, card_lst = correct_overscan(data, head, logitem['amp'])
 
         # pack the data and fileid list
         bias_data_lst.append(data)
@@ -515,14 +519,14 @@ def fix_cr(data):
     else:
         return data
 
-def correct_overscan(data, header, readout_mode=None):
+def correct_overscan(data, header, amp):
     """Correct overscan for an input image and update related information in the
     FITS header.
     
     Args:
         data (:class:`numpy.ndarray`): Input image data.
         header (:class:`astropy.io.fits.Header`): Input FITS header.
-        readout_mode (str): Readout mode of the CCD.
+        amp (str): Readout amplifier of the CCD.
     
     Returns:
         tuple: A tuple containing:
@@ -531,7 +535,7 @@ def correct_overscan(data, header, readout_mode=None):
               corrected.
             * **card_lst** (*list*) – A new card list for FITS header.
     """
-    region_lst = get_region_lst(header, readout_mode)
+    region_lst = get_region_lst(header, amp)
 
     y1, y2, x1, x2 = get_sci_region(header)
 
