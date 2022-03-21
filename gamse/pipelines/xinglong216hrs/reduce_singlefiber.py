@@ -420,7 +420,7 @@ def reduce_singlefiber(config, logtable):
 
 
 
-    ############## averaeg cross-order profiles  ###############
+    ############## average cross-order profiles  ###############
     profile = np.array([all_profile_lst[flatname] for flatname in flat_groups])
     profile = profile.mean(axis=0)
 
