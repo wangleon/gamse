@@ -1538,7 +1538,7 @@ def reduce_doublefiber(config, logtable):
                     main_disp   = 'x',
                     upper_clipping = 5,
                     recenter    = True,
-                    mode        = 'debug',
+                    mode        = mode,
                     profile_lst = profile[fiber],
                     )
         flux_opt_lst = result[0]

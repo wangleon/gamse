@@ -445,7 +445,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
 
             #dcen_lst.append(cen-newpara[1])
             #if aper==4 or aper==0:
-            if mode=='debug' and aper==43:
+            if mode=='debug' and aper in [1, 2, 43]:
             #if False:
                 if idisp%30==0:
                     fig_pix = plt.figure(figsize=(18,10), dpi=150)
@@ -454,12 +454,13 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 _x = 0.04 + icol*0.16
                 _y = 0.05 + (4-irow)*0.19
                 ax = fig_pix.add_axes([_x, _y, 0.14, 0.17])
+                newx = np.arange(indx[0], indx[-1], 0.1)
                 if recenter:
                     cen = newpara[1]
-                    ax.plot(indx-cen, fitprof, 'o-',
-                            color='w', mec='C0', ms=4, lw=0.8)
-                    ax.plot(indx[mask]-cen, fitprof[mask], 'o',
-                            color='C0', ms=4)
+                    #ax.plot(indx-cen, fitprof, 'o-',
+                    #        color='w', mec='C0', ms=4, lw=0.8)
+                    #ax.plot(indx[mask]-cen, fitprof[mask], 'o',
+                    #        color='C0', ms=4)
                     fitprofnew = fitfunc(newpara, interf, newx)
                     ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
                     ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
@@ -473,12 +474,13 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                             ms=4, lw=0.6, zorder=-1)
                     ax.plot(indx[mask]-cen, flux[mask], 'o',
                             color='C1', zorder=1, ms=4)
-                    ax.plot(indx-cen, np.zeros_like(indx), '^',
-                            zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
-                    ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
-                            zorder=1, ms=3, color='C1')
+                    ax.plot(indx[~mask]-cen, np.zeros_like(indx)[~mask], 'x',
+                            zorder=-1, ms=4, c='C1')
+                    #ax.plot(indx-cen, np.zeros_like(indx), '^',
+                    #        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
+                    #ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
+                    #        zorder=1, ms=3, color='C1')
                 else:
-                    newx = np.arange(indx[0], indx[-1], 0.1)
                     fitprofnew = fitfunc2(newpara, interf, newx-cen)
                     ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
                     ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
@@ -492,10 +494,12 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                             ms=4, lw=0.6, zorder=-1)
                     ax.plot(indx[mask]-cen, flux[mask], 'o',
                             color='C1', zorder=1, ms=4)
-                    ax.plot(indx-cen, np.zeros_like(indx), '^',
-                            zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
-                    ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
-                            zorder=1, ms=3, color='C1')
+                    ax.plot(indx[~mask]-cen, np.zeros_like(indx)[~mask], 'x',
+                            zorder=-1, ms=4, c='C1')
+                    #ax.plot(indx-cen, np.zeros_like(indx), '^',
+                    #        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
+                    #ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
+                    #        zorder=1, ms=3, color='C1')
                 ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'Y=%d'%idisp,
                         fontsize=9)
                 ax.text(0.35*x1+0.65*x2, 0.1*y1+0.9*y2, '%7g'%fsum,
