@@ -16,6 +16,7 @@ from ..common import load_obslog, load_config
 from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
+from .reduce_singlefiber_phase3 import reduce_singlefiber_phase3
 from .reduce_doublefiber_phase3 import reduce_doublefiber_phase3
 
 def make_config():
@@ -225,6 +226,19 @@ def parse_idstring(idstring):
     else:
         id1 = parse_idstr(idstring)
         return [id1]
+
+
+def get_regular_calname(objectname):
+    namedict = {'bias': 'Bias',
+                'flat': 'Flat',
+                'thar': 'ThAr',
+                'comb': 'Comb',
+                }
+    if objectname.strip().lower() in namedict.keys():
+        return namedict[objectname.strip().lower()]
+    else:
+        return objectname.strip()
+
 
 def parse_timestr(timestr, date):
     mobj = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
@@ -839,7 +853,11 @@ def parse_logfile(filename, date):
 
                 if objname_A.lower() in ['flat', 'thar', 'comb', '']:
                     print('Error: [A] {} in sci frames'.format(objname_A))
+
+                objname_A = get_regular_calname(objname_A)
+                objname_B = get_regular_calname(objname_B)
             else:
+                objname   = get_regular_calname(objname)
                 objname_A = ''
                 objname_B = ''
 
@@ -882,7 +900,11 @@ def parse_logfile(filename, date):
                 if objname_B.lower() not in ['flat', 'thar', 'comb', '']:
                     print('Error: Unknown object in fiber [B]: {}'.format(
                         objectname_B))
+
+                objname_A = get_regular_calname(objname_A)
+                objname_B = get_regular_calname(objname_B)
             else:
+                objname   = get_regular_calname(objname)
                 objname_A = ''
                 objname_B = ''
 
@@ -903,7 +925,8 @@ def parse_logfile(filename, date):
             continue
 
         # match is over. row does not match any case above
-        print('Match error:', row)
+        if len(logtable)>0:
+            print('Match error:', row)
 
     file1.close()
 
@@ -1099,14 +1122,23 @@ def reduce_rawdata():
     config = load_config('Xinglong216HRS\S*\.cfg$')
     logtable = load_obslog('log.\S*\.txt$', fmt='astropy')
 
-    fibermode = config['data']['fibermode']
+    # determine fiber mode ('single'/'double')
+    fibermode = 'single'
+    for logitem in logtable:
+        if re.match('\[A\][\s\S]*\[B\][\s\S]*', logitem['object']):
+            fibermode = 'double'
+            break
 
+    # find obsdate
+    obsdate = dateutil.parser.parse(logtable[0]['obsdate'])
     if fibermode == 'single':
-        reduce_singlefiber(config, logtable)
-    elif fibermode == 'double':
-        # find obsdate
-        obsdate = dateutil.parser.parse(logtable[0]['obsdate'])
+        # since 2021 Oct, another config is used
+        if obsdate.date() > datetime.date(2021, 10, 20):
+            reduce_singlefiber_phase3(config, logtable)
+        else:
+            reduce_singlefiber(config, logtable)
 
+    elif fibermode == 'double':
         # since 2021 Oct, another config is used for double fiber
         if obsdate.date() > datetime.date(2021, 10, 20):
             reduce_doublefiber_phase3(config, logtable)

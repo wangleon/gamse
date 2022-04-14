@@ -244,6 +244,7 @@ class ApertureLocation(object):
             return None
         return self.get_center() - aperloc.get_center()
 
+
 class ApertureSet(object):
     """ApertureSet is a group of :class:`ApertureLocation` instances.
 
@@ -629,19 +630,103 @@ class ApertureSet(object):
             prev_aper     = aper
 
         # find the lower bound for the first aperture
-        minaper = min(self.keys())
+        minaper = min(list(self.keys()))
         position = self[minaper].position(x)
         dist = upper_bounds[minaper] - position
         lower_bounds[minaper] = position - dist
  
         # find the upper bound for the last aperture
-        maxaper = max(self.keys())
+        maxaper = max(list(self.keys()))
         position = self[maxaper].position(x)
         dist = position - lower_bounds[maxaper]
         upper_bounds[maxaper] = position + dist
 
         return {aper: (lower_bounds[aper], upper_bounds[aper])
                 for aper in self.keys()}
+
+    def fill(self, tol=10):
+
+
+        # get direction, domain, and shape
+        aper0 = list(self.keys())[0]
+        domain = self[aper0].position.domain
+        d1, d2 = domain
+        direct = self[aper0].direct
+        shape  = self[aper0].shape
+
+        # get meany position list
+        meany_lst = []
+        for frac in np.linspace(0.3, 0.7, 5):
+            x = frac*d1 + (1-frac)*d2
+            y_lst = [aperloc.position(x)
+                        for aper, aperloc in sorted(self.items())]
+            meany_lst.append(y_lst)
+        meany_lst = np.array(meany_lst).mean(axis=0)
+
+        dy_lst = np.diff(meany_lst)
+
+        # fit dy_lst and find outliers
+        mask = np.ones_like(dy_lst, dtype=bool)
+        for iloop in range(3):
+            coeff = np.polyfit(np.arange(dy_lst.size)[mask],
+                                dy_lst[mask], deg=2)
+            yfit = np.polyval(coeff, np.arange(dy_lst.size))
+            res_lst = dy_lst - yfit
+            std = res_lst[mask].std()
+            new_mask = res_lst < tol
+            if new_mask.sum() == mask.sum():
+                break
+            mask = new_mask
+
+        #newx = np.arange(dy_lst.size)
+        #newy = np.polyval(coeff, newx)
+
+        idx_lst = np.nonzero(~mask)[0]
+
+        aper_lst = sorted(list(self.keys()))
+        for idx in idx_lst:
+            sep = dy_lst[idx]
+            local_sep = np.polyval(coeff, idx)
+            nfill = int(round(sep/local_sep)) - 1
+            #print(idx, sep, local_sep, sep/local_sep, nfill)
+
+            new_dict = {}
+            for _aper, _aperloc in self.items():
+                if _aper > idx:
+                    _new_aper = _aper + nfill
+                else:
+                    _new_aper = _aper
+                new_dict[_new_aper] = _aperloc
+            self._dict = new_dict
+
+        # now get new aperture number list
+        aper_lst = list(sorted(self.keys()))
+        full_aper_lst = np.arange(min(aper_lst), max(aper_lst)+1)
+        missing_aper_lst = [aper for aper in full_aper_lst
+                                if aper not in aper_lst]
+        xyfit_lst = {missing_aper: ([], [])
+                        for missing_aper in missing_aper_lst}
+        for frac in np.linspace(0.1, 0.9, 10):
+            x = frac*d1 + (1-frac)*d2
+            pos_lst = [aperloc.position(x)
+                        for aper, aperloc in sorted(self.items())]
+            func = intp.InterpolatedUnivariateSpline(aper_lst, pos_lst, k=3)
+            for missing_aper in missing_aper_lst:
+                xyfit_lst[missing_aper][0].append(x)
+                xyfit_lst[missing_aper][1].append(func(missing_aper))
+
+        # fill missing orders
+        for missing_aper in missing_aper_lst:
+            xfit, yfit = xyfit_lst[missing_aper]
+            poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
+            new_aperloc = ApertureLocation(direct=direct, shape=shape)
+            new_aperloc.set_position(poly)
+            new_aperloc.nsat   = 0
+            new_aperloc.mean   = 0
+            new_aperloc.median = 0
+            new_aperloc.max    = 0
+            self[missing_aper] = new_aperloc
+
 
 class _ApertureSetIterator(object):
     """Interator class for :class:`ApertureSet`.
