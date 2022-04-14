@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 import numpy as np
+from numpy.polynomial import Chebyshev
 from scipy.signal import savgol_filter
 import scipy.optimize as opt
 from scipy.interpolate import InterpolatedUnivariateSpline
@@ -179,7 +180,7 @@ class AperparPlotter(object):
 
 def get_flat(data, mask, apertureset, nflat,
         #smooth_A_func, smooth_c_func, smooth_bkg_func,
-        slit_step = 0, q_threshold=30, mode='normal',
+        slit_step=0, q_threshold=30, mode='normal', recenter=False,
         fig_spatial=None, flatname=None, profile_x=None, disp_x_lst=None,
         ):
     """ Get flat.
@@ -225,6 +226,9 @@ def get_flat(data, mask, apertureset, nflat,
     #winsize = 400
     #xc_lst = np.arange(x0, nx, winsize)
     # n = 6
+
+    #for a better trace of order positions
+    new_ordercen_lst = {}
 
     fig_show = plt.figure(figsize=(12, 3), dpi=200)
 
@@ -292,6 +296,13 @@ def get_flat(data, mask, apertureset, nflat,
             newx = normed_prof.x
             newy = normed_prof.y
             newm = normed_prof.m
+            param = normed_prof.param
+
+            # for recenter
+            newcen = param[1]
+            if aper not in new_ordercen_lst:
+                new_ordercen_lst[aper] = []
+            new_ordercen_lst[aper].append((xc, newcen))
             '''
             param = normed_prof.param
             std   = normed_prof.std
@@ -783,6 +794,38 @@ def get_flat(data, mask, apertureset, nflat,
     print(' \033[92m Completed\033[0m')
 
     ###################### aperture loop ends here ########################
+
+    '''
+    # recenter the orders
+    for aper, cendata in sorted(new_ordercen_lst.items()):
+        xfit, yfit = list(zip(*cendata))
+        # sort xfit and yfit
+        xfit, yfit = np.array(xfit), np.array(yfit)
+        argsort = xfit.argsort()
+        xfit, yfit = xfit[argsort], yfit[argsort]
+
+        if aper==73:
+            print(xfit)
+            print(yfit)
+
+        # determine the left and right domain
+        if xfit[0] <= disp_x_lst[0] + 10:
+            left_domain = 0
+        else:
+            left_domain = xfit[0]
+
+        if xfit[-1] >= disp_x_lst[-1] - 10:
+            right_domain = nx-1
+        else:
+            right_domain = xfit[-1]
+
+        domain = (left_domain, right_domain)
+
+        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
+
+        apertureset[aper].set_position(poly)
+    '''
+
 
     return flatdata, flatspec_lst, profile_lst
 

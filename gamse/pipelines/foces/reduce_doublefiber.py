@@ -419,6 +419,11 @@ def reduce_doublefiber(config, logtable):
                         profile_x   = profile_x,
                         disp_x_lst  = disp_x_lst,
                         )
+                #newaperset_regname = os.path.join(midpath,
+                #    'trace_flat_{}_{}_new.reg'.format(fiber, flatname))
+                #newaperset.save_reg(newaperset_regname,
+                #            fiber=fiber, color=color)
+
                 figname = os.path.join(figpath,
                             'spatial_profile_flat_{}_{}.png'.format(
                             fiber, flatname))
@@ -460,7 +465,7 @@ def reduce_doublefiber(config, logtable):
                             ])
                 hdu_lst.writeto(flat_filename, overwrite=True)
 
-            #### mode swith ends here
+            #### mode switch ends here
 
             # prepare flat_oned, a table containing self-corrected 1d spectra
             # of flat
@@ -1531,6 +1536,9 @@ def reduce_doublefiber(config, logtable):
                     profilex    = profile_x,
                     disp_x_lst  = disp_x_lst,
                     main_disp   = 'x',
+                    upper_clipping = 5,
+                    recenter    = True,
+                    mode        = 'debug',
                     profile_lst = profile[fiber],
                     )
         flux_opt_lst = result[0]

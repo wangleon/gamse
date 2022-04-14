@@ -150,7 +150,9 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
     return spectra1d
 
 def extract_aperset_optimal(data, mask, background, apertureset,
-        ron, gain, profilex, disp_x_lst, main_disp, profile_lst=None):
+        ron, gain, profilex, disp_x_lst, main_disp, profile_lst=None,
+        recenter=False,
+        upper_clipping=3.0, mode='normal', figpath='debug'):
     """Extract 1-D spectra from the input image using the optimal method.
 
     Args:
@@ -398,18 +400,22 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 back = background[idisp, indx]
             else:
                 raise ValueError
-            #para = [flux.sum(), cen]
-            para = [flux.sum()]
+            if recenter:
+                para = [flux.sum(), cen]
+            else:
+                para = [flux.sum()]
             mask = np.ones_like(flux, dtype=np.bool)
             for ite in range(10):
-                result = opt.least_squares(errfunc2, para,
-                        #bounds=((-np.inf, cen-0.5), (np.inf, cen+0.5)),
-                        #args=(flux[mask], interf, indx[mask]))
-                        bounds=(-np.inf, np.inf),
+                if recenter:
+                    result = opt.least_squares(errfunc, para,
+                        args=(flux[mask], interf, indx[mask]))
+                    newpara = result['x']
+                    fitprof = fitfunc(newpara, interf, indx)
+                else:
+                    result = opt.least_squares(errfunc2, para,
                         args=(flux[mask], interf, indx[mask]-cen))
-                newpara = result['x']
-                #fitprof = fitfunc2(newpara, interf, indx)
-                fitprof = fitfunc2(newpara, interf, indx-cen)
+                    newpara = result['x']
+                    fitprof = fitfunc2(newpara, interf, indx-cen)
                 resprof = flux - fitprof
                 std = resprof[mask].std()
                 new_mask = resprof < 3*std
@@ -421,7 +427,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
             # Horne 1986, PASP, 98, 609 Formula 7-9
             #var = np.maximum(flux+back, 0)+(ron/gain)**2
             var = np.maximum(fitprof+back, 0)+(ron/gain)**2
-            mask = resprof < 3*np.sqrt(var)
+            #mask = resprof < upper_clipping*np.sqrt(var)
             s_lst = 1/var
             normprof = fitprof/fitprof.sum()
             ssum = (s_lst*normprof**2)[mask].sum()
@@ -439,7 +445,8 @@ def extract_aperset_optimal(data, mask, background, apertureset,
 
             #dcen_lst.append(cen-newpara[1])
             #if aper==4 or aper==0:
-            if False:
+            if mode=='debug' and aper==43:
+            #if False:
                 if idisp%30==0:
                     fig_pix = plt.figure(figsize=(18,10), dpi=150)
                 irow = int((idisp%30)/6)
@@ -447,38 +454,48 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 _x = 0.04 + icol*0.16
                 _y = 0.05 + (4-irow)*0.19
                 ax = fig_pix.add_axes([_x, _y, 0.14, 0.17])
-                #ax.plot(indx-para[1], fitprof, 'o-',
-                #        color='w', mec='C0', ms=4, lw=0.8)
-                #ax.plot(indx[mask]-para[1], fitprof[mask], 'o',
-                #        color='C0', ms=4)
-                newx = np.arange(indx[0], indx[-1], 0.1)
-                #fitprofnew = fitfunc(newpara, interf, newx)
-                fitprofnew = fitfunc2(newpara, interf, newx-cen)
-                #ax.plot(newx-newpara[1], fitprofnew, '-', color='C0', lw=0.5)
-                ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
-                #ax.plot(newx-para[1], fitprofnew+1*std, '--', color='C0', lw=0.5)
-                #ax.plot(newx-para[1], fitprofnew-1*std, '--', color='C0', lw=0.5)
-                #ax.fill_between(newx-newpara[1], fitprofnew+1*std, fitprofnew-1*std,
-                ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
-                        facecolor='C0', alpha=0.1)
-                #ax.plot(indx[mask]-newpara[1], flux[mask], ls='-',
-                #        color='C1', lw=0.8, zorder=1, ms=2)
-                x1, x2 = ax.get_xlim()
-                y1, y2 = ax.get_ylim()
-                #ax.plot(indx-newpara[1], flux, '--', color='C1', lw=0.8, zorder=-1)
-                #ax.errorbar(indx-newpara[1], flux, yerr=np.sqrt(var),
-                ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
-                        fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
-                        ms=4, lw=0.6, zorder=-1)
-                #ax.plot(indx[mask]-newpara[1], flux[mask], 'o',
-                ax.plot(indx[mask]-cen, flux[mask], 'o',
-                        color='C1', zorder=1, ms=4)
-                #ax.plot(indx-newpara[1], np.zeros_like(indx), '^',
-                ax.plot(indx-cen, np.zeros_like(indx), '^',
-                        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
-                #ax.plot(indx[mask]-newpara[1], np.zeros_like(indx[mask]), '^',
-                ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
-                        zorder=1, ms=3, color='C1')
+                if recenter:
+                    cen = newpara[1]
+                    ax.plot(indx-cen, fitprof, 'o-',
+                            color='w', mec='C0', ms=4, lw=0.8)
+                    ax.plot(indx[mask]-cen, fitprof[mask], 'o',
+                            color='C0', ms=4)
+                    fitprofnew = fitfunc(newpara, interf, newx)
+                    ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
+                    ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
+                            facecolor='C0', alpha=0.1)
+                    x1, x2 = ax.get_xlim()
+                    y1, y2 = ax.get_ylim()
+                    ax.plot(indx[mask]-cen, flux[mask], ls='-',
+                            color='C1', lw=0.8, zorder=1, ms=2)
+                    ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
+                            fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
+                            ms=4, lw=0.6, zorder=-1)
+                    ax.plot(indx[mask]-cen, flux[mask], 'o',
+                            color='C1', zorder=1, ms=4)
+                    ax.plot(indx-cen, np.zeros_like(indx), '^',
+                            zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
+                    ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
+                            zorder=1, ms=3, color='C1')
+                else:
+                    newx = np.arange(indx[0], indx[-1], 0.1)
+                    fitprofnew = fitfunc2(newpara, interf, newx-cen)
+                    ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
+                    ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
+                            facecolor='C0', alpha=0.1)
+                    x1, x2 = ax.get_xlim()
+                    y1, y2 = ax.get_ylim()
+                    #ax.plot(indx-newpara[1], flux, '--', color='C1', lw=0.8, zorder=-1)
+                    #ax.errorbar(indx-newpara[1], flux, yerr=np.sqrt(var),
+                    ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
+                            fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
+                            ms=4, lw=0.6, zorder=-1)
+                    ax.plot(indx[mask]-cen, flux[mask], 'o',
+                            color='C1', zorder=1, ms=4)
+                    ax.plot(indx-cen, np.zeros_like(indx), '^',
+                            zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
+                    ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
+                            zorder=1, ms=3, color='C1')
                 ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'Y=%d'%idisp,
                         fontsize=9)
                 ax.text(0.35*x1+0.65*x2, 0.1*y1+0.9*y2, '%7g'%fsum,
@@ -495,9 +512,12 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 for tick in ax.yaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
                 if idisp%30 == 29 or idisp == ndisp-1:
-                    if not os.path.exists('images'):
-                        os.mkdir('images')
-                    fig_pix.savefig('images/fitting_%02d_%04d_var.png'%(aper, idisp))
+                    if not os.path.exists(figpath):
+                        os.mkdir(figpath)
+                    fname = 'extopt_{aper:02d}_{idisp:04d}.png'.format(
+                            aper=aper, idisp=idisp)
+                    figfilename = os.path.join(figpath, fname)
+                    fig_pix.savefig(figfilename)
                     plt.close(fig_pix)
 
         flux_sum_lst[aper] = np.array(flux_sum_lst[aper])
