@@ -1797,10 +1797,10 @@ def find_local_peak(flux, x, width):
     Returns:
         tuple: A tuple containing:
 
-            * **i1** (*int*) – Index of the left side.
-            * **i2** (*int*) – Index of the right side.
-            * **p1** (*list*) – List of fitting parameters.
-            * **std** (*float*) – Standard devation of the fitting.
+            * **i1** (*int*) -- Index of the left side.
+            * **i2** (*int*) -- Index of the right side.
+            * **p1** (*list*) -- List of fitting parameters.
+            * **std** (*float*) -- Standard devation of the fitting.
     """
     width = int(round(width))
     if width%2 != 1:

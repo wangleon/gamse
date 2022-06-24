@@ -347,23 +347,35 @@ def get_flat(data, mask, apertureset, nflat,
         all_ynodes = np.array(all_ynodes)
 
         # spatial profile modeling with Gaussian Process Regression (GPR)
+        m = np.ones_like(all_xnodes, dtype=bool)
         input_train_x = all_xnodes.reshape(-1,1)
         input_train_y = all_ynodes.reshape(-1,1)
         kernel = RBF(length_scale=3.0) + WhiteKernel(0.1)
         gpr = GaussianProcessRegressor(kernel=kernel)
-        gpr.fit(input_train_x, input_train_y)
-        test_x = profile_x.reshape(-1,1)
-        mu, cov = gpr.predict(test_x, return_cov=True)
-        profile_y = mu.flatten()
-        #profile_y = spatial_profile(profile_x)
+        for i in range(2):
+            gpr.fit(input_train_x, input_train_y)
+            test_x = profile_x.reshape(-1,1)
+            mu, cov = gpr.predict(test_x, return_cov=True)
+            profile_y = mu.flatten()
+
+            f = InterpolatedUnivariateSpline(
+                    profile_x, profile_y, k=3, ext=3)
+            res_lst = all_ynodes - f(all_xnodes)
+            std = res_lst[m].std()
+            newm = (res_lst>-3*std)*(res_lst<3*std)
+            m = newm
+
+        # calculate FWHM of profile_y
+        newx = np.arange(profile_x[0], profile_x[-1]+1e-3, 0.01)
+        fwhm = (f(newx)>0.5).sum()*0.01
 
         ax.plot(profile_x, profile_y, color='k', lw=0.6)
         ax.grid(True, ls='--', lw=0.5)
         ax.set_axisbelow(True)
         _x1, _x2 = p1-2, p2+2
         _y1, _y2 = -0.2, 1.2
-        _text = 'X={:4d}/{:4d}'.format(xc, nx)
-        ax.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
+        _text = 'X={:4d}/{:4d}\nFWHM={:.2f}'.format(xc, nx, fwhm)
+        ax.text(0.95*_x1+0.05*_x2, 0.07*_y1+0.93*_y2, _text, va='top')
         ax.set_xlim(_x1, _x2)
         ax.set_ylim(_y1, _y2)
         # temperary
@@ -696,6 +708,284 @@ def get_flat(data, mask, apertureset, nflat,
     aperpar_plotter.savefig(figname_aperpar(aper))
 
     return flatdata, flatspec_lst, profile_lst
+
+
+def get_doublefiber_flat(data, mask, apertureset_lst, nflat,
+        smooth_A_func, smooth_c_func, smooth_bkg_func,
+        q_threshold=30, mode='normal',
+        fig_spatial=None,
+        flatname = None,
+        profile_x = None,
+        disp_x_lst = None,
+        ):
+
+    if mode == 'debug':
+        dbgpath = 'debug'
+        if not os.path.exists(dbgpath):
+            os.mkdir(dbgpath)
+        plot_aperpar = True
+        figname_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{}_{:03d}.png'.format(flatname, aper))
+        save_aperpar = True
+        filename_aperpar = lambda aper: os.path.join(dbgpath,
+                                'aperpar_{}_{:03d}.dat'.format(flatname, aper))
+    else:
+        plot_aperpar = False
+        save_aperpar = False
+
+    ny, nx = data.shape
+    allx = np.arange(nx)
+    ally = np.arange(ny)
+
+    # calculate order positions and boundaries and save them in dicts
+    # for both fibers
+    all_positions_lst  = {fiber: apertureset.get_positions(allx)
+                            for fiber, apertureset in apertureset_lst.items()}
+    all_boundaries_lst = {fiber: apertureset.get_boundaries(allx)
+                            for fiber, apertureset in apertureset_lst.items()}
+
+    p1 = profile_x[0]  - 1
+    p2 = profile_x[-1] + 1
+
+    profile_lst = []
+
+    # find saturation mask
+    sat_mask = (mask&4 > 0)
+    bad_mask = (mask&2 > 0)
+
+    fig_show = plt.figure(figsize=(12, 3), dpi=200)
+
+    for ixc, xc in enumerate(disp_x_lst):
+        xc = int(xc)
+        x = xc
+        # initialize the mean profiles
+        all_xnodes = {fiber: [] for fiber in apertureset_lst.keys()}
+        all_ynodes = {fiber: [] for fiber in apertureset_lst.keys()}
+
+        ax = fig_spatial.get_axes()[ixc]
+
+        # has 9 panels, draw 0, 4, 8
+        if ixc==0:
+            _x = 0.05
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        elif ixc==4:
+            _x = 0.05 + 1*0.32
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        elif ixc==8:
+            _x = 0.05 + 2*0.32
+            ax2 = fig_show.add_axes([_x, 0.07, 0.28, 0.9])
+        else:
+            ax2 = None
+
+        fiber_order_cent_lst = {}
+        fiber_order_dist_lst = {}
+        fiber_order_hwin_lst = {}
+        for fiber, apertureset in apertureset_lst.items():
+            order_cent_lst = np.array([aperloc.position(x)
+                for aper, aperloc in sorted(apertureset.items())])
+            order_dist_lst = np.diff(order_cent_lst)
+            # now size of order_dist_lst = size of order_cent_lst - 1
+            order_dist_lst = np.insert(order_dist_lst, 0, order_dist_lst[0])
+            order_dist_lst = np.append(order_dist_lst, order_dist_lst[-1])
+            # now size of order_dist_lst = size of order_cent_lst + 1
+            order_hwin_lst = order_dist_lst/2
+            # size of order_hwin_lst = size of order_cent_lst + 1
+
+            fiber_order_cent_lst[fiber] = order_cent_lst
+            fiber_order_dist_lst[fiber] = order_dist_lst
+            fiber_order_hwin_lst[fiber] = order_hwin_lst
+
+
+        ## test
+        fiber_lst = sorted(list(apertureset_lst.keys()))
+        fig0 = plt.figure(figsize=(12, 6.5), dpi=200)
+        for i in range(4):
+            ax0 = fig0.add_axes([0.06, 0.07+(3-i)*0.225, 0.91, 0.192])
+            _x1, _x2 = ny//4*i, ny//4*(i+1)
+            ax0.plot(np.arange(_x1, _x2), data[_x1:_x2, x], lw=0.6)
+            _y1, _y2 = ax0.get_ylim()
+            for fiber in fiber_lst:
+                color = {'A': 'C0', 'B': 'C3'}[fiber]
+                order_cent_lst = fiber_order_cent_lst[fiber]
+                for ic, cent in enumerate(order_cent_lst):
+                    hwin = fiber_order_hwin_lst[fiber][ic]
+                    i1 = cent - abs(p1)
+                    i2 = cent + abs(p2)
+                    ax0.fill_betweenx([_y1, _y2], i1, i2,
+                            alpha=0.2, color=color, lw=0)
+                    if i1 > _x2:
+                        break
+            #ax0.vlines(order_cent_lst, _y1, _y2, ls='--', lw=0.5)
+            ax0.set_xlim(_x1, _x2)
+            ax0.set_ylim(_y1, _y2)
+            if i == 3:
+                ax0.set_xlabel('Y (pixel)')
+        fig0.suptitle('Cross Section at Column {}'.format(xc))
+        fig0.savefig('cross_{:04d}.png'.format(x))
+        plt.close(fig0)
+
+        fiber_aper_mask_lst = {}
+        for fiber, apertureset in apertureset_lst.items():
+            fiber_aper_mask_lst[fiber] = np.zeros(ny, dtype=bool)
+            order_cent_lst = fiber_order_cent_lst[fiber]
+            for ic, cent in enumerate(order_cent_lst):
+                i1 = cent - abs(p1)
+                i2 = cent + abs(p2)
+                i1, i2 = int(round(i1)), int(round(i2))
+                i1 = max(i1, 0)
+                i2 = min(i2, ny)
+                fiber_aper_mask_lst[fiber][i1:i2] = True
+
+
+        for fiber, apertureset in apertureset_lst.items():
+            order_cent_lst = fiber_order_cent_lst[fiber]
+            allmask = np.zeros(ny, dtype=bool)
+            for _fiber, mask_lst in fiber_aper_mask_lst.items():
+                if fiber != _fiber:
+                    allmask += mask_lst
+            for ic, cent in enumerate(order_cent_lst):
+                i1 = cent - abs(p1)
+                i2 = cent + abs(p2)
+                i1, i2 = int(round(i1)), int(round(i2))
+                i1 = max(i1, 0)
+                i2 = min(i2, ny)
+                if i2 - i1 < 10:
+                    continue
+
+                m = (ally>=i1)*(ally<i2)*(~allmask)
+                if m.sum()<=3:
+                    continue
+
+                xnodes = ally[m]
+                if xnodes[0]>cent or xnodes[-1]<cent:
+                    continue
+                ynodes = data[xnodes, x]
+                mnodes = mask[xnodes, x]
+
+                normed_prof = ProfileNormalizer(xnodes, ynodes, mnodes)
+
+                newx = normed_prof.x
+                newy = normed_prof.y
+                newm = normed_prof.m
+
+                '''
+                fig0 = plt.figure()
+                ax01 = fig0.add_subplot(211)
+                ax02 = fig0.add_subplot(212)
+                ax01.plot(xnodes, ynodes, 'o')
+                plotx, ploty = normed_prof.linspace()
+                if normed_prof.is_succ():
+                    ls = '-'
+                else:
+                    ls = '--'
+                ax01.plot(plotx, ploty, ls=ls)
+                figname = 'test-x_{:04d}_y_{:04d}_{:04d}.png'.format(x, i1, i2)
+                fig0.savefig(figname)
+                plt.close(fig0)
+                '''
+
+                if normed_prof.is_succ():
+                    for _newx, _newy in zip(newx[newm], newy[newm]):
+                        all_xnodes[fiber].append(_newx)
+                        all_ynodes[fiber].append(_newy)
+
+                    # plotting
+                    c = {'A': 'C0', 'B': 'C3'}[fiber]
+                    ax.scatter(newx[newm], newy[newm],
+                            s=5, alpha=0.3, lw=0, c=c)
+                    if ax2 is not None:
+                        ax2.scatter(newx[newm], newy[newm],
+                                s=10, alpha=0.3, lw=0, c=c)
+
+        # combine the nodes from all fibers
+        all_fiber_xnodes = []
+        all_fiber_ynodes = []
+        for fiber in apertureset_lst.keys():
+            all_xnodes[fiber] = np.array(all_xnodes[fiber])
+            all_ynodes[fiber] = np.array(all_ynodes[fiber])
+            for _x, _y in zip(all_xnodes[fiber], all_ynodes[fiber]):
+                all_fiber_xnodes.append(_x)
+                all_fiber_ynodes.append(_y)
+        all_fiber_xnodes = np.array(all_fiber_xnodes)
+        all_fiber_ynodes = np.array(all_fiber_ynodes)
+
+        m = np.ones_like(all_fiber_xnodes, dtype=bool)
+        # spatial profile modeling with Gaussian Process Regression (GPR)
+        input_train_x = all_fiber_xnodes.reshape(-1,1)
+        input_train_y = all_fiber_ynodes.reshape(-1,1)
+        kernel = RBF(length_scale=3.0) + WhiteKernel(0.1)
+        gpr = GaussianProcessRegressor(kernel=kernel)
+        for i in range(2):
+            gpr.fit(input_train_x[m], input_train_y[m])
+            test_x = profile_x.reshape(-1,1)
+            mu, cov = gpr.predict(test_x, return_cov=True)
+            profile_y = mu.flatten()
+
+            f = InterpolatedUnivariateSpline(
+                        profile_x, profile_y, k=3, ext=3)
+            res_lst = all_fiber_ynodes - f(all_fiber_xnodes)
+            std = res_lst[m].std()
+            newm = (res_lst>-3*std)*(res_lst<3*std)
+            m = newm
+
+        #color = {'A': 'C0', 'B':'C3'}[fiber]
+        color = 'k'
+        ax.plot(profile_x, profile_y, color=color, lw=0.6)
+        ax.grid(True, ls='--', lw=0.5)
+        ax.set_axisbelow(True)
+        _x1, _x2 = p1-2, p2+2
+        _y1, _y2 = -0.2, 1.2
+        _text = 'X={:4d}/{:4d}'.format(xc, nx)
+        ax.text(0.95*_x1+0.05*_x2, 0.1*_y1+0.9*_y2, _text)
+        ax.set_xlim(_x1, _x2)
+        ax.set_ylim(_y1, _y2)
+
+        profile_lst.append(profile_y)
+
+    plt.close(fig_show)
+
+    fig_spatial.savefig('fig_spatial.png')
+
+
+    profilex_lst = np.array(disp_x_lst)
+    profile_lst = np.array(profile_lst)
+    npoints = profile_lst.shape[1]
+
+    interprofilefunc_lst = {}
+    corr_mask_array = []
+    for x in allx:
+        # calculate interpolated profie in this x
+        profile = np.zeros(npoints)
+        for i in np.arange(npoints):
+            f = InterpolatedUnivariateSpline(
+                    profilex_lst, profile_lst[:, i], k=3, ext=3)
+            profile[i] = f(x)
+        interprofilefunc = InterpolatedUnivariateSpline(
+                profile_x, profile, k=3, ext=3)
+        interprofilefunc_lst[x] = interprofilefunc
+        
+        ilst = np.nonzero(profile>0.1)[0]
+        il = profile_x[ilst[0]]
+        ir = profile_x[ilst[-1]]
+        corr_mask_array.append((il, ir))
+
+    #####################
+
+    flatdata = np.ones_like(data, dtype=np.float32)
+    flatspec_lst = {aper: np.full(nx, np.nan) for aper in apertureset}
+
+    # define fitting and error functions
+    def fitfunc(param, xdata, interf):
+        A, c, b = param
+        return A*interf(xdata-c) + b
+    def errfunc(param, xdata, ydata, interf):
+        return ydata - fitfunc(param, xdata, interf)
+
+    # prepare an x list
+    newx_lst = np.arange(0, nx-1, 10)
+    if newx_lst[-1] != nx-1:
+        newx_lst = np.append(newx_lst, nx-1)
+
 
 def gaussian_bkg(A, center, fwhm, bkg, x):
     s = fwhm/2./math.sqrt(2*math.log(2))
