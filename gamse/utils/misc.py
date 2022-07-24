@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 import datetime
 import getpass
 import platform
-import distro
+#import distro
 import subprocess
 
 import numpy
@@ -71,7 +71,9 @@ def write_system_info():
     #distribution = ' '.join(platform.dist())
     # platform.dist() has been deprecated in Python 3.5. use
     # distro.linux_distribution() instead.
-    distribution = ' '.join(distro.linux_distribution())
+
+    # distribution has been deprecated in GAMSE
+    #distribution = ' '.join(distro.linux_distribution())
 
     username = getpass.getuser()
     node = platform.node()
@@ -84,7 +86,7 @@ def write_system_info():
                                     processor_number, processor, cores),
             'System:                {:s} {:s} {:s}'.format(
                                     system, release, machine),
-            'Distribution:          {:s}'.format(distribution),
+            #'Distribution:          {:s}'.format(distribution),
             'Memory:                {:s}'.format(memory),
             'Username:              {:s}'.format(username),
             'Python version:        {:s}'.format(python_version),
