@@ -615,8 +615,13 @@ def select_calib_from_database(index_file, dateobs):
 
     # after 1st Dec 2018, echelle format and keywords in FITS header changed
     time_node1 = datetime.datetime(2018, 12, 1)
+    # A major upgrade in Sep - Oct 2021
+    time_node2 = datetime.datetime(2021, 10, 1)
 
-    if input_date > time_node1:
+    if input_date > time_node2:
+        mask = [dateutil.parser.parse(t) > time_node2
+                for t in calibtable['obsdate']]
+    elif input_date > time_node1:
         mask = [dateutil.parser.parse(t) > time_node1
                 for t in calibtable['obsdate']]
     else:                         
@@ -637,7 +642,8 @@ def select_calib_from_database(index_file, dateobs):
     message = 'Select {} from database index as ThAr reference'.format(fileid)
     logger.info(message)
 
-    filepath = os.path.join('xinglong216hrs', 'wlcalib_{}.fits'.format(fileid))
+    filepath = os.path.join('instruments/xinglong216hrs',
+                'wlcalib_{}.fits'.format(fileid))
     filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file

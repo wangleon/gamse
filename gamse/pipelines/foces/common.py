@@ -448,8 +448,8 @@ def select_calib_from_database(index_file, dateobs):
     message = 'Select {} from database index as ThAr reference'.format(fileid)
     logger.info(message)
 
-    filepath = os.path.join('foces', 'wlcalib_{}.fits'.format(fileid))
-
+    filepath = os.path.join('instruments/foces',
+                'wlcalib_{}.fits'.format(fileid))
     filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file
