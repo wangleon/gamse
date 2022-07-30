@@ -1,5 +1,6 @@
 import os
 import math
+import time
 import logging
 
 logger = logging.getLogger(__name__)
@@ -8,6 +9,7 @@ import numpy as np
 import scipy.interpolate as intp
 import scipy.optimize as opt
 import scipy.integrate as intg
+from scipy.signal import savgol_filter
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 
@@ -152,7 +154,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
 def extract_aperset_optimal(data, mask, background, apertureset,
         ron, gain, profilex, disp_x_lst, main_disp, profile_lst=None,
         recenter=False,
-        upper_clipping=3.0, mode='normal', figpath='debug'):
+        upper_clipping=3.0, mode='normal', figpath='debug',
+        plot_apertures=[]):
     """Extract 1-D spectra from the input image using the optimal method.
 
     Args:
@@ -362,7 +365,11 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     #fig_allprofile.savefig('profile_stack.png')
     #plt.close(fig_allprofile)
 
-    
+
+    # generate idisp_lst, from center to the limbs
+    a = allx[0:ndisp//2]
+    b = allx[ndisp//2:]
+    idisp_lst = np.transpose(np.vstack((a[::-1],b))).flatten()
 
     # initialize result arrays
     flux_sum_lst = {}
@@ -371,25 +378,124 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     back_sum_lst = {}
     back_opt_lst = {}
     for aper, aperloc in sorted(apertureset.items()):
-        flux_sum_lst[aper] = []
-        flux_opt_lst[aper] = []
-        flux_err_lst[aper] = []
-        back_sum_lst[aper] = []
-        back_opt_lst[aper] = []
-        #dcen_lst = []
-        for idisp in np.arange(ndisp):
+        t1 = time.time()
+        flux_sum = np.zeros(ndisp, dtype=np.float32)
+        flux_opt = np.zeros(ndisp, dtype=np.float32)
+        flux_err = np.zeros(ndisp, dtype=np.float32)
+        back_sum = np.zeros(ndisp, dtype=np.float32)
+        back_opt = np.zeros(ndisp, dtype=np.float32)
+        dcen_lst = np.zeros(ndisp, dtype=np.float32)
+        qsnr_lst = np.zeros(ndisp, dtype=np.float32)
+
+        if recenter:
+            for idisp in idisp_lst:
+                interf = interprofilefunc_lst[idisp]
+                cen = aperloc.position(idisp)
+                intc = np.int(np.round(cen))
+                i1 = int(intc + p1)
+                i2 = int(intc + p2 + 1)
+                i1 = max(i1, 0)
+                i2 = min(i2, ncros)
+                if i2-i1 < (p2-p1)/2:
+                    continue
+                indx = np.arange(i1, i2)
+                if main_disp == 'x':
+                    flux = data[indx, idisp]
+                    back = background[indx, idisp]
+                elif main_disp == 'y':
+                    flux = data[idisp, indx]
+                    back = background[idisp, indx]
+                else:
+                    raise ValueError
+
+                # initialize iteration mask for optimal extraction
+                mask = flux < np.median(flux) + 3*np.std(flux)
+                A0 = flux[mask].max()
+                para0 = [A0, cen]
+
+                for ite in range(3):
+                    result = opt.least_squares(errfunc, para0,
+                        args=(flux[mask], interf, indx[mask]))
+                    para = result['x']
+                    fitprof = fitfunc(para, interf, indx)
+                    resprof = flux - fitprof
+                    std = resprof[mask].std()
+                    new_mask = resprof < 3*std
+                    if new_mask.sum() == mask.sum():
+                        break
+                    mask *= new_mask
+
+                dcen_lst[idisp] = para[1]-cen
+                qsnr_lst[idisp] = para[0]/std
+
+            deg = 5
+            m = np.ones_like(dcen_lst, dtype=bool)
+            for ite in range(5):
+                binx = []
+                biny = []
+                binstep = 128
+                for i1 in np.arange(0, ndisp, binstep):
+                    i2 = i1 + binstep
+                    binx.append(i1 + binstep/2)
+                    m2 = m[i1:i2]
+                    biny.append(np.mean(dcen_lst[i1:i2][m2]))
+                binx = np.array(binx)
+                biny = np.array(biny)
+
+                coeff = np.polyfit(binx/ndisp, biny, deg=deg)
+                newdcen = np.polyval(coeff, allx/ndisp)
+                yres = dcen_lst - newdcen
+                std = yres[m].std()
+                newm = m*(yres<3*std)*(yres>-3*std)
+                if newm.sum()==m.sum():
+                    break
+                m = newm
+
+            #loglikelihood = (-(yres[m]/std)**2/2).sum()
+            #bic = -2*loglikelihood + (deg+1)*np.log(m.sum())
+            if mode == 'debug':
+                fig3 = plt.figure(figsize=(8,4))
+                ax3 = fig3.add_axes([0.1, 0.1, 0.8, 0.8])
+                ax3.plot(allx[m], dcen_lst[m], lw=0.5, color='C0',
+                        alpha=0.8, zorder=3)
+                _y1, _y2 = ax3.get_ylim()
+                #_y1 = max(_y1, -1.8)
+                #_y2 = min(_y2, +1.8)
+                ax3.plot(allx, dcen_lst, lw=0.5, color='C0',
+                        alpha=0.2, zorder=1)
+                ax3.plot(binx, biny, 'o', ms=3, color='C1',
+                        alpha=0.8, zorder=4)
+                ax3.plot(newdcen, '-',  lw=0.7, color='C1')
+                ax3.plot(newdcen-std,   '--', lw=0.7, color='C1')
+                ax3.plot(newdcen+std,   '--', lw=0.7, color='C1')
+                ax3.plot(newdcen-3*std, '--', lw=0.7, color='C1')
+                ax3.plot(newdcen+3*std, '--', lw=0.7, color='C1')
+                ax3.set_ylim(_y1, _y2)
+                ax3.set_xlim(0, ndisp-1)
+                ax3.grid(True, ls='--', lw=0.5)
+                ax3c = ax3.twinx()
+                ax3c.plot(qsnr_lst, '-', color='k', alpha=0.2, lw=0.5)
+                ax3c.set_xlim(0, ndisp-1)
+                fig3.suptitle('Aperture {}'.format(aper))
+                fig3.savefig('debug/fitcen_{:03d}.png'.format(aper), dpi=150)
+                plt.close(fig3)
+
+
+        count = 0
+        prev_para = None
+        for idisp in idisp_lst:
             interf = interprofilefunc_lst[idisp]
-            cen = aperloc.position(idisp)
+            cen = aperloc.position(idisp) + newdcen[idisp]
             intc = np.int(np.round(cen))
             i1 = int(intc + p1)
             i2 = int(intc + p2 + 1)
             i1 = max(i1, 0)
             i2 = min(i2, ncros)
             if i2-i1 < (p2-p1)/2:
-                flux_opt_lst[aper].append(0.0)
-                flux_sum_lst[aper].append(0.0)
-                flux_err_lst[aper].append(0.0)
-                back_sum_lst[aper].append(0.0)
+                flux_opt[idisp] = 0.0
+                flux_sum[idisp] = 0.0
+                flux_err[idisp] = 0.0
+                back_sum[idisp] = 0.0
                 continue
             indx = np.arange(i1, i2)
             if main_disp == 'x':
@@ -400,29 +506,35 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 back = background[idisp, indx]
             else:
                 raise ValueError
-            if recenter:
-                para = [flux.sum(), cen]
-            else:
-                para = [flux.sum()]
-            mask = np.ones_like(flux, dtype=np.bool)
-            for ite in range(10):
-                if recenter:
-                    result = opt.least_squares(errfunc, para,
-                        args=(flux[mask], interf, indx[mask]))
-                    newpara = result['x']
-                    fitprof = fitfunc(newpara, interf, indx)
-                else:
-                    result = opt.least_squares(errfunc2, para,
-                        args=(flux[mask], interf, indx[mask]-cen))
-                    newpara = result['x']
-                    fitprof = fitfunc2(newpara, interf, indx-cen)
+
+            # sum extraction
+            fsum = flux.sum()
+            bsum = back.sum()
+            flux_sum[idisp] = fsum
+            back_sum[idisp] = bsum
+
+            # initialize iteration mask for optimal extraction
+            mask = flux < np.median(flux) + 3*np.std(flux)
+            A0 = flux[mask].max()
+
+            para0 = [A0]
+
+            for ite in range(3):
+                result = opt.least_squares(errfunc2, para0,
+                    args=(flux[mask], interf, indx[mask]-cen))
+                para = result['x']
+                fitprof = fitfunc2(para, interf, indx-cen)
                 resprof = flux - fitprof
                 std = resprof[mask].std()
+                qsnr = para[0]/std
                 new_mask = resprof < 3*std
                 if new_mask.sum() == mask.sum():
                     break
-                mask = new_mask
-                para = newpara
+                mask *= new_mask
+
+
+            #if aper==0:
+            #    print(idisp, ite, A0, para[0])
 
             # Horne 1986, PASP, 98, 609 Formula 7-9
             #var = np.maximum(flux+back, 0)+(ron/gain)**2
@@ -435,146 +547,131 @@ def extract_aperset_optimal(data, mask, background, apertureset,
             vopt = (normprof[mask].sum()             )/ssum
             bopt = ((s_lst*normprof*back)[mask].sum())/ssum
             ferr = math.sqrt(vopt)
-            fsum = flux.sum()
-            bsum = back.sum()
-            flux_opt_lst[aper].append(fopt)
-            flux_sum_lst[aper].append(fsum)
-            flux_err_lst[aper].append(ferr)
-            back_sum_lst[aper].append(bsum)
-            back_opt_lst[aper].append(bopt)
 
-            #dcen_lst.append(cen-newpara[1])
-            #if aper==4 or aper==0:
-            if mode=='debug' and aper in [1, 2, 43]:
-            #if False:
-                if idisp%30==0:
+            flux_opt[idisp] = fopt
+            flux_err[idisp] = ferr
+            back_opt[idisp] = bopt
+
+            if mode=='debug' and aper in plot_apertures:
+                if count%30==0:
                     fig_pix = plt.figure(figsize=(18,10), dpi=150)
-                irow = int((idisp%30)/6)
-                icol = (idisp%30)%6
+                irow = int((count%30)/6)
+                icol = (count%30)%6
                 _x = 0.04 + icol*0.16
                 _y = 0.05 + (4-irow)*0.19
                 ax = fig_pix.add_axes([_x, _y, 0.14, 0.17])
                 newx = np.arange(indx[0], indx[-1], 0.1)
-                if recenter:
-                    cen = newpara[1]
-                    #ax.plot(indx-cen, fitprof, 'o-',
-                    #        color='w', mec='C0', ms=4, lw=0.8)
-                    #ax.plot(indx[mask]-cen, fitprof[mask], 'o',
-                    #        color='C0', ms=4)
-                    fitprofnew = fitfunc(newpara, interf, newx)
-                    ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
-                    ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
-                            facecolor='C0', alpha=0.1)
-                    x1, x2 = ax.get_xlim()
-                    y1, y2 = ax.get_ylim()
-                    ax.plot(indx[mask]-cen, flux[mask], ls='-',
-                            color='C1', lw=0.8, zorder=1, ms=2)
-                    ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
-                            fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
-                            ms=4, lw=0.6, zorder=-1)
-                    ax.plot(indx[mask]-cen, flux[mask], 'o',
-                            color='C1', zorder=1, ms=4)
-                    ax.plot(indx[~mask]-cen, np.zeros_like(indx)[~mask], 'x',
-                            zorder=-1, ms=4, c='C1')
-                    #ax.plot(indx-cen, np.zeros_like(indx), '^',
-                    #        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
-                    #ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
-                    #        zorder=1, ms=3, color='C1')
-                else:
-                    fitprofnew = fitfunc2(newpara, interf, newx-cen)
-                    ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
-                    ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
-                            facecolor='C0', alpha=0.1)
-                    x1, x2 = ax.get_xlim()
-                    y1, y2 = ax.get_ylim()
-                    #ax.plot(indx-newpara[1], flux, '--', color='C1', lw=0.8, zorder=-1)
-                    #ax.errorbar(indx-newpara[1], flux, yerr=np.sqrt(var),
-                    ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
-                            fmt='o', mec='C1', mew=0.6, mfc='w', ecolor='C1',
-                            ms=4, lw=0.6, zorder=-1)
-                    ax.plot(indx[mask]-cen, flux[mask], 'o',
-                            color='C1', zorder=1, ms=4)
-                    ax.plot(indx[~mask]-cen, np.zeros_like(indx)[~mask], 'x',
-                            zorder=-1, ms=4, c='C1')
-                    #ax.plot(indx-cen, np.zeros_like(indx), '^',
-                    #        zorder=-1, ms=4, mec='C1', mew=0.6, mfc='w')
-                    #ax.plot(indx[mask]-cen, np.zeros_like(indx[mask]), '^',
-                    #        zorder=1, ms=3, color='C1')
-                ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'Y=%d'%idisp,
+                fitprofnew = fitfunc2(para, interf, newx-cen)
+
+                ax.plot(newx-cen, fitprofnew, '-', color='C0', lw=0.5)
+                ax.fill_between(newx-cen, fitprofnew+1*std, fitprofnew-1*std,
+                        facecolor='C0', alpha=0.1)
+                x1, x2 = ax.get_xlim()
+                y1, y2 = ax.get_ylim()
+                #ax.plot(indx[mask]-cen, flux[mask], ls='-',
+                #        color='C1', lw=0.8, zorder=1, ms=2)
+                ax.errorbar(indx-cen, flux, yerr=np.sqrt(var),
+                        fmt='o-',mew=0.6, mfc='w', ms=4, lw=0.6, zorder=-1,
+                        color='C1', mec='C1', ecolor='C1',
+                        )
+                ax.plot(indx[mask]-cen, flux[mask], 'o',
+                        color='C1', zorder=1, ms=4)
+                ax.axhline(np.median(flux), x1, x2, ls=':', lw=0.5, c='C2')
+                ax.fill_between([x1, x2], np.median(flux), np.median(flux)+flux.std(),
+                        facecolor='C2', alpha=0.1)
+                ax.plot(indx[~mask]-cen, np.zeros_like(indx)[~mask], 'x',
+                        zorder=-1, ms=4, c='C1')
+                ax.text(0.95*x1+0.05*x2, 0.1*y1+0.9*y2, 'X=%d'%idisp,
                         fontsize=9)
-                ax.text(0.35*x1+0.65*x2, 0.1*y1+0.9*y2, '%7g'%fsum,
-                        fontsize=9, color='C0')
-                ax.text(0.35*x1+0.65*x2, 0.2*y1+0.8*y2, '%7g'%fopt,
-                        fontsize=9, color='C1')
+                ax.text(0.05*x1+0.95*x2, 0.1*y1+0.9*y2, '%7g'%fsum,
+                        fontsize=9, color='C0', ha='right')
+                ax.text(0.05*x1+0.95*x2, 0.2*y1+0.8*y2, '%7g'%fopt,
+                        fontsize=9, color='C1', ha='right')
                 ax.set_xlim(x1, x2)
                 ax.set_ylim(y1, y2)
                 ax.axhline(y=0, c='k', ls='--', lw=0.5)
                 ax.axvline(x=0, c='k', ls='--', lw=0.5)
-                #ax.axvline(x=cen-newpara[1], ls='-', lw=0.5, color='C1')
                 for tick in ax.xaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
                 for tick in ax.yaxis.get_major_ticks():
                     tick.label1.set_fontsize(7)
-                if idisp%30 == 29 or idisp == ndisp-1:
+                if count%30 == 29 or count == ndisp-1:
                     if not os.path.exists(figpath):
                         os.mkdir(figpath)
-                    fname = 'extopt_{aper:02d}_{idisp:04d}.png'.format(
-                            aper=aper, idisp=idisp)
+                    fname = 'extopt_{:03d}_{:03d}.png'.format(
+                            aper, int(count/30))
                     figfilename = os.path.join(figpath, fname)
                     fig_pix.savefig(figfilename)
                     plt.close(fig_pix)
 
-        flux_sum_lst[aper] = np.array(flux_sum_lst[aper])
-        flux_opt_lst[aper] = np.array(flux_opt_lst[aper])
-        back_sum_lst[aper] = np.array(back_sum_lst[aper])
-        back_opt_lst[aper] = np.array(back_opt_lst[aper])
-        flux_err_lst[aper] = np.array(flux_err_lst[aper])
+            # save this para as prev_para for next column
+            prev_para = para
 
-        #if aper==4:
+            #idisp += direction
+            count += 1
+
+        flux_sum_lst[aper] = flux_sum
+        flux_opt_lst[aper] = flux_opt
+        back_sum_lst[aper] = flux_err
+        back_opt_lst[aper] = back_sum
+        flux_err_lst[aper] = back_opt
+
         if False:
-            fig2 = plt.figure()
-            ax2 = fig2.gca()
-            #ax2.plot(dcen_lst)
+        #mode=='debug':
+            fig = plt.figure(figsize=(12, 5))
+            ax1 = fig.add_subplot(211)
+            ax2 = fig.add_subplot(212)
+            ax1.plot(flux_opt, lw=0.5)
+            ax2.plot(dcen_lst, lw=0.5, alpha=0.3)
+            # plot Qsnr list
+            ax1c = ax1.twinx()
+            ax1c.plot(qsnr_lst, lw=0.5, c='k', alpha=0.2)
+            ax1c.axhline(y=10, lw=0.5, ls='--', c='k')
+            ax1c.axhline(y=5, lw=0.5, ls='--', c='k')
 
-            fig_comp = plt.figure(figsize=(12,6), dpi=150)
-            ax_comp1 = fig_comp.add_axes([0.1,0.4,0.8,0.5])
-            ax_comp2 = fig_comp.add_axes([0.1,0.1,0.8,0.25])
-            ax_comp1.plot(flux_sum_lst[aper],
-                    lw=0.6, color='C0', alpha=0.6, label='Standard')
-            ax_comp1.plot(flux_opt_lst[aper],
-                    lw=0.6, color='C3', alpha=0.6, label='Optimal')
-            ax_comp2.plot(back_sum_lst[aper],
-                    lw=0.6, color='C0', alpha=0.6, label='Standard Background')
-            for ax in fig_comp.get_axes():
-                ax.set_xlim(0, ndisp-1)
-                ax.grid(True, ls='--', lw=0.5)
-                ax.set_axisbelow(True)
-                ax.legend(loc='upper right')
-            fig_comp.savefig('flux_comp_{:03d}.png'.format(aper))
-            plt.close(fig_comp)
+            m = np.ones_like(dcen_lst, dtype=bool)
+            allx = np.arange(ndisp)
 
-            for x in [600, 1050, 1400, 1960, 2700, 3300, 4000, 4200]:
-                fig_comp2 = plt.figure(figsize=(12,6), dpi=150)
-                ax_comp21 = fig_comp2.gca()
-                i1 = x-120
-                i2 = x+120
-                ax_comp21.plot(np.arange(i1, i2), flux_sum_lst[aper][i1:i2],
-                        lw=0.6, color='C0', alpha=0.6, label='Standard')
-                ax_comp21.plot(np.arange(i1, i2), flux_opt_lst[aper][i1:i2],
-                        lw=0.6, color='C1', alpha=0.6, label='Optimal')
-                ax_comp21.grid(True, ls='--', lw=0.5)
-                ax_comp21.set_axisbelow(True)
-                ax_comp21.set_xlim(i1, i2)
-                fig_comp2.savefig('flux_comp_{:03d}_zoom_{:04d}.png'.format(
-                    aper, x))
-                plt.close(fig_comp2)
+            #winlen = ndisp//10
+            #if winlen%2==0:
+            #    winlne += 1
+            #for ite in range(5):
+            #    f = intp.InterpolatedUnivariateSpline(allx[m], dcen_lst[m], k=3)
+            #    ysmooth = savgol_filter(f(allx), window_length=winlen,
+            #               polyorder=3)
+            #    yres = dcen_lst - ysmooth
+            #    std = yres[m].std()
+            #    newm = m*(yres<3*std)*(yres>-3*std)
+            #    if newm.sum()==m.sum():
+            #        break
+            #    m = newm
 
-        print('Spectrum of Aperture {:3d} extracted'.format(aper))
+            ax2.plot(allx[m], dcen_lst[m], lw=0.5, color='C0', alpha=0.8)
+            ax2.plot(binx, biny, 'o', ms=3, color='C1', alpha=0.9)
+            ax2.plot(ysmooth,       '-',  lw=0.7, color='C1',
+                        label='Order = {}'.format(deg))
+            ax2.plot(ysmooth-std,   '--', lw=0.7, color='C1')
+            ax2.plot(ysmooth+std,   '--', lw=0.7, color='C1')
+            ax2.plot(ysmooth-3*std, '--', lw=0.7, color='C1')
+            ax2.plot(ysmooth+3*std, '--', lw=0.7, color='C1')
+
+            
+            _y1, _y2 = ax2.get_ylim()
+            _y1 = max(_y1, -1.8)
+            _y2 = min(_y2, 1.8)
+            ax2.set_ylim(_y1, _y2)
+            ax1.set_xlim(0, ndisp-1)
+            ax2.set_xlim(0, ndisp-1)
+            ax2.legend(loc='upper left')
+            ax1c.set_xlim(0, ndisp-1)
+            fig.savefig('debug/checkcen_{:03d}.png'.format(aper), dpi=200)
+            plt.close(fig)
+
+        t2 = time.time()
+        print('Spectrum of Aperture {:3d} extracted'.format(aper), t2-t1)
 
 
     return flux_opt_lst, flux_err_lst, back_opt_lst, flux_sum_lst, back_sum_lst
-
-
 
 
 def get_mean_profile(nodex_lst, nodey_lst, profx_lst):
