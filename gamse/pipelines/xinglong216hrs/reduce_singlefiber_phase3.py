@@ -178,9 +178,17 @@ def reduce_singlefiber_phase3(config, logtable):
                             maskmode   = (None, 'max')[nflat>3],
                             ncores     = ncores,
                             )
+
+        # determine flat name (??sec or ??-??sec)
+        if len(set(exptime_lst))==1:
+            flatname = '{:g}sec'.format(exptime_lst[0])
+        else:
+            flatname = '{:g}-{:g}sec'.format(
+                    min(exptime_lst), max(exptime_lst))
+
         # get mean exposure time and write it to header
         head = fits.Header()
-        exptime = np.array(exptime_lst).mean()
+        exptime = np.mean(exptime_lst)
         head[exptime_key] = exptime
 
         # find saturation mask
@@ -251,7 +259,7 @@ def reduce_singlefiber_phase3(config, logtable):
                 smooth_bkg_func = smooth_aperpar_bkg,
                 mode            = 'debug',
                 fig_spatial     = fig_spatial,
-                flatname        = 'flat_normal',
+                flatname        = flatname,
                 profile_x       = profile_x,
                 disp_x_lst      = disp_x_lst,
                 )
@@ -695,14 +703,18 @@ def reduce_singlefiber_phase3(config, logtable):
         method = section.get('method')
         if method == 'optimal':
             result = extract_aperset_optimal(data, mask,
-                        background  = background,
-                        apertureset = aperset,
-                        gain        = 1.02,
-                        ron         = 3.29,
-                        profilex    = profile_x,
-                        disp_x_lst  = disp_x_lst,
-                        main_disp   = 'x',
-                        profile_lst = profile_lst,
+                        background      = background,
+                        apertureset     = aperset,
+                        gain            = 1.02,
+                        ron             = 3.29,
+                        profilex        = profile_x,
+                        disp_x_lst      = disp_x_lst,
+                        main_disp       = 'x',
+                        upper_clipping  = 5,
+                        recenter        = True,
+                        mode            = mode,
+                        profile_lst     = profile_lst,
+                        plot_apertures  = [],
                     )
             flux_opt_lst = result[0]
             flux_err_lst = result[1]
