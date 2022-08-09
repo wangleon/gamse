@@ -809,6 +809,7 @@ class AlignFigureCommon(Figure):
 
 def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
+        fill=False, fill_tol=10,
         display=True, fig_trace=None, fig_align=None):
     """Find the positions of apertures on a CCD image.
 
@@ -829,7 +830,12 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         degree (int): Degree of polynomials to fit aperture locations.
         conv_core (str or float): Width of convolution core.
         display (bool): If *True*, display a figure on the screen.
+        fill (bool): If *True*, use the interpolation to find the missing
+            orders.
+        fill_tol (int): Number of tolerance pixels in finding the missing
+            orders.
         fig_trace (Figure): A figure used to display the traced orders.
+        fig_align (Figure): A figure used to plot the order alignment.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -1263,6 +1269,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         message.append(string)
     logger.debug((os.linesep+' '*3).join(message))
 
+    # plot cross-sections in trace figure
     fig_trace.ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend],
             '-', color='C0', lw=0.8)
     fig_trace.ax2.set_yscale('log')
@@ -1380,7 +1387,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         else:
             break
 
-    # plot the aperture positions
+    # plot the aperture positions using vertical thin lines
+    # in ax2 of trace figure
     f1, f2 = fig_trace.ax2.get_ylim()
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
@@ -1452,6 +1460,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         xfit, yfit = np.array(xfit), np.array(yfit)
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
+        # plot the nodes using red dots in ax1 of trace figure
         if transpose:
             fig_trace.ax1.plot(yfit, xfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
         else:
@@ -1473,17 +1482,6 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
         poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
 
-        # generate a curve using for plot
-        newx, newy = poly.linspace()
-        if transpose:
-            fig_trace.ax1.plot(newy, newx, '-', lw=0.8, alpha=1, color='C0')
-        else:
-            fig_trace.ax1.plot(newx, newy, '-', lw=0.8, alpha=1, color='C0')
-
-        if plot_paper_fig:
-            # plot the order in paper figure and the mini-figure
-            ax1p.plot(newx, newy, '-',lw=0.7, alpha=1, color='C0')
-            ax1m.plot(newx, newy, '-',lw=1.0, alpha=1, color='C0')
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))
@@ -1514,13 +1512,31 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
         aperture_set[aperture] = aperture_loc
 
+    # find the missing orders if fill = True
+    if fill:
+        aperture_set.fill(tol=fill_tol)
+
+    for aper, aperloc in sorted(aperture_set.items()):
+        # generate a curve using for plot
+        newx, newy = aperloc.position.linspace()
+        if transpose:
+            fig_trace.ax1.plot(newy, newx, '-', lw=0.8, alpha=1, c='C0')
+        else:
+            fig_trace.ax1.plot(newx, newy, '-', lw=0.8, alpha=1, c='C0')
+
+        if plot_paper_fig:
+            # plot the order in paper figure and the mini-figure
+            ax1p.plot(newx, newy, '-', lw=0.7, alpha=1, c='C0')
+            ax1m.plot(newx, newy, '-', lw=1.0, alpha=1, c='C0')
+
     # plot the order separation information in ax4
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
     fig_trace.ax4.plot(center_lst, derivative(center_lst),
             'ko', alpha=0.2, zorder=-1)
-    newx = np.arange(h)
-    fig_trace.ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
+    # plot the order separation limit using a dashed line
+    fig_trace.ax4.plot(ally, fsep(ally), 'k--', alpha=0.2, zorder=-1)
+    # adjust the axes
     fig_trace.ax4.set_xlim(0, h-1)
     for tickline in fig_trace.ax4.yaxis.get_ticklines():
         tickline.set_color('gray')
