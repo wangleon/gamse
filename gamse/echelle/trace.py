@@ -777,9 +777,39 @@ class TraceFigureCommon(Figure):
     def close(self):
         plt.close(self)
 
+class AlignFigureCommon(Figure):
+    """Figure to plot the order alignment.
+    """
+    def __init__(self, *args, **kwargs):
+        Figure.__init__(self, *args, **kwargs)
+        self.canvas = FigureCanvasAgg(self)
+
+    def adjust_axes(self):
+        """Adjust the sizes of axes.
+        """
+
+        # keep the x and y ranges the same for ax1 and ax2
+        _x11, _x12 = self.ax1.get_xlim()
+        _x21, _x22 = self.ax2.get_xlim()
+        _x1 = min(_x11, _x21)
+        _x2 = max(_x12, _x22)
+
+        _y11, _y12 = self.ax1.get_ylim()
+        _y21, _y22 = self.ax2.get_ylim()
+        _y1 = min(_y11, _y21)
+        _y2 = max(_y12, _y22)
+
+        self.ax1.set_xlim(_x1, _x2)
+        self.ax2.set_xlim(_x1, _x2)
+        self.ax1.set_ylim(_y1, _y2)
+        self.ax2.set_ylim(_y1, _y2)
+
+    def close(self):
+        plt.close(self)
+
 def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
-        display=True, fig=None):
+        display=True, fig_trace=None, fig_align=None):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -799,7 +829,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         degree (int): Degree of polynomials to fit aperture locations.
         conv_core (str or float): Width of convolution core.
         display (bool): If *True*, display a figure on the screen.
-        fig (Figure):
+        fig_trace (Figure): A figure used to display the traced orders.
 
     Returns:
         :class:`ApertureSet`: An :class:`ApertureSet` instance containing the
@@ -816,6 +846,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     sat_mask = (mask & 4 > 0)
 
     h, w = data.shape
+    allx = np.arange(w)
+    ally = np.arange(h)
 
     # filter the pixels smaller than the input "minimum" value
     logdata = np.log10(np.maximum(data, minimum))
@@ -864,22 +896,22 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                [(0,1,0,0), (0,1,0,0.8)], N=2)
 
     if transpose:
-        fig.ax1.imshow(logdata.T, cmap='gray', interpolation='none')
-        fig.ax1.imshow(sat_mask.T, interpolation='none', cmap=sat_cmap)
-        fig.ax1.imshow(bad_mask.T, interpolation='none', cmap=bad_cmap)
-        fig.ax1.imshow(gap_mask.T, interpolation='none', cmap=gap_cmap)
-        fig.ax1.set_xlim(0, h-1)
-        fig.ax1.set_ylim(w-1, 0)
+        fig_trace.ax1.imshow(logdata.T, cmap='gray', interpolation='none')
+        fig_trace.ax1.imshow(sat_mask.T, interpolation='none', cmap=sat_cmap)
+        fig_trace.ax1.imshow(bad_mask.T, interpolation='none', cmap=bad_cmap)
+        fig_trace.ax1.imshow(gap_mask.T, interpolation='none', cmap=gap_cmap)
+        fig_trace.ax1.set_xlim(0, h-1)
+        fig_trace.ax1.set_ylim(w-1, 0)
     else:
-        fig.ax1.imshow(logdata, cmap='gray', interpolation='none')
-        fig.ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
-        fig.ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
-        fig.ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
-        fig.ax1.set_xlim(0,w-1)
-        fig.ax1.set_ylim(h-1,0)
+        fig_trace.ax1.imshow(logdata, cmap='gray', interpolation='none')
+        fig_trace.ax1.imshow(sat_mask, interpolation='none', cmap=sat_cmap)
+        fig_trace.ax1.imshow(bad_mask, interpolation='none', cmap=bad_cmap)
+        fig_trace.ax1.imshow(gap_mask, interpolation='none', cmap=gap_cmap)
+        fig_trace.ax1.set_xlim(0,w-1)
+        fig_trace.ax1.set_ylim(h-1,0)
 
-    fig.ax1.set_xlabel('X')
-    fig.ax1.set_ylabel('Y')
+    fig_trace.ax1.set_xlabel('X')
+    fig_trace.ax1.set_ylabel('Y')
 
     plot_paper_fig = False
 
@@ -907,18 +939,18 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     # define a scroll function, which is used for mouse manipulation on pop-up
     # window
     def on_scroll(event):
-        if event.inaxes == fig.ax1:
-            x1, x2 = fig.ax1.get_xlim()
-            y1, y2 = fig.ax1.get_ylim()
+        if event.inaxes == fig_trace.ax1:
+            x1, x2 = fig_trace.ax1.get_xlim()
+            y1, y2 = fig_trace.ax1.get_ylim()
             x1 = event.xdata - (1-event.step*0.1)*(event.xdata - x1)
             x2 = event.xdata + (1-event.step*0.1)*(x2 - event.xdata)
             y1 = event.ydata - (1-event.step*0.1)*(event.ydata - y1)
             y2 = event.ydata + (1-event.step*0.1)*(y2 - event.ydata)
-            fig.ax1.set_xlim(x1, x2)
-            fig.ax1.set_ylim(y1, y2)
-            fig.canvas.draw()
-    fig.canvas.mpl_connect('scroll_event', on_scroll)
-    fig.canvas.draw()
+            fig_trace.ax1.set_xlim(x1, x2)
+            fig_trace.ax1.set_ylim(y1, y2)
+            fig_trace.canvas.draw()
+    fig_trace.canvas.mpl_connect('scroll_event', on_scroll)
+    fig_trace.canvas.draw()
     if display:
         plt.show(block=False)
 
@@ -962,7 +994,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             y_der = forward_der(x, p)
             dx = dy/y_der
             x = x - dx
-            if abs(dx) < 1e-7:
+            if (abs(dx) < 1e-7).all():
                 break
         return x
     def fitfunc(p, interfunc, n):
@@ -1050,6 +1082,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     # normalize the convolution core
     if core is not None:
         core /= core.sum()
+    
 
     while(True):
         # scan the image along X axis starting from the middle column
@@ -1098,6 +1131,25 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             csec_lst[i1:i2] += linflux1
             csec_nlst[i1:i2] += 1
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],linflux1)
+
+            # plot in the order alignment figure
+            if fig_align is not None:
+                # define a transfrom function that converts flux to plotted
+                # curves in the alignment figure
+                q01 = np.percentile(flux1, 1)
+                q99 = np.percentile(flux1, 99)
+                # take a small portion of the cross-section and
+                # calculate the constrast of peak
+                sflux = flux1[int(0.45*h):int(0.55*h)]
+                contrast = sflux.max() - sflux.min()
+                amp = scan_step*(q99-q01)/contrast*2
+                plottrans = lambda flux: (flux - q01)/(q99 - q01)*amp
+
+                # use the transform function
+                fig_align.ax1.plot(ally, plottrans(flux1)+x1,
+                        c='C0', lw=0.6)
+                fig_align.ax2.plot(ally, plottrans(flux1)+x1,
+                        c='C0', lw=0.6)
         else:
             # aperture alignment of each selected column, described by param
             param, _ = find_shift(flux0, flux1, deg=align_deg)
@@ -1132,10 +1184,24 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             csec_nlst[i1:i2] += 1
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],fnew)
             # for debug purpose
-            #fig.ax2.plot(np.arange(ysta_int, yend_int+1), fnew, 'y-', alpha=0.2)
+            #fig_trace.ax2.plot(np.arange(ysta_int, yend_int+1), fnew,
+            #    'y-', alpha=0.2)
             if direction==-1:
-                fig.ax2.plot(np.arange(ysta_int, yend_int+1), fnew, '-',
-                             lw=0.5, alpha=0.2)
+                fig_trace.ax2.plot(np.arange(ysta_int, yend_int+1), fnew,
+                            '-', lw=0.5, alpha=0.2)
+
+            # plot in the order alignment figure
+            if fig_align is not None:
+
+                # calculate the ally after alignment
+                aligned_ally = ally.copy()
+                for param in param_lst[direction][::-1]:
+                    aligned_ally = backward(aligned_ally, param)
+
+                fig_align.ax1.plot(ally, plottrans(flux1)+x1,
+                        c='k', lw=0.6, alpha=0.2)
+                fig_align.ax2.plot(aligned_ally, plottrans(flux1)+x1,
+                        c='k', lw=0.6, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -1197,12 +1263,12 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         message.append(string)
     logger.debug((os.linesep+' '*3).join(message))
 
-    fig.ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend], '-', color='C0',
-            lw=0.8)
-    fig.ax2.set_yscale('log')
-    fig.ax2.set_xlabel('Y')
-    fig.ax2.set_ylabel('Count')
-    fig.ax2.set_ylim(0.5,)
+    fig_trace.ax2.plot(csec_ylst[istart:iend], csec_lst[istart:iend],
+            '-', color='C0', lw=0.8)
+    fig_trace.ax2.set_yscale('log')
+    fig_trace.ax2.set_xlabel('Y')
+    fig_trace.ax2.set_ylabel('Count')
+    fig_trace.ax2.set_ylim(0.5,)
 
     if plot_paper_fig:
         # plot the stacked cross-section in paper figure
@@ -1210,7 +1276,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                 color='C0', lw=1)
 
     #for x1,y_lst in nodes_lst.items():
-    #    fig.ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
+    #    fig_trace.ax1.scatter(np.repeat(x1, y_lst.size), y_lst, c='b', s=5, lw=0)
 
     # parse peaks
     # cutx, cuty, cutn are the stacked peak list
@@ -1224,15 +1290,15 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         cutn[y-csec_i1] += 1
         cutf[y-csec_i1] += f
         # for debug purpose
-        #fig.ax2.axvline(csec_ylst[y-csec_i1], color='y', ls='--', alpha=0.2)
+        #fig_trace.ax2.axvline(csec_ylst[y-csec_i1], color='y', ls='--', alpha=0.2)
     # remove those element equal to one
     onemask = cutn == 1
     cutf[onemask] = 0
     cutn[onemask] = 0
     cuty = np.arange(cutn.size) + csec_i1
 
-    #fig.ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
-    fig.ax3.fill_between(cuty[istart:iend], cutn[istart:iend],
+    #fig_trace.ax2.plot(cuty[istart:iend], cutn[istart:iend],'r-',alpha=1.)
+    fig_trace.ax3.fill_between(cuty[istart:iend], cutn[istart:iend],
                         step='mid', color='C1')
     if plot_paper_fig:
         # plot stacked peaks with yello in paper figure
@@ -1285,7 +1351,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         message.append(fmt.format(**info))
 
         # for debug purpose
-        #fig.ax2.axvline(csec_ylst[y], color='k', ls='--')
+        #fig_trace.ax2.axvline(csec_ylst[y], color='k', ls='--')
 
     # write debug information
     logger.info((os.linesep+' '*2).join(message))
@@ -1296,7 +1362,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[-1])
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
-            logger.info('Remove the last aperture at %d (distance=%d > 2 x %d)'%(
+            logger.info(('Remove the last aperture at {:d}'
+                        '(distance={:d} > 2 x {:d})').format(
                         mid_lst[-1], mid_lst[-1]-mid_lst[-2], sep))
             mid_lst.pop(-1)
         else:
@@ -1306,20 +1373,22 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[0])
         if mid_lst[1] - mid_lst[0] > 2*sep:
-            logger.info('Remove the first aperture at %d (distance=%d > 2 x %d)'%(
+            logger.info(('Remove the first aperture at {:d}'
+                        '(distance={:d} > 2 x {:d})').format(
                         mid_lst[0], mid_lst[1]-mid_lst[0], sep))
             mid_lst.pop(0)
         else:
             break
 
     # plot the aperture positions
-    f1, f2 = fig.ax2.get_ylim()
+    f1, f2 = fig_trace.ax2.get_ylim()
     for mid in mid_lst:
         f = csec_lst[mid-csec_i1]
-        fig.ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', lw=0.6,
-                alpha=1)
+        fig_trace.ax2.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03],
+                'k-', lw=0.6, alpha=1)
         if plot_paper_fig:
-            ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03], 'k-', alpha=1, lw=1)
+            ax2p.plot([mid, mid], [f*(f2/f1)**0.01, f*(f2/f1)**0.03],
+                    'k-', alpha=1, lw=1)
 
 
     aperture_set = ApertureSet(shape=(h,w))
@@ -1363,7 +1432,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                     xdata = np.arange(y1, y2)
                     ydata = logdata[y1:y2, x1-3:x1+2].mean(axis=1)
                     m = sat_mask[y1:y2, x1]
-                    #ypeak = find_local_peak(xdata, ydata, m, smooth=15, figname='%02d.%04d.png'%(aperture, x1))
+                    #ypeak = find_local_peak(xdata, ydata, m, smooth=15,
+                    #               figname='%02d.%04d.png'%(aperture, x1))
                     ypeak = find_local_peak(xdata, ydata, m, smooth=15)
                     xfit.append(x1)
                     yfit.append(ypeak)
@@ -1383,9 +1453,9 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         argsort = xfit.argsort()
         xfit, yfit = xfit[argsort], yfit[argsort]
         if transpose:
-            fig.ax1.plot(yfit, xfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
+            fig_trace.ax1.plot(yfit, xfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
         else:
-            fig.ax1.plot(xfit, yfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
+            fig_trace.ax1.plot(xfit, yfit, 'ro', lw=0.5, alpha=0.8, ms=1, mew=0)
 
         # fit chebyshev polynomial
         # determine the left and right domain
@@ -1406,9 +1476,9 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         # generate a curve using for plot
         newx, newy = poly.linspace()
         if transpose:
-            fig.ax1.plot(newy, newx, '-', lw=0.8, alpha=1, color='C0')
+            fig_trace.ax1.plot(newy, newx, '-', lw=0.8, alpha=1, color='C0')
         else:
-            fig.ax1.plot(newx, newy, '-', lw=0.8, alpha=1, color='C0')
+            fig_trace.ax1.plot(newx, newy, '-', lw=0.8, alpha=1, color='C0')
 
         if plot_paper_fig:
             # plot the order in paper figure and the mini-figure
@@ -1447,26 +1517,27 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     # plot the order separation information in ax4
     center_lst = [aper_loc.get_center()
                   for aper, aper_loc in sorted(aperture_set.items())]
-    fig.ax4.plot(center_lst, derivative(center_lst), 'ko', alpha=0.2, zorder=-1)
+    fig_trace.ax4.plot(center_lst, derivative(center_lst),
+            'ko', alpha=0.2, zorder=-1)
     newx = np.arange(h)
-    fig.ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
-    fig.ax4.set_xlim(0, h-1)
-    for tickline in fig.ax4.yaxis.get_ticklines():
+    fig_trace.ax4.plot(newx, fsep(newx), 'k--', alpha=0.2, zorder=-1)
+    fig_trace.ax4.set_xlim(0, h-1)
+    for tickline in fig_trace.ax4.yaxis.get_ticklines():
         tickline.set_color('gray')
         tickline.set_alpha(0.8)
-    for tick in fig.ax4.yaxis.get_major_ticks():
+    for tick in fig_trace.ax4.yaxis.get_major_ticks():
         tick.label2.set_color('gray')
         tick.label2.set_alpha(0.8)
-    fig.ax3.set_xlabel('Y')
-    fig.ax3.set_ylabel('Detected Peaks')
-    fig.ax4.set_ylabel('Order Separation (Pixel)', color='gray', alpha=0.8)
-    for ax in [fig.ax2, fig.ax3, fig.ax4]:
+    fig_trace.ax3.set_xlabel('Y')
+    fig_trace.ax3.set_ylabel('Detected Peaks')
+    fig_trace.ax4.set_ylabel('Order Separation (Pixel)', c='gray', alpha=0.8)
+    for ax in [fig_trace.ax2, fig_trace.ax3, fig_trace.ax4]:
         ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
         # set tickers
         ax.xaxis.set_major_locator(tck.MultipleLocator(500))
         ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
 
-    fig.canvas.draw()
+    fig_trace.canvas.draw()
     
     if plot_paper_fig:
         # adjust figure 1 in paper
