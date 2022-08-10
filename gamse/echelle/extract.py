@@ -1,6 +1,8 @@
 import os
+import sys
 import math
 import time
+import shutil
 import logging
 
 logger = logging.getLogger(__name__)
@@ -366,6 +368,20 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     #plt.close(fig_allprofile)
 
 
+    ################## loop for every aperture #######################
+    # define the function of refreshing the second progress bar
+    def refresh_progressbar(iaper, aper):
+        ratio = min(iaper/(len(apertureset)-1), 1.0)
+        #term_size = os.get_terminal_size()
+        term_size = shutil.get_terminal_size(fallback=(120, 50))
+        nchar = term_size.columns - 60
+        string = '>'*int(ratio*nchar)
+        string = string.ljust(nchar, '-')
+        prompt = 'Extracting 1D Spectra for Aperture {}'.format(aper)
+        string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
+        sys.stdout.write(string)
+        sys.stdout.flush()
+
     # generate idisp_lst, from center to the limbs
     a = allx[0:ndisp//2]
     b = allx[ndisp//2:]
@@ -377,7 +393,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     flux_err_lst = {}
     back_sum_lst = {}
     back_opt_lst = {}
-    for aper, aperloc in sorted(apertureset.items()):
+    for iaper, (aper, aperloc) in enumerate(sorted(apertureset.items())):
         t1 = time.time()
         flux_sum = np.zeros(ndisp, dtype=np.float32)
         flux_opt = np.zeros(ndisp, dtype=np.float32)
@@ -426,7 +442,8 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                     mask *= new_mask
 
                 dcen_lst[idisp] = para[1]-cen
-                qsnr_lst[idisp] = para[0]/std
+                qsnr_lst[idisp] = max(para[0]/std, 0)
+                # the minimum qsnr should not be negative
 
             deg = 5
             m = np.ones_like(dcen_lst, dtype=bool)
@@ -476,6 +493,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 ax3c = ax3.twinx()
                 ax3c.plot(qsnr_lst, '-', color='k', alpha=0.2, lw=0.5)
                 ax3c.set_xlim(0, ndisp-1)
+                ax3c.set_ylim(0, )
                 fig3.suptitle('Aperture {}'.format(aper))
                 fig3.savefig('debug/fitcen_{:03d}.png'.format(aper), dpi=150)
                 plt.close(fig3)
@@ -668,8 +686,17 @@ def extract_aperset_optimal(data, mask, background, apertureset,
             plt.close(fig)
 
         t2 = time.time()
-        print('Spectrum of Aperture {:3d} extracted'.format(aper), t2-t1)
 
+        # in debug mode print messages line-by-line
+        # in normal mode print a progress bar
+        if mode=='debug':
+            print('Spectrum of Aperture {:3d} Extracted. t={:.1f}sec'.format(
+                    aper, t2-t1))
+        else:
+            refresh_progressbar(iaper, aper)
+
+    # use light green color to print "Completed"
+    print(' \033[92m Completed\033[0m')
 
     return flux_opt_lst, flux_err_lst, back_opt_lst, flux_sum_lst, back_sum_lst
 
