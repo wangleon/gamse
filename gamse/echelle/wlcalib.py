@@ -2176,3 +2176,81 @@ def select_calib_manu(calib_lst, promotion,
             return ref_calib_lst
         else:
             continue
+
+class FWHMMapFigure(Figure):
+    """Figure class for plotting FWHMs over the whole CCD.
+
+    """
+    def __init__(self, identlist, apertureset, fwhm_range=None):
+        """Constuctor of :class:`FWHMMapFigure`.
+        """
+        # find shape of map
+        aper0 = list(apertureset.keys())[0]
+        aperloc = apertureset[aper0]
+        shape = aperloc.shape
+
+        figsize = (12, 6)
+        super(FWHMMapFigure, self).__init__(figsize=figsize, dpi=150)
+        _w = shape[1]/figsize[0]
+        _h = shape[0]/figsize[1]
+        _zoom = 0.82/_h
+        _w *= _zoom
+        _h *= _zoom
+        self.ax1 = self.add_axes([0.09, 0.1, _w,   _h])
+        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
+        self.ax3 = self.add_axes([0.58, 0.6, 0.38, 0.32])
+        self.ax4 = self.add_axes([0.58, 0.2, 0.38, 0.32])
+
+        x_lst = []
+        y_lst = []
+        fwhm_lst = []
+        aper_fwhm_lst = {}
+        for row in identlist:
+            if not row['mask']:
+                continue
+            aper   = row['aperture']
+            fwhm   = row['fwhm']
+            center = row['pixel']
+            aperloc = apertureset[aper]
+            ypos = aperloc.position(center)
+
+            x_lst.append(center)
+            y_lst.append(ypos)
+            fwhm_lst.append(fwhm)
+
+            if aper not in aper_fwhm_lst:
+                aper_fwhm_lst[aper] = [[], []]
+            aper_fwhm_lst[aper][0].append(center)
+            aper_fwhm_lst[aper][1].append(fwhm)
+
+        if fwhm_range is None:
+            fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
+        else:
+            fwhm1, fwhm2 = fwhm_range
+
+        # ax1: plot FWHM as scatters
+        cax = self.ax1.scatter(x_lst, y_lst, s=20, c=fwhm_lst, alpha=0.8,
+                vmin=fwhm1, vmax=fwhm2, lw=0)
+        self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
+        self.cbar.set_label('FWHM')
+        self.ax1.set_xlim(0, shape[1]-1)
+        self.ax1.set_ylim(0, shape[0]-1)
+        self.ax1.set_xlabel('X (pixel)')
+        self.ax1.set_ylabel('Y (pixel)')
+
+        # ax3: plot x vs. fwhm for different apertures
+        for aper, (_x_lst, _fwhm_lst) in aper_fwhm_lst.items():
+            self.ax3.plot(_x_lst, _fwhm_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax3.set_xlim(0, shape[1]-1)
+        self.ax3.set_ylim(fwhm1, fwhm2)
+        self.ax3.set_xlabel('X (pixel)')
+        self.ax3.set_ylabel('FWHM')
+
+        # ax4: plot FWHM histograms
+        self.ax4.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
+        self.ax4.set_xlim(fwhm1, fwhm2)
+        self.ax4.set_ylabel('N')
+
+    def close(self):
+        plt.close(self)
