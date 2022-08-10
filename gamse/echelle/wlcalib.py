@@ -24,10 +24,10 @@ from .trace import load_aperture_set_from_header
 
 # Data format for identified line table
 identlinetype = np.dtype({
-    'names':  ['aperture','order','pixel','wavelength','q','mask',
-               'residual','method'],
+    'names':  ['aperture','order','pixel','wavelength','amplitude',
+                'fwhm','q','mask','residual','method'],
     'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
-               np.int16, np.float64, 'S1'],
+                np.float32, np.float32, np.int16, np.float64, 'S1'],
     })
 
 def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
@@ -48,15 +48,15 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
     Returns:
         tuple: A tuple containing:
 
-            * **coeff** (:class:`numpy.ndarray`) – Coefficients array.
-            * **std** (*float*) – Standard deviation.
-            * **k** (*int*) – *k* in the relationship between aperture
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficients array.
+            * **std** (*float*) -- Standard deviation.
+            * **k** (*int*) -- *k* in the relationship between aperture
               numbers and diffraction orders: `order = k*aperture + offset`.
-            * **offset** (*int*) – *offset* in the relationship between
+            * **offset** (*int*) -- *offset* in the relationship between
               aperture numbers and diffraction orders: `order = k*aperture +
               offset`.
-            * **nuse** (*int*) – Number of lines used in the fitting.
-            * **ntot** (*int*) – Number of lines found.
+            * **nuse** (*int*) -- Number of lines used in the fitting.
+            * **ntot** (*int*) -- Number of lines found.
 
     See also:
         :func:`get_wavelength`
@@ -226,9 +226,9 @@ def find_order(identlist, npixel):
     Returns:
         tuple: A tuple containing:
 
-            * **k** (*int*) – Coefficient in the relationship
+            * **k** (*int*) -- Coefficient in the relationship
               `order = k*aperture + offset`.
-            * **offset** (*int*) – Coefficient in the relationship
+            * **offset** (*int*) -- Coefficient in the relationship
               `order = k*aperture + offset`.
     """
     aper_lst, wlc_lst = [], []
@@ -271,7 +271,7 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_ident(identlist, coeff, filename, channel=None):
+def save_ident(identlist, coeff, filename):
     """Write the ident line list and coefficients into an ASCII file.
     The existing informations in the ASCII file will not be affected.
     Only the input channel will be overwritten.
@@ -281,57 +281,31 @@ def save_ident(identlist, coeff, filename, channel=None):
         coeff (:class:`numpy.ndarray`): Coefficient array.
         result (dict): A dict containing identification results.
         filename (str): Name of the ASCII file.
-        channel (str): Name of channel.
 
     See also:
         :func:`load_ident`
     """
-    if channel is None:
-        outfile = open(filename, 'w')
-    else:
-        exist_row_lst = []
-        if os.path.exists(filename):
-            # if filename already exist, only overwrite the current channel
-            infile = open(filename)
-            for row in infile:
-                row = row.strip()
-                if len(row)==0 or row[0] in '#$%^@!':
-                    continue
-                g = row.split()
-                if g[0] != channel:
-                    exist_row_lst.append(row)
-            infile.close()
-
-        outfile = open(filename, 'w')
-
-        # write other channels
-        if len(exist_row_lst)>0:
-            outfile.write(os.linesep.join(exist_row_lst))
-
-
-    # write current channel
+    outfile = open(filename, 'w')
 
     # write identified lines
-    for aperture, list1 in sorted(identlist.items()):
-        for pix, wav, mask, res, method in zip(list1['pixel'],
-                list1['wavelength'], list1['mask'], list1['residual'],
-                list1['method']):
-            if channel is None:
-                outfile.write('LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                    aperture, pix, wav, int(mask), res, method.decode('ascii')))
-            else:
-                outfile.write('%1s LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                    channel, aperture, pix, wav, int(mask), res, method.decode('ascii')))
-            outfile.write(os.linesep)
+    fmtstr = ('LINE {:03d} {:10.4f} {:10.4f} {:10.4f} {:12.5e} {:9.5f}'
+             '{:1d} {:+10.6f} {:1s}')
+    for aper, list1 in sorted(identlist.items()):
+        for row in list1:
+            pix    = row['pixel']
+            wav    = row['wavelength']
+            amp    = row['amplitude']
+            fwhm   = row['fwhm']
+            mask   = int(row['mask'])
+            res    = row['residual']
+            method = row['method'].decode('ascii')
+            outfile.write(fmtstr.format(aper, pix, wav, amp, fwhm,
+                mask, res, method)+os.linesep)
 
     # write coefficients
     for irow in range(coeff.shape[0]):
-        string = ' '.join(['%18.10e'%v for v in coeff[irow]])
-        if channel is None:
-            outfile.write('COEFF %s'%string)
-        else:
-            outfile.write('%1s COEFF %s'%(channel, string))
-        outfile.write(os.linesep)
+        string = ' '.join(['{:18.10e}'.format(v) for v in coeff[irow]])
+        outfile.write('COEFF {}'.format(string)+os.linesep)
 
     outfile.close()
 
@@ -345,8 +319,8 @@ def load_ident(filename):
     Returns:
         tuple: A tuple containing:
 
-            * **identlist** (*dict*) – Identified lines for all orders.
-            * **coeff** (:class:`numpy.ndarray`) – Coefficients of wavelengths.
+            * **identlist** (*dict*) -- Identified lines for all orders.
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficients of wavelengths.
 
     See also:
         :func:`save_ident`
@@ -366,12 +340,15 @@ def load_ident(filename):
             aperture    = int(g[1])
             pixel       = float(g[2])
             wavelength  = float(g[3])
-            mask        = bool(g[4])
-            residual    = float(g[5])
-            method      = g[6].strip()
+            amplitude   = float(g[4])
+            fwhm        = float(g[5])
+            mask        = bool(g[6])
+            residual    = float(g[7])
+            method      = g[8].strip()
 
-            item = np.array((aperture,0,pixel,wavelength,0.,mask,residual,
-                                method),dtype=identlinetype)
+            item = np.array((aperture, 0, pixel, wavelength, amplitdue, fwhm,
+                    0., mask, residual, method),dtype=identlinetype)
+
             if aperture not in identlist:
                 identlist[aperture] = []
             identlist[aperture].append(item)
@@ -419,7 +396,7 @@ def find_local_peak(flux, x, width):
             * **i1** (*int*) -- Index of the left side.
             * **i2** (*int*) -- Index of the right side.
             * **p1** (*list*) -- List of fitting parameters.
-            * **std** (*float*) -- Standard devation of the fitting.
+            * **std** (*float*) -- Standard deviation of the fitting.
     """
     width = int(round(width))
     if width%2 != 1:
@@ -660,7 +637,11 @@ class CalibFigure(Figure):
     def __init__(self, width, height, dpi, title):
         """Constuctor of :class:`CalibFigure`.
         """
-        super(CalibFigure, self).__init__(figsize=(width/dpi, height/dpi), dpi=dpi)
+        # set figsize and dpi
+        figsize = (width/dpi, height/dpi)
+        super(CalibFigure, self).__init__(figsize=figsize, dpi=dpi)
+
+        # set background color as light gray
         self.patch.set_facecolor('#d9d9d9')
 
         # add axes
@@ -943,29 +924,29 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
     Returns:
         dict: A dict containing:
 
-            * **coeff** (:class:`numpy.ndarray`) – Coefficient array.
-            * **npixel** (*int*) – Number of pixels along the main
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficient array.
+            * **npixel** (*int*) -- Number of pixels along the main
               dispersion direction.
-            * **k** (*int*) – Coefficient in the relationship `order =
+            * **k** (*int*) -- Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **offset** (*int*) – Coefficient in the relationship `order =
+            * **offset** (*int*) -- Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **std** (*float*) – Standard deviation of wavelength fitting in Å.
-            * **nuse** (*int*) – Number of lines used in the wavelength
+            * **std** (*float*) -- Standard deviation of wavelength fitting in Å.
+            * **nuse** (*int*) -- Number of lines used in the wavelength
               fitting.
-            * **ntot** (*int*) – Number of lines found in the wavelength
+            * **ntot** (*int*) -- Number of lines found in the wavelength
               fitting.
-            * **identlist** (*dict*) – Dict of identified lines.
-            * **window_size** (*int*) – Length of window in searching the
+            * **identlist** (*dict*) -- Dict of identified lines.
+            * **window_size** (*int*) -- Length of window in searching the
               line centers.
-            * **xorder** (*int*) – Order of polynomial along X axis in the
+            * **xorder** (*int*) -- Order of polynomial along X axis in the
               wavelength fitting.
-            * **yorder** (*int*) – Order of polynomial along Y axis in the
+            * **yorder** (*int*) -- Order of polynomial along Y axis in the
               wavelength fitting.
-            * **maxiter** (*int*) – Maximum number of iteration in the
+            * **maxiter** (*int*) -- Maximum number of iteration in the
               wavelength fitting.
-            * **clipping** (*float*) – Clipping value of the wavelength fitting.
-            * **q_threshold** (*float*) – Minimum *Q*-factor of the spectral
+            * **clipping** (*float*) -- Clipping value of the wavelength fitting.
+            * **q_threshold** (*float*) -- Minimum *Q*-factor of the spectral
               lines to be accepted in the wavelength fitting.
 
     See also:
@@ -1047,17 +1028,23 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             if not keep:
                 continue
 
-            q = param[0]/std
+            # unpack the fitted parameters
+            amplitude = param[0]
+            center    = param[1]
+            fwhm      = param[2]
+            back      = param[3]
+
+            # q = A/std is a proxy of signal-to-noise ratio.
+            q = amplitude/std
             if q < q_threshold:
                 continue
-            peak_x = param[1]
 
             if aperture not in identlist:
                 identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
-                            'a'), dtype=identlinetype)
+            item = np.array((aperture, order, center, line[0], amplitude, fwhm,
+                            q, True, 0.0, 'a'), dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
             has_insert = True
@@ -1612,8 +1599,8 @@ def reference_self_wavelength(spec, calib):
     """Calculate the wavelengths for an one dimensional spectra.
 
     Args:
-        spec ():
-        calib ():
+        spec (:class:`numpy.dtype`):
+        calib (tuple):
 
     Returns:
         tuple: A tuple containing:

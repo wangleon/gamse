@@ -350,7 +350,9 @@ class LineTable(tk.Frame):
         self.search_text.set('')
 
         # clear the identified line
-        self.master.master.param['ident']=None
+        self.master.master.param['center']    = None
+        self.master.master.param['amplitude'] = None
+        self.master.master.param['fwhm']      = None
 
         # de-select the line table
         sel_items = self.line_tree.selection()
@@ -584,7 +586,9 @@ class CalibWindow(tk.Frame):
             # parameters of displaying
             'xlim':         {},
             'ylim':         {},
-            'ident':        None,
+            'center':       None,
+            'amplitude':    None,
+            'fwhm':         None,
             # parameters of converting aperture and order
             'k':            None,
             'offset':       None,
@@ -760,10 +764,16 @@ class CalibWindow(tk.Frame):
                 if not keep:
                     continue
 
-                q = param[0]/std
+                # unpack the fitted parameters
+                amplitude = param[0]
+                center    = param[1]
+                fwhm      = param[2]
+                back      = param[3]
+
+                # q = A/std is a proxy of signal-to-noise ratio.
+                q = amplitude/std
                 if q < self.param['q_threshold']:
                     continue
-                peak_x = param[1]
 
                 '''
                 fig = plt.figure(figsize=(6,4),tight_layout=True)
@@ -787,8 +797,8 @@ class CalibWindow(tk.Frame):
                 if aperture not in self.identlist:
                     self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
-                                'a'), dtype=identlinetype)
+                item = np.array((aperture, order, center, line[0], amplitude,
+                                fwhm, q, True, 0.0, 'a'), dtype=identlinetype)
 
                 self.identlist[aperture] = np.append(self.identlist[aperture], item)
                 has_insert = True
@@ -889,15 +899,14 @@ class CalibWindow(tk.Frame):
                 # draw text
                 x = pixel+pix_ratio*10
                 y = 0.4*y1+0.6*y2
-                text = ax1.text(x, y, '%.4f'%wavelength, color='k',
+                text = ax1.text(x, y, '{:.4f}'.format(wavelength), color='k',
                                 rotation='vertical', fontstyle='italic',
                                 fontsize=10)
                 self.ident_objects.append((line, text))
 
         # plot the temporarily identified line
-        if self.param['ident'] is not None:
-            ax1.axvline(self.param['ident'], linestyle='--', color='k')
-
+        if self.param['center'] is not None:
+            ax1.axvline(self.param['center'], linestyle='--', color='k')
 
         # update the aperture number
         ax1._aperture_text.set_text('Aperture %d'%aperture)
@@ -1049,9 +1058,15 @@ class CalibWindow(tk.Frame):
             # now found the local max point
             window_size = self.param['window_size']
             _, _, param, _ = find_local_peak(flux, local_max, window_size)
-            peak_x = param[1]
 
-            self.param['ident'] = peak_x
+            # unpack the fitted parameters
+            amplitude = param[0]
+            center    = param[1]
+            fwhm      = param[2]
+
+            self.param['center']    = center
+            self.param['amplitude'] = amplitude
+            self.parma['fwhm']      = fwhm
 
             # temporarily plot this line
             self.plot_aperture()
@@ -1110,7 +1125,10 @@ class CalibWindow(tk.Frame):
 
         list1 = self.identlist[aperture]
 
-        pixel = self.param['ident']
+        pixel     = self.param['center']
+        amplitude = self.param['amplitude']
+        fwhm      = self.param['fwhm']
+
         selected_iid_lst = line_frame.line_tree.selection()
         iid = selected_iid_lst[0]
         wavelength = float(line_frame.line_tree.item(iid, 'values')[0])
@@ -1124,15 +1142,17 @@ class CalibWindow(tk.Frame):
         else:
             order = k*aperture + offset
 
-        item = np.array((aperture, order, pixel, wavelength, -1., True, 0.0,
-                        'm'), dtype=identlinetype)
+        item = np.array((aperture, order, pixel, wavelength, amplitude, fwhm,
+                        -1., True, 0.0, 'm'), dtype=identlinetype)
 
         # insert into identified line list
         self.identlist[aperture] = np.insert(self.identlist[aperture],
                                              insert_pos, item)
 
-        # reset ident
-        self.param['ident'] = None
+        # reset line fitting parameters
+        self.param['center']    = None
+        self.param['amplitude'] = None
+        self.param['fwhm']      = None
 
         # reset the line table
         line_frame.search_text.set('')
