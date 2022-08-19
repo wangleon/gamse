@@ -22,7 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
-from ...echelle.trace import TraceFigureCommon
+from ...echelle.trace import TraceFigureCommon, AlignFigureCommon
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header, get_wavelength
@@ -712,6 +712,14 @@ class TraceFigure(TraceFigureCommon):
         self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
+
+class AlignFigure(AlignFigureCommon):
+    """Figure to plot the order alignment.
+    """
+    def __init__(self):
+        AlignFigureCommon.__init__(self, figsize=(12,6), dpi=150)
+        self.ax1 = self.add_axes([0.08, 0.1, 0.4, 0.8])
+        self.ax2 = self.add_axes([0.55, 0.1, 0.4, 0.8])
 
 def print_wrapper(string, item):
     """A wrapper for log printing for Xinglong216HRS pipeline.
