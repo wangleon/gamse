@@ -377,7 +377,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
         nchar = term_size.columns - 60
         string = '>'*int(ratio*nchar)
         string = string.ljust(nchar, '-')
-        prompt = 'Extracting 1D Spectra for Aperture {}'.format(aper)
+        prompt = '    Extracting Aperture {}'.format(aper)
         string = '\r {:<30s} |{}| {:6.2f}%'.format(prompt, string, ratio*100)
         sys.stdout.write(string)
         sys.stdout.flush()
@@ -395,17 +395,21 @@ def extract_aperset_optimal(data, mask, background, apertureset,
     back_opt_lst = {}
     for iaper, (aper, aperloc) in enumerate(sorted(apertureset.items())):
         t1 = time.time()
+        # initialize the flux results of the current aperture
         flux_sum = np.zeros(ndisp, dtype=np.float32)
         flux_opt = np.zeros(ndisp, dtype=np.float32)
         flux_err = np.zeros(ndisp, dtype=np.float32)
         back_sum = np.zeros(ndisp, dtype=np.float32)
         back_opt = np.zeros(ndisp, dtype=np.float32)
-        dcen_lst = np.zeros(ndisp, dtype=np.float32)
-        qsnr_lst = np.zeros(ndisp, dtype=np.float32)
+        dcen_lst = np.array([np.NaN]*ndisp)
+        qsnr_lst = np.array([np.NaN]*ndisp)
 
         if recenter:
+            # loop over the x along the dispersion direction
             for idisp in idisp_lst:
+                # get the profile interpolation function of this column
                 interf = interprofilefunc_lst[idisp]
+                # the order center from the aperset
                 cen = aperloc.position(idisp)
                 intc = np.int(np.round(cen))
                 i1 = int(intc + p1)
@@ -446,20 +450,26 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 # the minimum qsnr should not be negative
 
             deg = 5
-            m = np.ones_like(dcen_lst, dtype=bool)
+            #m = np.ones_like(dcen_lst, dtype=bool)
+            m = ~np.isnan(dcen_lst)
             for ite in range(5):
                 binx = []
                 biny = []
                 binstep = 128
                 for i1 in np.arange(0, ndisp, binstep):
                     i2 = i1 + binstep
-                    binx.append(i1 + binstep/2)
                     m2 = m[i1:i2]
-                    biny.append(np.mean(dcen_lst[i1:i2][m2]))
+                    if m2.sum()==0:
+                        continue
+                    #meanx = i1 + binstep/2
+                    meanx = np.mean(np.arange(i1, i2)[m2])
+                    meany = np.mean(dcen_lst[i1:i2][m2])
+                    binx.append(meanx)
+                    biny.append(meany)
                 binx = np.array(binx)
                 biny = np.array(biny)
 
-                coeff = np.polyfit(binx/ndisp, biny, deg=deg)
+                coeff = np.polyfit(binx/ndisp, biny, deg=min(binx.size-1, deg))
                 newdcen = np.polyval(coeff, allx/ndisp)
                 yres = dcen_lst - newdcen
                 std = yres[m].std()
@@ -545,7 +555,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 resprof = flux - fitprof
                 std = resprof[mask].std()
                 qsnr = para[0]/std
-                new_mask = resprof < 3*std
+                new_mask = resprof < upper_clipping*std
                 if new_mask.sum() == mask.sum():
                     break
                 mask *= new_mask

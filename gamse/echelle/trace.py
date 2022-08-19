@@ -1049,8 +1049,9 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         xmax = xdata[argmax]
         if argmax<2 or argmax>ydata.size-2:
             return xdata[xdata.size//2]
-        coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],deg=2)
-        a, b,c = coeff
+        coeff = np.polyfit(xdata[argmax-1:argmax+2], ydata[argmax-1:argmax+2],
+                            deg=2)
+        a, b, c = coeff
         ypeak = -b/2/a
         if figname is not None:
             ax.plot(xdata, ydata, color='C1')
@@ -1066,9 +1067,11 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     separation_lst = np.int32(np.round(separation_lst))
     window = 2*separation_lst*density+1
 
-    # convolution core for the cross-sections. used to eliminate the "flat" tops
-    # of the saturated orders
-    if isinstance(conv_core, str) and conv_core=='auto':
+    # convolution core for the cross-sections. used to eliminate the
+    # "flat" tops of the saturated orders
+    if conv_core is None:
+        core = None
+    elif isinstance(conv_core, str) and conv_core=='auto':
         core = np.hanning(int(fsep(h/2)))
     elif isinstance(conv_core, int):
         if conv_core > 0:
@@ -1093,29 +1096,35 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     while(True):
         # scan the image along X axis starting from the middle column
         nodes_lst[x1] = []
+
+        # get the slice of data in logrithm scale
         flux1 = logdata[:,x1]
         mask1 = (bad_mask[:, x1]==0)*(gap_mask[:, x1]==0)
-        #flux1 = data[:,x1]
-        #linflux1 = data[:,x1]
-        linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
-        #linflux1 = np.exp(flux1)
         #flux1 = sg.savgol_filter(flux1, window_length=5, polyorder=2)
         fixfunc = intp.InterpolatedUnivariateSpline(
                 np.arange(h)[mask1], flux1[mask1], k=3, ext=3)
         flux1 = fixfunc(np.arange(h))
 
-        # convolve the cross-section
-        if core is not None:
-            flux1 = np.convolve(flux1, core, mode='same')
+        # get the slice of data in linear scale by local median
+        #linflux1 = data[:,x1]      # DEPRECATED!
+        #linflux1 = np.exp(flux1)   # DEPRECATED!
+        linflux1 = np.median(data[:,x1-2:x1+3], axis=1)
+
+        # convolve the cross-section of core is not None
+        if core is None:
+            convflux1 = flux1.copy()
+        else:
+            convflux1 = np.convolve(flux1, core, mode='same')
 
         if icol == 0:
             # will be used when changing the direction
-            flux1_center = flux1
+            convflux1_center = convflux1
 
         # find peaks with Y precision of 1./density pixels
-        f = intp.InterpolatedUnivariateSpline(np.arange(flux1.size), flux1, k=3)
-        flux2 = f(dense_y)
-        imax, fmax = get_local_minima(-flux2, window=window)
+        n = convflux1.size
+        f = intp.InterpolatedUnivariateSpline(np.arange(n), convflux1, k=3)
+        convflux2 = f(dense_y)
+        imax, fmax = get_local_minima(-convflux2, window=window)
         ymax = dense_y[imax]
         fmax = -fmax
 
@@ -1149,16 +1158,17 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                 sflux = flux1[int(0.45*h):int(0.55*h)]
                 contrast = sflux.max() - sflux.min()
                 amp = scan_step*(q99-q01)/contrast*2
+                # define the transform function
                 plottrans = lambda flux: (flux - q01)/(q99 - q01)*amp
 
                 # use the transform function
                 fig_align.ax1.plot(ally, plottrans(flux1)+x1,
-                        c='C0', lw=0.6)
+                        c='C0', lw=0.5)
                 fig_align.ax2.plot(ally, plottrans(flux1)+x1,
-                        c='C0', lw=0.6)
+                        c='C0', lw=0.5)
         else:
             # aperture alignment of each selected column, described by param
-            param, _ = find_shift(flux0, flux1, deg=align_deg)
+            param, _ = find_shift(convflux0, convflux1, deg=align_deg)
             param_lst[direction].append(param[0:-1])
 
             for y, f in zip(ymax, fmax):
@@ -1198,16 +1208,15 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
             # plot in the order alignment figure
             if fig_align is not None:
-
                 # calculate the ally after alignment
                 aligned_ally = ally.copy()
                 for param in param_lst[direction][::-1]:
                     aligned_ally = backward(aligned_ally, param)
-
+                # plot in the align figure
                 fig_align.ax1.plot(ally, plottrans(flux1)+x1,
-                        c='k', lw=0.6, alpha=0.2)
+                        c='k', lw=0.5, alpha=0.2)
                 fig_align.ax2.plot(aligned_ally, plottrans(flux1)+x1,
-                        c='k', lw=0.6, alpha=0.2)
+                        c='k', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
 
@@ -1218,7 +1227,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             direction = +1
             x1 = x0 + direction*scan_step
             x_lst[direction].append(x1)
-            flux0 = flux1_center
+            convflux0 = convflux1_center
             icol += 1
             continue
         elif x1 >= w - 10:
@@ -1227,7 +1236,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             break
         else:
             x_lst[direction].append(x1)
-            flux0 = flux1
+            convflux0 = convflux1
             icol += 1
             continue
 
@@ -1263,6 +1272,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     # convert back to stacked cross-section coordinate
     peaky += istart
 
+    # print message as a table in running log
     message = []
     for peak in peaky:
         string = '{:4d} {:4d}'.format(peak+csec_i1, csec_win[peak])
