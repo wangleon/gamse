@@ -1,7 +1,7 @@
 import numpy as np
 from ...utils.onedarray import iterative_savgol_filter
 
-from ...echelle.trace import TraceFigureCommon
+from ...echelle.trace import TraceFigureCommon, AlignFigureCommon
 
 def print_wrapper(string, item):
     return string
@@ -76,4 +76,12 @@ class TraceFigure(TraceFigureCommon):
         self.ax2 = self.add_axes([x2, 0.50, 0.95-x2, 0.40])
         self.ax3 = self.add_axes([x2, 0.10, 0.95-x2, 0.40])
         self.ax4 = self.ax3.twinx()
+
+class AlignFigure(AlignFigureCommon):
+    """Figure to plot the order alignment.
+    """
+    def __init__(self):
+        AlignFigureCommon.__init__(self, figsize=(12,6), dpi=150)
+        self.ax1 = self.add_axes([0.08, 0.1, 0.4, 0.8])
+        self.ax2 = self.add_axes([0.55, 0.1, 0.4, 0.8])
 

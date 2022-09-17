@@ -12,7 +12,8 @@ from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, reference_self_wavelength,
                                 reference_spec_wavelength)
 from ..common import load_obslog, load_config
-from .common import print_wrapper, correct_overscan, get_mask, TraceFigure
+from .common import (print_wrapper, correct_overscan, get_mask,
+                    TraceFigure, AlignFigure)
 from ...echelle.trace import find_apertures
 #from .trace import find_apertures
 
@@ -277,33 +278,47 @@ def reduce_rawdata():
         sat_mask = allmask > 0
         flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
-    section = config['reduce.trace']
 
     tracefig = TraceFigure(datashape=flat_data.shape)
+    alignfig = AlignFigure()    # create the align figure
 
+    section = config['reduce.trace']
     aperset = find_apertures(flat_data, flat_mask,
-                #mode       = 'debug',
                 scan_step  = section.getint('scan_step'),
                 minimum    = section.getfloat('minimum'),
                 separation = section.get('separation'),
                 align_deg  = section.getint('align_deg'),
                 conv_core  = 0,
+                fill       = False,
                 filling    = section.getfloat('filling'),
                 recenter   = 'threshold',
                 degree     = section.getint('degree'),
                 display    = section.getboolean('display'),
-                fig        = tracefig,
+                fig_trace  = tracefig,
+                fig_align  = alignfig,
                 )
 
-    title = 'Order tracing using {}'.format(fname)
-    tracefig.suptitle(title)
+    # save the trace figure
     tracefig.adjust_positions()
-    figname = os.path.join(figpath, 'trace.png')
-    tracefig.savefig(figname)
+    title = 'Order tracing using {}'.format(fname)
+    tracefig.suptitle(title, fontsize=15)
+    trace_figname = os.path.join(figpath, 'trace.{}'.format(fig_format))
+    tracefig.savefig(trace_figname)
     tracefig.close()
 
-    aperset.save_txt('trace.trc')
-    aperset.save_reg('trace.reg')
+    # save the alignment figure
+    alignfig.adjust_axes()
+    title = 'Order Alignment for {}'.format(fname)
+    alignfig.suptitle(title, fontsize=12)
+    align_figname = os.path.join(figpath, 'align.{}'.format(fig_format))
+    alignfig.savefig(align_figname)
+    alignfig.close()
+
+    aperset_filename = os.path.join(midpath, 'trace.trc')
+    aperset_regname  = os.path.join(midpath, 'trace.reg')
+
+    aperset.save_txt(aperset_filename)
+    aperset.save_reg(aperset_regname)
 
     # pack results and save to fits
     hdu_lst = fits.HDUList([
@@ -323,10 +338,12 @@ def reduce_rawdata():
             ('points',      np.int16),
             ('wavelength',  (np.float64, nx)),
             ('flux',        (np.float32, nx)),
-            ('mask',        (np.int32, nx)),
+            ('error',       (np.float32, nx)),
+            ('background',  (np.float32, nx)),
+            ('mask',        (np.int16,   nx)),
             ]
     names, formats = list(zip(*types))
-    wlcalib_spectype = np.dtype({'names': names, 'formats': formats})
+    spectype = np.dtype({'names': names, 'formats': formats})
 
     filter_thar = lambda item: item['fileid'][0:4]=='thar'
     thar_items = list(filter(filter_thar, logtable))
