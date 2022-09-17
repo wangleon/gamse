@@ -17,6 +17,7 @@ setup(
                     'gamse/echelle',
                     'gamse/pipelines',
                     'gamse/pipelines/espadons',
+                    'gamse/pipelines/espresso',
                     'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
                     'gamse/pipelines/harps',
