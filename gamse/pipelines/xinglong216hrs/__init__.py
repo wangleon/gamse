@@ -196,6 +196,7 @@ def make_config():
     config.set(sectname, 'method',      'optimal')
     config.set(sectname, 'upper_limit', str(7))
     config.set(sectname, 'lower_limit', str(7))
+    config.set(sectname, 'deblaze',     'yes')
 
     # write to config file
     filename = 'Xinglong216HRS.{}.cfg'.format(input_date)
@@ -258,7 +259,7 @@ def parse_logfile_singlefiber(filename, date):
 
     logtable = Table(dtype=[
                     ('frameid', 'i2'),
-                    ('fileid',  'S11'),
+                    ('fileid',  'S12'),
                     ('imgtype', 'S3'),
                     ('object',  'S50'),
                     ('exptime', 'f4'),
@@ -296,7 +297,7 @@ def parse_logfile_singlefiber(filename, date):
                 obstime = parse_timestr(mobj.group(3), date)
                 exptime = float(mobj.group(4))
                 for iframe, frameid in enumerate(id_lst):
-                    fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                    fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                     if iframe==0:
                         item = (frameid, fileid, 'cal', objname,
@@ -323,7 +324,7 @@ def parse_logfile_singlefiber(filename, date):
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, 'sci', objname,
@@ -348,7 +349,7 @@ def parse_logfile_doublefiber(filename, date):
 
     logtable = Table(dtype=[
                     ('frameid',     'i2'),
-                    ('fileid',      'S11'),
+                    ('fileid',      'S12'),
                     ('imgtype',     'S3'),
                     ('object',      'S80'),
                     ('object_A',    'S50'),
@@ -385,7 +386,7 @@ def parse_logfile_doublefiber(filename, date):
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(yy, mm, dd, frameid)
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, 'cal', 'Bias', '', '',
                             exptime, obstime)
@@ -414,7 +415,7 @@ def parse_logfile_doublefiber(filename, date):
             obstime = parse_timestr(mobj.group(4), date)
             exptime = float(mobj.group(5))
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, imgtype, '', objname_A, objname_B,
@@ -447,7 +448,7 @@ def parse_logfile_doublefiber(filename, date):
             obstime = parse_timestr(mobj.group(4), date)
             exptime = float(mobj.group(5))
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, imgtype, '', objname_A, objname_B,
@@ -772,7 +773,7 @@ def parse_logfile(filename, date):
 
     logtable = Table(dtype=[
                     ('frameid',     'i2'),
-                    ('fileid',      'S11'),
+                    ('fileid',      'S12'),
                     ('imgtype',     'S3'),
                     ('object',      'S80'),
                     ('object_A',    'S50'),
@@ -787,7 +788,7 @@ def parse_logfile(filename, date):
             # object name including double-fiber objects
             'objname':  '([a-zA-Z0-9+-_\[\]\s]+)',
             # object name excluding double-fiber objects
-            'objname2': '([a-zA-Z0-9+-_\s]+)',
+            'objname2': '([a-zA-Z0-9+-_\s]*)',
             # begin time string
             'btime':    '(\d{2}:\d{2}:\d{2})',
             # exptime
@@ -801,8 +802,8 @@ def parse_logfile(filename, date):
     pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
     pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-    pattern_2objects = ('\[A\]\s*{objname2}\s*'
-                        '\[B\]\s*{objname2}').format(**ptn_lst)
+    pattern_2obj = ('\[A\]\s*{objname2}\s*'
+                    '\[B\]\s*{objname2}').format(**ptn_lst)
     pattern_cal = ('{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     # pattern cal can also match pattern_sci and pattern_bias. so match
@@ -820,7 +821,7 @@ def parse_logfile(filename, date):
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(yy, mm, dd, frameid)
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, 'cal', 'Bias', '', '',
                             exptime, obstime)
@@ -843,7 +844,7 @@ def parse_logfile(filename, date):
             exptime = float(mobj.group(4))
             imgtype = 'sci'
 
-            mobj2 = re.match(pattern_2objects, objname)
+            mobj2 = re.match(pattern_2obj, objname)
             if mobj2:
                 # overwritten objname
                 objname   = ''
@@ -862,7 +863,7 @@ def parse_logfile(filename, date):
                 objname_B = ''
 
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, imgtype, objname,
@@ -886,7 +887,7 @@ def parse_logfile(filename, date):
             exptime = float(mobj.group(4))
             imgtype = 'cal'
 
-            mobj2 = re.match(pattern_2objects, objname)
+            mobj2 = re.match(pattern_2obj, objname)
             if mobj2:
                 # overwritten objname
                 objname   = ''
@@ -909,7 +910,7 @@ def parse_logfile(filename, date):
                 objname_B = ''
 
             for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:03d}'.format(
+                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
                     item = (frameid, fileid, imgtype, objname,
@@ -946,7 +947,6 @@ def parse_logfile(filename, date):
     logtable.remove_columns(['object_A','object_B'])
 
     return logtable, fibermode
-
 
 
 

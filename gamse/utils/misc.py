@@ -6,8 +6,9 @@ logger = logging.getLogger(__name__)
 import datetime
 import getpass
 import platform
-import distro
 import subprocess
+
+import distro
 
 import numpy
 import scipy
