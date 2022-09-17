@@ -809,7 +809,7 @@ class AlignFigureCommon(Figure):
 
 def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
-        fill=False, fill_tol=10,
+        fill=False, fill_tol=10, recenter='parabola',
         display=True, fig_trace=None, fig_align=None):
     """Find the positions of apertures on a CCD image.
 
@@ -1415,7 +1415,11 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     yy, xx = np.mgrid[:h:,:w:]
 
     for aperture, mid in enumerate(mid_lst):
-        xfit, yfit = [x0], [mid]
+        # initialize the array and append for the central column
+
+        #xfit, yfit = [x0], [mid]
+        xfit, yfit = [], []
+
         for direction in [-1,1]:
             ystep = mid
             for ix, param in enumerate(param_lst[direction]):
@@ -1430,15 +1434,16 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                 if bad_mask[int(np.round(ystep)), x1] > 0 \
                     or gap_mask[int(np.round(ystep)), x1] > 0:
                     continue
-                option = 2
-                # option 1: use (x1, ystep)
-                # option 2: find peak by parabola fitting of the 3 points near
+                # recenter:
+                # 'no' (default): use (x1, ystep)
+                # 'parabola': find peak by parabola fitting of the 3 points near
                 #           the maximum pixel
-                # option 3: use the closet point in y_lst as nodes
-                if option == 1:
+                # 'nearest': use the closet point in y_lst as nodes
+                #
+                if recenter == 'no':
                     xfit.append(x1)
                     yfit.append(ystep)
-                elif option == 2:
+                elif recenter == 'parabola':
                     local_sep = fsep(ystep)
                     y1 = int(ystep-local_sep/2)
                     y2 = int(ystep+local_sep/2)
@@ -1455,7 +1460,27 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                     ypeak = find_local_peak(xdata, ydata, m, smooth=15)
                     xfit.append(x1)
                     yfit.append(ypeak)
-                elif option == 3:
+                elif recenter == 'threshold':
+                    local_sep = fsep(ystep)
+                    y1 = int(ystep-local_sep/2)
+                    y2 = int(ystep+local_sep/2)
+                    y1 = max(0, y1)
+                    y2 = min(h, y2)
+                    xdata = np.arange(y1, y2)
+                    ydata = logdata[y1:y2, x1-3:x1+2].mean(axis=1)
+                    m = ydata > (ydata.min() + ydata.max())/2
+                    idx = np.nonzero(m)[0]
+                    group_lst = np.split(idx, np.where(np.diff(idx)>1)[0]+1)
+                    for group in group_lst:
+                        i1 = group[0]
+                        i2 = group[-1]
+                        if i2 - i1 > 5:
+                            edge1 = xdata[i1]
+                            edge2 = xdata[i2]
+                            xfit.append(x1)
+                            yfit.append((edge1+edge2)/2)
+                            break
+                elif recenter == 'nearest':
                     diff = np.abs(y_lst - ystep)
                     dmin = diff.min()
                     imin = diff.argmin()
@@ -1491,7 +1516,6 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         domain = (left_domain, right_domain)
 
         poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
-
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))
