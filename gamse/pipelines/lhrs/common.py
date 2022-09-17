@@ -1,4 +1,5 @@
 import numpy as np
+from ...utils.onedarray import iterative_savgol_filter
 
 from ...echelle.trace import TraceFigureCommon
 
@@ -20,26 +21,45 @@ def correct_overscan(data, head):
     scidata2 = data[:, 2048:4096]
     ovrdata1 = data[:, 4096:4096+32]
     ovrdata2 = data[:, 4096+32:4096+64]
-    ovrmean1 = ovrdata1[100:,:].mean()
-    ovrmean2 = ovrdata2[100:,:].mean()
+    ovrmean1 = ovrdata1.mean(axis=1)
+    ovrmean2 = ovrdata2.mean(axis=1)
+
+
+    ovrsmooth1, _, _, _ = iterative_savgol_filter(ovrmean1, winlen=351,
+                               order=3, upper_clip=3.0)
+    ovrsmooth2, _, _, _ = iterative_savgol_filter(ovrmean2, winlen=351,
+                               order=3, upper_clip=3.0)
 
     scidata = np.zeros((data.shape[0], 4096), dtype=np.float32)
-    scidata[:, 0:2048]    = scidata1 - ovrmean1
-    scidata[:, 2048:4096] = scidata2 - ovrmean2
+    scidata[:, 0:2048]    = scidata1 - ovrsmooth1.reshape(-1, 1)
+    scidata[:, 2048:4096] = scidata2 - ovrsmooth2.reshape(-1, 1)
 
     '''
+    import matplotlib.pyplot as plt
     fig = plt.figure()
     ax = fig.gca()
-    ax.plot(ovrdata1.mean(axis=1))
-    ax.axhline(y=ovrmean1)
-    ax.plot(ovrdata2.mean(axis=1))
-    ax.axhline(y=ovrmean2)
+    ax.plot(ovrmean1, lw=0.5, alpha=0.8)
+    ax.plot(ovrmean2, lw=0.5, alpha=0.8)
+    ax.plot(ovrsmooth1, lw=0.5, alpha=0.8)
+    ax.plot(ovrsmooth2, lw=0.5, alpha=0.8)
     plt.show()
+    exit()
     '''
     return scidata
 
-def get_mask():
-    pass
+def get_mask(data, head):
+    ny, nx = data.shape
+    if nx == 4160:
+        nx = 4096 # last 64 columns are overscan region
+
+    bad_mask = np.zeros((ny, nx), dtype=int)
+
+    mask = np.zeros((ny, nx), dtype=np.int16)
+
+    if (ny, nx) == (4096, 4096):
+        bad_mask[1720, 2314:2315] = 1
+    mask = bad_mask*2
+    return mask
 
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.

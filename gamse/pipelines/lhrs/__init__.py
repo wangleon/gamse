@@ -90,7 +90,6 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'yes')
     config.set(sectname, 'window_size',      str(13))
@@ -107,6 +106,7 @@ def make_config():
     # section of spectra extraction
     sectname = 'reduce.extract'
     config.add_section(sectname)
+    config.set(sectname, 'method',      'optimal')
     config.set(sectname, 'upper_limit', str(7))
     config.set(sectname, 'lower_limit', str(7))
 
@@ -160,7 +160,15 @@ def make_obslog():
         frameid    = 0  # frameid will be determined later
         fileid     = fname[0:-4]
         exptime    = head['EXPOSURE']
-        objectname = ""
+
+        # guess object name from filename
+        if fileid.startswith('bias-'):
+            objectname = 'Bias'
+        elif fileid.startswith('flat-'):
+            objectname = 'Flat'
+        else:
+            objectname = ''
+
         obsdate    = head['DATE-OBS']
         imgtype    = 'cal'
 
@@ -195,12 +203,12 @@ def make_obslog():
     # determine filename of logtable.
     # use the obsdate of the first frame
     obsdate = logtable[0]['obsdate'][0:10]
-    outname = '{}.obslog'.format(obsdate)
+    outname = 'log.{}.txt'.format(obsdate)
     if os.path.exists(outname):
         i = 0
         while(True):
             i += 1
-            outname = '{}.{}.obslog'.format(obsdate, i)
+            outname = 'log.{}.{}.txt'.format(obsdate, i)
             if not os.path.exists(outname):
                 outfilename = outname
                 break

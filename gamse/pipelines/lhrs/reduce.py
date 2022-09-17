@@ -1,3 +1,4 @@
+import re
 import os
 import logging
 logger = logging.getLogger(__name__)
@@ -6,12 +7,14 @@ import numpy as np
 import astropy.io.fits as fits
 
 from ...echelle.imageproc import combine_images
-from ...echelle.trace import find_apertures, load_aperture_set
+from ...echelle.trace import load_aperture_set
 from ...echelle.extract import extract_aperset
 from ...echelle.wlcalib import (wlcalib, recalib, reference_self_wavelength,
                                 reference_spec_wavelength)
 from ..common import load_obslog, load_config
 from .common import print_wrapper, correct_overscan, get_mask, TraceFigure
+from ...echelle.trace import find_apertures
+#from .trace import find_apertures
 
 def reduce_rawdata():
     """Reduc the LAMOST-HRS data.
@@ -19,7 +22,7 @@ def reduce_rawdata():
 
     # read obslog and config
     config = load_config('LHRS\S*\.cfg$')
-    logtable = load_obslog('\S*\.obslog$', fmt='astropy')
+    logtable = load_obslog('log\.\S*\.txt$', fmt='astropy')
 
     # extract keywords from config file
     section = config['data']
@@ -47,14 +50,127 @@ def reduce_rawdata():
     else:
         ncores = min(os.cpu_count(), int(ncores))
 
-    ############# trace ################
+    ############## correct bias #####
+    mode = config['reduce'].get('mode')
+    bias_file = config['reduce.bias'].get('bias_file')
+    
+    if mode=='debug' and os.path.exists(bias_file):
+        # load bias data from existing file
+        hdu_lst = fits.open(bias_file)
+        bias = hdu_lst[-1].data
+        head = hdu_lst[0].header
+        hdu_lst.close()
+
+        reobj = re.compile('GAMSE BIAS[\s\S]*')
+        # filter header cards that match the above pattern
+        bias_card_lst = [(card.keyword, card.value) for card in head.cards
+                            if reobj.match(card.keyword)]
+
+        message = 'Load bias from image: "{}"'.format(bias_file)
+        logger.info(message)
+        print(message)
+    else:
+
+
+        bias_data_lst = []
+        bias_card_lst = []
+
+        filterfunc = lambda item: item['object'] is not np.ma.masked and \
+                                  item['object'].lower()=='bias'
+        bias_items = list(filter(filterfunc, logtable))
+        # get the number of bias images
+        n_bias = len(bias_items)
+
+        if n_bias == 0:
+            # there is no bias frames
+            bias = None
+        else:
+            fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s}'
+            head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                         'obsdate')
+
+            for iframe, logitem in enumerate(bias_items):
+                frameid  = logitem['frameid']
+                fileid   = logitem['fileid']
+                _objname = logitem['object']
+                objectname = '' if _objname is np.ma.masked else _objname
+                exptime  = logitem['exptime']
+                obsdate  = logitem['obsdate']
+
+                # now filter the bias frames
+                fname = '{}.fit'.format(fileid)
+                filename = os.path.join(rawpath, fname)
+                data, head = fits.getdata(filename, header=True)
+                data = correct_overscan(data, head)
+
+                # pack the data and fileid list
+                bias_data_lst.append(data)
+
+                # append the file information
+                prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(iframe+1)
+                card = (prefix+' FILEID', fileid)
+                bias_card_lst.append(card)
+
+                # print info
+                if iframe == 0:
+                    print('* Combine Bias Images: "{}"'.format(bias_file))
+                    print(head_str)
+                message = fmt_str.format('[{:d}]'.format(frameid),
+                            fileid, objectname, exptime, obsdate)
+                print(message)
+
+            prefix = 'HIERARCH GAMSE BIAS '
+            bias_card_lst.append((prefix + 'NFILE', n_bias))
+
+            # combine bias images
+            bias_data_lst = np.array(bias_data_lst)
+
+            combine_mode = 'mean'
+            section = config['reduce.bias']
+            cosmic_clip  = section.getfloat('cosmic_clip')
+            maxiter      = section.getint('maxiter')
+            maskmode    = (None, 'max')[n_bias>=3]
+
+            bias_combine = combine_images(bias_data_lst,
+                    mode        = combine_mode,
+                    upper_clip  = cosmic_clip,
+                    maxiter     = maxiter,
+                    maskmode    = maskmode,
+                    ncores      = ncores,
+                    )
+
+            bias_card_lst.append((prefix+'COMBINE_MODE', combine_mode))
+            bias_card_lst.append((prefix+'COSMIC_CLIP',  cosmic_clip))
+            bias_card_lst.append((prefix+'MAXITER',      maxiter))
+            bias_card_lst.append((prefix+'MASK_MODE',    str(maskmode)))
+
+            # create the hdu list to be saved
+            hdu_lst = fits.HDUList()
+            # create new FITS Header for bias
+            head = fits.Header()
+            for card in bias_card_lst:
+                head.append(card)
+            head['HIERARCH GAMSE FILECONTENT 0'] = 'BIAS COMBINED'
+            hdu_lst.append(fits.PrimaryHDU(data=bias_combine, header=head))
+
+            hdu_lst.writeto(bias_file, overwrite=True)
+
+            bias = bias_combine
+
+    ################# trace ##################
+    '''
+    ####### find files used to trace ##########
     fmt_str = ('   - {:>5s} {:^15s} {:<20s} {:>7} {:>8} {:>8}')
     head_str = fmt_str.format('FID', 'fileid', 'object', 'exptime', 'nsat',
                                 'q95')
     print(head_str)
     for logitem in logtable:
+        objectname = logitem['object']
+        _objectname = '' if objectname is np.ma.masked else objectname
         message = fmt_str.format('[{:d}]'.format(logitem['frameid']),
-                    logitem['fileid'], logitem['object'], logitem['exptime'],
+                    logitem['fileid'],
+                    _objectname,
+                    logitem['exptime'],
                     logitem['nsat'], logitem['q95'])
         print(message)
     prompt = 'Select file for tracing order positions: '
@@ -69,7 +185,6 @@ def reduce_rawdata():
                 continue
         except:
             continue
-
     mask = logtable['frameid']==traceid
     fileid = logtable[mask][0]['fileid']
     fname = '{}.fit'.format(fileid)
@@ -80,18 +195,101 @@ def reduce_rawdata():
     core /= core.sum()
     for col in np.arange(flat_data.shape[1]):
         flat_data[:,col] = np.convolve(flat_data[:,col], core, mode='same')
-
     flat_mask = np.zeros_like(flat_data, dtype=np.int16)
+    '''
+
+    # fiter flat frames
+    filterfunc = lambda item: item['object'] is not np.ma.masked and\
+                        item['object'].lower()=='flat'
+    logitem_lst = list(filter(filterfunc, logtable))
+
+    nflat = len(logitem_lst)
+    
+    flat_filename    = os.path.join(midpath, 'flat.fits')
+    aperset_filename = os.path.join(midpath, 'trace.trc')
+    aperset_regname  = os.path.join(midpath, 'trace.reg')
+    trace_figname    = os.path.join(figpath, 'trace.{}'.format(fig_format))
+    profile_filename = os.path.join(midpath, 'profile.fits')
+
+    if mode=='debug' and os.path.exists(flat_filename) \
+        and os.path.exists(aperset_filename) \
+        and os.path.exists(profile_filename):
+        # read flat data and mask array
+        hdu_lst = fits.open(flat_filename)
+        flat_data = hdu_lst[0].data
+        flat_mask = hdu_lst[1].data
+        flat_norm = hdu_lst[2].data
+        flat_sens = hdu_lst[3].data
+        flat_spec = hdu_lst[4].data
+        exptime   = hdu_lst[0].header[exptime_key]
+        hdu_lst.close()
+        aperset = load_aperture_set(aperset_filename)
+    else:
+        data_lst = []
+        head_lst = []
+        exptime_lst = []
+
+        print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+        fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
+        head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                    'obsdate', 'N(sat)', 'Q95')
+
+        for iframe, logitem in enumerate(logitem_lst):
+            # read each individual flat frame
+            fname = '{}.fit'.format(logitem['fileid'])
+            filename = os.path.join(rawpath, fname)
+            data, head = fits.getdata(filename, header=True)
+            exptime_lst.append(head[exptime_key])
+            mask = get_mask(data, head)
+            sat_mask = (mask&4>0)
+            bad_mask = (mask&2>0)
+            if iframe == 0:
+                allmask = np.zeros_like(mask, dtype=np.int16)
+            allmask += sat_mask
+
+            # correct overscan for flat
+            data = correct_overscan(data, head)
+
+            # correct bias for flat, if has bias
+            if bias is None:
+                message = 'No bias. skipped bias correction'
+            else:
+                data = data - bias
+                message = 'Bias corrected'
+            logger.info(message)
+
+            data_lst.append(data)
+
+
+        if nflat == 1:
+            flat_data = data_lst[0]
+        else:
+            data_lst = np.array(data_lst)
+            flat_data = combine_images(data_lst,
+                            mode       = 'mean',
+                            upper_clip = 10,
+                            maxiter    = 5,
+                            maskmode   = (None, 'max')[nflat>3],
+                            ncores     = ncores,
+                            )
+
+        # find saturation mask
+        sat_mask = allmask > 0
+        flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+
     section = config['reduce.trace']
 
     tracefig = TraceFigure(datashape=flat_data.shape)
 
     aperset = find_apertures(flat_data, flat_mask,
+                #mode       = 'debug',
                 scan_step  = section.getint('scan_step'),
                 minimum    = section.getfloat('minimum'),
                 separation = section.get('separation'),
                 align_deg  = section.getint('align_deg'),
+                conv_core  = 0,
                 filling    = section.getfloat('filling'),
+                recenter   = 'threshold',
                 degree     = section.getint('degree'),
                 display    = section.getboolean('display'),
                 fig        = tracefig,
@@ -100,12 +298,19 @@ def reduce_rawdata():
     title = 'Order tracing using {}'.format(fname)
     tracefig.suptitle(title)
     tracefig.adjust_positions()
-    figname = 'trace_{}.png'.format(traceid)
+    figname = os.path.join(figpath, 'trace.png')
     tracefig.savefig(figname)
     tracefig.close()
 
-    aperset.save_txt('trace_{}.trc'.format(traceid))
-    aperset.save_reg('trace_{}.reg'.format(traceid))
+    aperset.save_txt('trace.trc')
+    aperset.save_reg('trace.reg')
+
+    # pack results and save to fits
+    hdu_lst = fits.HDUList([
+                fits.PrimaryHDU(flat_data, head),
+                fits.ImageHDU(flat_mask),
+                ])
+    hdu_lst.writeto(flat_filename, overwrite=True)
 
     ###############################
     # get the data shape
