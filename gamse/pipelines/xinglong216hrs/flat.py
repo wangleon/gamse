@@ -169,9 +169,17 @@ class AperparPlotter(object):
                 ax2.xaxis.set_minor_locator(tck.MultipleLocator(500))
 
     def savefig(self, figname):
+        """Save figure.
+        """
         if self.plot and self.iaper%5==4:
+
+            # save and close figure
             self.fig.savefig(figname)
             plt.close(self.fig)
+
+            # print message in logger
+            message = 'Aperpar figure saved to "{}"'.format(figname)
+            logger.info(message)
 
 def get_flat(data, mask, apertureset, nflat,
         smooth_A_func, smooth_c_func, smooth_bkg_func,
@@ -557,6 +565,7 @@ def get_flat(data, mask, apertureset, nflat,
 
         fitpar_lst = np.array(fitpar_lst)
 
+
         if np.isnan(fitpar_lst[:,0]).sum()>0.5*nx:
             message = ('Aperture {:3d}: Skipped because of too many NaN '
                        'values in aperture parameters').format(aper)
@@ -658,6 +667,8 @@ def get_flat(data, mask, apertureset, nflat,
 
             y1 = int(max(0,  lbound))
             y2 = int(min(ny, ubound))
+            if y2-y1<=0:
+                continue
             xdata = np.arange(y1, y2)
             ydata = data[y1:y2, x]
             _satmask = sat_mask[y1:y2, x]
@@ -667,10 +678,13 @@ def get_flat(data, mask, apertureset, nflat,
             A = aperpar_lst[0][x]
             c = aperpar_lst[1][x]
             b = aperpar_lst[2][x]
+            if np.isnan(A) or np.isnan(c) or np.isnan(b):
+                continue
 
             lcorr, rcorr = corr_mask_array[x]
             normx = xdata-c
             corr_mask = (normx > lcorr)*(normx < rcorr)
+            # calculate the sensitivity map
             flat = ydata/fitfunc([A,c,b], xdata, interf)
             flatmask = corr_mask*~_satmask*~_badmask
 
@@ -680,7 +694,7 @@ def get_flat(data, mask, apertureset, nflat,
             # integration
             y1s = max(0,  np.round(lbound-2, 1))
             y2s = min(ny, np.round(ubound+2, 1))
-            xdata2 = np.arange(y1s, y2s, 0.1)
+            xdata2 = np.arange(y1s, y2s, 0.01)
             flatmod = fitfunc([A,c,b], xdata2, interf)
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
@@ -1106,7 +1120,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
         has_fringe_lst.append(has_fringe)
 
     # use global polynomial fitting if this order is affected by fringe and the
-    # following conditions are satisified
+    # following conditions are satisfied
     if len(group_lst) > 1 \
         and newx_lst[group_lst[0][0]] < npoints/2 \
         and newx_lst[group_lst[-1][-1]] > npoints/2 \
@@ -1119,8 +1133,8 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
 
         # determine the polynomial degree
         xspan = xpiece[-1] - xpiece[0]
-        if   xspan > npoints/2: deg = 4
-        elif xspan > npoints/4: deg = 3
+        if   xspan > npoints/2: deg = 6
+        elif xspan > npoints/4: deg = 4
         elif xspan > npoints/8: deg = 2
         else:                   deg = 1
 
