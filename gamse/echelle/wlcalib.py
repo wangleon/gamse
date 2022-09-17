@@ -19,7 +19,7 @@ import matplotlib.ticker as tck
 from matplotlib.figure import Figure
 
 from ..utils.regression2d import polyfit2d, polyval2d
-from ..utils.onedarray    import pairwise
+from ..utils.onedarray    import pairwise, derivative
 from .trace import load_aperture_set_from_header
 
 # Data format for identified line table
@@ -1123,7 +1123,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             }
 
 def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
-        aperture_k=None, pixel_k=None, pixel_range=(-30, 30), mode='normal'):
+        aperture_k=None, pixel_k=None, pixel_range=(-30, 30),
+        max_order_offset=20,
+        mode='normal'):
     """Find the offset between two spectra.
 
     The aperture offset is defined as:
@@ -1196,7 +1198,7 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
 
     # determine the maxium absolute offsets between the orders of the two
     # spectra
-    maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, 10)
+    maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, max_order_offset)
     aperture_offset_lst = np.arange(-maxoff, maxoff)
 
     def get_aper2(aper1, k, offset):
@@ -2181,7 +2183,7 @@ class FWHMMapFigure(Figure):
     """Figure class for plotting FWHMs over the whole CCD.
 
     """
-    def __init__(self, identlist, apertureset, fwhm_range=None):
+    def __init__(self, spec, identlist, apertureset, fwhm_range=None):
         """Constuctor of :class:`FWHMMapFigure`.
         """
         # find shape of map
@@ -2196,21 +2198,29 @@ class FWHMMapFigure(Figure):
         _zoom = 0.82/_h
         _w *= _zoom
         _h *= _zoom
-        self.ax1 = self.add_axes([0.09, 0.1, _w,   _h])
-        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
-        self.ax3 = self.add_axes([0.58, 0.6, 0.38, 0.32])
-        self.ax4 = self.add_axes([0.58, 0.2, 0.38, 0.32])
+        self.ax1 = self.add_axes([0.09, 0.10, _w,   _h])
+        self.ax2 = self.add_axes([0.58, 0.10, 0.38, 0.02])
+        self.ax3 = self.add_axes([0.58, 0.63, 0.38, 0.25])
+        self.ax4 = self.add_axes([0.58, 0.36, 0.38, 0.25])
+        self.ax5 = self.add_axes([0.58, 0.14, 0.38, 0.20])
+
+        # get delta pixel fo every order
+        dwave = {row['aperture']: derivative(row['wavelength']) for row in spec}
 
         x_lst = []
         y_lst = []
         fwhm_lst = []
         aper_fwhm_lst = {}
+        aper_fwhmkm_lst = {}
         for row in identlist:
             if not row['mask']:
                 continue
             aper   = row['aperture']
             fwhm   = row['fwhm']
             center = row['pixel']
+            wave   = row['wavelength']
+            dwave_km = np.abs(dwave[aper][int(round(center))])/wave*299792.458
+            fwhmkm = fwhm*dwave_km
             aperloc = apertureset[aper]
             ypos = aperloc.position(center)
 
@@ -2222,6 +2232,12 @@ class FWHMMapFigure(Figure):
                 aper_fwhm_lst[aper] = [[], []]
             aper_fwhm_lst[aper][0].append(center)
             aper_fwhm_lst[aper][1].append(fwhm)
+
+            if aper not in aper_fwhmkm_lst:
+                aper_fwhmkm_lst[aper] = [[], []]
+            aper_fwhmkm_lst[aper][0].append(center)
+            aper_fwhmkm_lst[aper][1].append(fwhmkm)
+            print(center, fwhmkm, fwhm)
 
         if fwhm_range is None:
             fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
@@ -2247,10 +2263,105 @@ class FWHMMapFigure(Figure):
         self.ax3.set_xlabel('X (pixel)')
         self.ax3.set_ylabel('FWHM')
 
-        # ax4: plot FWHM histograms
-        self.ax4.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
-        self.ax4.set_xlim(fwhm1, fwhm2)
-        self.ax4.set_ylabel('N')
+        # ax4: plot x vs. fwhm in km for different apertures
+        for aper, (_x_lst, _fwhmkm_lst) in aper_fwhmkm_lst.items():
+            self.ax4.plot(_x_lst, _fwhmkm_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax4.set_xlim(0, shape[1]-1)
+        #self.ax4.set_ylim(fwhm1, fwhm2)
+        self.ax4.set_xlabel('X (pixel)')
+        self.ax4.set_ylabel('FWHM (km/s)')
+
+        # ax5: plot FWHM histograms
+        self.ax5.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
+        self.ax5.set_xlim(fwhm1, fwhm2)
+        self.ax5.set_ylabel('N')
+
+    def close(self):
+        plt.close(self)
+
+class ResolutionFigure(Figure):
+    """Figure class for plotting the resolutions over the whole CCD.
+
+    """
+    def __init__(self, spec, identlist, apertureset, resolution_range=None):
+        """Constuctor of :class:`ResolutionFigure`.
+        """
+        # find shape of map
+        aper0 = list(apertureset.keys())[0]
+        aperloc = apertureset[aper0]
+        shape = aperloc.shape
+
+        figsize = (12, 6)
+        super(ResolutionFigure, self).__init__(figsize=figsize, dpi=150)
+        _w = shape[1]/figsize[0]
+        _h = shape[0]/figsize[1]
+        _zoom = 0.82/_h
+        _w *= _zoom
+        _h *= _zoom
+        self.ax1 = self.add_axes([0.09, 0.1, _w,   _h])
+        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
+        self.ax3 = self.add_axes([0.58, 0.6, 0.38, 0.32])
+        self.ax4 = self.add_axes([0.58, 0.2, 0.38, 0.32])
+
+
+        # get delta pixel fo every order
+        dwave = {row['aperture']: derivative(row['wavelength']) for row in spec}
+
+        wave_lst = []
+        x_lst = []
+        y_lst = []
+        resolution_lst = []
+        aper_resolution_lst = {}
+        for row in identlist:
+            if not row['mask']:
+                continue
+            aper   = row['aperture']
+            fwhm   = row['fwhm']
+            center = row['pixel']
+            wave   = row['wavelength']
+            aperloc = apertureset[aper]
+            ypos = aperloc.position(center)
+            resolution = wave/np.abs(fwhm*dwave[aper][int(round(center))])
+
+            wave_lst.append(wave)
+            x_lst.append(center)
+            y_lst.append(ypos)
+            resolution_lst.append(resolution)
+
+            if aper not in aper_resolution_lst:
+                aper_resolution_lst[aper] = [[], []]
+            aper_resolution_lst[aper][0].append(center)
+            aper_resolution_lst[aper][1].append(resolution)
+
+        if resolution_range is None:
+            resolution1, resolution2 = min(resolution_lst), max(resolution)
+        else:
+            resolution1, resolution2 = resolution_range
+
+
+        # ax1: plot resolution as scatters
+        cax = self.ax1.scatter(x_lst, y_lst, s=20, c=resolution_lst, alpha=0.8,
+                #vmin=resolution1, vmax=resolution2,
+                lw=0)
+        self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
+        self.cbar.set_label('FWHM')
+        self.ax1.set_xlim(0, shape[1]-1)
+        self.ax1.set_ylim(0, shape[0]-1)
+        self.ax1.set_xlabel('X (pixel)')
+        self.ax1.set_ylabel('Y (pixel)')
+
+
+        # ax3: plot wave vs. resolution
+        #self.ax3.plot(wave_lst, resolution_lst, 'o',
+        #            c='C0', ms=2, alpha=0.6, lw=0.5)
+        # ax3: plot x vs. fwhm for different apertures
+        for aper, (_x_lst, _resolution_lst) in aper_resolution_lst.items():
+            self.ax3.plot(_x_lst, _resolution_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax3.set_ylim(resolution1, resolution2)
+        self.ax3.set_xlabel('X (pixel)')
+        self.ax3.set_ylabel('Resolution')
 
     def close(self):
         plt.close(self)
