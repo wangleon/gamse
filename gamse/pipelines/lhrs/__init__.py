@@ -42,16 +42,18 @@ def make_config():
     input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
 
     # general database path for this instrument
-    dbpath = '~/.gamse/LAMOST.LHRS'
+    #dbpath = '~/.gamse/LAMOST.LHRS'
 
     # create config object
     config = configparser.ConfigParser()
 
     config.add_section('data')
 
-    config.set('data', 'telescope',    'LAMOST')
-    config.set('data', 'instrument',   'HRS')
-    config.set('data', 'rawpath',      'rawdata')
+    config.set('data', 'telescope',     'LAMOST')
+    config.set('data', 'instrument',    'HRS')
+    config.set('data', 'rawpath',       'rawdata')
+    config.set('data', 'statime_key',   'DATE-OBS')
+    config.set('data', 'exptime_key',   'EXPOSURE')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
@@ -133,6 +135,9 @@ def make_obslog():
     config = load_config('LHRS\S*\.cfg$')
     rawpath = config['data'].get('rawpath')
 
+    statime_key = config['data'].get('statime_key')
+    exptime_key = config['data'].get('exptime_key')
+
     # prepare logtable
     logtable = Table(dtype=[
                         ('frameid',  'i2'),
@@ -159,7 +164,7 @@ def make_obslog():
 
         frameid    = 0  # frameid will be determined later
         fileid     = fname[0:-4]
-        exptime    = head['EXPOSURE']
+        exptime    = head[exptime_key]
 
         # guess object name from filename
         if fileid.startswith('bias-'):
@@ -169,11 +174,11 @@ def make_obslog():
         else:
             objectname = ''
 
-        obsdate    = head['DATE-OBS']
+        obsdate    = head[statime_key]
         imgtype    = 'cal'
 
         # determine the total number of saturated pixels
-        saturation = (data>=65535).sum()
+        saturation = (data>=44000).sum()
 
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))

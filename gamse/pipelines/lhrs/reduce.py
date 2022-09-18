@@ -200,7 +200,7 @@ def reduce_rawdata():
     '''
 
     # fiter flat frames
-    filterfunc = lambda item: item['object'] is not np.ma.masked and\
+    filterfunc = lambda item: item['object'] is not np.ma.masked and \
                         item['object'].lower()=='flat'
     logitem_lst = list(filter(filterfunc, logtable))
 
@@ -345,13 +345,15 @@ def reduce_rawdata():
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
 
-    filter_thar = lambda item: item['fileid'][0:4]=='thar'
+    filter_thar = lambda item: item['object'] is not np.ma.masked and \
+                        item['object'].lower()=='thar'
     thar_items = list(filter(filter_thar, logtable))
 
     for ithar, logitem in enumerate(thar_items):
         # logitem alias
         frameid = logitem['frameid']
         fileid  = logitem['fileid']
+        objname = logitem['object']
         imgtype = logitem['imgtype']
         exptime = logitem['exptime']
 
@@ -359,17 +361,28 @@ def reduce_rawdata():
         logger_prefix = 'FileID: {} - '.format(fileid)
         screen_prefix = '    - '
 
-        fmt_str = 'FileID: {} ({}) OBJECT: - wavelength identification'
-        message = fmt_str.format(fileid, imgtype)
+        fmt_str = 'FileID: {} ({}) OBJECT: {} - wavelength identification'
+        message = fmt_str.format(fileid, imgtype, objname)
+        logger.info(message)
         print(message)
 
         fname = '{}.fit'.format(fileid)
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
+        mask = get_mask(data, head)
+
+        # correct overscan
         data = correct_overscan(data, head)
-        mask = np.zeros_like(data, dtype=np.int16)
 
         message = 'Overscan corrected.'
+        print(screen_prefix + message)
+
+        # correct bias for flat, if has bias
+        if bias is None:
+            message = 'No bias. skipped bias correction'
+        else:
+            data = data - bias
+            message = 'Bias corrected'
         print(screen_prefix + message)
 
         section = config['reduce.extract']
@@ -390,16 +403,29 @@ def reduce_rawdata():
             row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
                     flux_sum,                       # flux
+                    np.zeros(n, dtype=np.float32),  # error
+                    np.zeros(n, dtype=np.float32),  # background
                     np.zeros(n, dtype=np.int16),    # mask
                     )
             spec.append(row)
-        spec = np.array(spec, dtype=wlcalib_spectype)
+        spec = np.array(spec, dtype=spectype)
 
         figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
         wlcalib_fig = os.path.join(figpath, figname)
+
         section = config['reduce.wlcalib']
         title = 'Wavelength Identification for {}'.format(fname)
 
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    #fits.BinTableHDU(identlist),
+                    ])
+        fname = 'wlcalib_{}.fit'.format(fileid)
+        filename = os.path.join(midpath, fname)
+        hdu_lst.writeto(filename, overwrite=True)
+
+        '''
         if ithar == 0:
             # this is the first ThAr frame in this observing run
             if False:
@@ -437,4 +463,5 @@ def reduce_rawdata():
         fname = 'wlcalib.{}.fit'.format(fileid)
         filename = os.path.join(midpath, fname)
         hdu_lst.writeto(filename, overwrite=True)
+        '''
 
