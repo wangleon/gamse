@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 import sys
 
 import numpy as np
@@ -9,14 +10,18 @@ import astropy.io.fits as fits
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
 
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from gamse.pipelines.common import load_config
-from gamse.echelle.wlcalib import (CalibFigure, reference_self_wavelength,
-        save_ident, load_ident, load_linelist, search_linelist, find_local_peak,
+from gamse.echelle.wlcalib import (identlinetype, CalibFigure,
+        reference_self_wavelength,
+        save_ident, load_ident, load_linelist, search_linelist,
+        is_identified, auto_line_fitting_filter, find_local_peak,
         guess_wavelength, get_wavelength, fit_wavelength)
 
 
@@ -665,7 +670,7 @@ class CalibWindow(tk.Frame):
 
         message = 'Wavelength fitted. std={:.6f}, utot={}, nuse={}'.format(
                     std, ntot, nuse)
-        logger.info(message)
+        print(message)
 
         self.plot_wavelength()
 
@@ -800,7 +805,8 @@ class CalibWindow(tk.Frame):
                 item = np.array((aperture, order, center, line[0], amplitude,
                                 fwhm, q, True, 0.0, 'a'), dtype=identlinetype)
 
-                self.identlist[aperture] = np.append(self.identlist[aperture], item)
+                self.identlist[aperture] = np.append(self.identlist[aperture],
+                                            item)
                 has_insert = True
                 #print('insert', aperture, line[0], peak_x, i)
                 n_insert += 1
@@ -811,7 +817,7 @@ class CalibWindow(tk.Frame):
                                                     order='pixel')
 
         message = '{} new lines inserted'.format(n_insert)
-        logger.info(message)
+        print(message)
 
         self.fit()
 
@@ -955,7 +961,7 @@ class CalibWindow(tk.Frame):
         self.plot_frame.fig.savefig(self.param['figfilename'])
         message = 'Wavelength solution plotted in {}'.format(
                     self.param['figfilename'])
-        logger.info(message)
+        print(message)
 
     def on_click(self, event):
         """Response function of clicking the axes.
@@ -1066,7 +1072,7 @@ class CalibWindow(tk.Frame):
 
             self.param['center']    = center
             self.param['amplitude'] = amplitude
-            self.parma['fwhm']      = fwhm
+            self.param['fwhm']      = fwhm
 
             # temporarily plot this line
             self.plot_aperture()
@@ -1074,7 +1080,7 @@ class CalibWindow(tk.Frame):
             line_frame.clr_button.config(state=tk.NORMAL)
 
             # guess the input wavelength
-            guess_wl = guess_wavelength(peak_x, aperture, self.identlist,
+            guess_wl = guess_wavelength(center, aperture, self.identlist,
                                         self.linelist, self.param)
 
             if guess_wl is None:
@@ -1386,7 +1392,11 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     order = k*aper + offset
     wl = get_wavelength(coeff, npixel, np.arange(npixel), order)
     # refresh the direction code
-    new_direction = 'x' + {1:'r', -1:'b'}[k] + '-+'[wl[0] < wl[-1]]
+    if wl[0] < wl[-1]:
+        sign = '+'
+    else:
+        sign = '-'
+    new_direction = 'x' + {1:'r', -1:'b'}[k] + sign
 
     # organize results
     result = {
@@ -1417,7 +1427,16 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
 
 if __name__=='__main__':
 
-    config = load_config('*\.cfg$')
+    filename = sys.argv[1]
+    hdulst = fits.open(filename)
+    head = hdulst[0].header
+    spec = hdulst[1].data
+    hdulst.close()
+
+    mobj = re.match('wlcalib_(\S*)\.fit[s]?', os.path.basename(filename))
+    fileid = mobj.group(1)
+
+    config = load_config('\S*\.cfg$')
     section      = config['data']
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
@@ -1465,7 +1484,6 @@ if __name__=='__main__':
                 ])
 
     # save in midproc path as a wlcalib reference file
-    fname = 'wlcalib_{}.fits'.format(fileid)
-    filename = os.path.join(midpath, fname)
     hdu_lst.writeto(filename, overwrite=True)
     message = 'Wavelength calibrated spectra written to {}'.format(filename)
+    print(message)

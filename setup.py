@@ -10,6 +10,7 @@ setup(
     author_email = 'lwang@mpe.mpg.de',
     license      = 'Apache-2.0',
     scripts      = ['scripts/gamse',
+                    'scripts/gamse_ident',
                     ],
     packages     = [
                     'gamse',
