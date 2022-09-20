@@ -54,6 +54,7 @@ def make_config():
     config.set('data', 'rawpath',       'rawdata')
     config.set('data', 'statime_key',   'DATE-OBS')
     config.set('data', 'exptime_key',   'EXPOSURE')
+    config.set('data', 'direction',     'xb-')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
@@ -108,9 +109,9 @@ def make_config():
     # section of spectra extraction
     sectname = 'reduce.extract'
     config.add_section(sectname)
-    config.set(sectname, 'method',      'optimal')
-    config.set(sectname, 'upper_limit', str(7))
-    config.set(sectname, 'lower_limit', str(7))
+    config.set(sectname, 'method',      'sum')
+    config.set(sectname, 'upper_limit', str(16))
+    config.set(sectname, 'lower_limit', str(16))
 
     # write to config file
     filename = 'LHRS.{}.cfg'.format(input_date)
@@ -157,25 +158,29 @@ def make_obslog():
 
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
-        if not fname.endswith('.fit'):
+        mobj = re.match('(LHRS\d{6}[A-Z])(\d{4})([a-z])\.fits', fname)
+        if not mobj:
             continue
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
-        frameid    = 0  # frameid will be determined later
-        fileid     = fname[0:-4]
+        frameid    = int(mobj.group(2))
+        fileid     = mobj.group(1) + mobj.group(2) + mobj.group(3)
         exptime    = head[exptime_key]
 
         # guess object name from filename
-        if fileid.startswith('bias-'):
+        if mobj.group(3)=='b':
             objectname = 'Bias'
-        elif fileid.startswith('flat-'):
+        elif mobj.group(3)=='f':
             objectname = 'Flat'
         else:
             objectname = ''
 
         obsdate    = head[statime_key]
-        imgtype    = 'cal'
+        if mobj.group(3)=='o':
+            imgtype = 'sci'
+        else:
+            imgtype = 'cal'
 
         # determine the total number of saturated pixels
         saturation = (data>=44000).sum()
@@ -196,14 +201,7 @@ def make_obslog():
         print(print_wrapper(string, item))
 
     # sort by obsdate
-    logtable.sort('obsdate')
-
-    # allocate frameid
-    prev_frameid = -1
-    for logitem in logtable:
-        frameid = prev_frameid + 1
-        logitem['frameid'] = frameid
-        prev_frameid = frameid
+    #logtable.sort('obsdate')
 
     # determine filename of logtable.
     # use the obsdate of the first frame

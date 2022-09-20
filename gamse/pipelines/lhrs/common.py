@@ -1,7 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as tck
+
 from ...utils.onedarray import iterative_savgol_filter
 
 from ...echelle.trace import TraceFigureCommon, AlignFigureCommon
+from ...echelle.background import BackgroundFigureCommon
 
 def print_wrapper(string, item):
     return string
@@ -60,6 +64,101 @@ def get_mask(data, head):
         bad_mask[1720, 2314:2315] = 1
     mask = bad_mask*2
     return mask
+
+class BackgroundFigure(BackgroundFigureCommon):
+    """Figure to plot the background correction.
+    """
+    def __init__(self, data=None, background=None, dpi=300, figsize=(12, 5.5),
+           title=None, figname=None, zscale=('log', 'linear'), contour=True):
+        BackgroundFigureCommon.__init__(self, figsize=figsize, dpi=dpi)
+        width = 0.36
+        height = width*figsize[0]/figsize[1]
+        self.ax1  = self.add_axes([0.06, 0.1, width, height])
+        self.ax2  = self.add_axes([0.55, 0.1, width, height])
+        self.ax1c = self.add_axes([0.06+width+0.01, 0.1, 0.015, height])
+        self.ax2c = self.add_axes([0.55+width+0.01, 0.1, 0.015, height])
+
+        if data is not None and background is not None:
+            self.plot_background(data, background,
+                            zscale=zscale, contour=contour)
+        if title is not None:
+            self.suptitle(title)
+        if figname is not None:
+            self.savefig(figname)
+
+    def plot_background(self, data, background, scale=(5, 99),
+            zscale=('log', 'linear'), contour=True):
+        """Plot the image data with background and the subtracted background
+        light.
+
+        Args:
+            data (:class:`numpy.ndarray`): Image data to be background
+                subtracted.
+            background (:class:`numpy.ndarray`): Background light as a 2D array.
+        """
+        # find the minimum and maximum value of plotting
+
+        if zscale[0] == 'linear':
+            vmin = np.percentile(data, scale[0])
+            vmax = np.percentile(data, scale[1])
+            cax1 = self.ax1.imshow(data, cmap='gray', vmin=vmin, vmax=vmax,
+                        origin='lower')
+            # set colorbar
+            cbar1 = self.colorbar(cax1, cax=self.ax1c)
+        elif zscale[0] == 'log':
+            m = data <= 0
+            plotdata1 = np.zeros_like(data, dtype=np.float32)
+            plotdata1[m] = 0.1
+            plotdata1[~m] = np.log10(data[~m])
+            vmin = np.percentile(plotdata1[~m], scale[0])
+            vmax = np.percentile(plotdata1[~m], scale[1])
+            cax1 = self.ax1.imshow(plotdata1, cmap='gray', vmin=vmin, vmax=vmax,
+                        origin='lower')
+            # set colorbar
+            tick_lst = np.arange(int(np.ceil(vmin)), int(np.ceil(vmax)))
+            ticklabel_lst = ['$10^{}$'.format(i) for i in tick_lst]
+            cbar1 = self.colorbar(cax1, cax=self.ax1c, ticks=tick_lst)
+            cbar1.ax.set_yticklabels(ticklabel_lst)
+        else:
+            print('Unknown zscale:', zscale)
+
+
+        if zscale[1] == 'linear':
+            vmin = background.min()
+            vmax = background.max()
+            cax2 = self.ax2.imshow(background, cmap='viridis',
+                    vmin=vmin, vmax=vmax, origin='lower')
+            # set colorbar
+            cbar2 = self.colorbar(cax2, cax=self.ax2c)
+        elif zscale[1] == 'log':
+            m = background <= 0
+            plotdata2 = np.zeros_like(background, dtype=np.float32)
+            plotdata2[m] = 0.1
+            plotdata2[~m] = np.log10(background[~m])
+            vmin = max(0.1, background[~m].min())
+            vmax = plotdata2[~m].max()
+            cax2 = self.ax2.imshow(plotdata2, cmap='viridis',
+                    vmin=vmin, vmax=vmax, origin='lower')
+            # plot contour in background panel
+            if contour:
+                cs = self.ax2.contour(plotdata2, colors='r', linewidths=0.5)
+                self.ax2.clabel(cs, inline=1, fontsize=7, use_clabeltext=True)
+            # set colorbar
+            tick_lst = np.arange(int(np.ceil(vmin)), int(np.ceil(vmax)))
+            ticklabel_lst = ['$10^{}$'.format(i) for i in tick_lst]
+            cbar2 = self.colorbar(cax2, cax=self.ax2c, ticks=tick_lst)
+            cbar2.ax.set_yticklabels(ticklabel_lst)
+        else:
+            print('Unknown zscale:', zscale)
+
+        # set labels and ticks
+        for ax in [self.ax1, self.ax2]:
+            ax.set_xlabel('X (pixel)')
+            ax.set_ylabel('Y (pixel)')
+            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+            ax.yaxis.set_major_locator(tck.MultipleLocator(500))
+            ax.yaxis.set_minor_locator(tck.MultipleLocator(100))
 
 class TraceFigure(TraceFigureCommon):
     """Figure to plot the order tracing.
