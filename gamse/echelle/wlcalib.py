@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import numpy.polynomial as poly
 import astropy.io.fits as fits
+from astropy.table import Table
 import scipy.interpolate as intp
 import scipy.optimize as opt
 
@@ -20,6 +21,7 @@ from matplotlib.figure import Figure
 
 from ..utils.regression2d import polyfit2d, polyval2d
 from ..utils.onedarray    import pairwise, derivative
+from ..utils.download     import get_file
 from .trace import load_aperture_set_from_header
 
 # Data format for identified line table
@@ -382,7 +384,7 @@ def gaussian_bkg(A,center,fwhm,bkg,x):
 def errfunc2(p,x,y):
     return y - gaussian_bkg(p[0],p[1],p[2],p[3],x)
 
-def find_local_peak(flux, x, width):
+def find_local_peak(flux, x, width, figname=None):
     """Find the central pixel of an emission line.
 
     Args:
@@ -422,7 +424,7 @@ def find_local_peak(flux, x, width):
     # least square fitting
     #p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
     p1, cov, info, mesg, ier = opt.leastsq(errfunc2, p0[:],
-                                    args=(xdata,ydata), full_output=True)
+                                    args=(xdata, ydata), full_output=True)
 
     res_lst = errfunc2(p1, xdata, ydata)
 
@@ -430,6 +432,21 @@ def find_local_peak(flux, x, width):
         return None
 
     std = math.sqrt((res_lst**2).sum()/(res_lst.size-len(p0)-1))
+
+    if figname is not None:
+        fig = plt.figure()
+        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.5])
+        ax2 = fig.add_axes([0.1, 0.1, 0.8, 0.25])
+        ax1.plot(xdata, ydata, 'o', ms=4)
+        newx = np.arange(xdata[0], xdata[-1], 0.1)
+        newy = gaussian_bkg(p1[0], p1[1], p1[2], p1[3], newx)
+        ax1.plot(newx, newy, '-', lw=0.6)
+        yerr = errfunc2(p1, xdata, ydata)
+        ax2.plot(xdata, yerr, 'o', ms=4)
+        ax1.set_xlim(xdata[0], xdata[-1])
+        ax2.set_xlim(xdata[0], xdata[-1])
+        fig.savefig(figname)
+        plt.close(fig)
 
     return i1, i2, p1, std
 
@@ -835,15 +852,12 @@ class CalibFigure(Figure):
             tick.label1.set_fontsize(tick_size)
 
 
-def select_calib_from_database(path, time_key, current_time,
-        filepattern='wlcalib.\S*.fits$'):
+def select_calib_from_database(index_file, dateobs):
     """Select a previous calibration result in database.
 
     Args:
-        path (str): Path to search for the calibration files.
-        time_key (str): Name of the key in the FITS header.
-        current_time (str): Time string of the file to be calibrated.
-        filepattern (str):
+        index_file (str): Index file of saved calibration files.
+        dateobs (str): .
 
     Returns:
         tuple: A tuple containing:
@@ -852,38 +866,38 @@ def select_calib_from_database(path, time_key, current_time,
                 spectra.
             * **calib** (dict): Previous calibration results.
     """
-    if not os.path.exists(path):
-        return None, None
-    filename_lst = []
-    datetime_lst = []
-    for fname in os.listdir(path):
-        if re.match(filepattern, fname) is not None:
-            filename = os.path.join(path, fname)
-            head = fits.getheader(filename)
-            dt = dateutil.parser.parse(head[time_key])
-            filename_lst.append(filename)
-            datetime_lst.append(dt)
-    if len(filename_lst)==0:
-        return None, None
 
-    # select the FITS file with the shortest interval in time.
-    input_datetime = dateutil.parser.parse(current_time)
-    deltat_lst = np.array([abs((input_datetime - dt).total_seconds())
-                            for dt in datetime_lst])
-    imin = deltat_lst.argmin()
-    sel_filename = filename_lst[imin]
+    # get instrument name
+    mobj = re.match('wlcalib_(\S*)\.dat$', os.path.basename(index_file))
+    instrument = mobj.group(1)
+
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
+
+    input_date = dateutil.parser.parse(dateobs)
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[irow]
+    fileid = row['fileid']  # selected fileid
+    md5    = row['md5']
+
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    logger.info(message)
+
+    filepath = os.path.join('instruments/{}'.format(instrument),
+                'wlcalib_{}.fits'.format(fileid))
+    filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file
-    hdu_lst = fits.open(sel_filename)
+    hdu_lst = fits.open(filename)
     head = hdu_lst[0].header
     spec = hdu_lst[1].data
     hdu_lst.close()
 
     calib = get_calib_from_header(head)
 
-    # aperset seems unnecessary
-    #aperset = load_aperture_set_from_header(head, channel=channel)
-    #return spec, calib, aperset
     return spec, calib
 
 def wlcalib(*args, **kwargs):
@@ -1019,7 +1033,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             diff = np.abs(wl - line[0])
             i = diff.argmin()
 
-            result = find_local_peak(flux, i, window_size)
+            result = find_local_peak(flux, i, window_size,
+                    #figname='debug/wlfit_{:03d}_{:9.4f}.png'.format(int(order), line[0])
+                    )
             if result is None:
                 continue
             i1, i2, param, std = result
@@ -2183,7 +2199,8 @@ class FWHMMapFigure(Figure):
     """Figure class for plotting FWHMs over the whole CCD.
 
     """
-    def __init__(self, spec, identlist, apertureset, fwhm_range=None):
+    def __init__(self, spec, identlist, apertureset,
+            fwhm_range=None, fwhmrv_range=None):
         """Constuctor of :class:`FWHMMapFigure`.
         """
         # find shape of map
@@ -2199,10 +2216,10 @@ class FWHMMapFigure(Figure):
         _w *= _zoom
         _h *= _zoom
         self.ax1 = self.add_axes([0.09, 0.10, _w,   _h])
-        self.ax2 = self.add_axes([0.58, 0.10, 0.38, 0.02])
-        self.ax3 = self.add_axes([0.58, 0.63, 0.38, 0.25])
-        self.ax4 = self.add_axes([0.58, 0.36, 0.38, 0.25])
-        self.ax5 = self.add_axes([0.58, 0.14, 0.38, 0.20])
+        self.ax3 = self.add_axes([0.58, 0.67, 0.38, 0.23])
+        self.ax4 = self.add_axes([0.58, 0.42, 0.38, 0.23])
+        self.ax5 = self.add_axes([0.58, 0.13, 0.20, 0.19])
+        self.ax2 = self.add_axes([0.58, 0.10, 0.20, 0.02])
 
         # get delta pixel fo every order
         dwave = {row['aperture']: derivative(row['wavelength']) for row in spec}
@@ -2210,8 +2227,9 @@ class FWHMMapFigure(Figure):
         x_lst = []
         y_lst = []
         fwhm_lst = []
+        fwhmrv_lst = []
         aper_fwhm_lst = {}
-        aper_fwhmkm_lst = {}
+        aper_fwhmrv_lst = {}
         for row in identlist:
             if not row['mask']:
                 continue
@@ -2219,36 +2237,37 @@ class FWHMMapFigure(Figure):
             fwhm   = row['fwhm']
             center = row['pixel']
             wave   = row['wavelength']
-            dwave_km = np.abs(dwave[aper][int(round(center))])/wave*299792.458
-            fwhmkm = fwhm*dwave_km
+            dwave_rv = np.abs(dwave[aper][int(round(center))])/wave*299792.458
+            fwhmrv = fwhm*dwave_rv
             aperloc = apertureset[aper]
             ypos = aperloc.position(center)
 
             x_lst.append(center)
             y_lst.append(ypos)
             fwhm_lst.append(fwhm)
+            fwhmrv_lst.append(fwhmrv)
 
             if aper not in aper_fwhm_lst:
                 aper_fwhm_lst[aper] = [[], []]
             aper_fwhm_lst[aper][0].append(center)
             aper_fwhm_lst[aper][1].append(fwhm)
 
-            if aper not in aper_fwhmkm_lst:
-                aper_fwhmkm_lst[aper] = [[], []]
-            aper_fwhmkm_lst[aper][0].append(center)
-            aper_fwhmkm_lst[aper][1].append(fwhmkm)
-            print(center, fwhmkm, fwhm)
+            if aper not in aper_fwhmrv_lst:
+                aper_fwhmrv_lst[aper] = [[], []]
+            aper_fwhmrv_lst[aper][0].append(center)
+            aper_fwhmrv_lst[aper][1].append(fwhmrv)
 
         if fwhm_range is None:
             fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
         else:
             fwhm1, fwhm2 = fwhm_range
 
+
         # ax1: plot FWHM as scatters
         cax = self.ax1.scatter(x_lst, y_lst, s=20, c=fwhm_lst, alpha=0.8,
                 vmin=fwhm1, vmax=fwhm2, lw=0)
         self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
-        self.cbar.set_label('FWHM')
+        self.cbar.set_label('FWHM (pixel)')
         self.ax1.set_xlim(0, shape[1]-1)
         self.ax1.set_ylim(0, shape[0]-1)
         self.ax1.set_xlabel('X (pixel)')
@@ -2260,22 +2279,37 @@ class FWHMMapFigure(Figure):
                     c='C0', ms=2, alpha=0.6, lw=0.5)
         self.ax3.set_xlim(0, shape[1]-1)
         self.ax3.set_ylim(fwhm1, fwhm2)
-        self.ax3.set_xlabel('X (pixel)')
-        self.ax3.set_ylabel('FWHM')
+        self.ax3.set_xticklabels([])
+        #self.ax3.set_xlabel('X (pixel)')
+        self.ax3.set_ylabel('FWHM (pixel)')
 
-        # ax4: plot x vs. fwhm in km for different apertures
-        for aper, (_x_lst, _fwhmkm_lst) in aper_fwhmkm_lst.items():
-            self.ax4.plot(_x_lst, _fwhmkm_lst, 'o-',
+        # ax4: plot x vs. fwhm in rv for different apertures
+        for aper, (_x_lst, _fwhmrv_lst) in aper_fwhmrv_lst.items():
+            self.ax4.plot(_x_lst, _fwhmrv_lst, 'o-',
                     c='C0', ms=2, alpha=0.6, lw=0.5)
         self.ax4.set_xlim(0, shape[1]-1)
-        #self.ax4.set_ylim(fwhm1, fwhm2)
         self.ax4.set_xlabel('X (pixel)')
         self.ax4.set_ylabel('FWHM (km/s)')
 
+        if fwhmrv_range is None:
+            fwhmrv1, fwhmrv2 = min(fwhmrv_lst), max(fwhmrv_lst)
+        else:
+            fwhmrv1, fwhmrv2 = fwhmrv_range
+        self.ax4.set_ylim(fwhmrv1, fwhmrv2)
+
+
         # ax5: plot FWHM histograms
         self.ax5.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
+        self.ax5.set_xticklabels([])
         self.ax5.set_xlim(fwhm1, fwhm2)
         self.ax5.set_ylabel('N')
+
+        # text
+        text = 'Median FWHM:\n {:.2f} pixel\n {:.2f} km/s'.format(
+                np.median(fwhm_lst),
+                np.median(fwhmrv_lst),
+                )
+        self.text(0.79, 0.32, text, va='top', fontsize=11)
 
     def close(self):
         plt.close(self)
@@ -2300,9 +2334,9 @@ class ResolutionFigure(Figure):
         _w *= _zoom
         _h *= _zoom
         self.ax1 = self.add_axes([0.09, 0.1, _w,   _h])
-        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
         self.ax3 = self.add_axes([0.58, 0.6, 0.38, 0.32])
         self.ax4 = self.add_axes([0.58, 0.2, 0.38, 0.32])
+        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
 
 
         # get delta pixel fo every order
@@ -2342,26 +2376,31 @@ class ResolutionFigure(Figure):
 
         # ax1: plot resolution as scatters
         cax = self.ax1.scatter(x_lst, y_lst, s=20, c=resolution_lst, alpha=0.8,
-                #vmin=resolution1, vmax=resolution2,
+                vmin=resolution1, vmax=resolution2,
                 lw=0)
         self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
-        self.cbar.set_label('FWHM')
+        self.cbar.set_label('Resolution')
         self.ax1.set_xlim(0, shape[1]-1)
         self.ax1.set_ylim(0, shape[0]-1)
         self.ax1.set_xlabel('X (pixel)')
         self.ax1.set_ylabel('Y (pixel)')
 
 
-        # ax3: plot wave vs. resolution
-        #self.ax3.plot(wave_lst, resolution_lst, 'o',
-        #            c='C0', ms=2, alpha=0.6, lw=0.5)
-        # ax3: plot x vs. fwhm for different apertures
+        # ax3: plot x vs. resolution
         for aper, (_x_lst, _resolution_lst) in aper_resolution_lst.items():
             self.ax3.plot(_x_lst, _resolution_lst, 'o-',
                     c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax3.set_xlim(0, shape[1]-1)
         self.ax3.set_ylim(resolution1, resolution2)
         self.ax3.set_xlabel('X (pixel)')
         self.ax3.set_ylabel('Resolution')
+
+        # ax4: plot wave vs. resolution
+        self.ax4.plot(wave_lst, resolution_lst, 'o',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax4.set_ylim(resolution1, resolution2)
+        self.ax4.set_xlabel(u'Wavelength (\xc5)')
+        self.ax4.set_ylabel('Resolution')
 
     def close(self):
         plt.close(self)
