@@ -710,9 +710,10 @@ def reduce_rawdata():
         # prepar message prefix
         logger_prefix = 'Flat - '
         screen_prefix = '    - '
-        message = 'Flat field corrected for flat.'
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
+
+        message = 'Flat fielding'
+        logger.info(message)
+        print(message)
 
         # get background light for flat field
         ny, nx = flat_data.shape
