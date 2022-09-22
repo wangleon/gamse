@@ -121,8 +121,11 @@ def reduce_echelle():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            eval(row[0]).reduce_rawdata()
-            exit()
+            modulename = eval(row[0])
+            if hasattr(modulename, 'reduce_rawdata'):
+                func = getattr(modulename, 'reduce_rawdata')
+                func()
+                exit()
 
     print('Unknown Instrument: {} - {}'.format(telescope, instrument))
 
@@ -156,10 +159,43 @@ def make_obslog():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            eval(row[0]).make_obslog()
-            exit()
+            modulename = eval(row[0])
+            if hasattr(modulename, 'make_obslog'):
+                func = getattr(modulename, 'make_obslog')
+                func()
+                exit()
 
     print('Unknown Instrument: {} - {}'.format(telescope, instrument))
+
+def split_obslog():
+    """
+    """
+    for fname in os.listdir(os.curdir):
+        if fname.endswith('.cfg'):
+            config_file = fname
+            break
+
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file)
+
+    # find the telescope and instrument name
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+
+    for row in instrument_lst:
+        if telescope == row[1] and instrument == row[2]:
+            modulename = eval(row[0])
+            if hasattr(modulename, 'split_obslog'):
+                func = getattr(modulename, 'split_obslog')
+                func()
+                exit()
+
+    print('Unknown Instrument: {} - {}'.format(telescope, instrument))
+
 
 def make_config():
     """Print a list of supported instrument and generate a config file according
@@ -186,7 +222,10 @@ def make_config():
 
     # use individual functions in each pipeline
     modulename = instrument_lst[select-1][0]
-    eval(modulename).make_config()
+    if hasattr(modulename, 'make_config'):
+        func = getattr(modulename, 'make_config')
+        func()
+        exit()
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
