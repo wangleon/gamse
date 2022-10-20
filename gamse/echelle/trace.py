@@ -1390,8 +1390,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[0])
         if mid_lst[1] - mid_lst[0] > 2*sep:
-            logger.info(('Remove the first aperture at {:d}'
-                        '(distance={:d} > 2 x {:d})').format(
+            logger.info(('Remove the first aperture at {:.1f}'
+                        '(distance={:.1f} > 2 x {:.1f})').format(
                         mid_lst[0], mid_lst[1]-mid_lst[0], sep))
             mid_lst.pop(0)
         else:
