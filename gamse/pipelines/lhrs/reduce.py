@@ -27,7 +27,7 @@ from ...echelle.trace import find_apertures
 #from .trace import find_apertures
 
 def reduce_rawdata():
-    """Reduc the LAMOST-HRS data.
+    """Reduce the LAMOST-HRS data.
     """
 
     # read obslog and config
@@ -62,7 +62,6 @@ def reduce_rawdata():
         ncores = min(os.cpu_count(), int(ncores))
 
     ############## correct bias #####
-    mode = config['reduce'].get('mode')
     bias_file = config['reduce.bias'].get('bias_file')
     
     if mode=='debug' and os.path.exists(bias_file):
@@ -82,7 +81,6 @@ def reduce_rawdata():
         print(message)
     else:
 
-
         bias_data_lst = []
         bias_card_lst = []
 
@@ -97,8 +95,8 @@ def reduce_rawdata():
             bias = None
         else:
             fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^19s}'
-            head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
-                         'obsdate')
+            head_str = fmt_str.format('frameid', 'FileID', 'Object',
+                        'exptime', 'obsdate')
 
             for iframe, logitem in enumerate(bias_items):
                 frameid  = logitem['frameid']
@@ -292,7 +290,7 @@ def reduce_rawdata():
         exptime = np.mean(exptime_lst)
         flat_head[exptime_key] = exptime
 
-        # calculate the mean start time and write it to th new header
+        # calculate the mean start time and write it to the new header
         delta_t_lst = [(t-obsdate_lst[0]).total_seconds() for t in obsdate_lst]
         mean_delta_t = datetime.timedelta(seconds=np.mean(delta_t_lst))
         mean_obsdate = obsdate_lst[0] + mean_delta_t

@@ -3,12 +3,25 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
 from ...utils.onedarray import iterative_savgol_filter
-
 from ...echelle.trace import TraceFigureCommon, AlignFigureCommon
 from ...echelle.background import BackgroundFigureCommon
 
 def print_wrapper(string, item):
-    return string
+
+    imgtype = item['imgtype']
+    objname = item['object'].strip().lower()
+
+    if imgtype=='cal' and objname=='bias':
+        # bias images, use dim (2)
+        return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
+    elif imgtype=='sci':
+        # sci images, use highlights (1)
+        return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
+    elif imgtype=='cal' and objname=='thar':
+        # arc lamp, use light yellow (93)
+        return '\033[93m'+string.replace('\033[0m', '')+'\033[0m'
+    else:
+        return string
 
 def correct_overscan(data, head):
     """Correct overscan.
