@@ -295,20 +295,26 @@ def combine_bias(config, logtable):
                 'obsdate')
 
     for iframe, logitem in enumerate(bias_items):
+        frameid    = logitem['frameid']
+        fileid     = logitem['fileid']
+        objectname = logitem['object']
+        exptime    = logitem['exptime']
+        obsdate    = logitem['obsdate']
+        amp        = logitem['amp']
 
         # now filter the bias frames
-        fname = '{}.fits'.format(logitem['fileid'])
+        fname = '{}.fits'.format(fileid)
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
-        data, card_lst = correct_overscan(data, head, logitem['amp'])
+        data, card_lst = correct_overscan(data, head, amp)
 
         # pack the data and fileid list
         bias_data_lst.append(data)
 
         # append the file information
         prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(iframe+1)
-        card = (prefix+' FILEID', logitem['fileid'])
+        card = (prefix+' FILEID', fileid)
         bias_card_lst.append(card)
 
         # append the overscan information of each bias frame to
@@ -323,10 +329,8 @@ def combine_bias(config, logtable):
         if iframe == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
             print(head_str)
-        message = fmt_str.format(
-                    '[{:d}]'.format(logitem['frameid']),
-                    logitem['fileid'], logitem['object'],
-                    logitem['exptime'], logitem['obsdate'],
+        message = fmt_str.format('[{:d}]'.format(frameid),
+                    fileid, objectname, exptime, obsdate,
                     )
         print(message)
 
@@ -398,6 +402,7 @@ def combine_bias(config, logtable):
             hdu_lst[0].header.append(card)
             bias_card_lst.append(card)
         hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        # update the file contents in primary HDU
         card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
         hdu_lst[0].header.append(card)
 
@@ -412,7 +417,7 @@ def combine_bias(config, logtable):
         # bias is the result array to return
         bias = bias_combine
 
-    ############### save to FITS ##############
+    # save to FITS
     hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)

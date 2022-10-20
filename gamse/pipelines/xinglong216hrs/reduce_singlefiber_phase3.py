@@ -431,7 +431,7 @@ def reduce_singlefiber_phase3(config, logtable):
 
         section = config['reduce.wlcalib']
 
-        title = '{}.fits'.format(fileid)
+        title = 'Wavelength Indentification for {}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
