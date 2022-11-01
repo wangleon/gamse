@@ -6,7 +6,15 @@ Subpackages
 
 .. toctree::
 
+    gamse.pipelines.espadons
+    gamse.pipelines.feros
     gamse.pipelines.foces
+    gamse.pipelines.harps
+    gamse.pipelines.hds
+    gamse.pipelines.hires
+    gamse.pipelines.levy
+    gamse.pipelines.lhrs
+    gamse.pipelines.uves
     gamse.pipelines.xinglong216hrs
 
 Submodules
@@ -16,38 +24,6 @@ gamse.pipelines.common module
 -----------------------------
 
 .. automodule:: gamse.pipelines.common
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.feros module
-----------------------------
-
-.. automodule:: gamse.pipelines.feros
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.hires module
-----------------------------
-
-.. automodule:: gamse.pipelines.hires
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.levy module
----------------------------
-
-.. automodule:: gamse.pipelines.levy
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
-gamse.pipelines.reduction module
---------------------------------
-
-.. automodule:: gamse.pipelines.reduction
     :members:
     :undoc-members:
     :show-inheritance:

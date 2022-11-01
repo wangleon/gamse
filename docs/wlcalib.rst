@@ -58,15 +58,3 @@ calibration functions:
     get_aperture_coeffs_in_header
     select_calib_from_database
 
-GUI-related:
-
-.. currentmodule:: gamse.echelle.wlcalib
-.. autosummary::
-    CalibWindow
-    CalibFigure
-    PlotFrame
-    CustomToolbar
-    InfoFrame
-    LineTable
-    FitparaFrame
-
