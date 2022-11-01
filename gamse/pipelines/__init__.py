@@ -5,6 +5,7 @@ import shutil
 import logging
 logger = logging.getLogger(__name__)
 import configparser
+import importlib
 
 import numpy as np
 import astropy.io.fits as fits
@@ -15,12 +16,11 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
-from . import (espadons, feros, foces, harps, hds, hires, levy, lhrs, sarg,
-                uves, xinglong216hrs)
 
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
     ('xinglong216hrs',  'Xinglong216',      'HRS'),
+    ('yhrs',            'Lijiang2.4m',      'YHRS'),
     ('hires',           'Keck-I',           'HIRES'),
     ('levy',            'APF',              'Levy'),
     ('hds',             'Subaru',           'HDS'),
@@ -121,8 +121,12 @@ def reduce_echelle():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            eval(row[0]).reduce_rawdata()
-            exit()
+            modulename = row[0]
+            submodule = importlib.import_module('.'+modulename, __package__)
+            if hasattr(submodule, 'reduce_rawdata'):
+                func = getattr(submodule, 'reduce_rawdata')
+                func()
+                exit()
 
     print('Unknown Instrument: {} - {}'.format(telescope, instrument))
 
@@ -156,10 +160,44 @@ def make_obslog():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            eval(row[0]).make_obslog()
-            exit()
+            modulename = row[0]
+            submodule = importlib.import_module('.'+modulename, __package__)
+            if hasattr(submodule, 'make_obslog'):
+                func = getattr(submodule, 'make_obslog')
+                func()
+                exit()
 
     print('Unknown Instrument: {} - {}'.format(telescope, instrument))
+
+def split_obslog():
+    """
+    """
+    for fname in os.listdir(os.curdir):
+        if fname.endswith('.cfg'):
+            config_file = fname
+            break
+
+    config = configparser.ConfigParser(
+                inline_comment_prefixes = (';','#'),
+                interpolation = configparser.ExtendedInterpolation(),
+                )
+    config.read(config_file)
+
+    # find the telescope and instrument name
+    section = config['data']
+    telescope  = section['telescope']
+    instrument = section['instrument']
+
+    for row in instrument_lst:
+        if telescope == row[1] and instrument == row[2]:
+            modulename = eval(row[0])
+            if hasattr(modulename, 'split_obslog'):
+                func = getattr(modulename, 'split_obslog')
+                func()
+                exit()
+
+    print('Unknown Instrument: {} - {}'.format(telescope, instrument))
+
 
 def make_config():
     """Print a list of supported instrument and generate a config file according
@@ -186,7 +224,10 @@ def make_config():
 
     # use individual functions in each pipeline
     modulename = instrument_lst[select-1][0]
-    eval(modulename).make_config()
+    submodule = importlib.import_module('.'+modulename, __package__)
+    if hasattr(submodule, 'make_config'):
+        func = getattr(submodule, 'make_config')
+        func()
 
 def show_onedspec():
     """Show 1-D spectra in a pop-up window.
@@ -369,8 +410,12 @@ def plot_spectra1d():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            eval(row[0]).plot_spectra1d()
-            exit()
+            modulename = row[0]
+            submodule = importlib.import_module('.'+modulename, __package__)
+            if hasattr(submodule, 'plot_spectra1d'):
+                func = getattr(submodule, 'plot_spectra1d')
+                func()
+                exit()
 
 def convert_onedspec():
     """Convert one-dimensional spectra.

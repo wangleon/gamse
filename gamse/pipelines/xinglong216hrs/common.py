@@ -22,7 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
 from ...echelle.imageproc import combine_images
-from ...echelle.trace import TraceFigureCommon
+from ...echelle.trace import TraceFigureCommon, AlignFigureCommon
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header, get_wavelength
@@ -295,20 +295,26 @@ def combine_bias(config, logtable):
                 'obsdate')
 
     for iframe, logitem in enumerate(bias_items):
+        frameid    = logitem['frameid']
+        fileid     = logitem['fileid']
+        objectname = logitem['object']
+        exptime    = logitem['exptime']
+        obsdate    = logitem['obsdate']
+        amp        = logitem['amp']
 
         # now filter the bias frames
-        fname = '{}.fits'.format(logitem['fileid'])
+        fname = '{}.fits'.format(fileid)
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
-        data, card_lst = correct_overscan(data, head, logitem['amp'])
+        data, card_lst = correct_overscan(data, head, amp)
 
         # pack the data and fileid list
         bias_data_lst.append(data)
 
         # append the file information
         prefix = 'HIERARCH GAMSE BIAS FILE {:03d}'.format(iframe+1)
-        card = (prefix+' FILEID', logitem['fileid'])
+        card = (prefix+' FILEID', fileid)
         bias_card_lst.append(card)
 
         # append the overscan information of each bias frame to
@@ -323,10 +329,8 @@ def combine_bias(config, logtable):
         if iframe == 0:
             print('* Combine Bias Images: "{}"'.format(bias_file))
             print(head_str)
-        message = fmt_str.format(
-                    '[{:d}]'.format(logitem['frameid']),
-                    logitem['fileid'], logitem['object'],
-                    logitem['exptime'], logitem['obsdate'],
+        message = fmt_str.format('[{:d}]'.format(frameid),
+                    fileid, objectname, exptime, obsdate,
                     )
         print(message)
 
@@ -398,6 +402,7 @@ def combine_bias(config, logtable):
             hdu_lst[0].header.append(card)
             bias_card_lst.append(card)
         hdu_lst.append(fits.ImageHDU(data=bias_smooth))
+        # update the file contents in primary HDU
         card = ('HIERARCH GAMSE FILECONTENT 1', 'BIAS SMOOTHED')
         hdu_lst[0].header.append(card)
 
@@ -412,7 +417,7 @@ def combine_bias(config, logtable):
         # bias is the result array to return
         bias = bias_combine
 
-    ############### save to FITS ##############
+    # save to FITS
     hdu_lst.writeto(bias_file, overwrite=True)
 
     message = 'Bias image written to "{}"'.format(bias_file)
@@ -615,8 +620,13 @@ def select_calib_from_database(index_file, dateobs):
 
     # after 1st Dec 2018, echelle format and keywords in FITS header changed
     time_node1 = datetime.datetime(2018, 12, 1)
+    # A major upgrade in Sep - Oct 2021
+    time_node2 = datetime.datetime(2021, 10, 1)
 
-    if input_date > time_node1:
+    if input_date > time_node2:
+        mask = [dateutil.parser.parse(t) > time_node2
+                for t in calibtable['obsdate']]
+    elif input_date > time_node1:
         mask = [dateutil.parser.parse(t) > time_node1
                 for t in calibtable['obsdate']]
     else:                         
@@ -637,7 +647,8 @@ def select_calib_from_database(index_file, dateobs):
     message = 'Select {} from database index as ThAr reference'.format(fileid)
     logger.info(message)
 
-    filepath = os.path.join('xinglong216hrs', 'wlcalib_{}.fits'.format(fileid))
+    filepath = os.path.join('instruments/xinglong216hrs',
+                'wlcalib_{}.fits'.format(fileid))
     filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file
@@ -706,6 +717,14 @@ class TraceFigure(TraceFigureCommon):
         self.ax2 = self.add_axes([0.52,0.50,0.43,0.40])
         self.ax3 = self.add_axes([0.52,0.10,0.43,0.40])
         self.ax4 = self.ax3.twinx()
+
+class AlignFigure(AlignFigureCommon):
+    """Figure to plot the order alignment.
+    """
+    def __init__(self):
+        AlignFigureCommon.__init__(self, figsize=(12,6), dpi=150)
+        self.ax1 = self.add_axes([0.08, 0.1, 0.4, 0.8])
+        self.ax2 = self.add_axes([0.55, 0.1, 0.4, 0.8])
 
 def print_wrapper(string, item):
     """A wrapper for log printing for Xinglong216HRS pipeline.

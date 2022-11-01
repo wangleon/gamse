@@ -196,6 +196,7 @@ def make_config():
     config.set(sectname, 'method',      'optimal')
     config.set(sectname, 'upper_limit', str(7))
     config.set(sectname, 'lower_limit', str(7))
+    config.set(sectname, 'deblaze',     'yes')
 
     # write to config file
     filename = 'Xinglong216HRS.{}.cfg'.format(input_date)

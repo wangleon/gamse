@@ -12,6 +12,14 @@ gamse.utils.config module
     :undoc-members:
     :show-inheritance:
 
+gamse.utils.download module
+---------------------------
+
+.. automodule:: gamse.utils.download
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 gamse.utils.misc module
 -----------------------
 

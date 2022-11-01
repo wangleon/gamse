@@ -42,16 +42,19 @@ def make_config():
     input_datetime = datetime.datetime.strptime(input_date, '%Y-%m-%d')
 
     # general database path for this instrument
-    dbpath = '~/.gamse/LAMOST.LHRS'
+    #dbpath = '~/.gamse/LAMOST.LHRS'
 
     # create config object
     config = configparser.ConfigParser()
 
     config.add_section('data')
 
-    config.set('data', 'telescope',    'LAMOST')
-    config.set('data', 'instrument',   'HRS')
-    config.set('data', 'rawpath',      'rawdata')
+    config.set('data', 'telescope',     'LAMOST')
+    config.set('data', 'instrument',    'HRS')
+    config.set('data', 'rawpath',       'rawdata')
+    config.set('data', 'statime_key',   'DATE-OBS')
+    config.set('data', 'exptime_key',   'EXPOSURE')
+    config.set('data', 'direction',     'xb-')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
@@ -90,7 +93,6 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'yes')
     config.set(sectname, 'window_size',      str(13))
@@ -107,8 +109,9 @@ def make_config():
     # section of spectra extraction
     sectname = 'reduce.extract'
     config.add_section(sectname)
-    config.set(sectname, 'upper_limit', str(7))
-    config.set(sectname, 'lower_limit', str(7))
+    config.set(sectname, 'method',      'sum')
+    config.set(sectname, 'upper_limit', str(16))
+    config.set(sectname, 'lower_limit', str(16))
 
     # write to config file
     filename = 'LHRS.{}.cfg'.format(input_date)
@@ -133,6 +136,9 @@ def make_obslog():
     config = load_config('LHRS\S*\.cfg$')
     rawpath = config['data'].get('rawpath')
 
+    statime_key = config['data'].get('statime_key')
+    exptime_key = config['data'].get('exptime_key')
+
     # prepare logtable
     logtable = Table(dtype=[
                         ('frameid',  'i2'),
@@ -152,20 +158,32 @@ def make_obslog():
 
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
-        if not fname.endswith('.fit'):
+        mobj = re.match('(LHRS\d{6}[A-Z])(\d{4})([a-z])\.fits', fname)
+        if not mobj:
             continue
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
 
-        frameid    = 0  # frameid will be determined later
-        fileid     = fname[0:-4]
-        exptime    = head['EXPOSURE']
-        objectname = ""
-        obsdate    = head['DATE-OBS']
-        imgtype    = 'cal'
+        frameid    = int(mobj.group(2))
+        fileid     = mobj.group(1) + mobj.group(2) + mobj.group(3)
+        exptime    = head[exptime_key]
+
+        # guess object name from filename
+        if mobj.group(3)=='b':
+            objectname = 'Bias'
+        elif mobj.group(3)=='f':
+            objectname = 'Flat'
+        else:
+            objectname = ''
+
+        obsdate    = head[statime_key]
+        if mobj.group(3)=='o':
+            imgtype = 'sci'
+        else:
+            imgtype = 'cal'
 
         # determine the total number of saturated pixels
-        saturation = (data>=65535).sum()
+        saturation = (data>=44000).sum()
 
         # find the 95% quantile
         quantile95 = int(np.round(np.percentile(data, 95)))
@@ -183,24 +201,17 @@ def make_obslog():
         print(print_wrapper(string, item))
 
     # sort by obsdate
-    logtable.sort('obsdate')
-
-    # allocate frameid
-    prev_frameid = -1
-    for logitem in logtable:
-        frameid = prev_frameid + 1
-        logitem['frameid'] = frameid
-        prev_frameid = frameid
+    #logtable.sort('obsdate')
 
     # determine filename of logtable.
     # use the obsdate of the first frame
     obsdate = logtable[0]['obsdate'][0:10]
-    outname = '{}.obslog'.format(obsdate)
+    outname = 'log.{}.txt'.format(obsdate)
     if os.path.exists(outname):
         i = 0
         while(True):
             i += 1
-            outname = '{}.{}.obslog'.format(obsdate, i)
+            outname = 'log.{}.{}.txt'.format(obsdate, i)
             if not os.path.exists(outname):
                 outfilename = outname
                 break

@@ -27,10 +27,11 @@ from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 )
 from .common import (get_bias, get_mask, correct_overscan, 
                      select_calib_from_database,
-                     TraceFigure, BackgroundFigure, BrightnessProfileFigure,
+                     TraceFigure, BackgroundFigure,SpatialProfileFigure,
+                     select_calib_from_database, BrightnessProfileFigure,
                      )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
-                   smooth_aperpar_bkg)
+                   smooth_aperpar_bkg, get_doublefiber_flat)
 
 def get_fiberobj_lst(string):
     ptn_obj = '[a-zA-Z0-9+-_\s\/]*'
@@ -57,7 +58,6 @@ def reduce_doublefiber_phase3(config, logtable):
     statime_key  = section.get('statime_key')
     exptime_key  = section.get('exptime_key')
     direction    = section.get('direction')
-    readout_mode = section.get('readout_mode')
 
     section     = config['reduce']
     midpath     = section.get('midpath')
@@ -83,7 +83,25 @@ def reduce_doublefiber_phase3(config, logtable):
 
     bias, bias_card_lst = get_bias(config, logtable)
 
-    ny, nx = bias.shape
+    # define dtype of 1-d spectra
+    if bias is None:
+        ndisp = 4096
+    else:
+        ncros, ndisp = bias.shape
+
+    types = [
+            ('aperture',    np.int16),
+            ('order',       np.int16),
+            ('points',      np.int16),
+            ('wavelength',  (np.float64, ndisp)),
+            ('flux',        (np.float32, ndisp)),
+            ('error',       (np.float32, ndisp)),
+            ('background',  (np.float32, ndisp)),
+            ('mask',        (np.int16,   ndisp)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+
 
     ######### find flat images that used for order trace #########
     trace_lst = {'A': [], 'B': []}
@@ -103,7 +121,6 @@ def reduce_doublefiber_phase3(config, logtable):
         elif obj_A == '' and obj_B.lower() == 'flat':
             trace_lst['B'].append(logitem)
 
-    #print(trace_lst)
     master_aperset = {}
 
     for fiber in ['A', 'B']:
@@ -111,8 +128,6 @@ def reduce_doublefiber_phase3(config, logtable):
         logitem_lst = sorted(trace_lst[fiber],
                         key=lambda logitem:logitem['q95'])
         logitem = logitem_lst[-1]
-
-        #print(fiber, logitem)
 
         fname = '{}.fits'.format(logitem['fileid'])
         filename = os.path.join(rawpath, fname)
@@ -122,7 +137,7 @@ def reduce_doublefiber_phase3(config, logtable):
         bad_mask = (mask&2>0)
 
         # correct overscan for flat
-        data, card_lst = correct_overscan(data, head, readout_mode)
+        data, card_lst = correct_overscan(data, head, logitem['amp'])
         # correct bias for flat, if has bias
         if bias is None:
             message = 'No bias. skipped bias correction'
@@ -146,6 +161,8 @@ def reduce_doublefiber_phase3(config, logtable):
                     fig        = tracefig,
                     )
 
+        aperset.fill(tol=10)
+
         # save the trace figure
         tracefig.adjust_positions()
         title = 'Trace for Fiber {}'.format(fiber)
@@ -163,16 +180,151 @@ def reduce_doublefiber_phase3(config, logtable):
         aperset.save_reg(aperset_regname, fiber=fiber,
                         color={'A':'green','B':'yellow'}[fiber])
 
-        newaperset = ApertureSet(shape=(ny, nx))
-        count = 0
-        for aper, aperloc in sorted(aperset.items()):
-            ypos = aperloc.position(nx//2)
-            if ypos > 154:
-                newaperset[count] = aperloc
-                count += 1
+        #newaperset = ApertureSet(shape=(ny, nx))
+        #count = 0
+        #for aper, aperloc in sorted(aperset.items()):
+        #    ypos = aperloc.position(nx//2)
+        #    if ypos > 154:
+        #        newaperset[count] = aperloc
+        #        count += 1
 
-        master_aperset[fiber] = newaperset
+        #master_aperset[fiber] = newaperset
+        master_aperset[fiber] = aperset
 
+    ################## combine the double-fiber flats ########
+    def filterfunc(item):
+        objs = get_fiberobj_lst(item['object'])
+        if None not in objs and objs[0].lower()=='flat' and \
+                objs[1].lower()=='flat':
+            return True
+        else:
+            return False
+    logitem_lst = list(filter(filterfunc, logtable))
+    nflat = len(logitem_lst)
+
+    flat_filename    = os.path.join(midpath, 'flat.fits')
+
+    #if mode=='debug' and os.path.exists(flat_filename):
+    if False:
+        pass
+    else:
+        data_lst = []
+        head_lst = []
+        exptime_lst = []
+
+        print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+        fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
+        head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
+                    'obsdate', 'N(sat)', 'Q95')
+
+        for iframe, logitem in enumerate(logitem_lst):
+            # read each individual flat frame
+            fname = '{}.fits'.format(logitem['fileid'])
+            filename = os.path.join(rawpath, fname)
+            data, head = fits.getdata(filename, header=True)
+            exptime_lst.append(head[exptime_key])
+            mask = get_mask(data, head)
+            sat_mask = (mask&4>0)
+            bad_mask = (mask&2>0)
+            if iframe == 0:
+                allmask = np.zeros_like(mask, dtype=np.int16)
+            allmask += sat_mask
+
+            # correct overscan for flat
+            data, card_lst = correct_overscan(data, head, logitem['amp'])
+            for key, value in card_lst:
+                head.append((key, value))
+
+            # correct bias for flat, if has bias
+            if bias is None:
+                message = 'No bias. skipped bias correction'
+            else:
+                data = data - bias
+                message = 'Bias corrected'
+            logger.info(message)
+
+            # print info
+            if iframe == 0:
+                print(head_str)
+            message = fmt_str.format(
+                        '[{:d}]'.format(logitem['frameid']),
+                        logitem['fileid'], logitem['object'],
+                        logitem['exptime'], logitem['obsdate'],
+                        logitem['nsat'], logitem['q95'])
+            print(message)
+
+            data_lst.append(data)
+
+        if nflat == 1:
+            flat_data = data_lst[0]
+        else:
+            data_lst = np.array(data_lst)
+            flat_data = combine_images(data_lst,
+                            mode       = 'mean',
+                            upper_clip = 10,
+                            maxiter    = 5,
+                            maskmode   = (None, 'max')[nflat>3],
+                            ncores     = ncores,
+                            )
+
+        # determine flat name (??sec or ??-??sec)
+        if len(set(exptime_lst))==1:
+            flatname = '{:g}sec'.format(exptime_lst[0])
+        else:
+            flatname = '{:g}-{:g}sec'.format(
+                    min(exptime_lst), max(exptime_lst))
+
+        # get mean exposure time and write it to header
+        head = fits.Header()
+        exptime = np.mean(exptime_lst)
+        head[exptime_key] = exptime
+
+        # find saturation mask
+        sat_mask = allmask > nflat/2.
+        flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
+
+        # get exposure time normalized flats
+        flat_norm = flat_data/exptime
+
+        # do the flat fielding
+        # prepare the output mid-prococess figures in debug mode
+        if mode=='debug':
+            figname = 'flat_aperpar_{}_%03d.{}'.format(
+                        flatname, fig_format)
+            fig_aperpar = os.path.join(figpath, figname)
+        else:
+            fig_aperpar = None
+
+        # prepare the name for slit figure
+        figname = 'slit.{}'.format(fig_format)
+        fig_slit = os.path.join(figpath, figname)
+
+        # prepare the name for slit file
+        fname = 'slit.dat'
+        slit_file = os.path.join(midpath, fname)
+
+        section = config['reduce.flat']
+
+        p1, p2, pstep = -7, 7, 0.1
+        profile_x = np.arange(p1, p2+1e-4, pstep)
+        disp_x_lst = np.arange(48, ndisp, 500)
+
+        fig_spatial = SpatialProfileFigure()
+        flat_sens, flatspec_lst, profile_lst = get_doublefiber_flat(
+                data            = flat_data,
+                mask            = flat_mask,
+                apertureset_lst = master_aperset,
+                nflat           = nflat,
+                q_threshold     = section.getfloat('q_threshold'),
+                smooth_A_func   = smooth_aperpar_A,
+                smooth_c_func   = smooth_aperpar_c,
+                smooth_bkg_func = smooth_aperpar_bkg,
+                mode            = 'debug',
+                fig_spatial     = fig_spatial,
+                flatname        = 'flat_normal',
+                profile_x       = profile_x,
+                disp_x_lst      = disp_x_lst,
+                )
         
     ################### Extract ThAr ####################
 
@@ -204,6 +356,7 @@ def reduce_doublefiber_phase3(config, logtable):
         imgtype = logitem['imgtype']
         fileid  = logitem['fileid']
         exptime = logitem['exptime']
+        amp     = logitem['amp']
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
@@ -218,12 +371,13 @@ def reduce_doublefiber_phase3(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 
         # correct overscan for ThAr
-        data, card_lst = correct_overscan(data, head, readout_mode)
+        data, card_lst = correct_overscan(data, head, amp)
         for key, value in card_lst:
             head.append((key, value))
 
@@ -514,6 +668,7 @@ def reduce_doublefiber_phase3(config, logtable):
         imgtype = logitem['imgtype']
         objects = logitem['object']
         exptime = logitem['exptime']
+        amp     = logitem['amp']
 
         # prepare message prefix
         logger_prefix = 'FileID: {} - '.format(fileid)
@@ -533,7 +688,7 @@ def reduce_doublefiber_phase3(config, logtable):
         mask = get_mask(data, head)
 
         # correct overscan for ThAr
-        data, card_lst = correct_overscan(data, head, readout_mode)
+        data, card_lst = correct_overscan(data, head, amp)
         for key, value in card_lst:
             head.append((key, value))
 

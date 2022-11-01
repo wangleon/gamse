@@ -28,10 +28,26 @@ gamse.pipelines.xinglong216hrs.reduce\_doublefiber module
     :undoc-members:
     :show-inheritance:
 
+gamse.pipelines.xinglong216hrs.reduce\_doublefiber\_phase3 module
+-----------------------------------------------------------------
+
+.. automodule:: gamse.pipelines.xinglong216hrs.reduce_doublefiber_phase3
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
 gamse.pipelines.xinglong216hrs.reduce\_singlefiber module
 ---------------------------------------------------------
 
 .. automodule:: gamse.pipelines.xinglong216hrs.reduce_singlefiber
+    :members:
+    :undoc-members:
+    :show-inheritance:
+
+gamse.pipelines.xinglong216hrs.reduce\_singlefiber\_phase3 module
+-----------------------------------------------------------------
+
+.. automodule:: gamse.pipelines.xinglong216hrs.reduce_singlefiber_phase3
     :members:
     :undoc-members:
     :show-inheritance:

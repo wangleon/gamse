@@ -10,6 +10,7 @@ setup(
     author_email = 'lwang@mpe.mpg.de',
     license      = 'Apache-2.0',
     scripts      = ['scripts/gamse',
+                    'scripts/gamse_ident',
                     ],
     packages     = [
                     'gamse',
@@ -17,6 +18,7 @@ setup(
                     'gamse/echelle',
                     'gamse/pipelines',
                     'gamse/pipelines/espadons',
+                    'gamse/pipelines/espresso',
                     'gamse/pipelines/feros',
                     'gamse/pipelines/foces',
                     'gamse/pipelines/harps',

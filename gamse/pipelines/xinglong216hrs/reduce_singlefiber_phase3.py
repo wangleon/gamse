@@ -1,6 +1,8 @@
 import os
 import re
 import shutil
+import datetime
+import dateutil.parser
 import logging
 logger = logging.getLogger(__name__)
 
@@ -8,6 +10,8 @@ import numpy as np
 import astropy.io.fits as fits
 from scipy.ndimage.filters import median_filter
 import scipy.interpolate as intp
+from scipy.signal import savgol_filter
+import matplotlib.pyplot as plt
 
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures, load_aperture_set
@@ -21,9 +25,11 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
+                                FWHMMapFigure, ResolutionFigure,
                                 )
 from .common import (get_bias, get_mask, correct_overscan,
-                    TraceFigure, BackgroundFigure, SpatialProfileFigure,
+                     TraceFigure, AlignFigure, BackgroundFigure,
+                     SpatialProfileFigure,
                      select_calib_from_database)
 from .common import get_interorder_background, get_tharpollution_lst
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
@@ -102,6 +108,7 @@ def reduce_singlefiber_phase3(config, logtable):
     aperset_filename = os.path.join(midpath, 'trace.trc')
     aperset_regname  = os.path.join(midpath, 'trace.reg')
     trace_figname    = os.path.join(figpath, 'trace.{}'.format(fig_format))
+    align_figname    = os.path.join(figpath, 'align.{}'.format(fig_format))
     profile_filename = os.path.join(midpath, 'profile.fits')
 
 
@@ -123,6 +130,7 @@ def reduce_singlefiber_phase3(config, logtable):
         data_lst = []
         head_lst = []
         exptime_lst = []
+        obsdate_lst = []
 
         print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
         fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
@@ -135,6 +143,7 @@ def reduce_singlefiber_phase3(config, logtable):
             filename = os.path.join(rawpath, fname)
             data, head = fits.getdata(filename, header=True)
             exptime_lst.append(head[exptime_key])
+            obsdate_lst.append(dateutil.parser.parse(head[statime_key]))
             mask = get_mask(data, head)
             sat_mask = (mask&4>0)
             bad_mask = (mask&2>0)
@@ -178,10 +187,26 @@ def reduce_singlefiber_phase3(config, logtable):
                             maskmode   = (None, 'max')[nflat>3],
                             ncores     = ncores,
                             )
+
+        # determine flat name (??sec or ??-??sec)
+        if len(set(exptime_lst))==1:
+            flatname = '{:g}sec'.format(exptime_lst[0])
+        else:
+            flatname = '{:g}-{:g}sec'.format(
+                    min(exptime_lst), max(exptime_lst))
+
         # get mean exposure time and write it to header
-        head = fits.Header()
-        exptime = np.array(exptime_lst).mean()
-        head[exptime_key] = exptime
+        flat_head = fits.Header()
+
+        # calculat the mean exposure time and write it to the new header
+        exptime = np.mean(exptime_lst)
+        flat_head[exptime_key] = exptime
+
+        # calculate the mean start time and write it to th new header
+        delta_t_lst = [(t-obsdate_lst[0]).total_seconds() for t in obsdate_lst]
+        mean_delta_t = datetime.timedelta(seconds=np.mean(delta_t_lst))
+        mean_obsdate = obsdate_lst[0] + mean_delta_t
+        flat_head[statime_key] = mean_obsdate.isoformat()
 
         # find saturation mask
         sat_mask = allmask > nflat/2.
@@ -190,8 +215,8 @@ def reduce_singlefiber_phase3(config, logtable):
         # get exposure time normalized flats
         flat_norm = flat_data/exptime
 
-        # create the trace figure
-        tracefig = TraceFigure()
+        tracefig = TraceFigure()    # create the trace figure
+        alignfig = AlignFigure()    # create the align figure
 
         section = config['reduce.trace']
         aperset = find_apertures(flat_data, flat_mask,
@@ -201,17 +226,27 @@ def reduce_singlefiber_phase3(config, logtable):
                     align_deg  = section.getint('align_deg'),
                     filling    = section.getfloat('filling'),
                     degree     = section.getint('degree'),
+                    conv_core  = 10,
+                    fill       = True,
+                    fill_tol   = 10,
                     display    = section.getboolean('display'),
-                    fig        = tracefig,
+                    fig_trace  = tracefig,
+                    fig_align  = alignfig,
                     )
-
-        aperset.fill(tol=10)
 
         # save the trace figure
         tracefig.adjust_positions()
         title = 'Trace for {}'.format(flat_filename)
         tracefig.suptitle(title, fontsize=15)
         tracefig.savefig(trace_figname)
+        tracefig.close()
+
+        # save the alignment figure
+        alignfig.adjust_axes()
+        title = 'Order Alignment for {}'.format(flat_filename)
+        alignfig.suptitle(title, fontsize=12)
+        alignfig.savefig(align_figname)
+        alignfig.close()
 
         aperset.save_txt(aperset_filename)
         aperset.save_reg(aperset_regname)
@@ -251,7 +286,7 @@ def reduce_singlefiber_phase3(config, logtable):
                 smooth_bkg_func = smooth_aperpar_bkg,
                 mode            = 'debug',
                 fig_spatial     = fig_spatial,
-                flatname        = 'flat_normal',
+                flatname        = flatname,
                 profile_x       = profile_x,
                 disp_x_lst      = disp_x_lst,
                 )
@@ -265,9 +300,26 @@ def reduce_singlefiber_phase3(config, logtable):
         flat_spec = []
         for aper, flatspec in sorted(flatspec_lst.items()):
             n = flatspec.size
+
+            # get the indices of not NaN values in flatspec
+            idx_notnan = np.nonzero(~np.isnan(flatspec))[0]
+            # use interpolate to fill the NaN values
+            f = intp.InterpolatedUnivariateSpline(
+                        idx_notnan, flatspec[idx_notnan], k=3)
+            # get the first and last not NaN values
+            i1 = idx_notnan[0]
+            i2 = idx_notnan[-1]+1
+            newx = np.arange(i1, i2)
+            newspec = f(newx)
+            # smooth the spec with savgol filter
+            newspec = savgol_filter(newspec,
+                            window_length = 101,
+                            polyorder     = 3,
+                            mode          = 'mirror',
+                            )
             row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
-                    flatspec,                       # flux
+                    newspec,                        # flux
                     np.zeros(n, dtype=np.float32),  # error
                     np.zeros(n, dtype=np.float32),  # background
                     np.zeros(n, dtype=np.int16),    # mask
@@ -281,7 +333,7 @@ def reduce_singlefiber_phase3(config, logtable):
 
         # pack results and save to fits
         hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(flat_data, head),
+                    fits.PrimaryHDU(flat_data, header=flat_head),
                     fits.ImageHDU(flat_mask),
                     fits.ImageHDU(flat_norm),
                     fits.ImageHDU(flat_sens),
@@ -289,7 +341,8 @@ def reduce_singlefiber_phase3(config, logtable):
                     ])
         hdu_lst.writeto(flat_filename, overwrite=True)
 
-    ############################## Extract ThAr ################################
+
+    #################### Extract ThAr #######################
 
     # get the data shape
     ny, nx = flat_sens.shape
@@ -378,7 +431,7 @@ def reduce_singlefiber_phase3(config, logtable):
 
         section = config['reduce.wlcalib']
 
-        title = '{}.fits'.format(fileid)
+        title = 'Wavelength Indentification for {}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
@@ -563,6 +616,26 @@ def reduce_singlefiber_phase3(config, logtable):
         hdu_lst.writeto(filename, overwrite=True)
         message = 'Wavelength calibrated spectra written to {}'.format(filename)
         logger.info(logger_prefix + message)
+
+        # plot fwhm map
+        fwhm_fig = FWHMMapFigure(spec, identlist, aperset,
+                fwhm_range=(3,8))
+        title = 'FWHM Map for {}'.format(fileid)
+        fwhm_fig.suptitle(title, fontsize=13)
+        figname = 'fwhm_{}.{}'.format(fileid, fig_format)
+        figfilename = os.path.join(figpath, figname)
+        fwhm_fig.savefig(figfilename)
+        fwhm_fig.close()
+
+        # plot resolution map
+        reso_fig = ResolutionFigure(spec, identlist, aperset,
+                resolution_range=(4e4, 6e4))
+        title = 'Resolution Map for {}'.format(fileid)
+        reso_fig.suptitle(title, fontsize=13)
+        figname = 'resolution_{}.{}'.format(fileid, fig_format)
+        figfilename = os.path.join(figpath, figname)
+        reso_fig.savefig(figfilename)
+        reso_fig.close()
     
         # pack to calib_lst
         calib_lst[frameid] = calib
@@ -604,6 +677,97 @@ def reduce_singlefiber_phase3(config, logtable):
         promotion = 'Select References: '
         ref_calib_lst = select_calib_manu(calib_lst,
                             promotion = promotion)
+
+
+    ######## Extract 1d spectra of flat fielding ######
+    extract_flat = False
+    if extract_flat:
+
+        # prepar message prefix
+        logger_prefix = 'Flat - '
+        screen_prefix = '    - '
+        # correct flat for flat
+        data = flat_norm/flat_sens
+        message = 'Flat field corrected for flat.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # get background light for flat field
+        ny, nx = data.shape
+        allx = np.arange(nx)
+        background = get_interorder_background(data, flat_mask, aperset)
+        for y in np.arange(ny):
+            m = flat_mask[y,:]==0
+            f = intp.InterpolatedUnivariateSpline(
+                        allx[m], background[y,:][m], k=3)
+            background[y,:][~m] = f(allx[~m])
+        background = median_filter(background, size=(9,5), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
+
+        # plot stray light
+        figname = 'bkg2d_{}.{}'.format('flat', fig_format)
+        figfilename = os.path.join(figpath, figname)
+        fig_bkg = BackgroundFigure(data, background,
+                    title   = 'Background Correction for {}'.format('flat'),
+                    figname = figfilename,
+                    )
+        fig_bkg.close()
+
+        # remove background light
+        data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # extract 1d spectrum
+        result = extract_aperset_optimal(data, flat_mask,
+                    background      = background,
+                    apertureset     = aperset,
+                    gain            = 1.02,
+                    ron             = 3.29,
+                    profilex        = profile_x,
+                    disp_x_lst      = disp_x_lst,
+                    main_disp       = 'x',
+                    upper_clipping  = 25,
+                    recenter        = True,
+                    mode            = mode,
+                    profile_lst     = profile_lst,
+                    plot_apertures  = [19],
+                )
+        flux_opt_lst = result[0]
+        flux_err_lst = result[1]
+        back_opt_lst = result[2]
+        flux_sum_lst = result[3]
+        back_sum_lst = result[4]
+
+        # pack spectrum
+        spec = []
+        for aper in sorted(flux_opt_lst.keys()):
+            n = flux_opt_lst[aper].size
+            row = (aper, 0, n,
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_opt_lst[aper],             # flux
+                    flux_err_lst[aper],             # error
+                    back_opt_lst[aper],             # background
+                    np.zeros(n, dtype=np.int16),    # mask
+                    )
+            spec.append(row)
+        spec = np.array(spec, dtype=spectype)
+        # pack and save spectra
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(head=flat_head),
+                    fits.BinTableHDU(spec),
+                    ])
+        fname = '{}_{}.fits'.format('flat', oned_suffix)
+        filename = os.path.join(odspath, fname)
+        hdu_lst.writeto(filename, overwrite=True)
+    
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
 
     ########### Extract Science Spectrum ##########
     # filter science items in logtable
@@ -692,17 +856,23 @@ def reduce_singlefiber_phase3(config, logtable):
 
         # extract 1d spectrum
         section = config['reduce.extract']
-        method = section.get('method')
+        method  = section.get('method')
+        deblaze = section.getboolean('deblaze', False)
+
         if method == 'optimal':
             result = extract_aperset_optimal(data, mask,
-                        background  = background,
-                        apertureset = aperset,
-                        gain        = 1.02,
-                        ron         = 3.29,
-                        profilex    = profile_x,
-                        disp_x_lst  = disp_x_lst,
-                        main_disp   = 'x',
-                        profile_lst = profile_lst,
+                        background      = background,
+                        apertureset     = aperset,
+                        gain            = 1.02,
+                        ron             = 3.29,
+                        profilex        = profile_x,
+                        disp_x_lst      = disp_x_lst,
+                        main_disp       = 'x',
+                        upper_clipping  = 5,
+                        recenter        = True,
+                        mode            = mode,
+                        profile_lst     = profile_lst,
+                        plot_apertures  = [],
                     )
             flux_opt_lst = result[0]
             flux_err_lst = result[1]
@@ -801,6 +971,41 @@ def reduce_singlefiber_phase3(config, logtable):
                     fits.PrimaryHDU(header=head),
                     fits.BinTableHDU(spec),
                     ])
+
+        # correct the blaze function
+        if deblaze:
+            spec2 = []
+            for row in spec:
+                aper  = row['aperture']
+                order = row['order']
+                n     = row['points']
+                wave  = row['wavelength']
+                flux  = row['flux']
+                error = row['error']
+                back  = row['background']
+                mask  = row['mask']
+                #newflux = np.array([np.NaN]*flux.size)
+
+                m = flat_spec['aperture']==aper
+                cont = flat_spec[m][0]['flux']
+                flux2 = flux/cont
+                normc = np.percentile(flux2[n//4:n//4*3], 98)
+                newflux = flux2/normc
+
+                row2 = (aper, order, n,
+                        wave,       # wavelength
+                        newflux,    # flux
+                        error,      # error
+                        back,       # background
+                        mask,       # mask
+                        )
+                spec2.append(row2)
+
+            spec2 = np.array(spec2, dtype=spectype)
+            # append the deblazed spectra into fits
+            hdu_lst.append(fits.BinTableHDU(spec2))
+
+        # write 1d spectra to fits file
         fname = '{}_{}.fits'.format(fileid, oned_suffix)
         filename = os.path.join(odspath, fname)
         hdu_lst.writeto(filename, overwrite=True)

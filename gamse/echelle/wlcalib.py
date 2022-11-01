@@ -11,1405 +11,26 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import numpy.polynomial as poly
 import astropy.io.fits as fits
+from astropy.table import Table
 import scipy.interpolate as intp
 import scipy.optimize as opt
 
-import matplotlib
-matplotlib.use('TkAgg')
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
-                                               NavigationToolbar2Tk)
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-
-if sys.version_info[0] < 3:
-    import Tkinter as tk
-    import ttk
-else:
-    import tkinter as tk
-    import tkinter.ttk as ttk
 
 from ..utils.regression2d import polyfit2d, polyval2d
-from ..utils.onedarray    import pairwise
+from ..utils.onedarray    import pairwise, derivative
+from ..utils.download     import get_file
 from .trace import load_aperture_set_from_header
 
 # Data format for identified line table
 identlinetype = np.dtype({
-    'names':  ['aperture','order','pixel','wavelength','q','mask',
-               'residual','method'],
+    'names':  ['aperture','order','pixel','wavelength','amplitude',
+                'fwhm','q','mask','residual','method'],
     'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
-               np.int16, np.float64, 'S1'],
+                np.float32, np.float32, np.int16, np.float64, 'S1'],
     })
-
-class CustomToolbar(NavigationToolbar2Tk):
-    """Class for customized matplotlib toolbar.
-
-    Args:
-        canvas (:class:`matplotlib.backends.backend_agg.FigureCanvasAgg`):
-            Canvas object used in :class:`CalibWindow`.
-        master (Tkinter widget): Parent widget.
-    """
-
-    def __init__(self, canvas, master):
-        """Constructor of :class:`CustomToolbar`.
-        """
-        self.toolitems = (
-            ('Home', 'Reset original view', 'home', 'home'),
-            ('Back', 'Back to previous view', 'back', 'back'),
-            ('Forward', 'Forward to next view', 'forward', 'forward'),
-            ('Pan', 'Pan axes with left mouse, zoom with right', 'move','pan'),
-            ('Zoom', 'Zoom to rectangle', 'zoom_to_rect','zoom'),
-            ('Subplots', 'Configure subplots', 'subplots','configure_subplots'),
-            ('Save', 'Save the figure', 'filesave', 'save_figure'),
-        )
-        NavigationToolbar2Tk.__init__(self, canvas, master)
-
-    def set_message(self, msg):
-        """Remove the coordinate displayed in the toolbar.
-        """
-        pass
-
-class PlotFrame(tk.Frame):
-    """The frame for plotting spectrum in the :class:`CalibWindow`.
-
-    Args:
-        master (Tkinter widget): Parent widget.
-        width (int): Width of frame.
-        height (int): Height of frame.
-        dpi (int): DPI of figure.
-        identlist (dict): Dict of identified lines.
-        linelist (list): List of wavelength standards.
-    """
-    def __init__(self, master, width, height, dpi, identlist, linelist):
-        """Constructor of :class:`PlotFrame`.
-        """
-
-        tk.Frame.__init__(self, master, width=width, height=height)
-
-        self.fig = CalibFigure(width  = width,
-                               height = height,
-                               dpi    = dpi,
-                               title  = master.param['title'],
-                               )
-        self.ax1 = self.fig._ax1
-        self.ax2 = self.fig._ax2
-        self.ax3 = self.fig._ax3
-
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tk.TOP)
-        self.canvas.mpl_connect('button_press_event', master.on_click)
-        self.canvas.mpl_connect('draw_event', master.on_draw)
-
-        aperture = master.param['aperture']
-        self.ax1._aperture_text.set_text('Aperture %d'%aperture)
-
-        # add toolbar
-        self.toolbar = CustomToolbar(self.canvas, master=self)
-        self.toolbar.update()
-        self.toolbar.pack(side=tk.LEFT)
-
-        self.pack()
-
-class InfoFrame(tk.Frame):
-    """The frame for buttons and tables on the right side of the
-    :class:`CalibWindow`.
-
-    Args:
-        master (Tkinter widget): Parent widget.
-        width (int): Width of the frame.
-        height (int): Height of the frame.
-        linelist (list): List of wavelength standards.
-        identlist (dict): Dict of identified lines.
-    """
-
-    def __init__(self, master, width, height, linelist, identlist):
-        """Constuctor of :class:`InfoFrame`.
-        """
-
-        self.master = master
-
-        title = master.param['title']
-
-        tk.Frame.__init__(self, master, width=width, height=height)
-
-        self.fname_label = tk.Label(master = self,
-                                    width  = width,
-                                    font   = ('Arial', 14),
-                                    text   = title,
-                                    )
-        self.order_label = tk.Label(master = self,
-                                    width  = width,
-                                    font   = ('Arial', 10),
-                                    text   = '',
-                                    )
-        self.fname_label.pack(side=tk.TOP,pady=(30,5))
-        self.order_label.pack(side=tk.TOP,pady=(5,10))
-
-        button_width = 13
-
-        self.switch_frame = tk.Frame(master=self, width=width, height=30)
-        self.prev_button = tk.Button(master  = self.switch_frame,
-                                     text    = '◀',
-                                     width   = button_width,
-                                     font    = ('Arial',10),
-                                     command = master.prev_aperture,
-                                     )
-        self.next_button = tk.Button(master  = self.switch_frame,
-                                     text    = '▶',
-                                     width   = button_width,
-                                     font    = ('Arial',10),
-                                     command = master.next_aperture,
-                                     )
-        self.prev_button.pack(side=tk.LEFT)
-        self.next_button.pack(side=tk.RIGHT)
-        self.switch_frame.pack(side=tk.TOP, pady=5, padx=10, fill=tk.X)
-
-        # line table area
-        self.line_frame = LineTable(master    = self,
-                                    width     = width-30,
-                                    height    = 900,
-                                    identlist = identlist,
-                                    linelist  = linelist)
-        self.line_frame.pack(side=tk.TOP, padx=10, pady=5)
-
-
-        # batch operation buttons
-        button_width2 = 13
-        self.batch_frame = tk.Frame(master=self, width=width, height=30)
-        self.recenter_button = tk.Button(master  = self.batch_frame,
-                                         text    = 'recenter',
-                                         width   = button_width2,
-                                         font    = ('Arial',10),
-                                         command = master.recenter,
-                                         )
-        self.clearall_button = tk.Button(master  = self.batch_frame,
-                                         text    = 'clear all',
-                                         width   = button_width2,
-                                         font    = ('Arial',10),
-                                         command = master.clearall,
-                                         )
-        self.recenter_button.pack(side=tk.LEFT)
-        self.clearall_button.pack(side=tk.RIGHT)
-        self.batch_frame.pack(side=tk.TOP, pady=5, padx=10, fill=tk.X)
-
-
-        # fit buttons
-        self.auto_button = tk.Button(master=self, text='Auto Identify',
-                            font = ('Arial', 10), width=25,
-                            command = master.auto_identify)
-        self.fit_button = tk.Button(master=self, text='Fit',
-                            font = ('Arial', 10), width=25,
-                            command = master.fit)
-        self.switch_button = tk.Button(master=self, text='Plot',
-                            font = ('Arial', 10), width=25,
-                            command = master.switch)
-        # set status
-        self.auto_button.config(state=tk.DISABLED)
-        self.fit_button.config(state=tk.DISABLED)
-        self.switch_button.config(state=tk.DISABLED)
-
-        # Now pack from bottom to top
-        self.switch_button.pack(side=tk.BOTTOM, pady=(5,30))
-        self.fit_button.pack(side=tk.BOTTOM, pady=5)
-        self.auto_button.pack(side=tk.BOTTOM, pady=5)
-
-        self.fitpara_frame = FitparaFrame(master=self, width=width-20, height=35)
-        self.fitpara_frame.pack(side=tk.BOTTOM, padx=10, pady=5, fill=tk.X)
-
-        self.pack()
-
-    def update_nav_buttons(self):
-        """Update the navigation buttons.
-        """
-        mode = self.master.param['mode']
-        if mode == 'ident':
-            aperture = self.master.param['aperture']
-
-            if aperture == self.master.spec['aperture'].min():
-                state = tk.DISABLED
-            else:
-                state = tk.NORMAL
-            self.prev_button.config(state=state)
-
-            if aperture == self.master.spec['aperture'].max():
-                state = tk.DISABLED
-            else:
-                state = tk.NORMAL
-            self.next_button.config(state=state)
-        elif mode == 'fit':
-            self.prev_button.config(state=tk.DISABLED)
-            self.next_button.config(state=tk.DISABLED)
-        else:
-            pass
-
-    def update_aperture_label(self):
-        """Update the order information to be displayed on the top.
-        """
-        mode     = self.master.param['mode']
-        aperture = self.master.param['aperture']
-        k        = self.master.param['k']
-        offset   = self.master.param['offset']
-
-        if mode == 'ident':
-            if None in (k, offset):
-                order = '?'
-            else:
-                order = str(k*aperture + offset)
-            text = 'Order %s (Aperture %d)'%(order, aperture)
-            self.order_label.config(text=text)
-        elif mode == 'fit':
-            self.order_label.config(text='')
-        else:
-            pass
-
-
-class LineTable(tk.Frame):
-    """A table for the input spectral lines embedded in the :class:`InfoFrame`.
-
-    Args:
-        master (Tkinter widget): Parent widget.
-        width (int): Width of line table.
-        height (int): Height of line table.
-        identlist (dict): Dict of identified lines.
-        linelist (list): List of wavelength standards.
-    """
-    def __init__(self, master, width, height, identlist, linelist):
-        """Constructor of :class:`LineTable`.
-        """
-        self.master = master
-
-        font = ('Arial', 10)
-
-        tk.Frame.__init__(self, master=master, width=width, height=height)
-
-        self.tool_frame = tk.Frame(master=self, width=width, height=40)
-        self.tool_frame.pack(side=tk.TOP, fill=tk.X, pady=(0,5))
-
-        self.search_text = tk.StringVar()
-        self.search_entry = tk.Entry(master=self.tool_frame, width=10,
-                                     font=font, textvariable=self.search_text)
-        self.search_entry.pack(side=tk.LEFT, fil=tk.Y, padx=0)
-
-        # create 3 buttons
-        self.clr_button = tk.Button(master=self.tool_frame, text='Clear',
-                                    font=font, width=5,
-                                    command=self.on_clear_search)
-        self.add_button = tk.Button(master=self.tool_frame, text='Add',
-                                    font=font, width=5,
-                                    command=master.master.on_add_ident)
-        self.del_button = tk.Button(master=self.tool_frame, text='Del',
-                                    font=font, width=5,
-                                    command=master.master.on_delete_ident)
-
-        # put 3 buttons
-        self.del_button.pack(side=tk.RIGHT, padx=(5,0))
-        self.add_button.pack(side=tk.RIGHT, padx=(5,0))
-        self.clr_button.pack(side=tk.RIGHT, padx=(5,0))
-
-        # update status of 3 buttons
-        self.clr_button.config(state=tk.DISABLED)
-        self.add_button.config(state=tk.DISABLED)
-        self.del_button.config(state=tk.DISABLED)
-
-        # create line table
-        self.data_frame = tk.Frame(master=self, width=width)
-        self.data_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
-
-        # create line tree
-        self.line_tree = ttk.Treeview(master  = self.data_frame,
-                                      columns    = ('wl', 'species', 'status'),
-                                      show       = 'headings',
-                                      style      = 'Treeview',
-                                      height     = 22,
-                                      selectmode ='browse')
-        self.line_tree.bind('<Button-1>', self.on_click_item)
-
-        self.scrollbar = tk.Scrollbar(master = self.data_frame,
-                                      orient = tk.VERTICAL,
-                                      width  = 20)
-
-        self.line_tree.column('wl',      width=160)
-        self.line_tree.column('species', width=140)
-        self.line_tree.column('status',  width=width-160-140-20)
-        self.line_tree.heading('wl',      text=u'\u03bb in air (\xc5)')
-        self.line_tree.heading('species', text='Species')
-        self.line_tree.heading('status',  text='Status')
-        self.line_tree.config(yscrollcommand=self.scrollbar.set)
-
-        style = ttk.Style()
-        style.configure('Treeview', rowheight=35)
-        style.configure('Treeview.Heading', font=('Arial', 10))
-
-        self.scrollbar.config(command=self.line_tree.yview)
-
-        self.item_lst = []
-        for line in linelist:
-            wl, species = line
-            iid = self.line_tree.insert('',tk.END,
-                    values=(wl, species, ''), tags='normal')
-            self.item_lst.append((iid,  wl))
-        self.line_tree.tag_configure('normal', font=('Arial', 10))
-
-        self.line_tree.pack(side=tk.LEFT, fill=tk.Y, expand=True)
-        self.scrollbar.pack(side=tk.LEFT, fill=tk.Y)
-        self.data_frame.pack(side=tk.TOP, fill=tk.Y)
-        self.pack()
-
-    def on_clear_search(self):
-        """Clear the search bar.
-        """
-        # clear the search bar
-        self.search_text.set('')
-
-        # clear the identified line
-        self.master.master.param['ident']=None
-
-        # de-select the line table
-        sel_items = self.line_tree.selection()
-        self.line_tree.selection_remove(sel_items)
-        #self.line_tree.selection_clear()
-        # doesn't work?
-
-        # update the status of 3 button
-        self.clr_button.config(state=tk.DISABLED)
-        self.add_button.config(state=tk.DISABLED)
-        self.del_button.config(state=tk.DISABLED)
-
-        # replot
-        self.master.master.plot_aperture()
-
-        # set focus to canvas
-        self.master.master.plot_frame.canvas.get_tk_widget().focus()
-
-    def on_click_item(self, event):
-        """Event response function for clicking lines.
-        """
-
-        identlist = self.master.master.identlist
-        aperture = self.master.master.param['aperture']
-
-        # find the clicked item
-        item = self.line_tree.identify_row(event.y)
-        values = self.line_tree.item(item, 'values')
-        # put the wavelength into the search bar
-        self.search_text.set(values[0])
-        # update status
-        self.clr_button.config(state=tk.NORMAL)
-
-
-        # find if the clicked line is in ident list.
-        # if yes, replot the figure with idented line with blue color, and set
-        # the delete button to normal. Otherwise, replot the figure with black,
-        # and disable the delete button.
-
-        if aperture in identlist:
-
-            list1 = identlist[aperture]
-
-            wl_diff = np.abs(list1['wavelength'] - float(values[0]))
-            mindiff = wl_diff.min()
-            argmin  = wl_diff.argmin()
-            if mindiff < 1e-3:
-                # the selected line is in identlist of this aperture
-                xpos = list1[argmin]['pixel']
-                for line, text in self.master.master.ident_objects:
-                    if abs(line.get_xdata()[0] - xpos)<1e-3:
-                        plt.setp(line, color='b')
-                        plt.setp(text, color='b')
-                    else:
-                        plt.setp(line, color='k')
-                        plt.setp(text, color='k')
-                # update the status of del button
-                self.del_button.config(state=tk.NORMAL)
-            else:
-                # the selected line is not in identlist of this aperture
-                for line, text in self.master.master.ident_objects:
-                    plt.setp(line, color='k')
-                    plt.setp(text, color='k')
-                # update the status of del button
-                self.del_button.config(state=tk.DISABLED)
-
-            self.master.master.plot_frame.canvas.draw()
-
-        else:
-            # if the current aperture is not in identlist, do nothing
-            pass
-
-class FitparaFrame(tk.Frame):
-    """Frame for the fitting parameters embedded in the :class:`InfoFrame`.
-
-    Args:
-        master (Tkinter widget): Parent widget.
-        width (int): Width of frame.
-        height (int): Height of frame.
-    """
-    def __init__(self, master, width, height):
-        """Constructor of :class:`FitparaFrame`.
-        """
-
-        self.master = master
-
-        font = ('Arial', 10)
-
-        tk.Frame.__init__(self, master, width=width, height=height)
-
-        # the first row
-        self.row1_frame = tk.Frame(master=self, width=width)
-
-        self.xorder_label = tk.Label(master = self.row1_frame,
-                                     text   = 'X ord =',
-                                     font   = font)
-
-        # spinbox for adjusting xorder
-        self.xorder_str = tk.StringVar()
-        self.xorder_str.set(master.master.param['xorder'])
-        self.xorder_box = tk.Spinbox(master = self.row1_frame,
-                                     from_        = 1,
-                                     to_          = 10,
-                                     font         = font,
-                                     width        = 2,
-                                     textvariable = self.xorder_str,
-                                     command      = self.on_change_xorder)
-
-        self.yorder_label = tk.Label(master = self.row1_frame,
-                                     text   = 'Y ord =',
-                                     font   = font)
-        # spinbox for adjusting yorder
-        self.yorder_str = tk.StringVar()
-        self.yorder_str.set(master.master.param['yorder'])
-        self.yorder_box = tk.Spinbox(master       = self.row1_frame,
-                                     from_        = 1,
-                                     to_          = 10,
-                                     font         = font,
-                                     width        = 2,
-                                     textvariable = self.yorder_str,
-                                     command      = self.on_change_yorder)
-
-        self.maxiter_label  = tk.Label(master = self.row1_frame,
-                                       text   = 'N =',
-                                       font   = font)
-        self.maxiter_str = tk.StringVar()
-        self.maxiter_str.set(master.master.param['maxiter'])
-        self.maxiter_box = tk.Spinbox(master       = self.row1_frame,
-                                      from_        = 1,
-                                      to_          = 20,
-                                      font         = font,
-                                      width        = 2,
-                                      textvariable = self.maxiter_str,
-                                      command      = self.on_change_maxiter)
-
-        self.xorder_label.pack(side=tk.LEFT)
-        self.xorder_box.pack(side=tk.LEFT)
-        self.yorder_label.pack(side=tk.LEFT, padx=(10,0))
-        self.yorder_box.pack(side=tk.LEFT)
-        self.maxiter_label.pack(side=tk.LEFT, padx=(10,0))
-        self.maxiter_box.pack(side=tk.LEFT)
-
-        self.row1_frame.pack(side=tk.TOP, fill=tk.X, pady=(0,2))
-
-        # the second row
-        self.row2_frame = tk.Frame(master=self, width=width)
-
-        self.clip_label = tk.Label(master = self.row2_frame,
-                                   text   = 'Clipping =',
-                                   font   = font,
-                                   width  = width,
-                                   anchor = tk.W)
-        self.clip_scale = tk.Scale(master     = self.row2_frame,
-                                   from_      = 1.0,
-                                   to         = 5.0,
-                                   orient     = tk.HORIZONTAL,
-                                   resolution = 0.1,
-                                   command    = self.on_change_clipping)
-        self.clip_scale.set(master.master.param['clipping'])
-
-        self.clip_label.pack(side=tk.TOP)
-        self.clip_scale.pack(side=tk.TOP, fill=tk.X)
-        self.row2_frame.pack(side=tk.TOP, fill=tk.X)
-
-        self.pack()
-
-    def on_change_xorder(self):
-        """Response function of changing order of polynomial along x-axis.
-        """
-        self.master.master.param['xorder'] = int(self.xorder_box.get())
-
-    def on_change_yorder(self):
-        """Response function of changing order of polynomial along y-axis.
-        """
-        self.master.master.param['yorder'] = int(self.yorder_box.get())
-
-    def on_change_maxiter(self):
-        """Response function of changing maximum number of iteration.
-        """
-        self.master.master.param['maxiter'] = int(self.maxiter_box.get())
-
-    def on_change_clipping(self, value):
-        """Response function of changing clipping value.
-        """
-        self.master.master.param['clipping'] = float(value)
-
-class CalibWindow(tk.Frame):
-    """Frame of the wavelength calibration window.
-
-    Args:
-        master (:class:`tk.TK`): Tkinter root window.
-        width (int): Width of window.
-        height (int): Height of window.
-        dpi (int): DPI of figure.
-        spec (:class:`numpy.dtype`): Spectra data.
-        figfilename (str): Filename of the output wavelength calibration
-            figure.
-        title (str): A string to display as the title of calib figure.
-        identlist (dict): Identification line list.
-        linelist (list): List of wavelength standards (wavelength, species).
-        window_size (int): Size of the window in pixel to search for line
-            peaks.
-        xorder (int): Degree of polynomial along X direction.
-        yorder (int): Degree of polynomial along Y direction.
-        maxiter (int): Maximim number of interation in polynomial fitting.
-        clipping (float): Threshold of sigma-clipping.
-        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting.
-    """
-    def __init__(self, master, width, height, dpi, spec, figfilename, title,
-            identlist, linelist, window_size, xorder, yorder, maxiter, clipping,
-            q_threshold, fit_filter):
-        """Constructor of :class:`CalibWindow`.
-        """
-
-        self.master    = master
-        self.spec      = spec
-        self.identlist = identlist
-        self.linelist  = linelist
-
-        tk.Frame.__init__(self, master, width=width, height=height)
-
-        self.param = {
-            'mode':         'ident',
-            'aperture':     self.spec['aperture'].min(),
-            'figfilename':  figfilename,
-            'title':        title,
-            'aperture_min': self.spec['aperture'].min(),
-            'aperture_max': self.spec['aperture'].max(),
-            'npixel':       self.spec[0]['wavelength'].size,
-            # parameters of displaying
-            'xlim':         {},
-            'ylim':         {},
-            'ident':        None,
-            # parameters of converting aperture and order
-            'k':            None,
-            'offset':       None,
-            # wavelength fitting parameters
-            'window_size':  window_size,
-            'xorder':       xorder,
-            'yorder':       yorder,
-            'maxiter':      maxiter,
-            'clipping':     clipping,
-            'q_threshold':  q_threshold,
-            # wavelength fitting results
-            'std':          0,
-            'coeff':        np.array([]),
-            'nuse':         0,
-            'ntot':         0,
-            'direction':    '',
-            'fit_filter':   fit_filter,
-            }
-
-        for row in self.spec:
-            aperture = row['aperture']
-            self.param['xlim'][aperture] = (0, len(row['wavelength'])-1)
-            self.param['ylim'][aperture] = (None, None)
-
-        # determine widget size
-        info_width    = 500
-        info_height   = height
-        canvas_width  = width - info_width
-        canvas_height = height
-        # generate plot frame and info frame
-        self.plot_frame = PlotFrame(master    = self,
-                                    width     = canvas_width,
-                                    height    = canvas_height,
-                                    dpi       = dpi,
-                                    identlist = self.identlist,
-                                    linelist  = self.linelist,
-                                    )
-        self.info_frame = InfoFrame(master    = self,
-                                    width     = info_width,
-                                    height    = info_height,
-                                    identlist = self.identlist,
-                                    linelist  = self.linelist,
-                                    )
-        # pack plot frame and info frame
-        self.plot_frame.pack(side=tk.LEFT, fill=tk.Y)
-        self.info_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0,10))
-
-        self.pack()
-
-        self.plot_aperture()
-
-        self.update_fit_buttons()
-
-    def fit(self):
-        """Fit the wavelength and plot the solution in the figure.
-        """
-
-        coeff, std, k, offset, nuse, ntot = fit_wavelength(
-                identlist   = self.identlist,
-                npixel      = self.param['npixel'],
-                xorder      = self.param['xorder'],
-                yorder      = self.param['yorder'],
-                maxiter     = self.param['maxiter'],
-                clipping    = self.param['clipping'],
-                fit_filter  = self.param['fit_filter'],
-                )
-
-        self.param['coeff']  = coeff
-        self.param['std']    = std
-        self.param['k']      = k
-        self.param['offset'] = offset
-        self.param['nuse']   = nuse
-        self.param['ntot']   = ntot
-
-        message = 'Wavelength fitted. std={:.6f}, utot={}, nuse={}'.format(
-                    std, ntot, nuse)
-        logger.info(message)
-
-        self.plot_wavelength()
-
-        # udpdate the order/aperture string
-        aperture = self.param['aperture']
-        order = k*aperture + offset
-        text = 'Order {} (Aperture {})'.format(order, aperture)
-        self.info_frame.order_label.config(text=text)
-
-        self.update_fit_buttons()
-
-    def recenter(self):
-        """Relocate the peaks for all the identified lines.
-        """
-        for aperture, list1 in self.identlist.items():
-            mask = (self.spec['aperture'] == aperture)
-            specdata = self.spec[mask][0]
-            flux = specdata['flux']
-            for row in list1:
-                pix = int(round(row['pixel']))
-                window_size = self.param['window_size']
-                _, _, param, _ = find_local_peak(flux, pix, window_size)
-                peak_x = param[1]
-                row['pixel'] = peak_x
-
-        # replot
-        self.plot_aperture()
-
-    def clearall(self):
-        """Clear all the identified lines."""
-
-        self.identlist = {}
-
-        self.param['k']      = None
-        self.param['offset'] = None
-        self.param['std']    = 0
-        self.param['coeff']  = np.array([])
-        self.param['nuse']   = 0
-        self.param['ntot']   = 0
-
-        info_frame = self.info_frame
-        # update the status of 3 buttons
-        info_frame.line_frame.clr_button.config(state=tk.DISABLED)
-        info_frame.line_frame.add_button.config(state=tk.DISABLED)
-        info_frame.line_frame.del_button.config(state=tk.DISABLED)
-
-        # update buttons
-        info_frame.recenter_button.config(state=tk.DISABLED)
-        info_frame.clearall_button.config(state=tk.DISABLED)
-        info_frame.switch_button.config(state=tk.DISABLED)
-        info_frame.auto_button.config(state=tk.DISABLED)
-
-        # replot
-        self.plot_aperture()
-
-    def auto_identify(self):
-        """Identify all lines in the wavelength standard list automatically.
-        """
-        k       = self.param['k']
-        offset  = self.param['offset']
-        coeff   = self.param['coeff']
-        npixel  = self.param['npixel']
-        n_insert = 0
-        for aperture in sorted(self.spec['aperture']):
-            mask = self.spec['aperture'] == aperture
-            flux = self.spec[mask][0]['flux']
-
-            # scan every order and find the upper and lower limit of wavelength
-            order = k*aperture + offset
-
-            # generated the wavelengths for every pixel in this oirder
-            x = np.arange(npixel)
-            wl = get_wavelength(coeff, npixel, x, np.repeat(order, x.size))
-            w1 = min(wl[0], wl[-1])
-            w2 = max(wl[0], wl[-1])
-
-            has_insert = False
-            # now scan the linelist
-            for line in self.linelist:
-                if line[0] < w1:
-                    continue
-                if line[0] > w2:
-                    break
-
-                # wavelength in the range of this order
-                # check if this line has already been identified
-                if is_identified(line[0], self.identlist, aperture):
-                    continue
-
-                # now has not been identified. find peaks for this line
-                diff = np.abs(wl - line[0])
-                i = diff.argmin()
-                i1, i2, param, std = find_local_peak(flux, i,
-                                        self.param['window_size'])
-                keep = auto_line_fitting_filter(param, i1, i2)
-                if not keep:
-                    continue
-
-                q = param[0]/std
-                if q < self.param['q_threshold']:
-                    continue
-                peak_x = param[1]
-
-                '''
-                fig = plt.figure(figsize=(6,4),tight_layout=True)
-                ax = fig.gca()
-                ax.plot(np.arange(i1,i2), flux[i1:i2], 'ro')
-                newx = np.arange(i1, i2, 0.1)
-                ax.plot(newx, gaussian_bkg(param[0], param[1], param[2],
-                            param[3], newx), 'b-')
-                ax.axvline(x=param[1], color='k',ls='--')
-                y1,y2 = ax.get_ylim()
-                ax.text(0.9*i1+0.1*i2, 0.1*y1+0.9*y2, 'A=%.1f'%param[0])
-                ax.text(0.9*i1+0.1*i2, 0.2*y1+0.8*y2, 'BKG=%.1f'%param[3])
-                ax.text(0.9*i1+0.1*i2, 0.3*y1+0.7*y2, 'FWHM=%.1f'%param[2])
-                ax.text(0.9*i1+0.1*i2, 0.4*y1+0.6*y2, 'q=%.1f'%q)
-                ax.set_xlim(i1,i2)
-                fig.savefig('tmp/%d-%d-%d.png'%(aperture, i1, i2))
-                plt.close(fig)
-                '''
-
-                # initialize line table
-                if aperture not in self.identlist:
-                    self.identlist[aperture] = np.array([], dtype=identlinetype)
-
-                item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
-                                'a'), dtype=identlinetype)
-
-                self.identlist[aperture] = np.append(self.identlist[aperture], item)
-                has_insert = True
-                #print('insert', aperture, line[0], peak_x, i)
-                n_insert += 1
-
-            # resort this order if there's new line inserted
-            if has_insert:
-                self.identlist[aperture] = np.sort(self.identlist[aperture],
-                                                    order='pixel')
-
-        message = '{} new lines inserted'.format(n_insert)
-        logger.info(message)
-
-        self.fit()
-
-    def switch(self):
-        """Response funtion of switching between "ident" and "fit" mode.
-        """
-
-        if self.param['mode']=='ident':
-            # switch to fit mode
-            self.param['mode']='fit'
-
-            self.plot_wavelength()
-
-            self.info_frame.switch_button.config(text='Identify')
-
-        elif self.param['mode']=='fit':
-            # switch to ident mode
-            self.param['mode']='ident'
-
-            self.plot_aperture()
-
-            self.info_frame.switch_button.config(text='Plot')
-        else:
-            pass
-
-        # update order navigation and aperture label
-        self.info_frame.update_nav_buttons()
-        self.info_frame.update_aperture_label()
-
-    def next_aperture(self):
-        """Response function of pressing the next aperture."""
-        if self.param['aperture'] < self.spec['aperture'].max():
-            self.param['aperture'] += 1
-            self.plot_aperture()
-
-    def prev_aperture(self):
-        """Response function of pressing the previous aperture."""
-        if self.param['aperture'] > self.spec['aperture'].min():
-            self.param['aperture'] -= 1
-            self.plot_aperture()
-
-    def plot_aperture(self):
-        """Plot a specific aperture in the figure.
-        """
-        aperture = self.param['aperture']
-        mask = (self.spec['aperture'] == aperture)
-        specdata = self.spec[mask][0]
-        ydata = specdata['flux']
-        npoints = len(ydata)
-        xdata = np.arange(npoints)
-
-        # redraw spectra in ax1
-        ax1 = self.plot_frame.ax1
-        fig = self.plot_frame.fig
-        ax1.cla()
-        ax1.plot(xdata, ydata, 'r-')
-        x1, x2 = self.param['xlim'][aperture]
-        y1, y2 = self.param['ylim'][aperture]
-        if y1 is None:
-            y1 = ax1.get_ylim()[0]
-        if y2 is None:
-            y2 = ax1.get_ylim()[1]
-
-        #x1, x2 = xdata[0], xdata[-1]
-        #y1, y2 = ax1.get_ylim()
-        y1 = min(y1, 0)
-        # plot identified line list
-        # calculate ratio = value/pixel
-        bbox = ax1.get_window_extent().transformed(
-                fig.dpi_scale_trans.inverted())
-        axwidth_pixel = bbox.width*fig.dpi
-        pix_ratio = abs(x2-x1)/axwidth_pixel
-
-        # plot identified lines with vertial dash lines
-        if aperture in self.identlist and len(self.identlist[aperture])>0:
-            self.ident_objects = []
-            list1 = self.identlist[aperture]
-            for item in list1:
-                pixel      = item['pixel']
-                wavelength = item['wavelength']
-
-                # draw vertial dash line
-                line = ax1.axvline(pixel, ls='--', color='k')
-
-                # draw text
-                x = pixel+pix_ratio*10
-                y = 0.4*y1+0.6*y2
-                text = ax1.text(x, y, '%.4f'%wavelength, color='k',
-                                rotation='vertical', fontstyle='italic',
-                                fontsize=10)
-                self.ident_objects.append((line, text))
-
-        # plot the temporarily identified line
-        if self.param['ident'] is not None:
-            ax1.axvline(self.param['ident'], linestyle='--', color='k')
-
-
-        # update the aperture number
-        ax1._aperture_text.set_text('Aperture %d'%aperture)
-        ax1.set_ylim(y1, y2)
-        ax1.set_xlim(x1, x2)
-        ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
-        ax1.xaxis.set_minor_locator(tck.MultipleLocator(100))
-        ax1.set_xlabel('Pixel')
-        ax1.set_ylabel('Flux')
-
-        self.plot_frame.canvas.draw()
-
-        # update order navigation and aperture label
-        self.info_frame.update_nav_buttons()
-        self.info_frame.update_aperture_label()
-
-    def plot_wavelength(self):
-        """A wrap for plotting the wavelength solution."""
-
-        aperture_lst = np.arange(self.param['aperture_min'],
-                                 self.param['aperture_max']+1)
-
-        kwargs = {
-                'offset':   self.param['offset'],
-                'k':        self.param['k'],
-                'coeff':    self.param['coeff'],
-                'npixel':   self.param['npixel'],
-                'std':      self.param['std'],
-                'nuse':     self.param['nuse'],
-                'ntot':     self.param['ntot'],
-                'xorder':   self.param['xorder'],
-                'yorder':   self.param['yorder'],
-                'clipping': self.param['clipping'],
-                'maxiter':  self.param['maxiter'],
-                }
-
-        if self.param['mode']=='fit':
-            plot_ax1 = True
-        else:
-            plot_ax1 = False
-
-        self.plot_frame.fig.plot_solution(self.identlist, aperture_lst,
-                                            plot_ax1, **kwargs)
-
-        self.plot_frame.canvas.draw()
-        self.plot_frame.fig.savefig(self.param['figfilename'])
-        message = 'Wavelength solution plotted in {}'.format(
-                    self.param['figfilename'])
-        logger.info(message)
-
-    def on_click(self, event):
-        """Response function of clicking the axes.
-
-        Double click means find the local peak and prepare to add a new
-        identified line.
-        """
-        # double click on ax1: want to add a new identified line
-        if event.inaxes == self.plot_frame.ax1 and event.dblclick:
-            fig = self.plot_frame.fig
-            ax1 = self.plot_frame.ax1
-            line_frame = self.info_frame.line_frame
-            aperture = self.param['aperture']
-            if aperture in self.identlist:
-                list1 = self.identlist[aperture]
-
-            # get width of current ax in pixel
-            x1, x2 = ax1.get_xlim()
-            y1, y2 = ax1.get_ylim()
-            iarray = fig.dpi_scale_trans.inverted()
-            bbox = ax1.get_window_extent().transformed(iarray)
-            width, height = bbox.width, bbox.height
-            axwidth_pixel = width*fig.dpi
-            # get physical Values Per screen Pixel (VPP) in x direction
-            vpp = abs(x2-x1)/axwidth_pixel
-
-            # check if peak has already been identified
-            if aperture in self.identlist:
-
-                dist = np.array([abs(line.get_xdata()[0] - event.xdata)/vpp
-                                 for line, text in self.ident_objects])
-
-                if dist.min() < 5:
-                    # found. change the color of this line
-                    imin = dist.argmin()
-                    for i, (line, text) in enumerate(self.ident_objects):
-                        if i == imin:
-                            plt.setp(line, color='b')
-                            plt.setp(text, color='b')
-                        else:
-                            plt.setp(line, color='k')
-                            plt.setp(text, color='k')
-                    # redraw the canvas
-                    self.plot_frame.canvas.draw()
-
-                    wl = list1[imin]['wavelength']
-
-                    # select this line in the linetable
-                    for i, record in enumerate(line_frame.item_lst):
-                        item = record[0]
-                        wave = record[1]
-                        if abs(wl - wave)<1e-3:
-                            break
-
-                    line_frame.line_tree.selection_set(item)
-                    pos = i/float(len(line_frame.item_lst))
-                    line_frame.line_tree.yview_moveto(pos)
-
-                    # put the wavelength in the search bar
-                    line_frame.search_text.set(str(wl))
-
-                    # update the status of 3 buttons
-                    line_frame.clr_button.config(state=tk.NORMAL)
-                    line_frame.add_button.config(state=tk.DISABLED)
-                    line_frame.del_button.config(state=tk.NORMAL)
-
-                    # end this function without more actions
-                    return True
-                else:
-                    # not found. all of the colors are normal
-                    for line, text in self.ident_objects:
-                        plt.setp(line, color='k')
-                        plt.setp(text, color='k')
-
-                    # clear the search bar
-                    line_frame.search_text.set('')
-
-                    # de-select the line table
-                    sel_items = line_frame.line_tree.selection()
-                    line_frame.line_tree.selection_remove(sel_items)
-
-                    # update the status of 3 button
-                    line_frame.clr_button.config(state=tk.DISABLED)
-                    line_frame.add_button.config(state=tk.DISABLED)
-                    line_frame.del_button.config(state=tk.DISABLED)
-
-                    # continue to act
-
-            mask = (self.spec['aperture'] == aperture)
-            specdata = self.spec[mask][0]
-            flux = specdata['flux']
-
-            # find peak
-            # first, find the local maximum around the clicking point
-            # the searching window is set to be +-5 pixels
-            i0 = int(event.xdata)
-            i1 = max(int(round(i0 - 5*vpp)), 0)
-            i2 = min(int(round(i0 + 5*vpp)), flux.size)
-            local_max = i1 + flux[i1:i2].argmax()
-            # now found the local max point
-            window_size = self.param['window_size']
-            _, _, param, _ = find_local_peak(flux, local_max, window_size)
-            peak_x = param[1]
-
-            self.param['ident'] = peak_x
-
-            # temporarily plot this line
-            self.plot_aperture()
-
-            line_frame.clr_button.config(state=tk.NORMAL)
-
-            # guess the input wavelength
-            guess_wl = guess_wavelength(peak_x, aperture, self.identlist,
-                                        self.linelist, self.param)
-
-            if guess_wl is None:
-                # wavelength guess failed
-                #line_frame.search_entry.focus()
-                # update buttons
-                line_frame.add_button.config(state=tk.NORMAL)
-                line_frame.del_button.config(state=tk.DISABLED)
-            else:
-                # wavelength guess succeed
-
-                # check whether wavelength has already been identified
-                if is_identified(guess_wl, self.identlist, aperture):
-                    # has been identified, do nothing
-                    # update buttons
-                    line_frame.add_button.config(state=tk.DISABLED)
-                    line_frame.del_button.config(state=tk.NORMAL)
-                else:
-                    # has not been identified yet
-                    # put the wavelength in the search bar
-                    line_frame.search_text.set(str(guess_wl))
-                    # select this line in the linetable
-                    for i, record in enumerate(line_frame.item_lst):
-                        iid  = record[0]
-                        wave = record[1]
-                        if abs(guess_wl - wave)<1e-3:
-                            break
-                    line_frame.line_tree.selection_set(iid)
-                    pos = i/float(len(line_frame.item_lst))
-                    line_frame.line_tree.yview_moveto(pos)
-                    # update buttons
-                    line_frame.add_button.config(state=tk.NORMAL)
-                    line_frame.del_button.config(state=tk.DISABLED)
-                    # unset focus
-                    self.focus()
-
-    def on_add_ident(self):
-        """Response function of identifying a new line.
-        """
-        aperture = self.param['aperture']
-        k        = self.param['k']
-        offset   = self.param['offset']
-
-        line_frame = self.info_frame.line_frame
-
-        if aperture not in self.identlist:
-            self.identlist[aperture] = np.array([], dtype=identlinetype)
-
-        list1 = self.identlist[aperture]
-
-        pixel = self.param['ident']
-        selected_iid_lst = line_frame.line_tree.selection()
-        iid = selected_iid_lst[0]
-        wavelength = float(line_frame.line_tree.item(iid, 'values')[0])
-        line_frame.line_tree.selection_remove(selected_iid_lst)
-
-        # find the insert position
-        insert_pos = np.searchsorted(list1['pixel'], pixel)
-
-        if None in [k, offset]:
-            order = 0
-        else:
-            order = k*aperture + offset
-
-        item = np.array((aperture, order, pixel, wavelength, -1., True, 0.0,
-                        'm'), dtype=identlinetype)
-
-        # insert into identified line list
-        self.identlist[aperture] = np.insert(self.identlist[aperture],
-                                             insert_pos, item)
-
-        # reset ident
-        self.param['ident'] = None
-
-        # reset the line table
-        line_frame.search_text.set('')
-
-        # update the status of 3 buttons
-        line_frame.clr_button.config(state=tk.NORMAL)
-        line_frame.add_button.config(state=tk.DISABLED)
-        line_frame.del_button.config(state=tk.NORMAL)
-
-        self.update_fit_buttons()
-
-        # replot
-        self.plot_aperture()
-
-    def on_delete_ident(self):
-        """Response function of deleting an identified line.
-        """
-        line_frame = self.info_frame.line_frame
-        target_wl = float(line_frame.search_text.get())
-        aperture = self.param['aperture']
-        list1 = self.identlist[aperture]
-
-        wl_diff = np.abs(list1['wavelength'] - target_wl)
-        mindiff = wl_diff.min()
-        argmin  = wl_diff.argmin()
-        if mindiff < 1e-3:
-            # delete this line from ident list
-            list1 = np.delete(list1, argmin)
-            self.identlist[aperture] = list1
-
-            # clear the search bar
-            line_frame.search_text.set('')
-
-            # de-select the line table
-            sel_items = line_frame.line_tree.selection()
-            line_frame.line_tree.selection_remove(sel_items)
-
-            # update the status of 3 buttons
-            line_frame.clr_button.config(state=tk.DISABLED)
-            line_frame.add_button.config(state=tk.DISABLED)
-            line_frame.del_button.config(state=tk.DISABLED)
-
-            # update fit buttons
-            self.update_fit_buttons()
-
-            # replot
-            self.plot_aperture()
-
-    def on_draw(self, event):
-        """Response function of drawing.
-        """
-        if self.param['mode'] == 'ident':
-            ax1 = self.plot_frame.ax1
-            aperture = self.param['aperture']
-            self.param['xlim'][aperture] = ax1.get_xlim()
-            self.param['ylim'][aperture] = ax1.get_ylim()
-
-    def update_fit_buttons(self):
-        """Update the status of fitting buttons.
-        """
-        nident = 0
-        for aperture, list1 in self.identlist.items():
-            nident += list1.size
-
-        xorder = self.param['xorder']
-        yorder = self.param['yorder']
-
-        info_frame = self.info_frame
-
-        if nident > (xorder+1)*(yorder+1) and len(self.identlist) > yorder+1:
-            info_frame.fit_button.config(state=tk.NORMAL)
-        else:
-            info_frame.fit_button.config(state=tk.DISABLED)
-
-        if len(self.param['coeff'])>0:
-            info_frame.switch_button.config(state=tk.NORMAL)
-            info_frame.auto_button.config(state=tk.NORMAL)
-        else:
-            info_frame.switch_button.config(state=tk.DISABLED)
-            info_frame.auto_button.config(state=tk.DISABLED)
-
-    def update_batch_buttons(self):
-        """Update the status of batch buttons (recenter and clearall).
-        """
-        # count how many identified lines
-        nident = 0
-        for aperture, list1 in self.identlist.items():
-            nident += list1.size
-
-        info_frame = self.info_frame
-
-        if nident > 0:
-            info_frame.recenter_button.config(state=tk.NORMAL)
-            info_frame.clearall_button.config(state=tk.NORMAL)
-        else:
-            info_frame.recenter_button.config(state=tk.DISABLED)
-            info_frame.clearall_button.config(state=tk.DISABLED)
-
-
-def wlcalib(spec, figfilename, title, linelist, identfilename=None,
-    window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
-    q_threshold=10, fit_filter=None
-    ):
-    """Identify the wavelengths of emission lines in the spectrum of a
-    hollow-cathode lamp.
-
-    Args:
-        spec (:class:`numpy.dtype`): 1-D spectra.
-        figfilename (str): Name of the output wavelength figure to be saved.
-        title (str): A string to display as the title of calib figure.
-        linelist (str): Name of wavelength standard file.
-        identfilename (str): Name of an ASCII formatted wavelength identification
-            file.
-        window_size (int): Size of the window in pixel to search for the
-            lines.
-        xorder (int): Degree of polynomial along X direction.
-        yorder (int): Degree of polynomial along Y direction.
-        maxiter (int): Maximim number of interation in polynomial fitting.
-        clipping (float): Threshold of sigma-clipping.
-        q_threshold (float): Minimum *Q*-factor of the spectral lines to be
-            accepted in the wavelength fitting.
-        fit_filter (function): Function checking if a pixel/oder combination is
-            within the accepted range.
-
-    Returns:
-        dict: A dict containing:
-
-            * **coeff** (:class:`numpy.ndarray`) – Coefficient array.
-            * **npixel** (*int*) – Number of pixels along the main dispersion
-              direction.
-            * **k** (*int*) – Coefficient in the relationship `order =
-              k*aperture + offset`.
-            * **offset** (*int*) – Coefficient in the relationship `order =
-              k*aperture + offset`.
-            * **std** (*float*) – Standard deviation of wavelength fitting in Å.
-            * **nuse** (*int*) – Number of lines used in the wavelength
-              fitting.
-            * **ntot** (*int*) – Number of lines found in the wavelength
-              fitting.
-            * **identlist** (*dict*) – Dict of identified lines.
-            * **window_size** (*int*) – Length of window in searching the
-              line centers.
-            * **xorder** (*int*) – Order of polynomial along X axis in the
-              wavelength fitting.
-            * **yorder** (*int*) – Order of polynomial along Y axis in the
-              wavelength fitting.
-            * **maxiter** (*int*) – Maximum number of iteration in the
-              wavelength fitting.
-            * **clipping** (*float*) – Clipping value of the wavelength fitting.
-            * **q_threshold** (*float*) – Minimum *Q*-factor of the spectral
-              lines to be accepted in the wavelength fitting.
-
-    Notes:
-        If **identfilename** is given and exist, load the identified wavelengths
-        from this ASCII file, and display them in the calibration window. If not
-        exist, save the identified list into **identfilename** with ASCII
-        format.
-
-    See also:
-        :func:`recalib`
-    """
-
-    # initialize fitting list
-    if identfilename is not None and os.path.exists(identfilename):
-        identlist, _ = load_ident(identfilename)
-    else:
-        identlist = {}
-
-    # load the wavelengths
-    linefilename = search_linelist(linelist)
-    if linefilename is None:
-        print('Error: Cannot find linelist file: %s'%linelist)
-        exit()
-    line_list = load_linelist(linefilename)
-
-    # display an interactive figure
-    # reset keyboard shortcuts
-    mpl.rcParams['keymap.pan']        = ''   # reset 'p'
-    mpl.rcParams['keymap.fullscreen'] = ''   # reset 'f'
-    mpl.rcParams['keymap.back']       = ''   # reset 'c'
-
-    # initialize tkinter window
-    master = tk.Tk()
-    master.resizable(width=False, height=False)
-
-    screen_width  = master.winfo_screenwidth()
-    screen_height = master.winfo_screenheight()
-
-    fig_width  = 2500
-    fig_height = 1500
-    fig_dpi    = 150
-    if None in [fig_width, fig_height]:
-        # detremine window size and position
-        window_width = int(screen_width-200)
-        window_height = int(screen_height-200)
-    else:
-        window_width = fig_width + 500
-        window_height = fig_height + 34
-
-    x = int((screen_width-window_width)/2.)
-    y = int((screen_height-window_height)/2.)
-    master.geometry('%dx%d+%d+%d'%(window_width, window_height, x, y))
-
-    # display window
-    calibwindow = CalibWindow(master,
-                              width       = window_width,
-                              height      = window_height-34,
-                              dpi         = fig_dpi,
-                              spec        = spec,
-                              figfilename = figfilename,
-                              title       = title,
-                              identlist   = identlist,
-                              linelist    = line_list,
-                              window_size = window_size,
-                              xorder      = xorder,
-                              yorder      = yorder,
-                              maxiter     = maxiter,
-                              clipping    = clipping,
-                              q_threshold = q_threshold,
-                              fit_filter  = fit_filter,
-                              )
-
-    master.mainloop()
-
-    coeff  = calibwindow.param['coeff']
-    npixel = calibwindow.param['npixel']
-    k      = calibwindow.param['k']
-    offset = calibwindow.param['offset']
-
-    # find the direction code
-    aper = spec['aperture'][0]
-    order = k*aper + offset
-    wl = get_wavelength(coeff, npixel, np.arange(npixel), order)
-    # refresh the direction code
-    new_direction = 'x' + {1:'r', -1:'b'}[k] + '-+'[wl[0] < wl[-1]]
-
-    # organize results
-    result = {
-              'coeff':       coeff,
-              'npixel':      npixel,
-              'k':           k,
-              'offset':      offset,
-              'std':         calibwindow.param['std'],
-              'nuse':        calibwindow.param['nuse'],
-              'ntot':        calibwindow.param['ntot'],
-              'identlist':   calibwindow.identlist,
-              'window_size': calibwindow.param['window_size'],
-              'xorder':      calibwindow.param['xorder'],
-              'yorder':      calibwindow.param['yorder'],
-              'maxiter':     calibwindow.param['maxiter'],
-              'clipping':    calibwindow.param['clipping'],
-              'q_threshold': calibwindow.param['q_threshold'],
-              'direction':   new_direction,
-            }
-
-    # save ident list
-    if len(calibwindow.identlist)>0 and \
-        identfilename is not None and not os.path.exists(identfilename):
-        save_ident(calibwindow.identlist, calibwindow.param['coeff'],
-                    identfilename)
-
-    return result
 
 def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
         fit_filter=None):
@@ -1429,15 +50,15 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
     Returns:
         tuple: A tuple containing:
 
-            * **coeff** (:class:`numpy.ndarray`) – Coefficients array.
-            * **std** (*float*) – Standard deviation.
-            * **k** (*int*) – *k* in the relationship between aperture
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficients array.
+            * **std** (*float*) -- Standard deviation.
+            * **k** (*int*) -- *k* in the relationship between aperture
               numbers and diffraction orders: `order = k*aperture + offset`.
-            * **offset** (*int*) – *offset* in the relationship between
+            * **offset** (*int*) -- *offset* in the relationship between
               aperture numbers and diffraction orders: `order = k*aperture +
               offset`.
-            * **nuse** (*int*) – Number of lines used in the fitting.
-            * **ntot** (*int*) – Number of lines found.
+            * **nuse** (*int*) -- Number of lines used in the fitting.
+            * **ntot** (*int*) -- Number of lines found.
 
     See also:
         :func:`get_wavelength`
@@ -1607,9 +228,9 @@ def find_order(identlist, npixel):
     Returns:
         tuple: A tuple containing:
 
-            * **k** (*int*) – Coefficient in the relationship
+            * **k** (*int*) -- Coefficient in the relationship
               `order = k*aperture + offset`.
-            * **offset** (*int*) – Coefficient in the relationship
+            * **offset** (*int*) -- Coefficient in the relationship
               `order = k*aperture + offset`.
     """
     aper_lst, wlc_lst = [], []
@@ -1652,7 +273,7 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_ident(identlist, coeff, filename, channel=None):
+def save_ident(identlist, coeff, filename):
     """Write the ident line list and coefficients into an ASCII file.
     The existing informations in the ASCII file will not be affected.
     Only the input channel will be overwritten.
@@ -1662,57 +283,31 @@ def save_ident(identlist, coeff, filename, channel=None):
         coeff (:class:`numpy.ndarray`): Coefficient array.
         result (dict): A dict containing identification results.
         filename (str): Name of the ASCII file.
-        channel (str): Name of channel.
 
     See also:
         :func:`load_ident`
     """
-    if channel is None:
-        outfile = open(filename, 'w')
-    else:
-        exist_row_lst = []
-        if os.path.exists(filename):
-            # if filename already exist, only overwrite the current channel
-            infile = open(filename)
-            for row in infile:
-                row = row.strip()
-                if len(row)==0 or row[0] in '#$%^@!':
-                    continue
-                g = row.split()
-                if g[0] != channel:
-                    exist_row_lst.append(row)
-            infile.close()
-
-        outfile = open(filename, 'w')
-
-        # write other channels
-        if len(exist_row_lst)>0:
-            outfile.write(os.linesep.join(exist_row_lst))
-
-
-    # write current channel
+    outfile = open(filename, 'w')
 
     # write identified lines
-    for aperture, list1 in sorted(identlist.items()):
-        for pix, wav, mask, res, method in zip(list1['pixel'],
-                list1['wavelength'], list1['mask'], list1['residual'],
-                list1['method']):
-            if channel is None:
-                outfile.write('LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                    aperture, pix, wav, int(mask), res, method.decode('ascii')))
-            else:
-                outfile.write('%1s LINE %03d %10.4f %10.4f %1d %+10.6f %1s'%(
-                    channel, aperture, pix, wav, int(mask), res, method.decode('ascii')))
-            outfile.write(os.linesep)
+    fmtstr = ('LINE {:03d} {:10.4f} {:10.4f} {:10.4f} {:12.5e} {:9.5f}'
+             '{:1d} {:+10.6f} {:1s}')
+    for aper, list1 in sorted(identlist.items()):
+        for row in list1:
+            pix    = row['pixel']
+            wav    = row['wavelength']
+            amp    = row['amplitude']
+            fwhm   = row['fwhm']
+            mask   = int(row['mask'])
+            res    = row['residual']
+            method = row['method'].decode('ascii')
+            outfile.write(fmtstr.format(aper, pix, wav, amp, fwhm,
+                mask, res, method)+os.linesep)
 
     # write coefficients
     for irow in range(coeff.shape[0]):
-        string = ' '.join(['%18.10e'%v for v in coeff[irow]])
-        if channel is None:
-            outfile.write('COEFF %s'%string)
-        else:
-            outfile.write('%1s COEFF %s'%(channel, string))
-        outfile.write(os.linesep)
+        string = ' '.join(['{:18.10e}'.format(v) for v in coeff[irow]])
+        outfile.write('COEFF {}'.format(string)+os.linesep)
 
     outfile.close()
 
@@ -1726,8 +321,8 @@ def load_ident(filename):
     Returns:
         tuple: A tuple containing:
 
-            * **identlist** (*dict*) – Identified lines for all orders.
-            * **coeff** (:class:`numpy.ndarray`) – Coefficients of wavelengths.
+            * **identlist** (*dict*) -- Identified lines for all orders.
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficients of wavelengths.
 
     See also:
         :func:`save_ident`
@@ -1747,12 +342,15 @@ def load_ident(filename):
             aperture    = int(g[1])
             pixel       = float(g[2])
             wavelength  = float(g[3])
-            mask        = bool(g[4])
-            residual    = float(g[5])
-            method      = g[6].strip()
+            amplitude   = float(g[4])
+            fwhm        = float(g[5])
+            mask        = bool(g[6])
+            residual    = float(g[7])
+            method      = g[8].strip()
 
-            item = np.array((aperture,0,pixel,wavelength,0.,mask,residual,
-                                method),dtype=identlinetype)
+            item = np.array((aperture, 0, pixel, wavelength, amplitdue, fwhm,
+                    0., mask, residual, method),dtype=identlinetype)
+
             if aperture not in identlist:
                 identlist[aperture] = []
             identlist[aperture].append(item)
@@ -1786,7 +384,7 @@ def gaussian_bkg(A,center,fwhm,bkg,x):
 def errfunc2(p,x,y):
     return y - gaussian_bkg(p[0],p[1],p[2],p[3],x)
 
-def find_local_peak(flux, x, width):
+def find_local_peak(flux, x, width, figname=None):
     """Find the central pixel of an emission line.
 
     Args:
@@ -1800,7 +398,7 @@ def find_local_peak(flux, x, width):
             * **i1** (*int*) -- Index of the left side.
             * **i2** (*int*) -- Index of the right side.
             * **p1** (*list*) -- List of fitting parameters.
-            * **std** (*float*) -- Standard devation of the fitting.
+            * **std** (*float*) -- Standard deviation of the fitting.
     """
     width = int(round(width))
     if width%2 != 1:
@@ -1826,7 +424,7 @@ def find_local_peak(flux, x, width):
     # least square fitting
     #p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
     p1, cov, info, mesg, ier = opt.leastsq(errfunc2, p0[:],
-                                    args=(xdata,ydata), full_output=True)
+                                    args=(xdata, ydata), full_output=True)
 
     res_lst = errfunc2(p1, xdata, ydata)
 
@@ -1834,6 +432,21 @@ def find_local_peak(flux, x, width):
         return None
 
     std = math.sqrt((res_lst**2).sum()/(res_lst.size-len(p0)-1))
+
+    if figname is not None:
+        fig = plt.figure()
+        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.5])
+        ax2 = fig.add_axes([0.1, 0.1, 0.8, 0.25])
+        ax1.plot(xdata, ydata, 'o', ms=4)
+        newx = np.arange(xdata[0], xdata[-1], 0.1)
+        newy = gaussian_bkg(p1[0], p1[1], p1[2], p1[3], newx)
+        ax1.plot(newx, newy, '-', lw=0.6)
+        yerr = errfunc2(p1, xdata, ydata)
+        ax2.plot(xdata, yerr, 'o', ms=4)
+        ax1.set_xlim(xdata[0], xdata[-1])
+        ax2.set_xlim(xdata[0], xdata[-1])
+        fig.savefig(figname)
+        plt.close(fig)
 
     return i1, i2, p1, std
 
@@ -2041,7 +654,11 @@ class CalibFigure(Figure):
     def __init__(self, width, height, dpi, title):
         """Constuctor of :class:`CalibFigure`.
         """
-        super(CalibFigure, self).__init__(figsize=(width/dpi, height/dpi), dpi=dpi)
+        # set figsize and dpi
+        figsize = (width/dpi, height/dpi)
+        super(CalibFigure, self).__init__(figsize=figsize, dpi=dpi)
+
+        # set background color as light gray
         self.patch.set_facecolor('#d9d9d9')
 
         # add axes
@@ -2235,15 +852,12 @@ class CalibFigure(Figure):
             tick.label1.set_fontsize(tick_size)
 
 
-def select_calib_from_database(path, time_key, current_time,
-        filepattern='wlcalib.\S*.fits$'):
+def select_calib_from_database(index_file, dateobs):
     """Select a previous calibration result in database.
 
     Args:
-        path (str): Path to search for the calibration files.
-        time_key (str): Name of the key in the FITS header.
-        current_time (str): Time string of the file to be calibrated.
-        filepattern (str):
+        index_file (str): Index file of saved calibration files.
+        dateobs (str): .
 
     Returns:
         tuple: A tuple containing:
@@ -2252,40 +866,42 @@ def select_calib_from_database(path, time_key, current_time,
                 spectra.
             * **calib** (dict): Previous calibration results.
     """
-    if not os.path.exists(path):
-        return None, None
-    filename_lst = []
-    datetime_lst = []
-    for fname in os.listdir(path):
-        if re.match(filepattern, fname) is not None:
-            filename = os.path.join(path, fname)
-            head = fits.getheader(filename)
-            dt = dateutil.parser.parse(head[time_key])
-            filename_lst.append(filename)
-            datetime_lst.append(dt)
-    if len(filename_lst)==0:
-        return None, None
 
-    # select the FITS file with the shortest interval in time.
-    input_datetime = dateutil.parser.parse(current_time)
-    deltat_lst = np.array([abs((input_datetime - dt).total_seconds())
-                            for dt in datetime_lst])
-    imin = deltat_lst.argmin()
-    sel_filename = filename_lst[imin]
+    # get instrument name
+    mobj = re.match('wlcalib_(\S*)\.dat$', os.path.basename(index_file))
+    instrument = mobj.group(1)
+
+    calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
+
+    input_date = dateutil.parser.parse(dateobs)
+
+    # select the closest ThAr
+    timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
+                for t in calibtable['obsdate']]
+    irow = np.abs(timediff).argmin()
+    row = calibtable[irow]
+    fileid = row['fileid']  # selected fileid
+    md5    = row['md5']
+
+    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    logger.info(message)
+
+    filepath = os.path.join('instruments/{}'.format(instrument),
+                'wlcalib_{}.fits'.format(fileid))
+    filename = get_file(filepath, md5)
 
     # load spec, calib, and aperset from selected FITS file
-    hdu_lst = fits.open(sel_filename)
+    hdu_lst = fits.open(filename)
     head = hdu_lst[0].header
     spec = hdu_lst[1].data
     hdu_lst.close()
 
     calib = get_calib_from_header(head)
 
-    # aperset seems unnecessary
-    #aperset = load_aperture_set_from_header(head, channel=channel)
-    #return spec, calib, aperset
     return spec, calib
 
+def wlcalib(*args, **kwargs):
+    recalib(*args, **kwargs)
 
 def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         aperture_koffset=(1, 0), pixel_koffset=(1, None),
@@ -2322,29 +938,29 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
     Returns:
         dict: A dict containing:
 
-            * **coeff** (:class:`numpy.ndarray`) – Coefficient array.
-            * **npixel** (*int*) – Number of pixels along the main
+            * **coeff** (:class:`numpy.ndarray`) -- Coefficient array.
+            * **npixel** (*int*) -- Number of pixels along the main
               dispersion direction.
-            * **k** (*int*) – Coefficient in the relationship `order =
+            * **k** (*int*) -- Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **offset** (*int*) – Coefficient in the relationship `order =
+            * **offset** (*int*) -- Coefficient in the relationship `order =
               k*aperture + offset`.
-            * **std** (*float*) – Standard deviation of wavelength fitting in Å.
-            * **nuse** (*int*) – Number of lines used in the wavelength
+            * **std** (*float*) -- Standard deviation of wavelength fitting in Å.
+            * **nuse** (*int*) -- Number of lines used in the wavelength
               fitting.
-            * **ntot** (*int*) – Number of lines found in the wavelength
+            * **ntot** (*int*) -- Number of lines found in the wavelength
               fitting.
-            * **identlist** (*dict*) – Dict of identified lines.
-            * **window_size** (*int*) – Length of window in searching the
+            * **identlist** (*dict*) -- Dict of identified lines.
+            * **window_size** (*int*) -- Length of window in searching the
               line centers.
-            * **xorder** (*int*) – Order of polynomial along X axis in the
+            * **xorder** (*int*) -- Order of polynomial along X axis in the
               wavelength fitting.
-            * **yorder** (*int*) – Order of polynomial along Y axis in the
+            * **yorder** (*int*) -- Order of polynomial along Y axis in the
               wavelength fitting.
-            * **maxiter** (*int*) – Maximum number of iteration in the
+            * **maxiter** (*int*) -- Maximum number of iteration in the
               wavelength fitting.
-            * **clipping** (*float*) – Clipping value of the wavelength fitting.
-            * **q_threshold** (*float*) – Minimum *Q*-factor of the spectral
+            * **clipping** (*float*) -- Clipping value of the wavelength fitting.
+            * **q_threshold** (*float*) -- Minimum *Q*-factor of the spectral
               lines to be accepted in the wavelength fitting.
 
     See also:
@@ -2417,7 +1033,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             diff = np.abs(wl - line[0])
             i = diff.argmin()
 
-            result = find_local_peak(flux, i, window_size)
+            result = find_local_peak(flux, i, window_size,
+                    #figname='debug/wlfit_{:03d}_{:9.4f}.png'.format(int(order), line[0])
+                    )
             if result is None:
                 continue
             i1, i2, param, std = result
@@ -2426,17 +1044,23 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             if not keep:
                 continue
 
-            q = param[0]/std
+            # unpack the fitted parameters
+            amplitude = param[0]
+            center    = param[1]
+            fwhm      = param[2]
+            back      = param[3]
+
+            # q = A/std is a proxy of signal-to-noise ratio.
+            q = amplitude/std
             if q < q_threshold:
                 continue
-            peak_x = param[1]
 
             if aperture not in identlist:
                 identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            item = np.array((aperture, order, peak_x, line[0], q, True, 0.0,
-                            'a'), dtype=identlinetype)
+            item = np.array((aperture, order, center, line[0], amplitude, fwhm,
+                            q, True, 0.0, 'a'), dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
             has_insert = True
@@ -2463,7 +1087,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                       dpi    = fig_dpi,
                       title  = title,
                       )
-    canvas = FigureCanvasAgg(fig)
+    #canvas = FigureCanvasAgg(fig)
 
     fig.plot_solution(identlist,
                       aperture_lst = spec['aperture'],
@@ -2515,7 +1139,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             }
 
 def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
-        aperture_k=None, pixel_k=None, pixel_range=(-30, 30), mode='normal'):
+        aperture_k=None, pixel_k=None, pixel_range=(-30, 30),
+        max_order_offset=20,
+        mode='normal'):
     """Find the offset between two spectra.
 
     The aperture offset is defined as:
@@ -2588,7 +1214,7 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
 
     # determine the maxium absolute offsets between the orders of the two
     # spectra
-    maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, 10)
+    maxoff = min(max(aper1_lst.size, aper2_lst.size)//2, max_order_offset)
     aperture_offset_lst = np.arange(-maxoff, maxoff)
 
     def get_aper2(aper1, k, offset):
@@ -2991,8 +1617,8 @@ def reference_self_wavelength(spec, calib):
     """Calculate the wavelengths for an one dimensional spectra.
 
     Args:
-        spec ():
-        calib ():
+        spec (:class:`numpy.dtype`):
+        calib (tuple):
 
     Returns:
         tuple: A tuple containing:
@@ -3568,3 +2194,213 @@ def select_calib_manu(calib_lst, promotion,
             return ref_calib_lst
         else:
             continue
+
+class FWHMMapFigure(Figure):
+    """Figure class for plotting FWHMs over the whole CCD.
+
+    """
+    def __init__(self, spec, identlist, apertureset,
+            fwhm_range=None, fwhmrv_range=None):
+        """Constuctor of :class:`FWHMMapFigure`.
+        """
+        # find shape of map
+        aper0 = list(apertureset.keys())[0]
+        aperloc = apertureset[aper0]
+        shape = aperloc.shape
+
+        figsize = (12, 6)
+        super(FWHMMapFigure, self).__init__(figsize=figsize, dpi=150)
+        _w = shape[1]/figsize[0]
+        _h = shape[0]/figsize[1]
+        _zoom = 0.82/_h
+        _w *= _zoom
+        _h *= _zoom
+        self.ax1 = self.add_axes([0.09, 0.10, _w,   _h])
+        self.ax3 = self.add_axes([0.58, 0.67, 0.38, 0.23])
+        self.ax4 = self.add_axes([0.58, 0.42, 0.38, 0.23])
+        self.ax5 = self.add_axes([0.58, 0.13, 0.20, 0.19])
+        self.ax2 = self.add_axes([0.58, 0.10, 0.20, 0.02])
+
+        # get delta pixel fo every order
+        dwave = {row['aperture']: derivative(row['wavelength']) for row in spec}
+
+        x_lst = []
+        y_lst = []
+        fwhm_lst = []
+        fwhmrv_lst = []
+        aper_fwhm_lst = {}
+        aper_fwhmrv_lst = {}
+        for row in identlist:
+            if not row['mask']:
+                continue
+            aper   = row['aperture']
+            fwhm   = row['fwhm']
+            center = row['pixel']
+            wave   = row['wavelength']
+            dwave_rv = np.abs(dwave[aper][int(round(center))])/wave*299792.458
+            fwhmrv = fwhm*dwave_rv
+            aperloc = apertureset[aper]
+            ypos = aperloc.position(center)
+
+            x_lst.append(center)
+            y_lst.append(ypos)
+            fwhm_lst.append(fwhm)
+            fwhmrv_lst.append(fwhmrv)
+
+            if aper not in aper_fwhm_lst:
+                aper_fwhm_lst[aper] = [[], []]
+            aper_fwhm_lst[aper][0].append(center)
+            aper_fwhm_lst[aper][1].append(fwhm)
+
+            if aper not in aper_fwhmrv_lst:
+                aper_fwhmrv_lst[aper] = [[], []]
+            aper_fwhmrv_lst[aper][0].append(center)
+            aper_fwhmrv_lst[aper][1].append(fwhmrv)
+
+        if fwhm_range is None:
+            fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
+        else:
+            fwhm1, fwhm2 = fwhm_range
+
+
+        # ax1: plot FWHM as scatters
+        cax = self.ax1.scatter(x_lst, y_lst, s=20, c=fwhm_lst, alpha=0.8,
+                vmin=fwhm1, vmax=fwhm2, lw=0)
+        self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
+        self.cbar.set_label('FWHM (pixel)')
+        self.ax1.set_xlim(0, shape[1]-1)
+        self.ax1.set_ylim(0, shape[0]-1)
+        self.ax1.set_xlabel('X (pixel)')
+        self.ax1.set_ylabel('Y (pixel)')
+
+        # ax3: plot x vs. fwhm for different apertures
+        for aper, (_x_lst, _fwhm_lst) in aper_fwhm_lst.items():
+            self.ax3.plot(_x_lst, _fwhm_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax3.set_xlim(0, shape[1]-1)
+        self.ax3.set_ylim(fwhm1, fwhm2)
+        self.ax3.set_xticklabels([])
+        #self.ax3.set_xlabel('X (pixel)')
+        self.ax3.set_ylabel('FWHM (pixel)')
+
+        # ax4: plot x vs. fwhm in rv for different apertures
+        for aper, (_x_lst, _fwhmrv_lst) in aper_fwhmrv_lst.items():
+            self.ax4.plot(_x_lst, _fwhmrv_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax4.set_xlim(0, shape[1]-1)
+        self.ax4.set_xlabel('X (pixel)')
+        self.ax4.set_ylabel('FWHM (km/s)')
+
+        if fwhmrv_range is None:
+            fwhmrv1, fwhmrv2 = min(fwhmrv_lst), max(fwhmrv_lst)
+        else:
+            fwhmrv1, fwhmrv2 = fwhmrv_range
+        self.ax4.set_ylim(fwhmrv1, fwhmrv2)
+
+
+        # ax5: plot FWHM histograms
+        self.ax5.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
+        self.ax5.set_xticklabels([])
+        self.ax5.set_xlim(fwhm1, fwhm2)
+        self.ax5.set_ylabel('N')
+
+        # text
+        text = 'Median FWHM:\n {:.2f} pixel\n {:.2f} km/s'.format(
+                np.median(fwhm_lst),
+                np.median(fwhmrv_lst),
+                )
+        self.text(0.79, 0.32, text, va='top', fontsize=11)
+
+    def close(self):
+        plt.close(self)
+
+class ResolutionFigure(Figure):
+    """Figure class for plotting the resolutions over the whole CCD.
+
+    """
+    def __init__(self, spec, identlist, apertureset, resolution_range=None):
+        """Constuctor of :class:`ResolutionFigure`.
+        """
+        # find shape of map
+        aper0 = list(apertureset.keys())[0]
+        aperloc = apertureset[aper0]
+        shape = aperloc.shape
+
+        figsize = (12, 6)
+        super(ResolutionFigure, self).__init__(figsize=figsize, dpi=150)
+        _w = shape[1]/figsize[0]
+        _h = shape[0]/figsize[1]
+        _zoom = 0.82/_h
+        _w *= _zoom
+        _h *= _zoom
+        self.ax1 = self.add_axes([0.09, 0.1, _w,   _h])
+        self.ax3 = self.add_axes([0.58, 0.6, 0.38, 0.32])
+        self.ax4 = self.add_axes([0.58, 0.2, 0.38, 0.32])
+        self.ax2 = self.add_axes([0.58, 0.1, 0.38, 0.02])
+
+
+        # get delta pixel fo every order
+        dwave = {row['aperture']: derivative(row['wavelength']) for row in spec}
+
+        wave_lst = []
+        x_lst = []
+        y_lst = []
+        resolution_lst = []
+        aper_resolution_lst = {}
+        for row in identlist:
+            if not row['mask']:
+                continue
+            aper   = row['aperture']
+            fwhm   = row['fwhm']
+            center = row['pixel']
+            wave   = row['wavelength']
+            aperloc = apertureset[aper]
+            ypos = aperloc.position(center)
+            resolution = wave/np.abs(fwhm*dwave[aper][int(round(center))])
+
+            wave_lst.append(wave)
+            x_lst.append(center)
+            y_lst.append(ypos)
+            resolution_lst.append(resolution)
+
+            if aper not in aper_resolution_lst:
+                aper_resolution_lst[aper] = [[], []]
+            aper_resolution_lst[aper][0].append(center)
+            aper_resolution_lst[aper][1].append(resolution)
+
+        if resolution_range is None:
+            resolution1, resolution2 = min(resolution_lst), max(resolution)
+        else:
+            resolution1, resolution2 = resolution_range
+
+
+        # ax1: plot resolution as scatters
+        cax = self.ax1.scatter(x_lst, y_lst, s=20, c=resolution_lst, alpha=0.8,
+                vmin=resolution1, vmax=resolution2,
+                lw=0)
+        self.cbar = self.colorbar(cax, cax=self.ax2, orientation='horizontal')
+        self.cbar.set_label('Resolution')
+        self.ax1.set_xlim(0, shape[1]-1)
+        self.ax1.set_ylim(0, shape[0]-1)
+        self.ax1.set_xlabel('X (pixel)')
+        self.ax1.set_ylabel('Y (pixel)')
+
+
+        # ax3: plot x vs. resolution
+        for aper, (_x_lst, _resolution_lst) in aper_resolution_lst.items():
+            self.ax3.plot(_x_lst, _resolution_lst, 'o-',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax3.set_xlim(0, shape[1]-1)
+        self.ax3.set_ylim(resolution1, resolution2)
+        self.ax3.set_xlabel('X (pixel)')
+        self.ax3.set_ylabel('Resolution')
+
+        # ax4: plot wave vs. resolution
+        self.ax4.plot(wave_lst, resolution_lst, 'o',
+                    c='C0', ms=2, alpha=0.6, lw=0.5)
+        self.ax4.set_ylim(resolution1, resolution2)
+        self.ax4.set_xlabel(u'Wavelength (\xc5)')
+        self.ax4.set_ylabel('Resolution')
+
+    def close(self):
+        plt.close(self)
