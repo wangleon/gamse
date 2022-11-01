@@ -28,6 +28,7 @@ setup(
                     'gamse/pipelines/lhrs',
                     'gamse/pipelines/uves',
                     'gamse/pipelines/xinglong216hrs',
+                    'gamse/pipelines/yhrs',
                    ],
     package_data = {
                     'gamse': ['data/calib/*',
