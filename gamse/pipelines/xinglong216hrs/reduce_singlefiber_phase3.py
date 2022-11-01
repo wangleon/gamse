@@ -296,6 +296,13 @@ def reduce_singlefiber_phase3(config, logtable):
         fig_spatial.savefig(figname)
         fig_spatial.close()
 
+        for aper, flatspec in sorted(flatspec_lst.items()):
+            fig = plt.figure()
+            ax = fig.gca()
+            ax.plot(flatspec)
+            fig.savefig('check_{}.png'.format(aper))
+            plt.close()
+
         # pack 1-d spectra of flat
         flat_spec = []
         for aper, flatspec in sorted(flatspec_lst.items()):
@@ -303,23 +310,26 @@ def reduce_singlefiber_phase3(config, logtable):
 
             # get the indices of not NaN values in flatspec
             idx_notnan = np.nonzero(~np.isnan(flatspec))[0]
-            # use interpolate to fill the NaN values
-            f = intp.InterpolatedUnivariateSpline(
-                        idx_notnan, flatspec[idx_notnan], k=3)
-            # get the first and last not NaN values
-            i1 = idx_notnan[0]
-            i2 = idx_notnan[-1]+1
-            newx = np.arange(i1, i2)
-            newspec = f(newx)
-            # smooth the spec with savgol filter
-            newspec = savgol_filter(newspec,
-                            window_length = 101,
-                            polyorder     = 3,
-                            mode          = 'mirror',
-                            )
+            if idx_notnan.size > n/2:
+                # use interpolate to fill the NaN values
+                f = intp.InterpolatedUnivariateSpline(
+                            idx_notnan, flatspec[idx_notnan], k=3)
+                # get the first and last not NaN values
+                i1 = idx_notnan[0]
+                i2 = idx_notnan[-1]+1
+                newx = np.arange(i1, i2)
+                newspec = f(newx)
+                # smooth the spec with savgol filter
+                newspec = savgol_filter(newspec,
+                                window_length = 101,
+                                polyorder     = 3,
+                                mode          = 'mirror',
+                                )
+                flatspec[i1:i2] = newspec
+
             row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
-                    newspec,                        # flux
+                    flatspec,                        # flux
                     np.zeros(n, dtype=np.float32),  # error
                     np.zeros(n, dtype=np.float32),  # background
                     np.zeros(n, dtype=np.int16),    # mask
@@ -986,9 +996,10 @@ def reduce_singlefiber_phase3(config, logtable):
                 mask  = row['mask']
                 #newflux = np.array([np.NaN]*flux.size)
 
+                # smooth the flatspec 
                 m = flat_spec['aperture']==aper
-                cont = flat_spec[m][0]['flux']
-                flux2 = flux/cont
+                blaze = flat_spec[m][0]['flux']
+                flux2 = flux/blaze
                 normc = np.percentile(flux2[n//4:n//4*3], 98)
                 newflux = flux2/normc
 
