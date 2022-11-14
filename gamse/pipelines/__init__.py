@@ -28,6 +28,7 @@ instrument_lst = [
     ('feros',           'MPG/ESO-2.2m',     'FEROS'),
     ('espadons',        'CFHT',             'ESPaDOnS'),
     ('uves',            'VLT',              'UVES'),
+    ('espresso',        'VLT',              'ESPRESSO'),
     ]
 
 def reduce_echelle():
@@ -190,9 +191,10 @@ def split_obslog():
 
     for row in instrument_lst:
         if telescope == row[1] and instrument == row[2]:
-            modulename = eval(row[0])
-            if hasattr(modulename, 'split_obslog'):
-                func = getattr(modulename, 'split_obslog')
+            modulename = row[0]
+            submodule = importlib.import_module('.'+modulename, __package__)
+            if hasattr(submodule, 'split_obslog'):
+                func = getattr(submodule, 'split_obslog')
                 func()
                 exit()
 
