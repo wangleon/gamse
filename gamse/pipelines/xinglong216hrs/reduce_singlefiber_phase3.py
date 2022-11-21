@@ -296,13 +296,6 @@ def reduce_singlefiber_phase3(config, logtable):
         fig_spatial.savefig(figname)
         fig_spatial.close()
 
-        for aper, flatspec in sorted(flatspec_lst.items()):
-            fig = plt.figure()
-            ax = fig.gca()
-            ax.plot(flatspec)
-            fig.savefig('check_{}.png'.format(aper))
-            plt.close()
-
         # pack 1-d spectra of flat
         flat_spec = []
         for aper, flatspec in sorted(flatspec_lst.items()):
