@@ -1,4 +1,6 @@
 import os
+
+import numpy as np
 import astropy.io.fits as fits
 
 def get_metadata(filename):
@@ -45,6 +47,7 @@ def get_metadata(filename):
     imgtype  = head0['ESO DPR TYPE']
     category = head0['ESO DPR CATG']
     expid    = head0['ESO DET EXP NO']
+    progid   = head0['ESO OBS PROG ID']
     piname   = head0['PI-COI']
     ra       = head0.get('RA', None)
     dec      = head0.get('DEC', None)
@@ -123,5 +126,64 @@ def get_metadata(filename):
             'biny':     biny,
             #'gain':     (gain1, gain2),
             #'ron':      (ron1, ron2),
+            'progid':   progid,
             'piname':   piname,
             }
+
+def correct_overscan(data, head):
+    nx = head['ESO DET CHIP NX']
+    ny = head['ESO DET CHIP NY']
+    binx = int(head['CD1_1'])
+    biny = int(head['CD2_2'])
+    final_data = np.zeros((ny//biny, nx//binx), dtype=np.float32)
+    for i in np.arange(16):
+        # i = 0, 1, 2, ... 15 (16 readout points)
+        prefix = 'ESO DET OUT{} '.format(i+1)
+        _nx    = head[prefix + 'NX']
+        _ny    = head[prefix + 'NY']
+        _prscx = head[prefix + 'PRSCX']
+        _prscy = head[prefix + 'PRSCY']
+        _ovscx = head[prefix + 'OVSCX']
+        _ovscy = head[prefix + 'OVSCY']
+
+        # determine y range
+        yoffset = int(i/8)*(_prscy + _ny + _ovscy)//biny
+        if int(i/8)==0:
+            # output in lower part
+            y1 = _prscy//biny + yoffset
+        else:
+            # output in upper part
+            y1 = _ovscy//biny + yoffset
+        y2 = y1 + _ny//biny
+
+        # determine x range
+        xoffset = (i%8)*(_prscx + _nx + _ovscx)//binx
+        if int(i/4)%2==0:
+            # output in left side
+            x1 = _prscx//binx + xoffset
+        else:
+            # output in right side
+            x1 = _ovscx//binx + xoffset
+        x2 = x1 + _nx//binx
+
+        # now take science data
+        scidata = data[y1:y2, x1:x2]
+
+        if int(i/4)%2==0:
+            # output in left side
+            x3 = x2
+            x4 = x3 + _ovscx//binx
+        else:
+            # output in right side
+            x4 = x1
+            x3 = x4 - _ovscx//binx
+        ovrdata = data[y1:y2, x3:x4]
+
+        scidata = scidata - ovrdata.mean()
+
+        yy0 = int(i/8)*ny//biny//2
+        yy1 = yy0 + ny//biny//2
+        xx0 = i%8*_nx//binx
+        xx1 = xx0 + _nx//binx
+        final_data[yy0:yy1, xx0:xx1] = scidata
+    return final_data
