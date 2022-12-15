@@ -88,6 +88,8 @@ def make_config():
     sectname = 'reduce.flat'
     config.add_section(sectname)
     config.set(sectname, 'slit_step',       str(256))
+    config.set(sectname, 'q_threshold',     str(50))
+    config.set(sectname, 'mosaic_maxcount', str(50000))
 
     # section of wavelength calibration
     sectname = 'reduce.wlcalib'
