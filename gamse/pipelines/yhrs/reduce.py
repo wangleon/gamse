@@ -634,7 +634,7 @@ def reduce_rawdata():
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
-
+        '''
         # temporarily added
         hdu_lst = fits.HDUList([
             fits.PrimaryHDU(header=head),
@@ -642,6 +642,7 @@ def reduce_rawdata():
             ])
         hdu_lst.writeto('wlcalib_{}_ods.fits'.format(fileid), overwrite=True)
         exit()
+        '''
 
         figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
         wlcalib_fig = os.path.join(figpath, figname)
@@ -665,10 +666,111 @@ def reduce_rawdata():
 
                 ref_spec, ref_calib = select_calib_from_database(
                             index_file, head[statime_key])
+
+                if ref_spec is None or ref_calib is None:
+
+                    message = ('Did not find nay archive wavelength'
+                               'calibration file')
+                    logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
+
+                    # if failed, pop up a calibration window and identify
+                    # the wavelengths manually
+                    calib = wlcalib(spec,
+                        figfilename = wlcalib_fig,
+                        title       = title,
+                        linelist    = section.get('linelist'),
+                        window_size = section.getint('window_size'),
+                        xorder      = section.getint('xorder'),
+                        yorder      = section.getint('yorder'),
+                        maxiter     = section.getint('maxiter'),
+                        clipping    = section.getfloat('clipping'),
+                        q_threshold = section.getfloat('q_threshold'),
+                        )
+                else:
+                    # if success, run recalib
+                    # determien the direction
+                    message = 'Found archive wavelength calibration file'
+                    logger.info(message)
+                    print(screen_prefix + message)
+
+                    ref_direction = ref_calib['direction']
+
+                    if direction[1] == '?':
+                        aperture_k = None
+                    elif direction[1] == ref_direction[1]:
+                        aperture_k = 1
+                    else:
+                        aperture_k = -1
+
+                    if direction[2] == '?':
+                        pixel_k = None
+                    elif direction[2] == ref_direction[2]:
+                        pixel_k = 1
+                    else:
+                        pixel_k = -1
+
+                    result = find_caliblamp_offset(ref_spec, spec,
+                                aperture_k  = aperture_k,
+                                pixel_k     = pixel_k,
+                                pixel_range = (-50, 50),
+                                mode        = mode,
+                                )
+                    aperture_koffset = (result[0], result[1])
+                    pixel_koffset    = (result[2], result[3])
+
+                    message = 'Aperture offset = {}; Pixel offset = {}'
+                    message = message.format(aperture_koffset,
+                                             pixel_koffset)
+                    logger.info(logger_prefix + message)
+                    print(screen_prefix + message)
+
+                    use = section.getboolean('use_prev_fitpar')
+                    xorder      = (section.getint('xorder'), None)[use]
+                    yorder      = (section.getint('yorder'), None)[use]
+                    maxiter     = (section.getint('maxiter'), None)[use]
+                    clipping    = (section.getfloat('clipping'), None)[use]
+                    window_size = (section.getint('window_size'), None)[use]
+                    q_threshold = (section.getfloat('q_threshold'), None)[use]
+
+                    calib = recalib(spec,
+                        figfilename      = wlcalib_fig,
+                        title            = title,
+                        ref_spec         = ref_spec,
+                        linelist         = section.get('linelist'),
+                        aperture_koffset = aperture_koffset,
+                        pixel_koffset    = pixel_koffset,
+                        ref_calib        = ref_calib,
+                        xorder           = xorder,
+                        yorder           = yorder,
+                        maxiter          = maxiter,
+                        clipping         = clipping,
+                        window_size      = window_size,
+                        q_threshold      = q_threshold,
+                        direction        = direction,
+                        )
             else:
                 message = 'No database searching. Identify lines manually'
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
+
+                # do not search the database
+                calib = wlcalib(spec,
+                    figfilename   = wlcalib_fig,
+                    title         = title,
+                    identfilename = section.get('ident_file', None),
+                    linelist      = section.get('linelist'),
+                    window_size   = section.getint('window_size'),
+                    xorder        = section.getint('xorder'),
+                    yorder        = section.getint('yorder'),
+                    maxiter       = section.getint('maxiter'),
+                    clipping      = section.getfloat('clipping'),
+                    q_threshold   = section.getfloat('q_threshold'),
+                    )
+                message = ('Wavelength calibration finished.'
+                            '(k, offset) = ({}, {})'.format(
+                            calib['k'], calib['offset']))
+                logger.info(logger_prefix + message)
 
             # then use this thar as reference
             ref_calib = calib
@@ -755,168 +857,41 @@ def reduce_rawdata():
         # pack to calib_lst
         calib_lst[frameid] = calib
 
-    exit()
-    ################# trace ##################
-    # fiter flat frames
-    filterfunc = lambda item: item['object'] is not np.ma.masked and \
-                        item['object'].lower()=='flat' and \
-                        item['speed'].lower()=='slow'
-    logitem_lst = list(filter(filterfunc, logtable))
+    # print fitting summary
+    fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
+    section = config['reduce.wlcalib']
+    auto_selection = section.getboolean('auto_selection')
 
-    nflat = len(logitem_lst)
+    if auto_selection:
+        rms_threshold    = section.getfloat('rms_threshold', 0.005)
+        group_contiguous = section.getboolean('group_contiguous', True)
+        time_diff        = section.getfloat('time_diff', 120)
 
-    flat_filename    = os.path.join(midpath, 'flat.fits')
-    aperset_filename = os.path.join(midpath, 'trace.trc')
-    aperset_regname  = os.path.join(midpath, 'trace.reg')
-    trace_figname    = os.path.join(figpath, 'trace.{}'.format(fig_format))
-    profile_filename = os.path.join(midpath, 'profile.fits')
+        ref_calib_lst = select_calib_auto(calib_lst,
+                            rms_threshold    = rms_threshold,
+                            group_contiguous = group_contiguous,
+                            time_diff        = time_diff,
+                        )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
 
-    if mode=='debug' and os.path.exists(flat_filename) \
-        and os.path.exists(aperset_filename) \
-        and os.path.exists(profile_filename):
-        pass
+        # print ThAr summary and selected calib
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            if calib['fileid'] in ref_fileid_lst:
+                string = '\033[91m{} [selected]\033[0m'.format(string)
+            print(string)
     else:
-        data_lst = []
-        head_lst = []
-        exptime_lst = []
-        obsdate_lst = []
+        # print the fitting summary
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            print(string)
 
-        print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
-        fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
-        head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
-                    'obsdate', 'N(sat)', 'Q95')
+        promotion = 'Select References: '
+        ref_calib_lst = select_calib_manu(calib_lst,
+                            promotion = promotion)
 
-        for iframe, logitem in enumerate(logitem_lst):
-            fileid = logitem['fileid']
-            # read each individual flat frame
-            fname = '{}.fits'.format(fileid)
-            filename = os.path.join(rawpath, fname)
-            data, head = fits.getdata(filename, header=True)
-            exptime_lst.append(head[exptime_key])
-            obsdate_lst.append(dateutil.parser.parse(head[statime_key]))
-
-            # correct overscan for flat
-            data = correct_overscan(data, head)
-
-            # correct bias for flat, if has bias
-            if bias is None:
-                message = 'No bias. skipped bias correction'
-            else:
-                data = data - bias
-                message = 'Bias corrected'
-            logger.info(message)
-
-            data_lst.append(data)
-
-        if nflat == 1:
-            flat_data = data_lst[0]
-        else:
-            data_lst = np.array(data_lst)
-            flat_data = combine_images(data_lst,
-                            mode       = 'mean',
-                            upper_clip = 10,
-                            maxiter    = 5,
-                            maskmode   = (None, 'max')[nflat>3],
-                            ncores     = ncores,
-                            )
-
-        # determine flat name (??sec or ??-??sec)
-        if len(set(exptime_lst))==1:
-            flatname = '{:g}sec'.format(exptime_lst[0])
-        else:
-            flatname = '{:g}-{:g}sec'.format(
-                    min(exptime_lst), max(exptime_lst))
-
-        flat_head = fits.Header()
-
-        # calculat the mean exposure time and write it to the new header
-        exptime = np.mean(exptime_lst)
-        flat_head[exptime_key] = exptime
-
-        # calculate the mean start time and write it to the new header
-        delta_t_lst = [(t-obsdate_lst[0]).total_seconds() for t in obsdate_lst]
-        mean_delta_t = datetime.timedelta(seconds=np.mean(delta_t_lst))
-        mean_obsdate = obsdate_lst[0] + mean_delta_t
-        flat_head[statime_key] = mean_obsdate.isoformat()
-
-    flat_mask = np.zeros_like(flat_data, dtype=np.int16)
-
-    tracefig = TraceFigure(datashape=flat_data.shape)
-    alignfig = AlignFigure()    # create the align figure
-
-    section = config['reduce.trace']
-    aperset = find_apertures(flat_data, flat_mask,
-                scan_step  = section.getint('scan_step'),
-                minimum    = section.getfloat('minimum'),
-                separation = section.get('separation'),
-                align_deg  = section.getint('align_deg'),
-                conv_core  = 0,
-                fill       = False,
-                filling    = section.getfloat('filling'),
-                recenter   = 'threshold',
-                degree     = section.getint('degree'),
-                display    = section.getboolean('display'),
-                fig_trace  = tracefig,
-                fig_align  = alignfig,
-                )
-
-    # save the trace figure
-    tracefig.adjust_positions()
-    title = 'Order tracing using Flat'
-    tracefig.suptitle(title, fontsize=15)
-    trace_figname = os.path.join(figpath, 'trace.{}'.format(fig_format))
-    tracefig.savefig(trace_figname)
-    tracefig.close()
-
-    # save the alignment figure
-    alignfig.adjust_axes()
-    title = 'Order Alignment for {}'.format(fname)
-    alignfig.suptitle(title, fontsize=12)
-    align_figname = os.path.join(figpath, 'align.{}'.format(fig_format))
-    alignfig.savefig(align_figname)
-    alignfig.close()
-
-    aperset_filename = os.path.join(midpath, 'trace.trc')
-    aperset_regname  = os.path.join(midpath, 'trace.reg')
-
-    aperset.save_txt(aperset_filename)
-    aperset.save_reg(aperset_regname)
-
-
-    section = config['reduce.flat']
-
-    p1, p2, pstep = -10, 10, 0.1
-    profile_x = np.arange(p1, p2+1e-4, pstep)
-    disp_x_lst = np.arange(48, ndisp, 500)
-
-    fig_spatial = SpatialProfileFigure()
-    flat_sens, flatspec_lst, profile_lst = get_flat(
-            data            = flat_data,
-            mask            = flat_mask,
-            apertureset     = aperset,
-            nflat           = nflat,
-            q_threshold     = section.getfloat('q_threshold'),
-            smooth_A_func   = smooth_aperpar_A,
-            smooth_c_func   = smooth_aperpar_c,
-            smooth_bkg_func = smooth_aperpar_bkg,
-            mode            = 'debug',
-            fig_spatial     = fig_spatial,
-            flatname        = flatname,
-            profile_x       = profile_x,
-            disp_x_lst      = disp_x_lst,
-            )
-    figname = os.path.join(figpath, 'spatial_profile.png')
-    title = 'Spatial Profile of Flat'
-    fig_spatial.suptitle(title)
-    fig_spatial.savefig(figname)
-    fig_spatial.close()
-
-
-
-
-    # pack results and save to fits
-    hdu_lst = fits.HDUList([
-                fits.PrimaryHDU(flat_data, flat_head),
-                fits.ImageHDU(flat_mask),
-                ])
-    hdu_lst.writeto(flat_filename, overwrite=True)
+    ######## Extract 1d spectra of flat fielding ######
