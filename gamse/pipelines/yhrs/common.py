@@ -1,5 +1,12 @@
+import os
+import logging
+logger = logging.getLogger(__name__)
+import dateutil.parser
+
 import numpy as np
 import scipy.optimize as opt
+import astropy.io.fits as fits
+from astropy.table import Table
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 from matplotlib.backends.backend_agg import FigureCanvasAgg
@@ -111,9 +118,9 @@ def select_calib_from_database(index_file, dateobs):
 
     # select the closest ThAr
     timediff = [(dateutil.parser.parse(t)-input_date).total_seconds()
-                for t in calibtable[mask]['obsdate']]
+                for t in calibtable['obsdate']]
     irow = np.abs(timediff).argmin()
-    row = calibtable[mask][irow]
+    row = calibtable[irow]
     fileid = row['fileid']  # selected fileid
     md5    = row['md5']
 

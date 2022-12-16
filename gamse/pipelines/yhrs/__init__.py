@@ -52,6 +52,7 @@ def make_config():
     config.set('data', 'rawpath',      'rawdata')
     config.set('data', 'statime_key',  statime_key)
     config.set('data', 'exptime_key',  exptime_key)
+    config.set('data', 'direction',    'xr+')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
