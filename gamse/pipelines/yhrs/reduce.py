@@ -634,22 +634,13 @@ def reduce_rawdata():
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
-        '''
-        # temporarily added
-        hdu_lst = fits.HDUList([
-            fits.PrimaryHDU(header=head),
-            fits.BinTableHDU(spec),
-            ])
-        hdu_lst.writeto('wlcalib_{}_ods.fits'.format(fileid), overwrite=True)
-        exit()
-        '''
-
         figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
         wlcalib_fig = os.path.join(figpath, figname)
 
         section = config['reduce.wlcalib']
 
-        title = 'Wavelength Indentification for {}.fits'.format(fileid)
+        title = ('Wavelength Identification for {}.fits '
+                 '(exptime = {} sec)'.format(fileid, exptime))
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
@@ -836,7 +827,7 @@ def reduce_rawdata():
 
         # plot fwhm map
         fwhm_fig = FWHMMapFigure(spec, identlist, aperset,
-                fwhm_range=(3,8))
+                fwhm_range=(6,12), fwhmrv_range=(8,15))
         title = 'FWHM Map for {}'.format(fileid)
         fwhm_fig.suptitle(title, fontsize=13)
         figname = 'fwhm_{}.{}'.format(fileid, fig_format)
@@ -846,7 +837,7 @@ def reduce_rawdata():
 
         # plot resolution map
         reso_fig = ResolutionFigure(spec, identlist, aperset,
-                resolution_range=(4e4, 6e4))
+                resolution_range=(1.5e4, 3.5e4))
         title = 'Resolution Map for {}'.format(fileid)
         reso_fig.suptitle(title, fontsize=13)
         figname = 'resolution_{}.{}'.format(fileid, fig_format)
@@ -863,7 +854,7 @@ def reduce_rawdata():
     auto_selection = section.getboolean('auto_selection')
 
     if auto_selection:
-        rms_threshold    = section.getfloat('rms_threshold', 0.005)
+        rms_threshold    = section.getfloat('rms_threshold', 0.008)
         group_contiguous = section.getboolean('group_contiguous', True)
         time_diff        = section.getfloat('time_diff', 120)
 
