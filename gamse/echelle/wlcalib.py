@@ -25,12 +25,27 @@ from ..utils.download     import get_file
 from .trace import load_aperture_set_from_header
 
 # Data format for identified line table
-identlinetype = np.dtype({
-    'names':  ['aperture','order','pixel','wavelength','amplitude',
-                'fwhm','q','mask','residual','method'],
-    'formats':[np.int16, np.int16, np.float32, np.float64, np.float32,
-                np.float32, np.float32, np.int16, np.float64, 'S1'],
-    })
+
+def get_identlinetype():
+    types = [
+            ('aperture',    np.int16),
+            ('order',       np.int16),
+            ('wavelength',  np.float64),
+            ('i1',          np.int16),
+            ('i2',          np.int16),
+            ('pixel',       np.float32),
+            ('amplitude',   np.float32),
+            ('fwhm',        np.float32),
+            ('background',  np.float32),
+            ('q',           np.float32),
+            ('mask',        np.int16),
+            ('residual',    np.float64),
+            ('method',      'S1'),
+            ]
+    names, formats = list(zip(*types))
+    return np.dtype({'names': names, 'formats': formats})
+
+identlinetype = get_identlinetype()
 
 def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
         fit_filter=None):
@@ -1059,8 +1074,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                 identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            item = np.array((aperture, order, center, line[0], amplitude, fwhm,
-                            q, True, 0.0, 'a'), dtype=identlinetype)
+            item = np.array((aperture, order, line[0], i1, i2, center,
+                            amplitude, fwhm, back, q, True, 0.0, 'a'),
+                            dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
             has_insert = True
@@ -2257,8 +2273,14 @@ class FWHMMapFigure(Figure):
             aper_fwhmrv_lst[aper][0].append(center)
             aper_fwhmrv_lst[aper][1].append(fwhmrv)
 
+
+        # determine the fwhm range
         if fwhm_range is None:
-            fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
+            #fwhm1, fwhm2 = min(fwhm_lst), max(fwhm_lst)
+            _fwhm1 = np.percentile(fwhm_lst, 5)
+            _fwhm2 = np.percentile(fwhm_lst, 95)
+            self.ax3.plot([-100, -100], [_fwhm1, _fwhm2], c='w', zorder=-10)
+            fwhm1, fwhm2 = self.ax3.get_ylim()
         else:
             fwhm1, fwhm2 = fwhm_range
 
@@ -2272,6 +2294,9 @@ class FWHMMapFigure(Figure):
         self.ax1.set_ylim(0, shape[0]-1)
         self.ax1.set_xlabel('X (pixel)')
         self.ax1.set_ylabel('Y (pixel)')
+        # add grid
+        self.ax1.grid(True, ls='--', lw=0.5)
+        self.ax1.set_axisbelow(True)
 
         # ax3: plot x vs. fwhm for different apertures
         for aper, (_x_lst, _fwhm_lst) in aper_fwhm_lst.items():
@@ -2282,6 +2307,9 @@ class FWHMMapFigure(Figure):
         self.ax3.set_xticklabels([])
         #self.ax3.set_xlabel('X (pixel)')
         self.ax3.set_ylabel('FWHM (pixel)')
+        # add grid
+        self.ax3.grid(True, ls='--', lw=0.5)
+        self.ax3.set_axisbelow(True)
 
         # ax4: plot x vs. fwhm in rv for different apertures
         for aper, (_x_lst, _fwhmrv_lst) in aper_fwhmrv_lst.items():
@@ -2291,12 +2319,19 @@ class FWHMMapFigure(Figure):
         self.ax4.set_xlabel('X (pixel)')
         self.ax4.set_ylabel('FWHM (km/s)')
 
+        # determine the range of fwhm_rv
         if fwhmrv_range is None:
-            fwhmrv1, fwhmrv2 = min(fwhmrv_lst), max(fwhmrv_lst)
+            #fwhmrv1, fwhmrv2 = min(fwhmrv_lst), max(fwhmrv_lst)
+            _fwhmrv1 = np.percentile(fwhmrv_lst, 5)
+            _fwhmrv2 = np.percentile(fwhmrv_lst, 95)
+            self.ax4.plot([-100, -100], [_fwhmrv1, _fwhmrv2], c='w', zorder=-10)
+            fwhmrv1, fwhmrv2 = self.ax4.get_ylim()
         else:
             fwhmrv1, fwhmrv2 = fwhmrv_range
         self.ax4.set_ylim(fwhmrv1, fwhmrv2)
-
+        # add grid
+        self.ax4.grid(True, ls='--', lw=0.5)
+        self.ax4.set_axisbelow(True)
 
         # ax5: plot FWHM histograms
         self.ax5.hist(fwhm_lst, bins=np.arange(fwhm1, fwhm2, 0.1))
@@ -2370,6 +2405,11 @@ class ResolutionFigure(Figure):
 
         if resolution_range is None:
             resolution1, resolution2 = min(resolution_lst), max(resolution)
+            _resolution1 = np.percentile(resolution_lst, 5)
+            _resolution2 = np.percentile(resolution_lst, 95)
+            self.ax3.plot([-100, -100], [_resolution1, _resolution2],
+                    c='w', zorder=-10)
+            resolution1, resolution2 = self.ax3.get_ylim()
         else:
             resolution1, resolution2 = resolution_range
 
@@ -2384,7 +2424,9 @@ class ResolutionFigure(Figure):
         self.ax1.set_ylim(0, shape[0]-1)
         self.ax1.set_xlabel('X (pixel)')
         self.ax1.set_ylabel('Y (pixel)')
-
+        # add grid
+        self.ax1.grid(True, ls='--', lw=0.5)
+        self.ax1.set_axisbelow(True)
 
         # ax3: plot x vs. resolution
         for aper, (_x_lst, _resolution_lst) in aper_resolution_lst.items():
@@ -2394,6 +2436,9 @@ class ResolutionFigure(Figure):
         self.ax3.set_ylim(resolution1, resolution2)
         self.ax3.set_xlabel('X (pixel)')
         self.ax3.set_ylabel('Resolution')
+        # add grid
+        self.ax3.grid(True, ls='--', lw=0.5)
+        self.ax3.set_axisbelow(True)
 
         # ax4: plot wave vs. resolution
         self.ax4.plot(wave_lst, resolution_lst, 'o',
@@ -2401,6 +2446,9 @@ class ResolutionFigure(Figure):
         self.ax4.set_ylim(resolution1, resolution2)
         self.ax4.set_xlabel(u'Wavelength (\xc5)')
         self.ax4.set_ylabel('Resolution')
+        # add grid
+        self.ax4.grid(True, ls='--', lw=0.5)
+        self.ax4.set_axisbelow(True)
 
     def close(self):
         plt.close(self)
