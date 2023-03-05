@@ -11,6 +11,75 @@ from matplotlib.figure import Figure
 from ...echelle.imageproc import combine_images
 from ...echelle.trace import TraceFigureCommon
 
+
+def get_metadata(filename):
+    """Get meta data of HIRES raw FITS file.
+
+    Args:
+        filename(str):
+
+    Returns:
+        dict
+    """
+    # read data
+    fname = os.path.basename(filename)
+
+    head0 = fits.getheader(filename)
+    frame      = head0.get('FRAME', '')
+    target     = head0.get('TARGNAME', '')
+    frameno    = head0.get('FRAMENO')
+    equinox    = head0.get('EQUINOX', '')
+    ra         = head0.get('RA', '')
+    dec        = head0.get('DEC', '')
+    date       = head0.get('DATE-OBS')
+    utc        = head0.get('UTC', head0.get('UT'))
+    progid     = head0.get('PROGID')
+    progpi     = head0.get('PROGPI')
+    exptime    = head0.get('ELAPTIME')
+    i2in       = head0.get('IODIN', False)
+    i2out      = head0.get('IODOUT', True)
+    imgtype    = head0.get('IMAGETYP')
+    deckname   = head0.get('DECKNAME', '')
+    filter1    = head0.get('FIL1NAME', '')
+    filter2    = head0.get('FIL2NAME', '')
+    snr        = head0.get('SIG2NOIS')
+    slit_len   = head0.get('SLITLEN')
+    slit_wid   = head0.get('SLITWIDT')
+    resolution = head0.get('SPECRES')
+    pix_scale  = head0.get('SPATSCAL')
+
+    # combine date and utc strings
+    obsdate = '{}T{}'.format(date, utc)
+
+    # check if i2in and i2out are consistent
+    if i2in + i2out != 1:
+        print(' warning: %s i2in = %d, i2out = %d'%(fname,i2in,i2out))
+    i2 = str(i2in)[0]
+
+    return {
+            'frame': frame,
+            'target': target,
+            'frameno': frameno,
+            'equinox': equinox,
+            'ra':  ra,
+            'dec': dec,
+            'obsdate': obsdate,
+            'progid':  progid,
+            'progpi':  progpi,
+            'exptime': exptime,
+            'i2': i2,
+            'imgtype': imgtype,
+            'deck': deckname,
+            'filter1': filter1,
+            'filter2': filter2,
+            'snr': snr,
+            'slit_len': slit_len,
+            'slit_wid': slit_wid,
+            'resolution': resolution,
+            'pix_scale': pix_scale,
+            }
+
+
 def print_wrapper(string, item):
     """A wrapper for log printing for Keck/HIRES pipeline.
 
