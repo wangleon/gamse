@@ -661,7 +661,7 @@ def mosaic_images(image_lst, mosaic_aperset):
             )
 
     # get mosaic mask for each tracename
-    maskdata_lst = {name: np.zeros(shape, dtype=np.bool)
+    maskdata_lst = {name: np.zeros(shape, dtype=bool)
                     for name in image_lst.keys()}
 
     h, w = shape
@@ -831,7 +831,7 @@ def default_smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
             ypiece = f(xpiece)
         # now xpiece and ypiece are ready
 
-        _m = np.ones_like(ypiece, dtype=np.bool)
+        _m = np.ones_like(ypiece, dtype=bool)
         for ite in range(3):
             f = intp.InterpolatedUnivariateSpline(xpiece[_m], ypiece[_m], k=3)
             ypiece2 = f(xpiece)
@@ -1295,7 +1295,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
                 # iterative fitting using gaussian + bkg function
                 p0 = [ydata.max()-ydata.min(), (b1+b2)/2., 3.0, ydata.min()]
-                #_m = np.ones_like(xdata, dtype=np.bool)
+                #_m = np.ones_like(xdata, dtype=bool)
                 _m = (~_satmask)*(~_badmask)
                 for i in range(10):
                     p1, succ = opt.leastsq(errfunc, p0,
@@ -1352,7 +1352,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
         # construct slit function for this column
         step = 0.1
-        _m = np.ones_like(all_x, dtype=np.bool)
+        _m = np.ones_like(all_x, dtype=bool)
         for k in range(20):
             #find y nodes
             _xnodes, _ynodes = [], [] # pre-initialize nodes list.
@@ -1569,7 +1569,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
                 continue
 
             # find A, k, c, bkg
-            #_m = np.ones_like(xdata, dtype=np.bool)
+            #_m = np.ones_like(xdata, dtype=bool)
             _m = (~_satmask)*(~_badmask)
             for ite in range(10):
                 p, ier = opt.leastsq(errfunc2, p0,
@@ -2024,7 +2024,7 @@ def _get_fiber_flat_aperture(data, mask, aper, positions, bounds,
             continue
 
         # find A, k, c, bkg
-        #_m = np.ones_like(xdata, dtype=np.bool)
+        #_m = np.ones_like(xdata, dtype=bool)
         _m = (~_satmask)*(~_badmask)
         for ite in range(10):
             p, ier = opt.leastsq(errfunc2, p0,
@@ -2332,7 +2332,7 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
 
                 # iterative fitting using gaussian + bkg function
                 p0 = [ydata.max()-ydata.min(), (b1+b2)/2., 3.0, ydata.min()]
-                #_m = np.ones_like(xdata, dtype=np.bool)
+                #_m = np.ones_like(xdata, dtype=bool)
                 _m = (~_satmask)*(~_badmask)
                 for i in range(10):
                     p1, succ = opt.leastsq(errfunc, p0,
@@ -2389,7 +2389,7 @@ def get_fiber_flat_mp(data, mask, apertureset, nflat, slit_step=64,
 
         # construct slit function for this column
         step = 0.1
-        _m = np.ones_like(all_x, dtype=np.bool)
+        _m = np.ones_like(all_x, dtype=bool)
         for k in range(20):
             #find y nodes
             _xnodes, _ynodes = [], [] # pre-initialize nodes list.
@@ -2607,7 +2607,7 @@ def default_smooth_flux(x, y, npoints):
     """
     deg = 7
     maxiter = 10
-    mask = np.ones_like(y, dtype=np.bool)
+    mask = np.ones_like(y, dtype=bool)
     for niter in range(maxiter):
         coeff = np.polyfit(x[mask]/npoints, y[mask], deg=deg)
         yfit = np.polyval(coeff, x/npoints)
@@ -2682,7 +2682,7 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         position = aper_loc.position(newx)
         lower_line = position - lower_limit
         upper_line = position + upper_limit
-        mask = np.zeros_like(data, dtype=np.bool)
+        mask = np.zeros_like(data, dtype=bool)
         mask[:,d1:d2] = (yy[:,d1:d2] > lower_line)*(yy[:,d1:d2] < upper_line)
         gap1d = (np.int32(gap_mask)*mask).sum(axis=0)
         sat1d = (np.int32(sat_mask)*mask).sum(axis=0)
@@ -2723,7 +2723,7 @@ def get_slit_flat(data, mask, apertureset, nflat, transpose=False,
         fluxmask = yfit > q_threshold
 
         # build a 2-D mask with every row equal to fluxmask
-        imgmask = np.zeros_like(data, dtype=np.bool)
+        imgmask = np.zeros_like(data, dtype=bool)
         imgmask[:,d1:d2] = fluxmask
 
         # mark the pixels within the the current aperture

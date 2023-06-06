@@ -455,7 +455,7 @@ def fit_background(shape, xnodes, ynodes, znodes, xorder=2, yorder=2,
     _messages = [
         'Polynomial Background Fitting Xorder=%d, Yorder=%d:'%(xorder, yorder)
         ]
-    mask = np.ones_like(zfit, dtype=np.bool)
+    mask = np.ones_like(zfit, dtype=bool)
 
     for niter in range(maxiter):
         coeff = polyfit2d(xfit[mask], yfit[mask], zfit[mask],
@@ -505,7 +505,7 @@ def interpolate_background(shape, xnodes, ynodes, znodes):
     yy, xx = np.mgrid[:h:, :w:]
     background_data = intp.griddata((xnodes, ynodes), znodes, (xx, yy),
             rescale=True, method='cubic')
-    mask = np.ones_like(znodes, dtype=np.bool)
+    mask = np.ones_like(znodes, dtype=bool)
 
     # fix non values
     notnan_mask = ~np.isnan(background_data)
@@ -574,7 +574,7 @@ def find_background(data, mask, aperturesets, ncols, distance,
 
     for x in cols:
         xsection = np.median(data[:,x-1:x+2], axis=1)
-        intermask = np.ones(h, dtype=np.bool)
+        intermask = np.ones(h, dtype=bool)
         allimin, _ = get_local_minima(xsection)
         allmin = np.array([v in allimin for v in np.arange(h)])
 
@@ -792,7 +792,7 @@ def simple_debackground(data, mask, xnodes, smooth=20, maxiter=10, deg=3):
         allmin  = allmin[m]
 
         #allimin, allmin = get_local_minima(section)
-        #mask = np.ones_like(allmin, dtype=np.bool)
+        #mask = np.ones_like(allmin, dtype=bool)
         fitmask = (allmin > 0)*(sect_mask[allimin]==0)
         for i in range(maxiter):
             coeff = np.polyfit(allimin[fitmask]/ny, np.log(allmin[fitmask]),
