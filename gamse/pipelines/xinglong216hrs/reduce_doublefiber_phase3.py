@@ -26,8 +26,8 @@ from ...echelle.wlcalib import (wlcalib, recalib, get_calib_from_header,
                                 select_calib_auto, select_calib_manu,
                                 )
 from .common import (get_bias, get_mask, correct_overscan, 
-                     select_calib_from_database,
-                     TraceFigure, BackgroundFigure,SpatialProfileFigure,
+                     TraceFigure, AlignFigure, BackgroundFigure,
+                     SpatialProfileFigure,
                      select_calib_from_database, BrightnessProfileFigure,
                      )
 from .flat import (smooth_aperpar_A, smooth_aperpar_k, smooth_aperpar_c,
@@ -148,7 +148,9 @@ def reduce_doublefiber_phase3(config, logtable):
 
 
         # create the trace figure
-        tracefig = TraceFigure()
+        tracefig = TraceFigure()    # create the trace figure
+        alignfig = AlignFigure()    # create the align figure
+
         section = config['reduce.trace']
         aperset = find_apertures(data, mask,
                     scan_step  = section.getint('scan_step'),
@@ -157,38 +159,42 @@ def reduce_doublefiber_phase3(config, logtable):
                     align_deg  = section.getint('align_deg'),
                     filling    = section.getfloat('filling'),
                     degree     = section.getint('degree'),
+                    fill       = True,
+                    fill_tol   = 10,
                     display    = section.getboolean('display'),
-                    fig        = tracefig,
+                    fig_trace  = tracefig,
+                    fig_align  = alignfig,
                     )
-
-        aperset.fill(tol=10)
 
         # save the trace figure
         tracefig.adjust_positions()
         title = 'Trace for Fiber {}'.format(fiber)
         tracefig.suptitle(title, fontsize=15)
         trace_figname = os.path.join(figpath,
-                        'trace_{}.{}'.format(fiber, fig_format))
+                        'trace.{}.{}'.format(fiber, fig_format))
         tracefig.savefig(trace_figname)
+        tracefig.close()
 
+        # save the alignment figure
+        alignfig.adjust_axes()
+        title = 'Order Alignment for Fiber {}'.format(fiber)
+        alignfig.suptitle(title, fontsize=12)
+        align_figname = os.path.join(figpath,
+                        'align.{}.{}'.format(fiber, fig_format))
+        alignfig.savefig(align_figname)
+        alignfig.close()
+
+        # save trace results as trc file
         aperset_filename = os.path.join(midpath,
                         'trace_{}.trc'.format(fiber))
         aperset.save_txt(aperset_filename)
 
+        # save trace results as reg file
         aperset_regname = os.path.join(midpath,
                         'trace_{}.reg'.format(fiber))
         aperset.save_reg(aperset_regname, fiber=fiber,
                         color={'A':'green','B':'yellow'}[fiber])
 
-        #newaperset = ApertureSet(shape=(ny, nx))
-        #count = 0
-        #for aper, aperloc in sorted(aperset.items()):
-        #    ypos = aperloc.position(nx//2)
-        #    if ypos > 154:
-        #        newaperset[count] = aperloc
-        #        count += 1
-
-        #master_aperset[fiber] = newaperset
         master_aperset[fiber] = aperset
 
     ################## combine the double-fiber flats ########

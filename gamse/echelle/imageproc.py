@@ -39,7 +39,7 @@ def _combine_clipdata(data, mask=None, mode='mean', upper_clip=None,
     # along the first dimension
 
     if maskmode is None:
-        mask2 = np.zeros_like(data, dtype=np.bool)
+        mask2 = np.zeros_like(data, dtype=bool)
     elif maskmode == 'max':
         mask2 = (np.mgrid[0:nz,0:ny,0:nx][0] == data.argmax(axis=0))
     elif maskmode == 'min':
@@ -55,21 +55,21 @@ def _combine_clipdata(data, mask=None, mode='mean', upper_clip=None,
         mdata = np.ma.masked_array(data, mask=mask)
         mean = mdata.mean(axis=0, dtype=np.float64).data
         std  = mdata.std(axis=0, dtype=np.float64).data
-        new_mask = np.ones_like(mask, dtype=np.bool)
+        new_mask = np.ones_like(mask, dtype=bool)
         for i in np.arange(nz):
             chunk = data[i,:,:]
     
             # parse upper clipping
             if upper_clip is None:
                 # mask1 = [False....]
-                mask1 = np.zeros_like(chunk, dtype=np.bool)
+                mask1 = np.zeros_like(chunk, dtype=bool)
             else:
                 mask1 = chunk > mean + abs(upper_clip)*std
     
             # parse lower clipping
             if lower_clip is None:
                 # mask2 = [False....]
-                mask2 = np.zeros_like(chunk, dtype=np.bool)
+                mask2 = np.zeros_like(chunk, dtype=bool)
             else:
                 mask2 = chunk < mean - abs(lower_clip)*std
     
@@ -170,7 +170,7 @@ def combine_images(data, mask=None, mode='mean', upper_clip=None,
         async_result_lst = {}
 
         if mask is None:
-            mask = np.zeros_like(data, dtype=np.bool)
+            mask = np.zeros_like(data, dtype=bool)
 
         # segmentation loop starts here
         for y1 in np.arange(0, nY, dy):

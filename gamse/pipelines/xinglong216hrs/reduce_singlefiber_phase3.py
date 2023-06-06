@@ -202,7 +202,7 @@ def reduce_singlefiber_phase3(config, logtable):
         exptime = np.mean(exptime_lst)
         flat_head[exptime_key] = exptime
 
-        # calculate the mean start time and write it to th new header
+        # calculate the mean start time and write it to the new header
         delta_t_lst = [(t-obsdate_lst[0]).total_seconds() for t in obsdate_lst]
         mean_delta_t = datetime.timedelta(seconds=np.mean(delta_t_lst))
         mean_obsdate = obsdate_lst[0] + mean_delta_t
@@ -303,23 +303,26 @@ def reduce_singlefiber_phase3(config, logtable):
 
             # get the indices of not NaN values in flatspec
             idx_notnan = np.nonzero(~np.isnan(flatspec))[0]
-            # use interpolate to fill the NaN values
-            f = intp.InterpolatedUnivariateSpline(
-                        idx_notnan, flatspec[idx_notnan], k=3)
-            # get the first and last not NaN values
-            i1 = idx_notnan[0]
-            i2 = idx_notnan[-1]+1
-            newx = np.arange(i1, i2)
-            newspec = f(newx)
-            # smooth the spec with savgol filter
-            newspec = savgol_filter(newspec,
-                            window_length = 101,
-                            polyorder     = 3,
-                            mode          = 'mirror',
-                            )
+            if idx_notnan.size > n/2:
+                # use interpolate to fill the NaN values
+                f = intp.InterpolatedUnivariateSpline(
+                            idx_notnan, flatspec[idx_notnan], k=3)
+                # get the first and last not NaN values
+                i1 = idx_notnan[0]
+                i2 = idx_notnan[-1]+1
+                newx = np.arange(i1, i2)
+                newspec = f(newx)
+                # smooth the spec with savgol filter
+                newspec = savgol_filter(newspec,
+                                window_length = 101,
+                                polyorder     = 3,
+                                mode          = 'mirror',
+                                )
+                flatspec[i1:i2] = newspec
+
             row = (aper, 0, n,
                     np.zeros(n, dtype=np.float64),  # wavelength
-                    newspec,                        # flux
+                    flatspec,                        # flux
                     np.zeros(n, dtype=np.float32),  # error
                     np.zeros(n, dtype=np.float32),  # background
                     np.zeros(n, dtype=np.int16),    # mask
@@ -340,7 +343,6 @@ def reduce_singlefiber_phase3(config, logtable):
                     fits.BinTableHDU(flat_spec),
                     ])
         hdu_lst.writeto(flat_filename, overwrite=True)
-
 
     #################### Extract ThAr #######################
 
@@ -431,7 +433,7 @@ def reduce_singlefiber_phase3(config, logtable):
 
         section = config['reduce.wlcalib']
 
-        title = 'Wavelength Indentification for {}.fits'.format(fileid)
+        title = 'Wavelength Identification for {}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
@@ -986,9 +988,10 @@ def reduce_singlefiber_phase3(config, logtable):
                 mask  = row['mask']
                 #newflux = np.array([np.NaN]*flux.size)
 
+                # smooth the flatspec 
                 m = flat_spec['aperture']==aper
-                cont = flat_spec[m][0]['flux']
-                flux2 = flux/cont
+                blaze = flat_spec[m][0]['flux']
+                flux2 = flux/blaze
                 normc = np.percentile(flux2[n//4:n//4*3], 98)
                 newflux = flux2/normc
 

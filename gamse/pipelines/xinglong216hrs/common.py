@@ -440,7 +440,7 @@ def get_badpixel_mask(shape, bins):
     The bad pixels are found *empirically*.
         
     """
-    mask = np.zeros(shape, dtype=np.bool)
+    mask = np.zeros(shape, dtype=bool)
     if bins == (1, 1) and shape == (4136, 4096):
         ny, nx = shape
 
@@ -1165,7 +1165,7 @@ def get_interorder_background(data, mask=None, apertureset=None, **kwargs):
     plot_x = []
 
     # construct a mask of strong thar lines
-    strong_mask = np.zeros_like(data, dtype=np.bool)
+    strong_mask = np.zeros_like(data, dtype=bool)
     for (x, y) in tharpollution_lst:
         strong_mask[0:y+60, x-5:x+5] = True
 

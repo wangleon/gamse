@@ -52,6 +52,7 @@ def make_config():
     config.set('data', 'rawpath',      'rawdata')
     config.set('data', 'statime_key',  statime_key)
     config.set('data', 'exptime_key',  exptime_key)
+    config.set('data', 'direction',    'xr+')
 
     config.add_section('reduce')
     config.set('reduce', 'midpath',     'midproc')
@@ -88,6 +89,8 @@ def make_config():
     sectname = 'reduce.flat'
     config.add_section(sectname)
     config.set(sectname, 'slit_step',       str(256))
+    config.set(sectname, 'q_threshold',     str(50))
+    config.set(sectname, 'mosaic_maxcount', str(50000))
 
     # section of wavelength calibration
     sectname = 'reduce.wlcalib'
@@ -99,10 +102,10 @@ def make_config():
     config.set(sectname, 'xorder',           str(3))
     config.set(sectname, 'yorder',           str(3))
     config.set(sectname, 'maxiter',          str(5))
-    config.set(sectname, 'clipping',         str(3))
+    config.set(sectname, 'clipping',         str(2.5))
     config.set(sectname, 'q_threshold',      str(10))
     config.set(sectname, 'auto_selection',   'yes')
-    config.set(sectname, 'rms_threshold',    str(0.006))
+    config.set(sectname, 'rms_threshold',    str(0.008))
     config.set(sectname, 'group_contiguous', 'yes')
     config.set(sectname, 'time_diff',        str(120))
 

@@ -9,6 +9,7 @@ setup(
     author       = 'Liang Wang',
     author_email = 'lwang@mpe.mpg.de',
     license      = 'Apache-2.0',
+    zip_safe     = False,
     scripts      = ['scripts/gamse',
                     'scripts/gamse_ident',
                     ],

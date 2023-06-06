@@ -11,9 +11,93 @@ from astropy.table import Table
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
 from ..common import load_obslog, load_config
-from .common import print_wrapper, parse_3ccd_images
+from .common import get_metadata, print_wrapper, parse_3ccd_images
 from .reduce_pre2004 import reduce_pre2004
 from .reduce_post2004 import reduce_post2004
+
+
+def make_metatable(rawpath):
+    # prepare metatable
+    metatable = Table(dtype=[
+                        ('fileid',   'S17'),
+                        ('imgtype',  'S8'),
+                        ('frameno',  'i4'),
+                        ('target',   'S20'),
+                        ('ra',       'S11'),
+                        ('dec',      'S11'),
+                        ('equinox',  'S6'),
+                        ('exptime',  'f4'),
+                        ('i2',       'S1'),
+                        ('obsdate',  'S19'),
+                        ('deck',     'S2'),
+                        ('snr',      'f4'),
+                        ('progid',   'S10'),
+                        ('progpi',   'S15'),
+                ], masked=True)
+    pattern = '(HI\.\d{8}\.\d{5})\.fits'
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match(pattern, fname)
+        if not mobj:
+            continue
+
+        fileid = mobj.group(1)
+        filename = os.path.join(rawpath, fname)
+        meta = get_metadata(filename)
+
+        mask_ra  = meta['imgtype']!='object'
+        mask_dec = meta['imgtype']!='object'
+        mask_equ = meta['imgtype']!='object'
+
+        item = [
+                (fileid,            False),
+                (meta['imgtype'],   False),
+                (meta['frameno'],   False),
+                (meta['target'],    False),
+                (meta['ra'],        mask_ra),
+                (meta['dec'],       mask_dec),
+                (meta['equinox'],   mask_equ),
+                (meta['exptime'],   False),
+                (meta['i2'],        False),
+                (meta['obsdate'],   False),
+                (meta['deck'],      False),
+                (meta['snr'],       False),
+                (meta['progid'],    False),
+                (meta['progpi'],    False),
+                ]
+        value, mask = list(zip(*item))
+
+        metatable.add_row(value, mask=mask)
+
+        # print information
+        string_lst = [
+                fileid,
+                '{:5d}'.format(meta['frameno']),
+                '{:>8s}'.format(meta['imgtype']),
+                '{:26s}'.format(meta['target']),
+                ' '*11 if mask_ra  else '{:11s}'.format(meta['ra']),
+                ' '*11 if mask_dec else '{:11s}'.format(meta['dec']),
+                '{:6g}'.format(meta['exptime']),
+                meta['obsdate'],
+                meta['deck'],
+                '{:>6s}'.format(meta['progid']),
+                meta['progpi'],
+                ]
+        print(' '.join(string_lst))
+
+    format_metatable(metatable)
+
+    return metatable
+
+
+def format_metatable(metatable):
+    #metatable['ra'].info.format='%10.6f'
+    #metatable['dec'].info.format='%9.5f'
+    #maxlen = max([len(s) for s in metatable['imgtype']])
+    #metatable['imgtype'].info.format='%-{}s'.format(maxlen)
+    metatable['imgtype'].info.format='{:>8s}'
+    maxlen = max([len(s) for s in metatable['target']])
+    metatable['target'].info.format='%-{}s'.format(maxlen)
+
 
 def make_config():
     """Generate a config file for reducing the data taken with Keck/HIRES.
