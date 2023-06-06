@@ -202,7 +202,7 @@ def reduce_singlefiber_phase3(config, logtable):
         exptime = np.mean(exptime_lst)
         flat_head[exptime_key] = exptime
 
-        # calculate the mean start time and write it to th new header
+        # calculate the mean start time and write it to the new header
         delta_t_lst = [(t-obsdate_lst[0]).total_seconds() for t in obsdate_lst]
         mean_delta_t = datetime.timedelta(seconds=np.mean(delta_t_lst))
         mean_obsdate = obsdate_lst[0] + mean_delta_t
@@ -344,7 +344,6 @@ def reduce_singlefiber_phase3(config, logtable):
                     ])
         hdu_lst.writeto(flat_filename, overwrite=True)
 
-
     #################### Extract ThAr #######################
 
     # get the data shape
@@ -434,7 +433,7 @@ def reduce_singlefiber_phase3(config, logtable):
 
         section = config['reduce.wlcalib']
 
-        title = 'Wavelength Indentification for {}.fits'.format(fileid)
+        title = 'Wavelength Identification for {}.fits'.format(fileid)
 
         if ithar == 0:
             # this is the first ThAr frame in this observing run
