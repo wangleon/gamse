@@ -65,7 +65,7 @@ def find_order_locations(section, x, aligned_allx=None, mode='normal'):
         else:
             return np.polyval(c2, x)
 
-    winmask = np.ones_like(section, dtype=np.bool)
+    winmask = np.ones_like(section, dtype=bool)
     for i1 in np.arange(0, nx, 1):
 
         if aligned_allx is None:
@@ -142,7 +142,7 @@ def find_order_locations(section, x, aligned_allx=None, mode='normal'):
     #width_mean = np.mean(order_wid_lst)
     #width_med  = np.median(order_wid_lst)
     #width_std  = np.std(order_wid_lst)
-    sep_mask = np.ones_like(order_sep_lst, dtype=np.bool)
+    sep_mask = np.ones_like(order_sep_lst, dtype=bool)
     for idx in np.nonzero(~wid_mask)[0]:
         sep_mask[idx] = False
         sep_mask[max(idx-1, 0)] = False
@@ -443,7 +443,7 @@ def find_apertures(data, mask, scan_step=100, minimum=10, separation=None,
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
-            mask = np.ones_like(flux0, dtype=np.bool)
+            mask = np.ones_like(flux0, dtype=bool)
         return res_lst[mask]
 
     x0 = ny//2
@@ -491,7 +491,7 @@ def find_apertures(data, mask, scan_step=100, minimum=10, separation=None,
             #p0[-4] = 1.0
             interfunc = intp.InterpolatedUnivariateSpline(
                         np.arange(logflux1.size), logflux1, k=3, ext=3)
-            mask = np.ones_like(logflux0, dtype=np.bool)
+            mask = np.ones_like(logflux0, dtype=bool)
             clipping = 5.
             maxiter = 10
             for i in range(maxiter):

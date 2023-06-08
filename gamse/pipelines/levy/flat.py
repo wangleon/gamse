@@ -28,7 +28,7 @@ def smooth_flat_flux_func(x, y, npoints):
         coeff = p[3:]
         return np.polyval(coeff, x) + get_bump(p, x)
 
-    mask = np.ones_like(y, dtype=np.bool)
+    mask = np.ones_like(y, dtype=bool)
     x1, x2 = 1500/4608, 2800/4608
 
     # normalize x axis to (0, 1)
