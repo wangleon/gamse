@@ -179,9 +179,9 @@ def parse_3ccd_images(hdu_lst):
     mask_sat2 = data_lst[1]==0       # for green & red CCDs, saturated pixels
     mask_sat3 = data_lst[2]==0       # are 0.
     # get bad pixel masks
-    #mask_bad1 = np.zeros_like(mask_sat1, dtype=np.bool)
-    #mask_bad2 = np.zeros_like(mask_sat1, dtype=np.bool)
-    #mask_bad3 = np.zeros_like(mask_sat1, dtype=np.bool)
+    #mask_bad1 = np.zeros_like(mask_sat1, dtype=bool)
+    #mask_bad2 = np.zeros_like(mask_sat1, dtype=bool)
+    #mask_bad3 = np.zeros_like(mask_sat1, dtype=bool)
     mask_bad1 = get_badpixel_mask((binx, biny), ccd=1)
     mask_bad2 = get_badpixel_mask((binx, biny), ccd=2)
     mask_bad3 = get_badpixel_mask((binx, biny), ccd=3)
@@ -213,7 +213,7 @@ def get_badpixel_mask(binning, ccd=0):
     if ccd == 0:
         if binning == (1, 1):
             # all Flase
-            mask = np.zeros((2048, 2048), dtype=np.bool)
+            mask = np.zeros((2048, 2048), dtype=bool)
             mask[:,    1127] = True
             mask[:375, 1128] = True
             mask[:,    2007] = True
@@ -223,7 +223,7 @@ def get_badpixel_mask(binning, ccd=0):
         # for Blue CCD
         if binning == (2, 1):
             # all False
-            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask = np.zeros((4096, 1024), dtype=bool)
             mask[3878:,   4]  = True
             mask[3008:, 219]  = True
             mask[4005:, 337]  = True
@@ -235,14 +235,14 @@ def get_badpixel_mask(binning, ccd=0):
         # for Green CCD
         if binning == (2, 1):
             # all False
-            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask = np.zeros((4096, 1024), dtype=bool)
             mask[3726:, 323] = True
             mask[3726:, 324] = True
     elif ccd == 3:
         # for Red CCD
         if binning == (2, 1):
             # all False
-            mask = np.zeros((4096, 1024), dtype=np.bool)
+            mask = np.zeros((4096, 1024), dtype=bool)
             mask[1489:2196, 449]  = True
             mask[:,         0:45] = True
     return np.int16(mask)

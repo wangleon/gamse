@@ -107,7 +107,7 @@ class ProfileNormalizer(ProfileNormalizerCommon):
 
         self.x = xdata - v0
         self.y = newydata/Amean
-        self.m = np.ones_like(self.x, dtype=np.bool)
+        self.m = np.ones_like(self.x, dtype=bool)
 
         self.param = (v0, p1, p2, Amean, background.mean())
 

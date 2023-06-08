@@ -422,7 +422,7 @@ def get_badpixel_mask(binx, biny):
         
     """
     shape = (4096//biny, 2048//binx)
-    mask = np.zeros(shape, dtype=np.bool)
+    mask = np.zeros(shape, dtype=bool)
 
     if (binx, biny) == (1, 1):
         mask[:,     320] = True
