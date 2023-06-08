@@ -313,7 +313,7 @@ def reduce_rawdata():
     if os.path.exists(mosaic_resp_filename):
         flatmap = fits.getdata(mosaic_resp_filename)
     else:
-        mosaic_mask_lst = {flatname:np.zeros_like(flat_data_lst[flatname].T,dtype=np.bool)
+        mosaic_mask_lst = {flatname:np.zeros_like(flat_data_lst[flatname].T,dtype=bool)
                            for flatname in flat_groups}
         maxcount = 55000
         h, w = flat_data_lst[list(flat_groups.keys())[0]].T.shape

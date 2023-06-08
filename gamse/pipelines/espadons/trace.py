@@ -76,7 +76,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         else:
             return np.polyval(c2, x)
 
-    winmask = np.ones_like(section, dtype=np.bool)
+    winmask = np.ones_like(section, dtype=bool)
     #for i1 in np.arange(0, nx-np.polyval(c1, nx), 1):
     for i1 in np.arange(0, nx, 1):
 
@@ -144,7 +144,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
     #width_mean = np.mean(order_wid_lst)
     #width_med  = np.median(order_wid_lst)
     #width_std  = np.std(order_wid_lst)
-    sep_mask = np.ones_like(order_sep_lst, dtype=np.bool)
+    sep_mask = np.ones_like(order_sep_lst, dtype=bool)
     for idx in np.nonzero(~wid_mask)[0]:
         sep_mask[idx] = False
         sep_mask[max(idx-1, 0)] = False
@@ -456,7 +456,7 @@ def find_apertures(data, scan_step=100, align_deg=2, degree=4,
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
-            mask = np.ones_like(flux0, dtype=np.bool)
+            mask = np.ones_like(flux0, dtype=bool)
         return res_lst[mask]
 
     x0 = ny//2
@@ -504,7 +504,7 @@ def find_apertures(data, scan_step=100, align_deg=2, degree=4,
             #p0[-4] = 1.0
             interfunc = intp.InterpolatedUnivariateSpline(
                         np.arange(logflux1.size), logflux1, k=3, ext=3)
-            mask = np.ones_like(logflux0, dtype=np.bool)
+            mask = np.ones_like(logflux0, dtype=bool)
             clipping = 5.
             maxiter = 10
             for i in range(maxiter):
@@ -744,7 +744,7 @@ def find_apertures(data, scan_step=100, align_deg=2, degree=4,
         xlst_B, ylst_B = order_B_lst[iorder]
 
         ##################### Parse Center of Fiber A & B ################
-        fitmask = np.ones_like(xlst_AB, dtype=np.bool)
+        fitmask = np.ones_like(xlst_AB, dtype=bool)
         maxiter = 10
         for nite in range(maxiter):
             poly = Chebyshev.fit(xlst_AB[fitmask], ylst_AB[fitmask], deg=degree)
@@ -788,7 +788,7 @@ def find_apertures(data, scan_step=100, align_deg=2, degree=4,
                             s=10, color=color)
 
         ######################## Parse Fiber A ########################
-        fitmask = np.ones_like(xlst_A, dtype=np.bool)
+        fitmask = np.ones_like(xlst_A, dtype=bool)
         maxiter = 10
         for nite in range(maxiter):
             poly = Chebyshev.fit(xlst_A[fitmask], ylst_A[fitmask], deg=degree)
@@ -828,7 +828,7 @@ def find_apertures(data, scan_step=100, align_deg=2, degree=4,
             
 
         ########################### Parse Fiber B #######################
-        fitmask = np.ones_like(xlst_B, dtype=np.bool)
+        fitmask = np.ones_like(xlst_B, dtype=bool)
         maxiter = 10
         for nite in range(maxiter):
             poly = Chebyshev.fit(xlst_B[fitmask], ylst_B[fitmask], deg=degree)
