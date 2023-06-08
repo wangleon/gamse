@@ -241,7 +241,7 @@ def iterative_savgol_filter(y, winlen=5, order=3, maxiter=10,
             * **std** (float) – Standard deviation.
     """
     x = np.arange(y.size)
-    mask = np.ones_like(y, dtype=np.bool)
+    mask = np.ones_like(y, dtype=bool)
 
     for ite in range(maxiter):
 
@@ -253,7 +253,7 @@ def iterative_savgol_filter(y, winlen=5, order=3, maxiter=10,
 
         # generate new mask
         # make a copy of existing mask
-        new_mask = mask * np.ones_like(mask, dtype=np.bool)
+        new_mask = mask * np.ones_like(mask, dtype=bool)
         # give new mask with lower and upper clipping value
         if lower_clip is not None:
             new_mask *= (yres > -lower_clip * std)
