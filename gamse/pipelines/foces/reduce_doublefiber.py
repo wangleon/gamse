@@ -355,7 +355,7 @@ def reduce_doublefiber(config, logtable):
                             filling    = section.getfloat('filling'),
                             degree     = section.getint('degree'),
                             display    = section.getboolean('display'),
-                            fig        = tracefig,
+                            fig_trace  = tracefig,
                             )
 
                 # save the trace figure
@@ -1274,7 +1274,7 @@ def reduce_doublefiber(config, logtable):
         # extract 1d spectra for stray light of the mosaic flat
         section = config['reduce.extract']
         data = flat_bkg[fiber]
-        mask = np.zeros_like(data, dtype=np.bool)
+        mask = np.zeros_like(data, dtype=bool)
         lower_limit = section.getfloat('lower_limit')
         upper_limit = section.getfloat('upper_limit')
         apertureset = master_aperset[fiber]
