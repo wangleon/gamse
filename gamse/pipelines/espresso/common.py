@@ -15,6 +15,8 @@ def get_metadata(filename):
     # read data
     fname = os.path.basename(filename)
 
+    head0 = fits.getheader(filename)
+    '''
     hdulist = fits.open(filename)
     head0 = hdulist[0].header
     head1 = hdulist[1].header
@@ -22,10 +24,13 @@ def get_metadata(filename):
     data1 = hdulist[1].data
     data2 = hdulist[2].data
     hdulist.close()
+    '''
 
+    '''
     if len(hdulist)!=3:
         print('ERROR: HDUList lenth =', len(hdulist))
         return None
+    '''
 
     # regular check
     if head0['TELESCOP'][0:7]!='ESO-VLT':
@@ -48,6 +53,7 @@ def get_metadata(filename):
     category = head0['ESO DPR CATG']
     expid    = head0['ESO DET EXP NO']
     progid   = head0['ESO OBS PROG ID']
+    obsid    = head0['ESO OBS ID']
     piname   = head0['PI-COI']
     ra       = head0.get('RA', None)
     dec      = head0.get('DEC', None)
@@ -67,6 +73,7 @@ def get_metadata(filename):
     # ccd bin
     binx = head0['ESO DET BINX']
     biny = head0['ESO DET BINY']
+    '''
     # check image size of both CCD chips
     for i in [1, 2]:
         hdu = hdulist[i]
@@ -111,6 +118,7 @@ def get_metadata(filename):
     #gain2 = hdulist[2].header['ESO DET OUT1 GAIN']
     #ron1  = hdulist[1].header['ESO DET OUT1 RON']
     #ron2  = hdulist[2].header['ESO DET OUT1 RON']
+    '''
 
     return {
             'expid':    expid,
@@ -122,8 +130,7 @@ def get_metadata(filename):
             'dec':      dec,
             'obsdate':  obsdate,
             'mode':     mode,
-            'binx':     binx,
-            'biny':     biny,
+            'binning':  (binx, biny),
             #'gain':     (gain1, gain2),
             #'ron':      (ron1, ron2),
             'progid':   progid,
