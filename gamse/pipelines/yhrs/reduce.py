@@ -886,3 +886,27 @@ def reduce_rawdata():
                             promotion = promotion)
 
     ######## Extract 1d spectra of flat fielding ######
+    extract_flat = True
+    if extract_flat:
+
+        # prepar message prefix
+        logger_prefix = 'Flat - '
+        screen_prefix = '    - '
+        # correct flat for flat
+        data = flat_norm/flat_sens
+        message = 'Flat field corrected for flat.'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # get background light for flat field
+        ny, nx = data.shape
+        allx = np.arange(nx)
+        background = get_interorder_background(data, flat_mask, aperset)
+        for y in np.arange(ny):
+            m = flat_mask[y,:]==0
+            f = intp.InterpolatedUnivariateSpline(
+                        allx[m], background[y,:][m], k=3)
+            background[y,:][~m] = f(allx[~m])
+        background = median_filter(background, size=(9,5), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
