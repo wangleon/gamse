@@ -160,7 +160,7 @@ class InfoFrame(tk.Frame):
         # line table area
         self.line_frame = LineTable(master    = self,
                                     width     = width-30,
-                                    height    = 900,
+                                    height    = 400, #900,
                                     identlist = identlist,
                                     linelist  = linelist)
         self.line_frame.pack(side=tk.TOP, padx=10, pady=5)
@@ -313,7 +313,7 @@ class LineTable(tk.Frame):
                                       columns    = ('wl', 'species', 'status'),
                                       show       = 'headings',
                                       style      = 'Treeview',
-                                      height     = 22,
+                                      height     = 13, # 22,
                                       selectmode ='browse')
         self.line_tree.bind('<Button-1>', self.on_click_item)
 
@@ -330,7 +330,7 @@ class LineTable(tk.Frame):
         self.line_tree.config(yscrollcommand=self.scrollbar.set)
 
         style = ttk.Style()
-        style.configure('Treeview', rowheight=35)
+        style.configure('Treeview', rowheight=30)
         style.configure('Treeview.Heading', font=('Arial', 10))
 
         self.scrollbar.config(command=self.line_tree.yview)
@@ -591,14 +591,19 @@ class CalibWindow(tk.Frame):
             # parameters of displaying
             'xlim':         {},
             'ylim':         {},
+            # line fitting parameters
+            'i1':           None,
+            'i2':           None,
+            'window_size':  window_size,
+            # line fitting results
             'center':       None,
             'amplitude':    None,
             'fwhm':         None,
+            'background':   None,
             # parameters of converting aperture and order
             'k':            None,
             'offset':       None,
             # wavelength fitting parameters
-            'window_size':  window_size,
             'xorder':       xorder,
             'yorder':       yorder,
             'maxiter':      maxiter,
@@ -619,8 +624,8 @@ class CalibWindow(tk.Frame):
             self.param['ylim'][aperture] = (None, None)
 
         # determine widget size
-        info_width    = 500
-        info_height   = height
+        info_width    = 400  # 500
+        info_height   = height # - 500
         canvas_width  = width - info_width
         canvas_height = height
         # generate plot frame and info frame
@@ -770,10 +775,10 @@ class CalibWindow(tk.Frame):
                     continue
 
                 # unpack the fitted parameters
-                amplitude = param[0]
-                center    = param[1]
-                fwhm      = param[2]
-                back      = param[3]
+                amplitude  = param[0]
+                center     = param[1]
+                fwhm       = param[2]
+                background = param[3]
 
                 # q = A/std is a proxy of signal-to-noise ratio.
                 q = amplitude/std
@@ -802,8 +807,9 @@ class CalibWindow(tk.Frame):
                 if aperture not in self.identlist:
                     self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                item = np.array((aperture, order, center, line[0], amplitude,
-                                fwhm, q, True, 0.0, 'a'), dtype=identlinetype)
+                item = np.array((aperture, order, line[0], i1, i2, center,
+                                amplitude, fwhm, background, q, True, 0.0,
+                                'a'), dtype=identlinetype)
 
                 self.identlist[aperture] = np.append(self.identlist[aperture],
                                             item)
@@ -1131,9 +1137,12 @@ class CalibWindow(tk.Frame):
 
         list1 = self.identlist[aperture]
 
-        pixel     = self.param['center']
-        amplitude = self.param['amplitude']
-        fwhm      = self.param['fwhm']
+        pixel      = self.param['center']
+        amplitude  = self.param['amplitude']
+        fwhm       = self.param['fwhm']
+        i1         = self.param['i1']
+        i2         = self.param['i2']
+        background = self.param['background']
 
         selected_iid_lst = line_frame.line_tree.selection()
         iid = selected_iid_lst[0]
@@ -1148,17 +1157,21 @@ class CalibWindow(tk.Frame):
         else:
             order = k*aperture + offset
 
-        item = np.array((aperture, order, pixel, wavelength, amplitude, fwhm,
-                        -1., True, 0.0, 'm'), dtype=identlinetype)
+        item = np.array((aperture, order, wavelength, i1, i2, pixel,
+                        amplitude, fwhm, background, -1., True, 0.0,
+                        'm'), dtype=identlinetype)
 
         # insert into identified line list
         self.identlist[aperture] = np.insert(self.identlist[aperture],
                                              insert_pos, item)
 
         # reset line fitting parameters
-        self.param['center']    = None
-        self.param['amplitude'] = None
-        self.param['fwhm']      = None
+        self.param['i1']         = None
+        self.param['i2']         = None
+        self.param['center']     = None
+        self.param['amplitude']  = None
+        self.param['fwhm']       = None
+        self.param['background'] = None
 
         # reset the line table
         line_frame.search_text.set('')
@@ -1346,9 +1359,9 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     screen_width  = master.winfo_screenwidth()
     screen_height = master.winfo_screenheight()
 
-    fig_width  = 2500
-    fig_height = 1500
-    fig_dpi    = 150
+    fig_width  = 1500 #2500
+    fig_height = 900 #1500
+    fig_dpi    = 100 #150
     if None in [fig_width, fig_height]:
         # detremine window size and position
         window_width = int(screen_width-200)
