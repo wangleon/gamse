@@ -112,6 +112,7 @@ def get_std_setup(header):
     Returns:
         str:
     """
+    frameid  = header['FRAMEID']
     objtype  = header['DATA-TYP']
     objname  = header['OBJECT']
     ccd_id   = header['DET-ID']
@@ -140,7 +141,8 @@ def get_std_setup(header):
                 (1, setup[2], setup[3]), (2, setup[0], setup[1])
                 ]:
                 return stdname
-    print('Unknown setup:',collim, crossd, filter1, filter2, cro_ang, ccd_id,
+    print('Unknown setup for {}:'.format(frameid), collim, crossd,
+            filter1, filter2, cro_ang, ccd_id,
             wave_min, wave_max)
     return 'nonStd'
 
@@ -190,7 +192,7 @@ def get_badpixel_mask(ccd_id, binx, biny):
     if ccd_id == 1:
         if (binx,biny)==(1,1):
             # all False
-            mask = np.zeros((4100,2048), dtype=np.bool)
+            mask = np.zeros((4100,2048), dtype=bool)
             mask[1124:2069,937] = True
             mask[1124:2059,938] = True
             mask[1136:1974,939] = True
@@ -204,14 +206,14 @@ def get_badpixel_mask(ccd_id, binx, biny):
             mask[1124:,1109]    = True
             mask[1124:,1110]    = True
         elif (binx,biny)==(2,2):
-            mask = np.zeros((2050,1024), dtype=np.bool)
+            mask = np.zeros((2050,1024), dtype=bool)
             mask[:,653]    = True
             mask[723:,654] = True
             mask[726:,655] = True
 
     elif ccd_id == 2:
         if (binx,biny)==(1,1):
-            mask = np.zeros((4100,2048), dtype=np.bool)
+            mask = np.zeros((4100,2048), dtype=bool)
             mask[628:,1720]    = True
             mask[131:,1741]    = True
             mask[131:,1742]    = True
@@ -226,7 +228,7 @@ def get_badpixel_mask(ccd_id, binx, biny):
             mask[2839:,59]     = True
             mask[2839:,60]     = True
         elif (binx,biny)==(2,2):
-            mask = np.zeros((2050,1024), dtype=np.bool)
+            mask = np.zeros((2050,1024), dtype=bool)
             mask[66:,870]   = True
             mask[66:,871]   = True
             mask[315:,860]  = True

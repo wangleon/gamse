@@ -109,7 +109,7 @@ def make_obslog():
                         ('q95_2',    'i4'),
                 ])
 
-    fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
+    fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s} {:>7} {:^23s}'
                 ' {:<7s} {:5} {:>8s}' # setup, binning, slitsize
                 ' \033[31m{:>7}\033[0m' # nsat_1
                 ' \033[34m{:>7}\033[0m' # nsat_2
@@ -171,7 +171,7 @@ def make_obslog():
                     'H_I2CELL', 'H_COLLIM', 'H_CROSSD',
                     'BIN-FCT1', 'BIN-FCT2']:
             if head1[key] != head2[key]:
-                print('Warning: {} of {} ({}) and {} ({}) does not match.'.format(
+                print('Warning: {} of {} ({}) and {} ({}) do not match.'.format(
                     key, frameid1, head1[key], frameid2, head2[key]))
 
         frameid    = frameid + 1
@@ -182,8 +182,8 @@ def make_obslog():
         obsdate    = '{}T{}'.format(head1['DATE-OBS'], head1['UT'])
 
         # get setup and check the consistency of CCD1 and CCD2
-        setup1     = get_std_setup(head1)
-        setup2     = get_std_setup(head2)
+        setup1 = get_std_setup(head1)
+        setup2 = get_std_setup(head2)
         if setup1 != setup2:
             print('Warning: setup of CCD1 ({}) and CCD2 ({})'
                   'does not match'.format(setup1, setup2))
@@ -195,7 +195,7 @@ def make_obslog():
         if bin_1 != bin_2:
             print('Warning: Binning of CCD1 ({}) and CCD2 ({})'
                     ' do not match'.format(bin_1, bin_2))
-        binning = '({},{})'.format(bin_1[0], bin_1[1])
+        binning = '{}x{}'.format(bin_1[0], bin_1[1])
 
         slitsize   = '{:4.2f}x{:3.1f}'.format(head1['SLT-WID'], head1['SLT-LEN'])
 
@@ -226,12 +226,12 @@ def make_obslog():
     # determine filename of logtable.
     # use the obsdate of the first frame
     obsdate = logtable[0]['obsdate'][0:10]
-    outname = '{}.obslog'.format(obsdate)
+    outname = 'log.{}.txt'.format(obsdate)
     if os.path.exists(outname):
         i = 0
         while(True):
             i += 1
-            outname = '{}.{}.obslog'.format(obsdate, i)
+            outname = 'log.{}.{}.txt'.format(obsdate, i)
             if not os.path.exists(outname):
                 outfilename = outname
                 break
