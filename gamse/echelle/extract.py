@@ -97,7 +97,7 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             upper_ints = np.int32(np.round(upper_line))
             m1 = yy[:,d1:d2] > lower_ints
             m2 = yy[:,d1:d2] < upper_ints
-            newmask = np.zeros_like(data, dtype=np.bool)
+            newmask = np.zeros_like(data, dtype=bool)
             newmask[:,d1:d2] = m1*m2
             newmask = np.float32(newmask)
             # determine the weight in the boundary
@@ -261,7 +261,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                             A = flux.sum()
                         else:
                             para = [flux.sum(), cen]
-                            mask = np.ones_like(flux, dtype=np.bool)
+                            mask = np.ones_like(flux, dtype=bool)
                             for ite in range(10):
                                 result = opt.least_squares(errfunc, para,
                                             bounds=((-np.inf, cen-2),
@@ -815,7 +815,7 @@ def optimal_extract(data, mask, apertureset):
                         A = flux.sum()
                     else:
                         para = [flux.sum(),ycen]
-                        mask = np.ones_like(flux, dtype=np.bool)
+                        mask = np.ones_like(flux, dtype=bool)
                         for ite in range(10):
                             result = opt.least_squares(errfunc, para,
                                         bounds=((-np.inf,ycen-2),(np.inf,ycen+2)),
@@ -930,7 +930,7 @@ def optimal_extract(data, mask, apertureset):
             yrows = np.arange(yceni-10, yceni+10+1)
             flux = data[yrows, x]
             para = [flux.sum(),ycen]
-            mask = np.ones_like(flux, dtype=np.bool)
+            mask = np.ones_like(flux, dtype=bool)
             for ite in range(10):
                 result = opt.least_squares(errfunc, para,
                             bounds=((-np.inf,ycen-2),(np.inf,ycen+2)),
@@ -1230,7 +1230,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
                 para_lst.append(flux[-2])
 
 
-            mask = np.ones_like(flux, dtype=np.bool)
+            mask = np.ones_like(flux, dtype=bool)
             for ite in range(10):
                 result = opt.least_squares(errfunc2, para_lst,
                         args=(flux[mask], interf_lst, cen_lst, indx[mask]))

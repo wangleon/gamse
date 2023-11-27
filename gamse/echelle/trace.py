@@ -1515,7 +1515,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
         domain = (left_domain, right_domain)
 
-        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
+        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=degree)
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))
