@@ -163,7 +163,7 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
     else:
         yerr = np.array(yerr)
     if mask is None:
-        mask = np.ones_like(x, dtype=np.bool)
+        mask = np.ones_like(x, dtype=bool)
     
     for ite in range(maxiter):
         coeff = np.polyfit(x[mask], y[mask], deg=deg)
@@ -176,7 +176,7 @@ def iterative_polyfit(x, y, yerr=None, deg=3, mask=None, maxiter=10,
 
         # generate new mask
         # make a copy of existing mask
-        new_mask = mask * np.ones_like(mask, dtype=np.bool)
+        new_mask = mask * np.ones_like(mask, dtype=bool)
         # give new mask with lower and upper clipping value
         if lower_clip is not None:
             new_mask *= (yres > -lower_clip * std)

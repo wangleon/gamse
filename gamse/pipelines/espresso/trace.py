@@ -128,7 +128,7 @@ def find_apertures(data, scan_step=100, align_deg=2, separation=20,
     def resfunc(p, interfunc, flux0, mask=None):
         res_lst = flux0 - fitfunc(p, interfunc, flux0.size)
         if mask is None:
-            mask = np.ones_like(flux0, dtype=np.bool)
+            mask = np.ones_like(flux0, dtype=bool)
         return res_lst[mask]
     def find_shift(flux0, flux1, deg):
         #p0 = [1.0, 0.0, 0.0]
@@ -140,7 +140,7 @@ def find_apertures(data, scan_step=100, align_deg=2, separation=20,
 
         interfunc = intp.InterpolatedUnivariateSpline(
                     np.arange(flux1.size), flux1, k=3, ext=3)
-        mask = np.ones_like(flux0, dtype=np.bool)
+        mask = np.ones_like(flux0, dtype=bool)
         clipping = 5.
         for i in range(10):
             p, _ = opt.leastsq(resfunc, p0, args=(interfunc, flux0, mask))
