@@ -240,7 +240,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                     idisp = int(idisp)
                     for aper, aperloc in sorted(apertureset.items()):
                         cen = aperloc.position(idisp)
-                        intc = np.int(np.round(cen))
+                        intc = int(np.round(cen))
                         i1 = int(intc + p1)
                         i2 = int(intc + p2 + 1)
                         i1 = max(i1, 0)
@@ -411,7 +411,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 interf = interprofilefunc_lst[idisp]
                 # the order center from the aperset
                 cen = aperloc.position(idisp)
-                intc = np.int(np.round(cen))
+                intc = int(np.round(cen))
                 i1 = int(intc + p1)
                 i2 = int(intc + p2 + 1)
                 i1 = max(i1, 0)
@@ -514,7 +514,7 @@ def extract_aperset_optimal(data, mask, background, apertureset,
         for idisp in idisp_lst:
             interf = interprofilefunc_lst[idisp]
             cen = aperloc.position(idisp) + newdcen[idisp]
-            intc = np.int(np.round(cen))
+            intc = int(np.round(cen))
             i1 = int(intc + p1)
             i2 = int(intc + p2 + 1)
             i1 = max(i1, 0)
@@ -804,7 +804,7 @@ def optimal_extract(data, mask, apertureset):
 
                 for x in np.arange(w//2-200, w//2+200):
                     ycen = ycen_lst[x]
-                    yceni = np.int(np.round(ycen))
+                    yceni = int(np.round(ycen))
                     yrows = np.arange(yceni-10, yceni+10+1)
                     flux = data[yrows, x]
                     negative_mask = flux<0
@@ -926,7 +926,7 @@ def optimal_extract(data, mask, apertureset):
         newycen_lst = []
         for x in np.arange(w):
             ycen = ycen_lst[x]
-            yceni = np.int(np.round(ycen))
+            yceni = int(np.round(ycen))
             yrows = np.arange(yceni-10, yceni+10+1)
             flux = data[yrows, x]
             para = [flux.sum(),ycen]
@@ -1164,7 +1164,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
             interf_lst = [interf]
             cen = aperloc.position(idisp)
             cen_lst = [cen]
-            intc = np.int(np.round(cen))
+            intc = int(np.round(cen))
             i1 = int(intc + p1)
             i2 = int(intc + p2 + 1)
             i1 = max(i1, 0)
@@ -1195,7 +1195,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
                 aperloc1 = apertureset_lst[fiber1][aper1]
                 cen1 = aperloc1.position(idisp)
                 cen_lst.append(cen1)
-                intc1 = np.int(np.round(cen1))
+                intc1 = int(np.round(cen1))
                 i1 = max(intc1 - 2, 0)
                 indx = np.arange(i1, i2)
                 if main_disp == 'x':
@@ -1216,7 +1216,7 @@ def extract_aperset_optimal_multifiber(data, mask, background,
                 aperloc2 = apertureset_lst[fiber2][aper2]
                 cen2 = aperloc2.position(idisp)
                 cen_lst.append(cen2)
-                intc2 = np.int(np.round(cen2))
+                intc2 = int(np.round(cen2))
                 i2 = min(intc2 + 2, ncros)
                 indx = np.arange(i1, i2)
                 if main_disp == 'x':
