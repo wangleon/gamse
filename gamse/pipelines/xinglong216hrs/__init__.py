@@ -816,7 +816,10 @@ def parse_logfile(filename, date):
     # pattern_bias first, thn pattern_sci, and finally pattern_cal
 
     yy, mm, dd = date
-    file1 = open(filename, encoding='gbk')
+
+    # open log file with UTF-8 encoding, and ignore any errors.
+    # GBK is not recommanded
+    file1 = open(filename, encoding='utf-8', errors='ignore')
     for row in file1:
         row = row.strip()
 
