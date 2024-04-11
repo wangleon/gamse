@@ -166,7 +166,7 @@ def make_config():
     config.set(sectname, 'search_database',  'yes')
     #config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
-    config.set(sectname, 'use_prev_fitpar',  'yes')
+    config.set(sectname, 'use_prev_fitpar',  'no')
     config.set(sectname, 'window_size',      str(13))
     config.set(sectname, 'xorder',           str(3))
     config.set(sectname, 'yorder',           str(3))
