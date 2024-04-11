@@ -54,11 +54,12 @@ def get_metadata(filename):
     # check if i2in and i2out are consistent
     if i2in + i2out != 1:
         print(' warning: %s i2in = %d, i2out = %d'%(fname,i2in,i2out))
-    i2 = str(i2in)[0]
+    # i2 = 'OUT' or 'IN'
+    i2 = ('OUT', 'IN')[i2in]
 
     return {
             'frame': frame,
-            'target': target,
+            'target': target.strip(),
             'frameno': frameno,
             'equinox': equinox,
             'ra':  ra,
@@ -68,7 +69,7 @@ def get_metadata(filename):
             'progpi':  progpi,
             'exptime': exptime,
             'i2': i2,
-            'imgtype': imgtype,
+            'imgtype': imgtype.strip(),
             'deck': deckname,
             'filter1': filter1,
             'filter2': filter2,
