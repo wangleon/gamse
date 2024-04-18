@@ -9,6 +9,7 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date, get_date_from_cmd
 from ..common import load_obslog, load_config
+from .common import get_metadata
 
 def make_config():
     
@@ -38,6 +39,100 @@ def make_config():
     outfile.close()
 
     print('Config file written to {}'.format(filename))
+
+
+def make_metatable(rawpath):
+
+    # prepare metatable
+    metatable = Table(dtype=[
+                        ('expoid',  'i4'),
+                        ('det',     'S3'),
+                        ('expid',   'i4'),
+                        ('fileid',  'S28'),
+                        ('category','S8'),
+                        ('imgtype', 'S13'),
+                        ('object',  'S20'),
+                        ('ra',      'f8'),
+                        ('dec',     'f8'),
+                        ('exptime', 'f4'),
+                        ('obsdate', 'S23'),
+                        ('mode',    'S10'),
+                        ('slitwid', 'f4'),
+                        ('slitlen', 'f4'),
+                        ('binning', 'S7'),
+                        ('progid',  'S30'),
+                        ('pi',      'S50'),
+                ], masked=True)
+    pattern = '(UVES\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match(pattern, fname)
+        if not mobj:
+            continue
+
+        fileid = mobj.group(1)
+
+        filename = os.path.join(rawpath, fname)
+        meta = get_metadata(filename)
+
+        mask_ra  = (meta['category']=='CALIB' and meta['imgtype']!='STD')
+        mask_dec = (meta['category']=='CALIB' and meta['imgtype']!='STD')
+        mask_slitwid = (meta['slitwid'] is None)
+        mask_slitlen = (meta['slitlen'] is None)
+
+        if len(meta['targname'])==0:
+            objname = meta['objname']
+        else:
+            objname = meta['targname']
+
+        binning = '({0[0]}, {0[1]})'.format(meta['binning'])
+        item = [
+                (meta['expoid'],    False),
+                (meta['detector'],  False),
+                (meta['expid'],     False),
+                (fileid,            False),
+                (meta['category'],  False),
+                (meta['imgtype'],   False),
+                (objname,           False),
+                (meta['ra'],        mask_ra),
+                (meta['dec'],       mask_dec),
+                (meta['exptime'],   False),
+                (meta['obsdate'],   False),
+                (meta['mode'],      False),
+                (meta['slitwid'],   mask_slitwid),
+                (meta['slitlen'],   mask_slitlen),
+                (binning,           False),
+                (meta['progid'],    False),
+                (meta['piname'],    False),
+                ]
+        value, mask = list(zip(*item))
+
+        metatable.add_row(value, mask=mask)
+
+        # print information
+        string_lst = [
+                '{:5d}'.format(meta['expoid']),
+                '{:1s}'.format(meta['detector']),
+                '{:5d}'.format(meta['expid']),
+                fileid,
+                '{:7s}'.format(meta['category']),
+                '{:20s}'.format(meta['imgtype']),
+                '{:26s}'.format(objname),
+                ' '*9 if mask_ra  else '{:9.5f}'.format(meta['ra']),
+                ' '*9 if mask_dec else '{:9.5f}'.format(meta['dec']),
+                '{:7g}'.format(meta['exptime']),
+                meta['obsdate'],
+                '{:10s}'.format(meta['mode']),
+                ' '*4 if mask_slitwid else '{:4g}'.format(meta['slitwid']),
+                ' '*4 if mask_slitlen else '{:4g}'.format(meta['slitlen']),
+                binning,
+                '{:>15s}'.format(meta['progid']),
+                meta['piname'],
+                ]
+        print(' '.join(string_lst))
+
+    format_metatable(metatable)
+
+    return metatable
 
 def make_obslog():
     # load config file
@@ -138,3 +233,18 @@ def make_obslog():
     for row in logtable.pformat_all():
         outfile.write(row+os.linesep)
     outfile.close()
+
+
+def format_metatable(metatable):
+    metatable['det'].info.format='%-3s'
+    metatable['ra'].info.format='%10.6f'
+    metatable['dec'].info.format='%9.5f'
+    maxlen = max([len(s) for s in metatable['category']])
+    metatable['category'].info.format='%-{}s'.format(maxlen)
+    maxlen = max([len(s) for s in metatable['imgtype']])
+    metatable['imgtype'].info.format='%-{}s'.format(maxlen)
+    maxlen = max([len(s) for s in metatable['object']])
+    metatable['object'].info.format='%-{}s'.format(maxlen)
+    metatable['exptime'].info.format='%7g'
+    metatable['mode'].info.format='%9s'
+    metatable['progid'].info.format='%15s'

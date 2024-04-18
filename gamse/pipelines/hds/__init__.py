@@ -9,8 +9,92 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date
 from ..common import load_config
-from .common import get_region_lst, get_std_setup, print_wrapper
+from .common import get_metadata, get_region_lst, get_std_setup, print_wrapper
 from .reduce import reduce_rawdata
+
+
+def make_metatable(rawpath, verbose=True):
+    # prepare metatable
+    metatable = Table(dtype=[
+                    ('fileid1', str),
+                    ('fileid2', str),
+                    ('objtype', str),
+                    ('objname', str),
+                    ('ra',      str),
+                    ('dec',     str),
+                    ('exptime', float),
+                    ('i2',      str),
+                    ('obsdate', str),
+                    ('setup',   str),
+                    ('binning', str),
+                    ('slit',    str),
+                    ('slitsize',str),
+                    ('crossd',  str),
+                    ('is_unit', str),
+                    ('propid',  str),
+                    ('observer',str),
+        ], masked=True)
+
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match('HDSA(\d{8})\.fits$', fname)
+        if not mobj:
+            continue
+
+        frameid1 = int(mobj.group(1))
+        if frameid1 % 2 == 1:
+            frameid2 = frameid1 + 1
+        else:
+            continue
+
+        fileid1 = 'HDSA{:08d}'.format(frameid1)
+        fileid2 = 'HDSA{:08d}'.format(frameid2)
+
+        filename1 = os.path.join(rawpath, '{}.fits'.format(fileid1))
+        filename2 = os.path.join(rawpath, '{}.fits'.format(fileid2))
+
+        meta1 = get_metadata(filename1)
+        meta2 = get_metadata(filename2)
+
+        for key in meta1:
+            if key=='frame':
+                continue
+            if meta1[key] != meta2[key]:
+                print('Error: {} in {} and {} do not match ({}/{})'.format(
+                    key, fileid1, fileid2, meta1[key], meta2[key]))
+
+        mask_ra  = (meta1['objtype'] != 'OBJECT')
+        mask_dec = (meta1['objtype'] != 'OBJECT')
+
+        binning = '{} x {}'.format(meta1['binningx'], meta1['binningy'])
+        slitsize = '{} x {}'.format(meta1['slit_wid'], meta1['slit_len'])
+
+        item = [
+                (fileid1,           False),
+                (fileid2,           False),
+                (meta1['objtype'],  False),
+                (meta1['objname'],  False),
+                (meta1['ra2000'],   mask_ra),
+                (meta1['dec2000'],  mask_dec),
+                (meta1['exptime'],  False),
+                (meta1['i2'],       False),
+                (meta1['obsdate'],  False),
+                (meta1['setup'],    False),
+                (binning,           False),
+                (meta1['slit'],     False),
+                (slitsize,          False),
+                (meta1['crossd'],   False),
+                (meta1['is_unit'],  False),
+                (meta1['propid'],   False),
+                (meta1['observer'], False),
+                ]
+
+        value, mask = list(zip(*item))
+
+        metatable.add_row(value, mask=mask)
+        if verbose:
+            pass
+    return metatable
+
 
 def make_config():
     """Generate a config file for reducing the data taken with Subaru/HDS
@@ -109,7 +193,7 @@ def make_obslog():
                         ('q95_2',    'i4'),
                 ])
 
-    fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s}I2 {:>7} {:^23s}'
+    fmt_str = ('  - {:>5s} {:12s} {:12s} {:<10s} {:<20s} {:1s} {:>7} {:^23s}'
                 ' {:<7s} {:5} {:>8s}' # setup, binning, slitsize
                 ' \033[31m{:>7}\033[0m' # nsat_1
                 ' \033[34m{:>7}\033[0m' # nsat_2
@@ -171,7 +255,7 @@ def make_obslog():
                     'H_I2CELL', 'H_COLLIM', 'H_CROSSD',
                     'BIN-FCT1', 'BIN-FCT2']:
             if head1[key] != head2[key]:
-                print('Warning: {} of {} ({}) and {} ({}) does not match.'.format(
+                print('Warning: {} of {} ({}) and {} ({}) do not match.'.format(
                     key, frameid1, head1[key], frameid2, head2[key]))
 
         frameid    = frameid + 1
@@ -182,8 +266,8 @@ def make_obslog():
         obsdate    = '{}T{}'.format(head1['DATE-OBS'], head1['UT'])
 
         # get setup and check the consistency of CCD1 and CCD2
-        setup1     = get_std_setup(head1)
-        setup2     = get_std_setup(head2)
+        setup1 = get_std_setup(head1)
+        setup2 = get_std_setup(head2)
         if setup1 != setup2:
             print('Warning: setup of CCD1 ({}) and CCD2 ({})'
                   'does not match'.format(setup1, setup2))
@@ -195,7 +279,7 @@ def make_obslog():
         if bin_1 != bin_2:
             print('Warning: Binning of CCD1 ({}) and CCD2 ({})'
                     ' do not match'.format(bin_1, bin_2))
-        binning = '({},{})'.format(bin_1[0], bin_1[1])
+        binning = '{}x{}'.format(bin_1[0], bin_1[1])
 
         slitsize   = '{:4.2f}x{:3.1f}'.format(head1['SLT-WID'], head1['SLT-LEN'])
 
@@ -226,12 +310,12 @@ def make_obslog():
     # determine filename of logtable.
     # use the obsdate of the first frame
     obsdate = logtable[0]['obsdate'][0:10]
-    outname = '{}.obslog'.format(obsdate)
+    outname = 'log.{}.txt'.format(obsdate)
     if os.path.exists(outname):
         i = 0
         while(True):
             i += 1
-            outname = '{}.{}.obslog'.format(obsdate, i)
+            outname = 'log.{}.{}.txt'.format(obsdate, i)
             if not os.path.exists(outname):
                 outfilename = outname
                 break

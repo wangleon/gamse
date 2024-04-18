@@ -16,25 +16,25 @@ from .reduce_pre2004 import reduce_pre2004
 from .reduce_post2004 import reduce_post2004
 
 
-def make_metatable(rawpath):
+def make_metatable(rawpath, verbose=True):
     # prepare metatable
     metatable = Table(dtype=[
-                        ('fileid',   'S17'),
-                        ('imgtype',  'S8'),
-                        ('frameno',  'i4'),
-                        ('target',   'S20'),
-                        ('ra',       'S11'),
-                        ('dec',      'S11'),
-                        ('equinox',  'S6'),
-                        ('exptime',  'f4'),
-                        ('i2',       'S1'),
-                        ('obsdate',  'S19'),
-                        ('deck',     'S2'),
-                        ('snr',      'f4'),
-                        ('progid',   'S10'),
-                        ('progpi',   'S15'),
+                        ('fileid',   str),
+                        ('imgtype',  str),
+                        ('frameno',  int),
+                        ('target',   str),
+                        ('ra',       str),
+                        ('dec',      str),
+                        ('equinox',  str),
+                        ('exptime',  float),
+                        ('i2',       str),
+                        ('obsdate',  str),
+                        ('deck',     str),
+                        ('snr',      float),
+                        ('progid',   str),
+                        ('progpi',   str),
                 ], masked=True)
-    pattern = '(HI\.\d{8}\.\d{5})\.fits'
+    pattern = '(HI\.\d{8}\.\d{5}\.?\d?\d?)\.fits'
     for fname in sorted(os.listdir(rawpath)):
         mobj = re.match(pattern, fname)
         if not mobj:
@@ -68,21 +68,25 @@ def make_metatable(rawpath):
 
         metatable.add_row(value, mask=mask)
 
-        # print information
-        string_lst = [
+        if verbose:
+            # print information
+            string_lst = [
                 fileid,
                 '{:5d}'.format(meta['frameno']),
-                '{:>8s}'.format(meta['imgtype']),
+                '{:>12s}'.format(meta['imgtype']),
+                # the longest word in imgtype is 'dark_lamp_on'
                 '{:26s}'.format(meta['target']),
                 ' '*11 if mask_ra  else '{:11s}'.format(meta['ra']),
                 ' '*11 if mask_dec else '{:11s}'.format(meta['dec']),
                 '{:6g}'.format(meta['exptime']),
+                '{:>3s}'.format(meta['i2']),
                 meta['obsdate'],
                 meta['deck'],
+                '{:6g}'.format(meta['snr']),
                 '{:>6s}'.format(meta['progid']),
                 meta['progpi'],
                 ]
-        print(' '.join(string_lst))
+            print(' '.join(string_lst))
 
     format_metatable(metatable)
 
@@ -92,11 +96,16 @@ def make_metatable(rawpath):
 def format_metatable(metatable):
     #metatable['ra'].info.format='%10.6f'
     #metatable['dec'].info.format='%9.5f'
-    #maxlen = max([len(s) for s in metatable['imgtype']])
-    #metatable['imgtype'].info.format='%-{}s'.format(maxlen)
-    metatable['imgtype'].info.format='{:>8s}'
+
+    maxlen = max([len(s) for s in metatable['imgtype']])
+    metatable['imgtype'].info.format='%-{}s'.format(maxlen)
+    #metatable['imgtype'].info.format='{:>8s}'
+
     maxlen = max([len(s) for s in metatable['target']])
     metatable['target'].info.format='%-{}s'.format(maxlen)
+
+    metatable['exptime'].info.format='%6g'
+    metatable['snr'].info.format='%6g'
 
 
 def make_config():

@@ -26,7 +26,6 @@ def make_metatable(rawpath):
                         ('obsdate',  'S23'),
                         ('mode',     'S9'),
                         ('binning',  'S7'),
-                        #('biny',     'i4'),
                         #('gain_r',   'f4'),
                         #('gain_b',   'f4'),
                         #('ron_r',    'f4'),
@@ -45,7 +44,7 @@ def make_metatable(rawpath):
         filename = os.path.join(rawpath, fname)
         meta = get_metadata(filename)
 
-        binning = '({}, {})'.format(meta['binx'], meta['biny'])
+        binning = '({0[0]}, {0[1]})'.format(meta['binning'])
         #gain    = '{}, {}'.format(meta['gain'][0], meta['gain'][1])
         #ron     = '{}, {}'.format(meta['ron'][0],  meta['ron'][1])
 
@@ -80,7 +79,7 @@ def make_metatable(rawpath):
                 fileid,
                 '{:7s}'.format(meta['category']),
                 '{:20s}'.format(meta['imgtype']),
-                '{:20s}'.format(meta['objname']),
+                '{:26s}'.format(meta['objname']),
                 ' '*9 if mask_ra  else '{:9.5f}'.format(meta['ra']),
                 ' '*9 if mask_dec else '{:9.5f}'.format(meta['dec']),
                 '{:6g}'.format(meta['exptime']),

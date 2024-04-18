@@ -1379,8 +1379,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     while(len(mid_lst)>3):
         sep = fsep(mid_lst[-1])
         if mid_lst[-1] - mid_lst[-2] > 2*sep:
-            logger.info(('Remove the last aperture at {:d}'
-                        '(distance={:d} > 2 x {:d})').format(
+            logger.info(('Remove the last aperture at {:.1f}'
+                        '(distance={:.1f} > 2 x {:.1f})').format(
                         mid_lst[-1], mid_lst[-1]-mid_lst[-2], sep))
             mid_lst.pop(-1)
         else:
@@ -1515,7 +1515,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
 
         domain = (left_domain, right_domain)
 
-        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=3)
+        poly = Chebyshev.fit(xfit, yfit, domain=domain, deg=degree)
 
         # initialize aperture position instance
         aperture_loc = ApertureLocation(direct='x', shape=(h,w))

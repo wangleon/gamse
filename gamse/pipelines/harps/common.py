@@ -1,14 +1,18 @@
+import os
 import astropy.io.fits as fits
 
 def get_metadata(filename):
     """Get meta data of HARPS raw FITS file.
     
     Args:
-        filename(str): 
+        filename(str): Filename of HARPS raw FITS file.
 
     Returns:
         dict
     """
+
+    fname = os.path.basename(filename)
+
     # read data
     hdulist = fits.open(filename)
     head0 = hdulist[0].header
@@ -25,12 +29,12 @@ def get_metadata(filename):
     # regular check
     if head0['TELESCOP']!='ESO-3P6':
         print('ERROR: {} has wrong telescope name: {}'.format(
-                fileid, head0['TELESCOP']))
+                fname, head0['TELESCOP']))
         return None
 
     if head0['INSTRUME']!='HARPS':
         print('ERROR: {} has wrong instrument name: {}'.format(
-                fileid, head0['INSTRUME']))
+                fname, head0['INSTRUME']))
         return None
 
     exptime = head0['EXPTIME']
@@ -70,9 +74,9 @@ def get_metadata(filename):
 
     # ccd bin
     binx = head0['ESO DET WIN1 BINX']
-    biny = head-['ESO DET WIN1 BINY']
+    biny = head0['ESO DET WIN1 BINY']
     # check image size of both CCD chips
-    for i in range(1, 2):
+    for i in [1, 2]:
         hdu = hdulist[i]
         head = hdu.header
         data = hdu.data

@@ -104,7 +104,13 @@ def reduce_singlefiber_phase3(config, logtable):
 
     nflat = len(logitem_lst)
 
-    flat_filename    = os.path.join(midpath, 'flat.fits')
+    # prepare filenames for flat
+    flat_coadd_filename  = os.path.join(midpath, 'flat_coadd.fits')
+    flat_mask_filename   = os.path.join(midpath, 'flat_mask.fits')
+    flat_sens_filename   = os.path.join(midpath, 'flat_sens.fits')
+    flat_spec_filename   = os.path.join(midpath, 'flat_spec.fits')
+
+    # filenames for other midproc files
     aperset_filename = os.path.join(midpath, 'trace.trc')
     aperset_regname  = os.path.join(midpath, 'trace.reg')
     trace_figname    = os.path.join(figpath, 'trace.{}'.format(fig_format))
@@ -112,18 +118,19 @@ def reduce_singlefiber_phase3(config, logtable):
     profile_filename = os.path.join(midpath, 'profile.fits')
 
 
-    if mode=='debug' and os.path.exists(flat_filename) \
+    if mode=='debug' \
+        and os.path.exists(flat_coadd_filename) \
+        and os.path.exists(flat_mask_filename) \
+        and os.path.exists(flat_sens_filename) \
+        and os.path.exists(flat_spec_filename) \
         and os.path.exists(aperset_filename) \
         and os.path.exists(profile_filename):
         # read flat data and mask array
-        hdu_lst = fits.open(flat_filename)
-        flat_data = hdu_lst[0].data
-        flat_mask = hdu_lst[1].data
-        flat_norm = hdu_lst[2].data
-        flat_sens = hdu_lst[3].data
-        flat_spec = hdu_lst[4].data
-        exptime   = hdu_lst[0].header[exptime_key]
-        hdu_lst.close()
+        flat_data, header = fits.getdata(flat_coadd_filename, header=True)
+        flat_mask = fits.getdata(flat_mask_filename)
+        flat_sens = fits.getdata(flat_sens_filename)
+        flat_spec = fits.getdata(flat_spec_filename)
+        exptime   = header[exptime_key]
         aperset = load_aperture_set(aperset_filename)
         disp_x_lst, profile_x, profile_lst = read_crossprofile(profile_filename)
     else:
@@ -132,7 +139,7 @@ def reduce_singlefiber_phase3(config, logtable):
         exptime_lst = []
         obsdate_lst = []
 
-        print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+        print('* Combine {} Flat Images: {}'.format(nflat, flat_coadd_filename))
         fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
         head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
                     'obsdate', 'N(sat)', 'Q95')
@@ -213,7 +220,8 @@ def reduce_singlefiber_phase3(config, logtable):
         flat_mask = np.int16(sat_mask)*4 + np.int16(bad_mask)*2
 
         # get exposure time normalized flats
-        flat_norm = flat_data/exptime
+        # flat_norm is unnecessary in this mode
+        #flat_norm = flat_data/exptime
 
         tracefig = TraceFigure()    # create the trace figure
         alignfig = AlignFigure()    # create the align figure
@@ -236,14 +244,14 @@ def reduce_singlefiber_phase3(config, logtable):
 
         # save the trace figure
         tracefig.adjust_positions()
-        title = 'Trace for {}'.format(flat_filename)
+        title = 'Trace for {}'.format(flat_coadd_filename)
         tracefig.suptitle(title, fontsize=15)
         tracefig.savefig(trace_figname)
         tracefig.close()
 
         # save the alignment figure
         alignfig.adjust_axes()
-        title = 'Order Alignment for {}'.format(flat_filename)
+        title = 'Order Alignment for {}'.format(flat_coadd_filename)
         alignfig.suptitle(title, fontsize=12)
         alignfig.savefig(align_figname)
         alignfig.close()
@@ -335,14 +343,22 @@ def reduce_singlefiber_phase3(config, logtable):
                             p1, p2, pstep, profile_lst)
 
         # pack results and save to fits
-        hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(flat_data, header=flat_head),
-                    fits.ImageHDU(flat_mask),
-                    fits.ImageHDU(flat_norm),
-                    fits.ImageHDU(flat_sens),
+        # save coadded flat images
+        fits.writeto(flat_coadd_filename, flat_data,
+                     header=flat_head, overwrite=True)
+        # save flat mask
+        fits.writeto(flat_mask_filename, flat_mask,
+                     header=flat_head, overwrite=True)
+        # save sensitivity map
+        fits.writeto(flat_sens_filename, flat_sens,
+                     header=flat_head, overwrite=True)
+
+        # save 1d spec of flat
+        hdulst = fits.HDUList([
+                    fits.PrimaryHDU(header=flat_head),
                     fits.BinTableHDU(flat_spec),
                     ])
-        hdu_lst.writeto(flat_filename, overwrite=True)
+        hdulst.writeto(flat_spec_filename, overwrite=True)
 
     #################### Extract ThAr #######################
 
@@ -689,7 +705,7 @@ def reduce_singlefiber_phase3(config, logtable):
         logger_prefix = 'Flat - '
         screen_prefix = '    - '
         # correct flat for flat
-        data = flat_norm/flat_sens
+        data = flat_data/flat_sens
         message = 'Flat field corrected for flat.'
         logger.info(logger_prefix + message)
         print(screen_prefix + message)

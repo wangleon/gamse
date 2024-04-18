@@ -689,7 +689,8 @@ def reduce_doublefiber_phase3(config, logtable):
         logger.info(message)
         print(message)
 
-        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
+        fname = '{}.fits'.format(fileid)
+        filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
 

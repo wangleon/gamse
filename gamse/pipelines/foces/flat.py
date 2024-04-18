@@ -885,7 +885,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
             ypiece = f(xpiece)
         # now xpiece and ypiece are ready
 
-        _m = np.ones_like(ypiece, dtype=np.bool)
+        _m = np.ones_like(ypiece, dtype=bool)
         for ite in range(3):
             f = InterpolatedUnivariateSpline(xpiece[_m], ypiece[_m], k=3)
             ypiece2 = f(xpiece)

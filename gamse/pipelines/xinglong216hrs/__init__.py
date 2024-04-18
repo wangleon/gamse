@@ -166,7 +166,7 @@ def make_config():
     config.set(sectname, 'search_database',  'yes')
     #config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
     config.set(sectname, 'linelist',         'thar.dat')
-    config.set(sectname, 'use_prev_fitpar',  'yes')
+    config.set(sectname, 'use_prev_fitpar',  'no')
     config.set(sectname, 'window_size',      str(13))
     config.set(sectname, 'xorder',           str(3))
     config.set(sectname, 'yorder',           str(3))
@@ -283,7 +283,10 @@ def parse_logfile_singlefiber(filename, date):
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
 
     yy, mm, dd = date
-    file1 = open(filename, encoding='gbk')
+
+    # open log file with UTF-8 encoding, and ignore any errors.
+    # GBK is not recommanded
+    file1 = open(filename, encoding='utf-8', errors='ignore')
     for row in file1:
         row = row.strip()
 
@@ -375,7 +378,10 @@ def parse_logfile_doublefiber(filename, date):
                     '\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     yy, mm, dd = date
-    file1 = open(filename, encoding='gbk')
+
+    # open log file with UTF-8 encoding, and ignore any errors.
+    # GBK is not recommanded
+    file1 = open(filename, encoding='utf-8', errors='ignore')
     for row in file1:
         row = row.strip()
 
@@ -810,7 +816,10 @@ def parse_logfile(filename, date):
     # pattern_bias first, thn pattern_sci, and finally pattern_cal
 
     yy, mm, dd = date
-    file1 = open(filename, encoding='gbk')
+
+    # open log file with UTF-8 encoding, and ignore any errors.
+    # GBK is not recommanded
+    file1 = open(filename, encoding='utf-8', errors='ignore')
     for row in file1:
         row = row.strip()
 
@@ -977,7 +986,9 @@ def read_logfile(filename):
     pattern_star = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
             pattern1, pattern2, pattern3, pattern4, pattern5, pattern6)
 
-    infile = open(filename, encoding='gbk')
+    # open log file with UTF-8 encoding, and ignore any errors.
+    # GBK is not recommanded
+    infile = open(filename, encoding='utf-8', errors='ignore')
     for row in infile:
         row = row.strip()
 

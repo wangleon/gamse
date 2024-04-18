@@ -4,7 +4,7 @@ from astropy.table import Table
 
 from .common import get_metadata
 
-def make_metatable(rawpath, outputname):
+def make_metatable(rawpath):
 
     # prepare metatable
     metatable = Table(dtype=[
@@ -41,13 +41,17 @@ def make_metatable(rawpath, outputname):
         gain    = '{}, {}'.format(meta['gain'][0], meta['gain'][1])
         ron     = '{}, {}'.format(meta['ron'][0],  meta['ron'][1])
 
+        mask_ra  = (meta['category']=='CALIB' or meta['ra'] is None)
+        mask_dec = (meta['category']=='CALIB' or meta['dec'] is None)
+
+
         item = [(meta['expid'],    False),
                 (fileid,           False),
                 (meta['category'], False),
                 (meta['imgtype'],  False),
                 (meta['objname'],  False),
-                (meta['ra'],       meta['ra'] is None),
-                (meta['dec'],      meta['dec'] is None),
+                (meta['ra'],       mask_ra),
+                (meta['dec'],      mask_dec),
                 (meta['exptime'],  False),
                 (meta['obsdate'],  False),
                 (meta['mode'],     False),
@@ -65,10 +69,15 @@ def make_metatable(rawpath, outputname):
 
     metatable['ra'].info.format='%10.6f'
     metatable['dec'].info.format='%9.5f'
+    maxlen = max([len(s) for s in metatable['category']])
+    metatable['category'].info.format='%-{}s'.format(maxlen)
+    maxlen = max([len(s) for s in metatable['imgtype']])
+    metatable['imgtype'].info.format='%-{}s'.format(maxlen)
+    maxlen = max([len(s) for s in metatable['object']])
+    metatable['object'].info.format='%-{}s'.format(maxlen)
     #metatable['gain_r'].info.format='%4.2f'
     #metatable['gain_b'].info.format='%4.2f'
     #metatable['ron_r'].info.format='%4.2f'
     #metatable['ron_b'].info.format='%4.2f'
 
-    metatable.write(outputname, format='ascii.fixed_width_two_line',
-                overwrite=True)
+    return metatable
