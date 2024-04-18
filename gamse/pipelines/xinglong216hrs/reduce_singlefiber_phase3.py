@@ -139,7 +139,7 @@ def reduce_singlefiber_phase3(config, logtable):
         exptime_lst = []
         obsdate_lst = []
 
-        print('* Combine {} Flat Images: {}'.format(nflat, flat_filename))
+        print('* Combine {} Flat Images: {}'.format(nflat, flat_coadd_filename))
         fmt_str = '  - {:>7s} {:^11} {:^8s} {:^7} {:^23s} {:^8} {:^6}'
         head_str = fmt_str.format('frameid', 'FileID', 'Object', 'exptime',
                     'obsdate', 'N(sat)', 'Q95')
@@ -244,14 +244,14 @@ def reduce_singlefiber_phase3(config, logtable):
 
         # save the trace figure
         tracefig.adjust_positions()
-        title = 'Trace for {}'.format(flat_filename)
+        title = 'Trace for {}'.format(flat_coadd_filename)
         tracefig.suptitle(title, fontsize=15)
         tracefig.savefig(trace_figname)
         tracefig.close()
 
         # save the alignment figure
         alignfig.adjust_axes()
-        title = 'Order Alignment for {}'.format(flat_filename)
+        title = 'Order Alignment for {}'.format(flat_coadd_filename)
         alignfig.suptitle(title, fontsize=12)
         alignfig.savefig(align_figname)
         alignfig.close()
