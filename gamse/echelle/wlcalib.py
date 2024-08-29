@@ -288,43 +288,48 @@ def find_order(identlist, npixel):
 
     return k, offset
 
-def save_ident(identlist, coeff, filename):
+def save_ident(identlist, filename):
     """Write the ident line list and coefficients into an ASCII file.
     The existing informations in the ASCII file will not be affected.
     Only the input channel will be overwritten.
 
     Args:
         identlist (dict): Dict of identified lines.
-        coeff (:class:`numpy.ndarray`): Coefficient array.
         result (dict): A dict containing identification results.
         filename (str): Name of the ASCII file.
 
     See also:
         :func:`load_ident`
     """
-    outfile = open(filename, 'w')
 
-    # write identified lines
-    fmtstr = ('LINE {:03d} {:10.4f} {:10.4f} {:10.4f} {:12.5e} {:9.5f}'
-             '{:1d} {:+10.6f} {:1s}')
-    for aper, list1 in sorted(identlist.items()):
-        for row in list1:
-            pix    = row['pixel']
-            wav    = row['wavelength']
-            amp    = row['amplitude']
-            fwhm   = row['fwhm']
-            mask   = int(row['mask'])
-            res    = row['residual']
-            method = row['method'].decode('ascii')
-            outfile.write(fmtstr.format(aper, pix, wav, amp, fwhm,
-                mask, res, method)+os.linesep)
 
-    # write coefficients
-    for irow in range(coeff.shape[0]):
-        string = ' '.join(['{:18.10e}'.format(v) for v in coeff[irow]])
-        outfile.write('COEFF {}'.format(string)+os.linesep)
-
-    outfile.close()
+    t = Table(dtype=[
+        ('aperture',    int),
+        ('wavelength',  float),
+        ('i1',          int),
+        ('i2',          int),
+        ('center',      float),
+        ('amplitude',   float),
+        ('fwhm',        float),
+        ('background',  float),
+        ('q',           float),
+        ('mask',        int),
+        ('method',      str),
+        ], masked=True)
+    for aperture, list1 in sorted(identlist.items()):
+        for item in list1:
+            row = (aperture, item['wavelength'], item['i1'], item['i2'],
+                   item['pixel'], item['amplitude'], item['fwhm'],
+                   item['background'], item['q'], item['mask'], item['method'],
+                   )
+            t.add_row(row)
+    t['wavelength'].info.format='%10.4f'
+    t['center'].info.format='%10.4f'
+    t['amplitude'].info.format='%10.4e'
+    t['fwhm'].info.format='%8.4f'
+    t['background'].info.format='%10.4e'
+    t['q'].info.format='%6.1f'
+    t.write(filename, format='ascii.fixed_width_two_line', overwrite=True)
 
 
 def load_ident(filename):
@@ -343,49 +348,24 @@ def load_ident(filename):
         :func:`save_ident`
     """
     identlist = {}
-    coeff = []
 
-    infile = open(filename)
-    for row in infile:
-        row = row.strip()
-        if len(row)==0 or row[0] in '#$%^@!':
-            continue
-        g = row.split()
+    t = Table.read(filename, format='ascii.fixed_width_two_line')
+    for row in t:
+        item = np.array((row['aperture'], 0, row['wavelength'],
+                         row['i1'], row['i2'], row['pixel'], row['amplitude'],
+                         row['fwhm'], row['background'], row['q'], row['mask'],
+                         0.0, row['method']), dtype=identlinetype)
 
-        key = g[0]
-        if key == 'LINE':
-            aperture    = int(g[1])
-            pixel       = float(g[2])
-            wavelength  = float(g[3])
-            amplitude   = float(g[4])
-            fwhm        = float(g[5])
-            mask        = bool(g[6])
-            residual    = float(g[7])
-            method      = g[8].strip()
+        if row['aperture'] not in identlist:
+            identlist[aperture] = []
 
-            item = np.array((aperture, 0, pixel, wavelength, amplitdue, fwhm,
-                    0., mask, residual, method),dtype=identlinetype)
-
-            if aperture not in identlist:
-                identlist[aperture] = []
-            identlist[aperture].append(item)
-
-        elif key == 'COEFF':
-            coeff.append([float(v) for v in g[2:]])
-
-        else:
-            pass
-
-    infile.close()
+        identlist[aperture].append(item)
 
     # convert list of every order to numpy structured array
     for aperture, list1 in identlist.items():
         identlist[aperture] = np.array(list1, dtype=identlinetype)
 
-    # convert coeff to numpy array
-    coeff = np.array(coeff)
-
-    return identlist, coeff
+    return identlist
 
 def gaussian(A,center,fwhm,x):
     sigma = fwhm/2.35482
@@ -464,23 +444,6 @@ def find_local_peak(flux, x, width, figname=None):
         plt.close(fig)
 
     return i1, i2, p1, std
-
-def recenter(flux, center):
-    """Relocate the profile center of the lines.
-
-    Args:
-        flux (:class:`numpy.ndarray`): Flux array.
-        center (float): Center of the line.
-
-    Returns:
-        float: The new center of the line profile.
-    """
-    y1, y2 = int(center)-3, int(center)+4
-    ydata = flux[y1:y2]
-    xdata = np.arange(y1,y2)
-    p0 = [ydata.min(), ydata.max()-ydata.min(), ydata.argmax()+y1, 2.5]
-    p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
-    return p1[2]
 
 def search_linelist(linelistname):
     """Search the line list file and load the list.
