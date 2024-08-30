@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 
@@ -7,6 +8,69 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 from scipy.signal import savgol_filter
 import matplotlib.pyplot as plt
+
+def get_metadata(filename):
+    """Get meta data of Subaru/HDS raw FITS file.
+
+    Args:
+        filename (str):
+
+    Returns:
+        dict
+
+    """
+    # read data
+    fname = os.path.basename(filename)
+    
+    mobj = re.match('(HDSA\d{8})\.fits$', fname)
+    frameid = mobj.group(1)
+
+    head = fits.getheader(filename)
+    datatype = head.get('DATA-TYP', '')
+    objname  = head.get('OBJECT', '')
+    #ra       = head.get('RA')
+    #dec      = head.get('DEC')
+    ra2000   = head.get('RA2000')
+    dec2000  = head.get('DEC2000')
+    exptime  = head.get('EXPTIME')
+    _i2cell  = head.get('H_I2CELL')
+    i2       = {'USE': '+', 'NOUSE': '-'}[_i2cell]
+    _date    = head.get('DATE-OBS')
+    _ut      = head.get('UT')
+    obsdate  = '{}T{}'.format(_date, _ut)
+    setup    = get_std_setup(head)
+    binningx = head.get('BIN-FCT1')
+    binningy = head.get('BIN-FCT2')
+    slit     = head.get('SLIT')
+    slit_wid = head.get('SLT-WID')
+    slit_len = head.get('SLT-LEN')
+    propid   = head.get('PROP-ID')
+    observer = head.get('OBSERVER')
+    crossd   = head.get('H_CROSSD')
+    isunit   = 'IS #{}'.format(head.get('H_ISUNIT'))
+
+    return {
+            'frame': frameid, 
+            'objtype': datatype.strip(),
+            'objname': objname.strip(),
+            'ra2000': ra2000,
+            'dec2000': dec2000,
+            'exptime': exptime,
+            'i2': i2,
+            'obsdate': obsdate,
+            'setup': setup,
+            'binningx': binningx,
+            'binningy': binningy,
+            'slit': slit,
+            'slit_wid': slit_wid,
+            'slit_len': slit_len,
+            'crossd': crossd,
+            'is_unit': isunit,
+            'propid': propid,
+            'observer': observer,
+            }
+
+
 
 def get_region_lst(header):
     """Get a list of array indices.
@@ -55,6 +119,8 @@ def get_region_lst(header):
             ]
 
 std_setup_lst = {
+    # name     wave_ccd1, wave_ccd2, crossd/collim, crossang, filter1, filter2
+    # ccd1: DET-ID=2  ccd2: DET-ID=1
     'StdUa':   (310, 387, 400,  476, 'BLUE', 4.986, 'FREE',  'FREE'),
     'StdUb':   (298, 370, 382,  458, 'BLUE', 4.786, 'FREE',  'FREE'),
     'StdBa':   (342, 419, 432,  508, 'BLUE', 5.386, 'FREE',  'FREE'),
@@ -63,14 +129,16 @@ std_setup_lst = {
     #'StdYb':  (414, 535, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
     'StdYb':   (414, 540, 559,  681, 'RED',  4.406, 'FREE',  'KV370'),
     'StdYc':   (442, 566, 586,  705, 'RED',  4.619, 'FREE',  'KV389'),
-    'StdYd':   (406, 531, 549,  666, 'RED',  4.336, 'FREE',  'KV370'),
+    #'StdYd':   (406, 531, 549,  666, 'RED',  4.336, 'FREE',  'KV370'),
+    'StdYd':   (406, 531, 549,  666, 'RED',  4.336, 'FREE',  'FREE'),
     'StdRa':   (511, 631, 658,  779, 'RED',  5.163, 'FREE',  'SC46'),
     'StdRb':   (534, 659, 681,  800, 'RED',  5.336, 'FREE',  'SC46'),
     'StdNIRa': (750, 869, 898, 1016, 'RED',  7.036, 'OG530', 'FREE'),
     'StdNIRb': (673, 789, 812,  937, 'RED',  6.386, 'OG530', 'FREE'),
     'StdNIRc': (617, 740, 759,  882, 'RED',  5.969, 'OG530', 'FREE'),
     'StdI2a':  (498, 618, 637,  759, 'RED',  5.036, 'FREE',  'SC46'),
-    'StdI2b':  (355, 476, 498,  618, 'RED',  3.936, 'FREE',  'FREE'),
+    #'StdI2b':  (355, 476, 498,  618, 'RED',  3.936, 'FREE',  'FREE'),
+    'StdI2b':  (355, 476, 498,  618, 'RED',  3.936, 'FREE',  'KV370'),
     }
 
 def get_setup_param(setup, key=None):
@@ -112,37 +180,43 @@ def get_std_setup(header):
     Returns:
         str:
     """
-    frameid  = header['FRAMEID']
-    objtype  = header['DATA-TYP']
-    objname  = header['OBJECT']
-    ccd_id   = header['DET-ID']
-    filter1  = header['FILTER01']
-    filter2  = header['FILTER02']
-    collim   = header['H_COLLIM']
-    crossd   = header['H_CROSSD']
-    ech_ang  = header['H_EROTAN']
-    cro_ang  = header['H_CROTAN']
+    frameid   = header['FRAMEID']
+    objtype   = header['DATA-TYP']
+    objname   = header['OBJECT']
+    ccd_id    = header['DET-ID']
+    filter1   = header['FILTER01']
+    filter2   = header['FILTER02']
+    collim    = header['H_COLLIM']
+    crossd    = header['H_CROSSD']
+    ech_angle = header['H_EROTAN']
+    cro_angle = header['H_CROTAN']
     wave_min = int(round(header['WAV-MIN']))
     wave_max = int(round(header['WAV-MAX']))
 
     for stdname, setup in std_setup_lst.items():
-        if objtype=='BIAS' and objname=='BIAS':
-            if collim == setup[4] and crossd == setup[4] \
-                and abs(cro_ang - setup[5]) < 0.05 \
-                and (ccd_id, wave_min, wave_max) in [
-                (1, setup[2], setup[3]), (2, setup[0], setup[1])
-                ]:
-                return stdname
+        _collim    = setup[4]
+        _crossd    = setup[4]
+        _cro_angle = setup[5]
+        _filter1   = setup[6]
+        _filter2   = setup[7]
+
+        if ccd_id == 1:
+            _wave_min, _wave_max = setup[2], setup[3]
+        elif ccd_id == 2:
+            _wave_min, _wave_max = setup[0], setup[1]
         else:
-            if collim == setup[4] and crossd == setup[4] \
-                and filter1 == setup[6] and filter2 == setup[7] \
-                and abs(cro_ang - setup[5]) < 0.05 \
-                and (ccd_id, wave_min, wave_max) in [
-                (1, setup[2], setup[3]), (2, setup[0], setup[1])
-                ]:
-                return stdname
+            raise ValueError
+        if crossd == _crossd \
+            and collim == _collim \
+            and abs(cro_angle - _cro_angle) < 0.1 \
+            and abs(wave_min-_wave_min)<10 \
+            and abs(wave_max-_wave_max)<10 \
+            and filter1 == _filter1 \
+            and filter2 == _filter2:
+            return stdname
+
     print('Unknown setup for {}:'.format(frameid), collim, crossd,
-            filter1, filter2, cro_ang, ccd_id,
+            filter1, filter2, cro_angle, ccd_id,
             wave_min, wave_max)
     return 'nonStd'
 

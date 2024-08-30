@@ -9,8 +9,92 @@ from astropy.table import Table
 
 from ...utils.misc import extract_date
 from ..common import load_config
-from .common import get_region_lst, get_std_setup, print_wrapper
+from .common import get_metadata, get_region_lst, get_std_setup, print_wrapper
 from .reduce import reduce_rawdata
+
+
+def make_metatable(rawpath, verbose=True):
+    # prepare metatable
+    metatable = Table(dtype=[
+                    ('fileid1', str),
+                    ('fileid2', str),
+                    ('objtype', str),
+                    ('objname', str),
+                    ('ra',      str),
+                    ('dec',     str),
+                    ('exptime', float),
+                    ('i2',      str),
+                    ('obsdate', str),
+                    ('setup',   str),
+                    ('binning', str),
+                    ('slit',    str),
+                    ('slitsize',str),
+                    ('crossd',  str),
+                    ('is_unit', str),
+                    ('propid',  str),
+                    ('observer',str),
+        ], masked=True)
+
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match('HDSA(\d{8})\.fits$', fname)
+        if not mobj:
+            continue
+
+        frameid1 = int(mobj.group(1))
+        if frameid1 % 2 == 1:
+            frameid2 = frameid1 + 1
+        else:
+            continue
+
+        fileid1 = 'HDSA{:08d}'.format(frameid1)
+        fileid2 = 'HDSA{:08d}'.format(frameid2)
+
+        filename1 = os.path.join(rawpath, '{}.fits'.format(fileid1))
+        filename2 = os.path.join(rawpath, '{}.fits'.format(fileid2))
+
+        meta1 = get_metadata(filename1)
+        meta2 = get_metadata(filename2)
+
+        for key in meta1:
+            if key=='frame':
+                continue
+            if meta1[key] != meta2[key]:
+                print('Error: {} in {} and {} do not match ({}/{})'.format(
+                    key, fileid1, fileid2, meta1[key], meta2[key]))
+
+        mask_ra  = (meta1['objtype'] != 'OBJECT')
+        mask_dec = (meta1['objtype'] != 'OBJECT')
+
+        binning = '{} x {}'.format(meta1['binningx'], meta1['binningy'])
+        slitsize = '{} x {}'.format(meta1['slit_wid'], meta1['slit_len'])
+
+        item = [
+                (fileid1,           False),
+                (fileid2,           False),
+                (meta1['objtype'],  False),
+                (meta1['objname'],  False),
+                (meta1['ra2000'],   mask_ra),
+                (meta1['dec2000'],  mask_dec),
+                (meta1['exptime'],  False),
+                (meta1['i2'],       False),
+                (meta1['obsdate'],  False),
+                (meta1['setup'],    False),
+                (binning,           False),
+                (meta1['slit'],     False),
+                (slitsize,          False),
+                (meta1['crossd'],   False),
+                (meta1['is_unit'],  False),
+                (meta1['propid'],   False),
+                (meta1['observer'], False),
+                ]
+
+        value, mask = list(zip(*item))
+
+        metatable.add_row(value, mask=mask)
+        if verbose:
+            pass
+    return metatable
+
 
 def make_config():
     """Generate a config file for reducing the data taken with Subaru/HDS

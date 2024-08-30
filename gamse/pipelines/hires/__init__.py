@@ -34,7 +34,7 @@ def make_metatable(rawpath, verbose=True):
                         ('progid',   str),
                         ('progpi',   str),
                 ], masked=True)
-    pattern = '(HI\.\d{8}\.\d{5})\.fits'
+    pattern = '(HI\.\d{8}\.\d{5}\.?\d?\d?)\.fits'
     for fname in sorted(os.listdir(rawpath)):
         mobj = re.match(pattern, fname)
         if not mobj:
