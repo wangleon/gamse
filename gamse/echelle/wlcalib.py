@@ -182,8 +182,14 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
     """
     rough_wl = None
 
+    # guess wavelength from global wavelength solution
+    if param['coeff'].size > 0:
+        npixel = param['npixel']
+        order = aperture*param['k'] + param['offset']
+        rough_wl = get_wavelength(param['coeff'], param['npixel'], x, order)
+
     # guess wavelength from the identified lines in this order
-    if aperture in identlist:
+    if rough_wl is None and aperture in identlist:
         list1 = identlist[aperture]
         if list1.size >= 2:
             fit_order = min(list1.size-1, 2)
@@ -191,11 +197,6 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
                             deg=fit_order)
             rough_wl = np.polyval(local_coeff, x)
 
-    # guess wavelength from global wavelength solution
-    if rough_wl is None and param['coeff'].size > 0:
-        npixel = param['npixel']
-        order = aperture*param['k'] + param['offset']
-        rough_wl = get_wavelength(param['coeff'], param['npixel'], x, order)
 
     if rough_wl is None:
         return None
@@ -367,19 +368,16 @@ def load_ident(filename):
 
     return identlist
 
-def gaussian(A,center,fwhm,x):
-    sigma = fwhm/2.35482
-    return A*np.exp(-(x-center)**2/2./sigma**2)
-def errfunc(p,x,y):
-    return y - gaussian(p[0],p[1],p[2],x)
+def gaussian_bkg(A, center, sigma, bkg, x):
+    return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
 
-def gaussian_bkg(A,center,fwhm,bkg,x):
-    sigma = fwhm/2.35482
-    return bkg + A*np.exp(-(x-center)**2/2./sigma**2)
-def errfunc2(p,x,y):
-    return y - gaussian_bkg(p[0],p[1],p[2],p[3],x)
+def gengaussian_bkg(A, center, alpha, beta, bkg, x):
+    return A*np.exp(-np.power(np.abs(x-center)/alpha, beta)) + bkg
 
-def find_local_peak(flux, x, width, figname=None):
+def errfunc(p, x, y, fitfunc):
+    return y - fitfunc(p, x)
+
+def find_local_peak(flux, x, width, func, figname=None):
     """Find the central pixel of an emission line.
 
     Args:
@@ -402,8 +400,6 @@ def find_local_peak(flux, x, width, figname=None):
 
     i = int(round(x))
 
-    # find the peak in a narrow range
-
     i1, i2 = max(0, i-half), min(flux.size, i+half+1)
 
     if i2 - i1 <= 4:
@@ -412,38 +408,54 @@ def find_local_peak(flux, x, width, figname=None):
 
     # find the peak position
     imax = flux[i1:i2].argmax() + i1
-    xdata = np.arange(i1,i2)
+    xdata = np.arange(i1, i2)
     ydata = flux[i1:i2]
-    # determine the initial parameters for gaussian fitting + background
-    p0 = [ydata.max()-ydata.min(), imax, 3., ydata.min()]
+    ndata = xdata.size
+
+    # determine the initial parameters
+    if func == 'gaussian':
+        p0 = [ydata.max()-ydata.min(), imax, 3., ydata.min()]
+        fitfunc = lambda p, x: gaussian_bkg(p[0], p[1], p[2], p[3], x)
+        fwhmfunc = lambda p: 2.35482*p[2]
+    elif func == 'gengaussian':
+        p0 = [ydata.max()-ydata.min(), imax, 5.0, 3.0, ydata.min()]
+        fitfunc = lambda p, x: gengaussian_bkg(p[0], p[1], p[2], p[3], p[4], x)
+        fwhmfunc = lambda p: 2*p[2]*np.power(np.log(2), 1/p[3])
+    else:
+        raise ValueError
+    npara = len(p0)
+
     # least square fitting
-    #p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
-    p1, cov, info, mesg, ier = opt.leastsq(errfunc2, p0[:],
-                                    args=(xdata, ydata), full_output=True)
+    fitresult = opt.least_squares(errfunc, p0, args=(xdata, ydata, fitfunc))
+    p1 = fitresult.x
+    res = fitresult.fun
 
-    res_lst = errfunc2(p1, xdata, ydata)
-
-    if res_lst.size-len(p0)-1 == 0:
+    if ndata - npara - 1 == 0:
         return None
 
-    std = math.sqrt((res_lst**2).sum()/(res_lst.size-len(p0)-1))
+    std = math.sqrt((res**2).sum()/(ndata-npara-1))
+
+    fwhm = fwhmfunc(p1)
 
     if figname is not None:
-        fig = plt.figure()
-        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.5])
+        fig = plt.figure(dpi=120)
+        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.50])
         ax2 = fig.add_axes([0.1, 0.1, 0.8, 0.25])
-        ax1.plot(xdata, ydata, 'o', ms=4)
+        ax1.plot(xdata, ydata, 'o', c='C0', ms=4)
         newx = np.arange(xdata[0], xdata[-1], 0.1)
-        newy = gaussian_bkg(p1[0], p1[1], p1[2], p1[3], newx)
-        ax1.plot(newx, newy, '-', lw=0.6)
-        yerr = errfunc2(p1, xdata, ydata)
-        ax2.plot(xdata, yerr, 'o', ms=4)
+        newy = fitfunc(p1, newx)
+        ax1.plot(newx, newy, '-', color='C3', lw=0.6)
+        ax2.plot(xdata, res, 'o', c='C0', ms=4)
+        ax2.axhline(0, color='k', lw=0.5, ls='--', zorder=-1)
+        ax2.axhline(std,  color='C3', lw=0.5, ls=':', zorder=-1)
+        ax2.axhline(-std, color='C3', lw=0.5, ls=':', zorder=-1)
         ax1.set_xlim(xdata[0], xdata[-1])
         ax2.set_xlim(xdata[0], xdata[-1])
         fig.savefig(figname)
         plt.close(fig)
 
-    return i1, i2, p1, std
+    return {'i1': i1, 'i2': i2, 'amplitude': p1[0], 'center': p1[1],
+            'background': p1[-1], 'fwhm': fwhm, 'std': std}
 
 def search_linelist(linelistname):
     """Search the line list file and load the list.
@@ -475,14 +487,6 @@ def search_linelist(linelistname):
     newname = os.path.join(data_path, linelistname+'.dat')
     if os.path.exists(newname):
         return newname
-
-    # seach GAMSE_DATA path
-    gamse_data = os.getenv('GAMSE_DATA')
-    if len(gamse_data)>0:
-        data_path = os.path.join(gamse_data, 'linelist')
-        newname = os.path.join(data_path, linelistname+'.dat')
-        if os.path.exists(newname):
-            return newname
 
     return None
 

@@ -2,10 +2,10 @@
 import os
 import re
 import sys
+import argparse
 
 import numpy as np
 import astropy.io.fits as fits
-
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -558,18 +558,20 @@ class CalibWindow(tk.Frame):
         title (str): A string to display as the title of calib figure.
         identlist (dict): Identification line list.
         linelist (list): List of wavelength standards (wavelength, species).
+        fitfunc (str): Fitting function of each line.
         window_size (int): Size of the window in pixel to search for line
             peaks.
         xorder (int): Degree of polynomial along X direction.
         yorder (int): Degree of polynomial along Y direction.
         maxiter (int): Maximim number of interation in polynomial fitting.
         clipping (float): Threshold of sigma-clipping.
-        snr_threshold (float): Minimum S/N of the spectral lines to be accepted
-            in the wavelength fitting.
+        q_threshold (float): Minimum Q (S/N) of the spectral lines to be
+            accepted in the wavelength fitting.
+        fit_filter: Fitting filter.
     """
     def __init__(self, master, width, height, dpi, spec, figfilename, title,
-            identlist, linelist, window_size, xorder, yorder, maxiter, clipping,
-            q_threshold, fit_filter):
+            identlist, linelist, fitfunc, window_size, xorder, yorder, maxiter,
+            clipping, q_threshold, fit_filter):
         """Constructor of :class:`CalibWindow`.
         """
 
@@ -594,6 +596,7 @@ class CalibWindow(tk.Frame):
             # line fitting parameters
             'i1':           None,
             'i2':           None,
+            'fitfunc':      fitfunc,
             'window_size':  window_size,
             # line fitting results
             'center':       None,
@@ -697,9 +700,15 @@ class CalibWindow(tk.Frame):
             for row in list1:
                 pix = int(round(row['pixel']))
                 window_size = self.param['window_size']
-                _, _, param, _ = find_local_peak(flux, pix, window_size)
-                peak_x = param[1]
-                row['pixel'] = peak_x
+                fitfunc     = self.param['fitfunc']
+                param = find_local_peak(flux, pix, window_size, fitfunc)
+                # update the line parameters with the new fitting results
+                row['i1']         = param['i1']
+                row['i2']         = param['i2']
+                row['pixel']      = param['center']
+                row['amplitude']  = param['amplitude']
+                row['fwhm']       = param['fwhm']
+                row['background'] = param['background']
 
         # replot
         self.plot_aperture()
@@ -1069,16 +1078,19 @@ class CalibWindow(tk.Frame):
             local_max = i1 + flux[i1:i2].argmax()
             # now found the local max point
             window_size = self.param['window_size']
-            _, _, param, _ = find_local_peak(flux, local_max, window_size)
+            fitfunc     = self.param['fitfunc']
+
+            param = find_local_peak(flux, local_max, window_size, fitfunc)
+            center = param['center']
+            param = find_local_peak(flux, center, window_size, fitfunc)
 
             # unpack the fitted parameters
-            amplitude = param[0]
-            center    = param[1]
-            fwhm      = param[2]
-
-            self.param['center']    = center
-            self.param['amplitude'] = amplitude
-            self.param['fwhm']      = fwhm
+            self.param['i1']            = param['i1']
+            self.param['i2']            = param['i2']
+            self.param['amplitude']     = param['amplitude']
+            self.param['center']        = param['center']
+            self.param['fwhm']          = param['fwhm']
+            self.param['background']    = param['background']
 
             # temporarily plot this line
             self.plot_aperture()
@@ -1137,11 +1149,11 @@ class CalibWindow(tk.Frame):
 
         list1 = self.identlist[aperture]
 
+        i1         = self.param['i1']
+        i2         = self.param['i2']
         pixel      = self.param['center']
         amplitude  = self.param['amplitude']
         fwhm       = self.param['fwhm']
-        i1         = self.param['i1']
-        i2         = self.param['i2']
         background = self.param['background']
 
         selected_iid_lst = line_frame.line_tree.selection()
@@ -1156,6 +1168,7 @@ class CalibWindow(tk.Frame):
             order = 0
         else:
             order = k*aperture + offset
+
 
         item = np.array((aperture, order, wavelength, i1, i2, pixel,
                         amplitude, fwhm, background, -1., True, 0.0,
@@ -1271,8 +1284,8 @@ class CalibWindow(tk.Frame):
             info_frame.clearall_button.config(state=tk.DISABLED)
 
 def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
-    window_size=13, xorder=3, yorder=3, maxiter=10, clipping=3,
-    q_threshold=10, fit_filter=None
+    fitfunc='gaussian', window_size=13, xorder=3, yorder=3, maxiter=10,
+    clipping=3, q_threshold=10, fit_filter=None, figsize=(2500, 1500), dpi=150,
     ):
     """Identify the wavelengths of emission lines in the spectrum of a
     hollow-cathode lamp.
@@ -1335,7 +1348,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
 
     # initialize fitting list
     if identfilename is not None and os.path.exists(identfilename):
-        identlist, _ = load_ident(identfilename)
+        identlist = load_ident(identfilename)
     else:
         identlist = {}
 
@@ -1359,9 +1372,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     screen_width  = master.winfo_screenwidth()
     screen_height = master.winfo_screenheight()
 
-    fig_width  = 1500 #2500
-    fig_height = 900 #1500
-    fig_dpi    = 100 #150
+    fig_width, fig_height  = figsize
     if None in [fig_width, fig_height]:
         # detremine window size and position
         window_width = int(screen_width-200)
@@ -1378,12 +1389,13 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     calibwindow = CalibWindow(master,
                               width       = window_width,
                               height      = window_height-34,
-                              dpi         = fig_dpi,
+                              dpi         = dpi,
                               spec        = spec,
                               figfilename = figfilename,
                               title       = title,
                               identlist   = identlist,
                               linelist    = line_list,
+                              fitfunc     = fitfunc,
                               window_size = window_size,
                               xorder      = xorder,
                               yorder      = yorder,
@@ -1421,6 +1433,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
               'nuse':        calibwindow.param['nuse'],
               'ntot':        calibwindow.param['ntot'],
               'identlist':   calibwindow.identlist,
+              'fitfunc':     calibwindow.param['fitfunc'],
               'window_size': calibwindow.param['window_size'],
               'xorder':      calibwindow.param['xorder'],
               'yorder':      calibwindow.param['yorder'],
@@ -1440,52 +1453,55 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
 
 if __name__=='__main__':
 
-    filename = sys.argv[1]
+    parser = argparse.ArgumentParser(description='Wavelength Identification')
+
+    parser.add_argument('filename')
+    parser.add_argument('-l', '--linelist', nargs='?')
+    parser.add_argument('-x', '--xorder', nargs='?', type=int, default=3)
+    parser.add_argument('-y', '--yorder', nargs='?', type=int, default=3)
+    parser.add_argument('-c', '--clipping', nargs='?', type=float, default=3)
+    parser.add_argument('-f', '--fitfunc', nargs='?', default='gaussian')
+    parser.add_argument('-w', '--windowsize', nargs='?', dest='window_size',
+                        default=15)
+    parser.add_argument('-d', '--dpi', nargs='?', type=int, default=150)
+    parser.add_argument('-s', '--size', nargs='?', type=int, default=2500)
+    parser.add_argument('-q', nargs='?', type=float, default=10)
+    parser.add_argument('-i', '--identfile', nargs='?')
+    parser.add_argument('-o', '--output', required=True)
+
+    args = parser.parse_args()
+
+    # open input file
+    filename = args.filename
     hdulst = fits.open(filename)
     head = hdulst[0].header
     spec = hdulst[1].data
     hdulst.close()
 
-    mobj = re.match('wlcalib_(\S*)\.fit[s]?', os.path.basename(filename))
-    fileid = mobj.group(1)
-
-    config = load_config('\S*\.cfg$')
-    section      = config['data']
-    statime_key  = section.get('statime_key')
-    exptime_key  = section.get('exptime_key')
-
-    section     = config['reduce']
-    figpath     = section.get('figpath')
-    fig_format  = section.get('fig_format')
-
-    figname = 'wlcalib_{}.{}'.format(fileid, fig_format)
-    wlcalib_fig = os.path.join(figpath, figname)
+    # get output figname
+    mobj = re.match('(\S*)\.fit[s]?', os.path.basename(filename))
+    fname = mobj.group(1)
+    figname = '{}.png'.format(fname)
     
-    section = config['reduce.wlcalib']
-    title = '{}.fits'.format(fileid)
-
-    # pop up a calibration window and identify
-    # the wavelengths manually
+    # pop up a calibration window and identify the wavelengths manually
     calib = ident_wavelength(spec,
-                figfilename = wlcalib_fig,
-                title       = title,
-                linelist    = section.get('linelist'),
-                window_size = section.getint('window_size'),
-                xorder      = section.getint('xorder'),
-                yorder      = section.getint('yorder'),
-                maxiter     = section.getint('maxiter'),
-                clipping    = section.getfloat('clipping'),
-                q_threshold = section.getfloat('q_threshold'),
+                figfilename = figname,
+                title       = os.path.basename(filename),
+                linelist    = args.linelist,
+                fitfunc     = args.fitfunc,
+                window_size = args.window_size,
+                xorder      = args.xorder,
+                yorder      = args.yorder,
+                maxiter     = 5,
+                clipping    = args.clipping,
+                q_threshold = args.q,
+                figsize     = (args.size, args.size*0.6),
+                dpi         = args.dpi,
                 )
-
-    # add more infos in calib
-    calib['fileid']   = fileid
-    calib['date-obs'] = head[statime_key]
-    calib['exptime']  = head[exptime_key]
 
     # reference the ThAr spectra
     spec, card_lst, identlist = reference_self_wavelength(spec, calib)
-    
+
     prefix = 'HIERARCH GAMSE WLCALIB '
     for key, value in card_lst:
         head.append((prefix+key, value))
@@ -1497,6 +1513,6 @@ if __name__=='__main__':
                 ])
 
     # save in midproc path as a wlcalib reference file
-    hdu_lst.writeto(filename, overwrite=True)
-    message = 'Wavelength calibrated spectra written to {}'.format(filename)
+    hdu_lst.writeto(args.output, overwrite=True)
+    message = 'Wavelength calibrated spectra written to {}'.format(args.output)
     print(message)
