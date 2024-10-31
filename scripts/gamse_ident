@@ -6,6 +6,7 @@ import argparse
 
 import numpy as np
 import astropy.io.fits as fits
+from astropy.table import Table
 
 import matplotlib
 matplotlib.use('TkAgg')
@@ -94,7 +95,7 @@ class PlotFrame(tk.Frame):
         self.canvas.mpl_connect('draw_event', master.on_draw)
 
         aperture = master.param['aperture']
-        self.ax1._aperture_text.set_text('Aperture %d'%aperture)
+        self.ax1._text.set_text('Aperture {}'.format(aperture))
 
         # add toolbar
         self.toolbar = CustomToolbar(self.canvas, master=self)
@@ -248,7 +249,7 @@ class InfoFrame(tk.Frame):
                 order = '?'
             else:
                 order = str(k*aperture + offset)
-            text = 'Order %s (Aperture %d)'%(order, aperture)
+            text = 'Order {} (Aperture {})'.format(order, aperture)
             self.order_label.config(text=text)
         elif mode == 'fit':
             self.order_label.config(text='')
@@ -336,8 +337,9 @@ class LineTable(tk.Frame):
         self.scrollbar.config(command=self.line_tree.yview)
 
         self.item_lst = []
-        for line in linelist:
-            wl, species = line
+        for row in linelist:
+            wl = row['wave_air']
+            species = '{} {}'.format(row['element'], row['ion'])
             iid = self.line_tree.insert('',tk.END,
                     values=(wl, species, ''), tags='normal')
             self.item_lst.append((iid,  wl))
@@ -372,6 +374,10 @@ class LineTable(tk.Frame):
 
         # replot
         self.master.master.plot_aperture()
+
+        self.master.master.plot_linefit(None)
+
+        self.master.master.plot_frame.canvas.draw()
 
         # set focus to canvas
         self.master.master.plot_frame.canvas.get_tk_widget().focus()
@@ -558,7 +564,7 @@ class CalibWindow(tk.Frame):
         title (str): A string to display as the title of calib figure.
         identlist (dict): Identification line list.
         linelist (list): List of wavelength standards (wavelength, species).
-        fitfunc (str): Fitting function of each line.
+        fitfuncanme (str): Name of fitting function of each line.
         window_size (int): Size of the window in pixel to search for line
             peaks.
         xorder (int): Degree of polynomial along X direction.
@@ -570,8 +576,9 @@ class CalibWindow(tk.Frame):
         fit_filter: Fitting filter.
     """
     def __init__(self, master, width, height, dpi, spec, figfilename, title,
-            identlist, linelist, fitfunc, window_size, xorder, yorder, maxiter,
-            clipping, q_threshold, fit_filter):
+                 identlist, linelist, fitfuncname, window_size, xorder, yorder,
+                 maxiter, clipping, q_threshold, fit_filter,
+                 ):
         """Constructor of :class:`CalibWindow`.
         """
 
@@ -596,9 +603,13 @@ class CalibWindow(tk.Frame):
             # line fitting parameters
             'i1':           None,
             'i2':           None,
-            'fitfunc':      fitfunc,
+            'fitfuncname':  fitfuncname,
             'window_size':  window_size,
             # line fitting results
+            'fitfunc':      None,
+            'param':        None,
+            'std':          None,
+            'residuals':    None,
             'center':       None,
             'amplitude':    None,
             'fwhm':         None,
@@ -621,10 +632,13 @@ class CalibWindow(tk.Frame):
             'fit_filter':   fit_filter,
             }
 
+        self.fitdata = {}
+
         for row in self.spec:
             aperture = row['aperture']
             self.param['xlim'][aperture] = (0, len(row['wavelength'])-1)
             self.param['ylim'][aperture] = (None, None)
+            self.fitdata[aperture] = {}
 
         # determine widget size
         info_width    = 400  # 500
@@ -653,6 +667,10 @@ class CalibWindow(tk.Frame):
 
         self.plot_aperture()
 
+        self.plot_linefit(None)
+
+        self.plot_frame.canvas.draw()
+
         self.update_fit_buttons()
 
     def fit(self):
@@ -669,6 +687,7 @@ class CalibWindow(tk.Frame):
                 fit_filter  = self.param['fit_filter'],
                 )
 
+        # update self.param by new fitting results
         self.param['coeff']  = coeff
         self.param['std']    = std
         self.param['k']      = k
@@ -676,7 +695,7 @@ class CalibWindow(tk.Frame):
         self.param['nuse']   = nuse
         self.param['ntot']   = ntot
 
-        message = 'Wavelength fitted. std={:.6f}, utot={}, nuse={}'.format(
+        message = 'Wavelength fitted. std={:.6f}, Ntot={}, Nuse={}'.format(
                     std, ntot, nuse)
         print(message)
 
@@ -700,18 +719,22 @@ class CalibWindow(tk.Frame):
             for row in list1:
                 pix = int(round(row['pixel']))
                 window_size = self.param['window_size']
-                fitfunc     = self.param['fitfunc']
-                param = find_local_peak(flux, pix, window_size, fitfunc)
+                fitfuncname = self.param['fitfuncname']
+                result = find_local_peak(flux, pix, window_size, fitfuncname)
                 # update the line parameters with the new fitting results
-                row['i1']         = param['i1']
-                row['i2']         = param['i2']
-                row['pixel']      = param['center']
-                row['amplitude']  = param['amplitude']
-                row['fwhm']       = param['fwhm']
-                row['background'] = param['background']
+                row['i1']         = result['i1']
+                row['i2']         = result['i2']
+                row['pixel']      = result['center']
+                row['amplitude']  = result['amplitude']
+                row['fwhm']       = result['fwhm']
+                row['background'] = result['background']
 
         # replot
         self.plot_aperture()
+
+        self.plot_linefit(None)
+
+        self.plot_frame.canvas.draw()
 
     def clearall(self):
         """Clear all the identified lines."""
@@ -740,13 +763,21 @@ class CalibWindow(tk.Frame):
         # replot
         self.plot_aperture()
 
+        self.plot_linefit(None)
+
+        self.plot_frame.canvas.draw()
+
+
     def auto_identify(self):
         """Identify all lines in the wavelength standard list automatically.
         """
-        k       = self.param['k']
-        offset  = self.param['offset']
-        coeff   = self.param['coeff']
-        npixel  = self.param['npixel']
+        k           = self.param['k']
+        offset      = self.param['offset']
+        coeff       = self.param['coeff']
+        npixel      = self.param['npixel']
+        window_size = self.param['window_size']
+        fitfuncname = self.param['fitfuncname']
+
         n_insert = 0
         for aperture in sorted(self.spec['aperture']):
             mask = self.spec['aperture'] == aperture
@@ -755,39 +786,51 @@ class CalibWindow(tk.Frame):
             # scan every order and find the upper and lower limit of wavelength
             order = k*aperture + offset
 
-            # generated the wavelengths for every pixel in this oirder
-            x = np.arange(npixel)
-            wl = get_wavelength(coeff, npixel, x, np.repeat(order, x.size))
-            w1 = min(wl[0], wl[-1])
-            w2 = max(wl[0], wl[-1])
+            # generated the wavelengths for every pixel in this order
+            pix_lst = np.arange(npixel)
+            wave_lst = get_wavelength(coeff, npixel, pix_lst,
+                                      np.repeat(order, npixel))
+            # get wavelength range of this order
+            w1 = min(wave_lst[0], wave_lst[-1])
+            w2 = max(wave_lst[0], wave_lst[-1])
 
             has_insert = False
             # now scan the linelist
-            for line in self.linelist:
-                if line[0] < w1:
+            for row in self.linelist:
+                wl = row['wave_air']
+                if wl < w1:
                     continue
-                if line[0] > w2:
+                if wl > w2:
                     break
 
                 # wavelength in the range of this order
                 # check if this line has already been identified
-                if is_identified(line[0], self.identlist, aperture):
+                if is_identified(wl, self.identlist, aperture):
                     continue
 
-                # now has not been identified. find peaks for this line
-                diff = np.abs(wl - line[0])
+                # if this line has not been identified. find the peak
+                diff = np.abs(wave_lst - wl)
                 i = diff.argmin()
-                i1, i2, param, std = find_local_peak(flux, i,
-                                        self.param['window_size'])
-                keep = auto_line_fitting_filter(param, i1, i2)
+                result = find_local_peak(flux, i, window_size, fitfuncname)
+                center = result['center']
+                result = find_local_peak(flux, center, window_size, fitfuncname)
+
+                if result is None:
+                    # fitting failed. probably because of too few points
+                    continue
+
+                keep = auto_line_fitting_filter(result)
                 if not keep:
                     continue
 
                 # unpack the fitted parameters
-                amplitude  = param[0]
-                center     = param[1]
-                fwhm       = param[2]
-                background = param[3]
+                i1          = result['i1']
+                i2          = result['i2']
+                amplitude   = result['amplitude']
+                center      = result['center']
+                std         = result['std']
+                fwhm        = result['fwhm']
+                background  = result['background']
 
                 # q = A/std is a proxy of signal-to-noise ratio.
                 q = amplitude/std
@@ -816,7 +859,7 @@ class CalibWindow(tk.Frame):
                 if aperture not in self.identlist:
                     self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                item = np.array((aperture, order, line[0], i1, i2, center,
+                item = np.array((aperture, order, wl, i1, i2, center,
                                 amplitude, fwhm, background, q, True, 0.0,
                                 'a'), dtype=identlinetype)
 
@@ -853,6 +896,7 @@ class CalibWindow(tk.Frame):
             self.param['mode']='ident'
 
             self.plot_aperture()
+            self.plot_frame.canvas.draw()
 
             self.info_frame.switch_button.config(text='Plot')
         else:
@@ -867,12 +911,64 @@ class CalibWindow(tk.Frame):
         if self.param['aperture'] < self.spec['aperture'].max():
             self.param['aperture'] += 1
             self.plot_aperture()
+            self.plot_linefit(None)
+            self.plot_frame.canvas.draw()
 
     def prev_aperture(self):
         """Response function of pressing the previous aperture."""
         if self.param['aperture'] > self.spec['aperture'].min():
             self.param['aperture'] -= 1
             self.plot_aperture()
+            self.plot_linefit(None)
+            self.plot_frame.canvas.draw()
+
+    def plot_linefit(self, info):
+
+        # redraw spectra in ax2.
+        # get the corresponding axes
+        ax2 = self.plot_frame.ax2
+        ax3 = self.plot_frame.ax3
+
+        ax2.cla()
+        ax3.cla()
+
+        # if nothing to plot, return a None value
+        if info is None:
+            return None
+
+        i1          = info['i1']
+        i2          = info['i2']
+        center      = info['center']
+        fitfunc     = info['fitfunc']
+        param       = info['param']
+        std         = info['std']
+        residuals   = info['residuals']
+
+        # get flux
+        aperture = self.param['aperture']
+        mask = (self.spec['aperture'] == aperture)
+        specdata = self.spec[mask][0]
+        flux = specdata['flux']
+
+        # plot fitting in ax3
+        xdata = np.arange(i1, i2)
+        ydata = flux[i1:i2]
+        ax3.plot(xdata, ydata, 'o', color='C3')
+        ax3.axvline(center, ls='--', color='k')
+        # plot the fitted curve
+        newx = np.linspace(xdata[0], xdata[-1], 100)
+        ax3.plot(newx, fitfunc(param, newx), '-', color='C0', lw=1)
+        ax3.set_xlim(xdata[0], xdata[-1])
+        ax3._text.set_text('')
+
+        # plot residuals in ax2
+        ax2.plot(xdata, residuals, 'o', color='C3')
+        ax2.axhline(y=0, color='k', ls='--', zorder=-1)
+        ax2.axhline(y=std, color='k', ls=':', zorder=-1)
+        ax2.axhline(y=-std, color='k', ls=':', zorder=-1)
+        ax2.set_xlim(xdata[0], xdata[-1])
+        ax2.set_ylim(-4*std, 4*std)
+        ax2._text.set_text('RMS={:7.3e}'.format(std))
 
     def plot_aperture(self):
         """Plot a specific aperture in the figure.
@@ -881,8 +977,8 @@ class CalibWindow(tk.Frame):
         mask = (self.spec['aperture'] == aperture)
         specdata = self.spec[mask][0]
         ydata = specdata['flux']
-        npoints = len(ydata)
-        xdata = np.arange(npoints)
+        npixel = len(ydata)
+        xdata = np.arange(npixel)
 
         # redraw spectra in ax1
         ax1 = self.plot_frame.ax1
@@ -915,7 +1011,7 @@ class CalibWindow(tk.Frame):
                 wavelength = item['wavelength']
 
                 # draw vertial dash line
-                line = ax1.axvline(pixel, ls='--', color='k')
+                line = ax1.axvline(pixel, ls='--', color='k', lw=0.6)
 
                 # draw text
                 x = pixel+pix_ratio*10
@@ -926,11 +1022,88 @@ class CalibWindow(tk.Frame):
                 self.ident_objects.append((line, text))
 
         # plot the temporarily identified line
-        if self.param['center'] is not None:
-            ax1.axvline(self.param['center'], linestyle='--', color='k')
+        #if self.param['center'] is not None:
+        #    ax1.axvline(self.param['center'], linestyle='--', color='k', lw=0.6)
+
+        #plot line list
+        # get the (estimated) wavelength range of current displayed aperture
+        w1, w2 = None, None
+
+        # check global fitting results
+        k       = self.param['k']
+        offset  = self.param['offset']
+        coeff   = self.param['coeff']
+        if len(coeff)>0 and k is not None and offset is not None:
+            # get the order nomalization factros order1 and order2, which are
+            #required by the get_wavelength() function
+            pix_lst = np.arange(npixel)
+            order = k*aperture + offset
+            wave_lst = get_wavelength(coeff, npixel, pix_lst,
+                                      np.repeat(order, npixel))
+            diffwave_lst = np.diff(wave_lst)
+            if (diffwave_lst>0).sum()==0 or (diffwave_lst<0).sum()==0:
+                # all wavelength are monotonic
+                # get wavelength range of this order
+                w1 = min(wave_lst[0], wave_lst[-1])
+                w2 = max(wave_lst[0], wave_lst[-1])
+        elif aperture in self.identlist and len(self.identlist[aperture])>1:
+            n = len(self.identlist[aperture])
+            pix_lst = np.arange(npixel)
+            x_lst = self.identlist[aperture]['pixel']
+            wl_lst  = self.identlist[aperture]['wavelength']
+            deg = min(self.param['xorder'], n-1)
+            c = np.polyfit(x_lst, wl_lst, deg=deg)
+            wave_lst = np.polyval(c, pix_lst)
+            diffwave_lst = np.diff(wave_lst)
+            if (diffwave_lst>0).sum()==0 or (diffwave_lst<0).sum()==0:
+                # all wavelength are monotonic
+                # get wavelength range of this order
+                w1 = min(wave_lst[0], wave_lst[-1])
+                w2 = max(wave_lst[0], wave_lst[-1])
+        else:
+            pass
+
+        # wavelength range is known for this order
+        if None not in [w1, w2]:
+            m1 = self.linelist['wave_air'] > w1
+            m2 = self.linelist['wave_air'] < w2
+            m = m1 * m2
+            for row in self.linelist[m]:
+                dist = np.abs(wave_lst - row['wave_air'])
+                pix = pix_lst[dist.argmin()]
+                # plotted tick length is proportional to the line intensity
+                if 'intlev' in self.linelist.colnames:
+                    intlevel = row['intlev']
+                    if intlevel is np.ma.masked:
+                        intlevel = 4
+                elif 'int' in self.linelist.colnames:
+                    intensity = row['int']
+                    if intensity is np.ma.masked:
+                        intlevel = 4
+                    elif intensity > 100:
+                        intlevel = 1
+                    elif intensity > 20:
+                        intlevel = 2
+                    elif intensity > 5:
+                        intlevel = 3
+                    else:
+                        intlevel = 4
+                else:
+                    intlevel = 4
+
+                ylen = (5 - intlevel)*0.02*(y2-y1)
+                # use different colors and line width for identified lines
+                if is_identified(row['wave_air'], self.identlist, aperture):
+                    color = 'C3'
+                    lw = 0.6
+                else:
+                    color = 'gray'
+                    lw = 0.5
+                # plot
+                ax1.plot([pix, pix], [y2-ylen, y2], ls='-', color=color, lw=lw)
 
         # update the aperture number
-        ax1._aperture_text.set_text('Aperture %d'%aperture)
+        ax1._text.set_text('Aperture {}'.format(aperture))
         ax1.set_ylim(y1, y2)
         ax1.set_xlim(x1, x2)
         ax1.xaxis.set_major_locator(tck.MultipleLocator(500))
@@ -938,7 +1111,6 @@ class CalibWindow(tk.Frame):
         ax1.set_xlabel('Pixel')
         ax1.set_ylabel('Flux')
 
-        self.plot_frame.canvas.draw()
 
         # update order navigation and aperture label
         self.info_frame.update_nav_buttons()
@@ -1019,10 +1191,16 @@ class CalibWindow(tk.Frame):
                         else:
                             plt.setp(line, color='k')
                             plt.setp(text, color='k')
+                    wl = list1[imin]['wavelength']
+
+                    # plot fitting of this line
+                    for _wl, info in self.fitdata[aperture].items():
+                        if abs(wl - _wl) < 1e-3:
+                            self.plot_linefit(info)
+                            break
+
                     # redraw the canvas
                     self.plot_frame.canvas.draw()
-
-                    wl = list1[imin]['wavelength']
 
                     # select this line in the linetable
                     for i, record in enumerate(line_frame.item_lst):
@@ -1046,7 +1224,9 @@ class CalibWindow(tk.Frame):
                     # end this function without more actions
                     return True
                 else:
-                    # not found. all of the colors are normal
+                    # not found. this is a new line.
+
+                    # reset the colors of all other lines in this aperture
                     for line, text in self.ident_objects:
                         plt.setp(line, color='k')
                         plt.setp(text, color='k')
@@ -1065,11 +1245,12 @@ class CalibWindow(tk.Frame):
 
                     # continue to act
 
+            # get the flux of current aperture
             mask = (self.spec['aperture'] == aperture)
             specdata = self.spec[mask][0]
             flux = specdata['flux']
 
-            # find peak
+            # find the peak of this line
             # first, find the local maximum around the clicking point
             # the searching window is set to be +-5 pixels
             i0 = int(event.xdata)
@@ -1078,22 +1259,35 @@ class CalibWindow(tk.Frame):
             local_max = i1 + flux[i1:i2].argmax()
             # now found the local max point
             window_size = self.param['window_size']
-            fitfunc     = self.param['fitfunc']
+            fitfuncname = self.param['fitfuncname']
 
-            param = find_local_peak(flux, local_max, window_size, fitfunc)
-            center = param['center']
-            param = find_local_peak(flux, center, window_size, fitfunc)
+            result = find_local_peak(flux, local_max, window_size, fitfuncname)
+            center = result['center']
+            result = find_local_peak(flux, center, window_size, fitfuncname)
 
             # unpack the fitted parameters
-            self.param['i1']            = param['i1']
-            self.param['i2']            = param['i2']
-            self.param['amplitude']     = param['amplitude']
-            self.param['center']        = param['center']
-            self.param['fwhm']          = param['fwhm']
-            self.param['background']    = param['background']
+            self.param['i1']            = result['i1']
+            self.param['i2']            = result['i2']
+            self.param['amplitude']     = result['amplitude']
+            self.param['center']        = result['center']
+            self.param['fwhm']          = result['fwhm']
+            self.param['background']    = result['background']
+            self.param['fitfunc']       = result['fitfunc']
+            self.param['param']         = result['param']
+            self.param['std']           = result['std']
+            self.param['residuals']     = result['residuals']
+
+            # plot fitting of this line
+            self.plot_linefit(result)
 
             # temporarily plot this line
-            self.plot_aperture()
+            #self.plot_aperture()
+            # plot the temporarily identified line
+            if self.param['center'] is not None:
+                ax1.axvline(self.param['center'], ls='--', color='k', lw=0.6)
+
+            # refresh canvas
+            self.plot_frame.canvas.draw()
 
             line_frame.clr_button.config(state=tk.NORMAL)
 
@@ -1155,6 +1349,10 @@ class CalibWindow(tk.Frame):
         amplitude  = self.param['amplitude']
         fwhm       = self.param['fwhm']
         background = self.param['background']
+        fitfunc    = self.param['fitfunc']
+        param      = self.param['param']
+        std        = self.param['std']
+        residuals  = self.param['residuals']
 
         selected_iid_lst = line_frame.line_tree.selection()
         iid = selected_iid_lst[0]
@@ -1178,13 +1376,23 @@ class CalibWindow(tk.Frame):
         self.identlist[aperture] = np.insert(self.identlist[aperture],
                                              insert_pos, item)
 
+        # insert into fitfdata
+        info = {'i1': i1, 'i2': i2, 'center': pixel, 'fitfunc': fitfunc,
+                'param': param, 'std': std, 'residuals': residuals,
+                }
+        self.fitdata[aperture][wavelength] = info
+
         # reset line fitting parameters
         self.param['i1']         = None
         self.param['i2']         = None
         self.param['center']     = None
+        self.param['fitfunc']    = None
         self.param['amplitude']  = None
         self.param['fwhm']       = None
         self.param['background'] = None
+        self.param['param']      = None
+        self.param['std']        = None
+        self.param['residuals']  = None
 
         # reset the line table
         line_frame.search_text.set('')
@@ -1198,6 +1406,8 @@ class CalibWindow(tk.Frame):
 
         # replot
         self.plot_aperture()
+
+        self.plot_frame.canvas.draw()
 
     def on_delete_ident(self):
         """Response function of deleting an identified line.
@@ -1232,6 +1442,10 @@ class CalibWindow(tk.Frame):
 
             # replot
             self.plot_aperture()
+
+            self.plot_linefit(None)
+
+            self.plot_frame.canvas.draw()
 
     def on_draw(self, event):
         """Response function of drawing.
@@ -1284,7 +1498,7 @@ class CalibWindow(tk.Frame):
             info_frame.clearall_button.config(state=tk.DISABLED)
 
 def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
-    fitfunc='gaussian', window_size=13, xorder=3, yorder=3, maxiter=10,
+    fitfuncname='gaussian', window_size=13, xorder=3, yorder=3, maxiter=10,
     clipping=3, q_threshold=10, fit_filter=None, figsize=(2500, 1500), dpi=150,
     ):
     """Identify the wavelengths of emission lines in the spectrum of a
@@ -1357,7 +1571,8 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     if linefilename is None:
         print('Error: Cannot find linelist file: %s'%linelist)
         exit()
-    line_list = load_linelist(linefilename)
+    #line_list = load_linelist(linefilename)
+    line_list = Table.read(linefilename, format='ascii.fixed_width_two_line')
 
     # display an interactive figure
     # reset keyboard shortcuts
@@ -1395,7 +1610,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
                               title       = title,
                               identlist   = identlist,
                               linelist    = line_list,
-                              fitfunc     = fitfunc,
+                              fitfuncname = fitfuncname,
                               window_size = window_size,
                               xorder      = xorder,
                               yorder      = yorder,
@@ -1412,7 +1627,6 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     k      = calibwindow.param['k']
     offset = calibwindow.param['offset']
 
-    # find the direction code
     aper = spec['aperture'][0]
     order = k*aper + offset
     wl = get_wavelength(coeff, npixel, np.arange(npixel), order)
@@ -1433,7 +1647,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
               'nuse':        calibwindow.param['nuse'],
               'ntot':        calibwindow.param['ntot'],
               'identlist':   calibwindow.identlist,
-              'fitfunc':     calibwindow.param['fitfunc'],
+              'fitfuncname': calibwindow.param['fitfuncname'],
               'window_size': calibwindow.param['window_size'],
               'xorder':      calibwindow.param['xorder'],
               'yorder':      calibwindow.param['yorder'],
@@ -1462,10 +1676,10 @@ if __name__=='__main__':
     parser.add_argument('-c', '--clipping', nargs='?', type=float, default=3)
     parser.add_argument('-f', '--fitfunc', nargs='?', default='gaussian')
     parser.add_argument('-w', '--windowsize', nargs='?', dest='window_size',
-                        default=15)
+                        type=int, default=15)
     parser.add_argument('-d', '--dpi', nargs='?', type=int, default=150)
     parser.add_argument('-s', '--size', nargs='?', type=int, default=2500)
-    parser.add_argument('-q', nargs='?', type=float, default=10)
+    parser.add_argument('-q', '--quality', nargs='?', type=float, default=10)
     parser.add_argument('-i', '--identfile', nargs='?')
     parser.add_argument('-o', '--output', required=True)
 
@@ -1488,7 +1702,7 @@ if __name__=='__main__':
                 figfilename = figname,
                 title       = os.path.basename(filename),
                 linelist    = args.linelist,
-                fitfunc     = args.fitfunc,
+                fitfuncname = args.fitfunc,
                 window_size = args.window_size,
                 xorder      = args.xorder,
                 yorder      = args.yorder,
