@@ -2,6 +2,7 @@
 import os
 import re
 import sys
+import datetime
 import argparse
 
 import numpy as np
@@ -21,7 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from gamse.pipelines.common import load_config
 from gamse.echelle.wlcalib import (identlinetype, CalibFigure,
         reference_self_wavelength,
-        save_ident, load_ident, load_linelist, search_linelist,
+        save_ident, load_ident, load_linelist, get_linelist,
         is_identified, auto_line_fitting_filter, find_local_peak,
         guess_wavelength, get_wavelength, fit_wavelength)
 
@@ -339,8 +340,12 @@ class LineTable(tk.Frame):
         self.item_lst = []
         for row in linelist:
             wl = row['wave_air']
-            species = '{} {}'.format(row['element'], row['ion'])
-            iid = self.line_tree.insert('',tk.END,
+            element = row['element']
+            ion     = row['ion']
+            if ion is np.ma.masked:
+                ion = ''
+            species = '{} {}'.format(element, ion).strip()
+            iid = self.line_tree.insert('', tk.END,
                     values=(wl, species, ''), tags='normal')
             self.item_lst.append((iid,  wl))
         self.line_tree.tag_configure('normal', font=('Arial', 10))
@@ -671,6 +676,10 @@ class CalibWindow(tk.Frame):
 
         self.plot_frame.canvas.draw()
 
+        if len(self.identlist)>0:
+            self.recenter()
+
+
         self.update_fit_buttons()
 
     def fit(self):
@@ -721,6 +730,9 @@ class CalibWindow(tk.Frame):
                 window_size = self.param['window_size']
                 fitfuncname = self.param['fitfuncname']
                 result = find_local_peak(flux, pix, window_size, fitfuncname)
+                center = result['center']
+                result = find_local_peak(flux, center, window_size, fitfuncname)
+
                 # update the line parameters with the new fitting results
                 row['i1']         = result['i1']
                 row['i2']         = result['i2']
@@ -728,6 +740,7 @@ class CalibWindow(tk.Frame):
                 row['amplitude']  = result['amplitude']
                 row['fwhm']       = result['fwhm']
                 row['background'] = result['background']
+                row['q']          = result['amplitude']/result['std']
 
         # replot
         self.plot_aperture()
@@ -794,10 +807,11 @@ class CalibWindow(tk.Frame):
             w1 = min(wave_lst[0], wave_lst[-1])
             w2 = max(wave_lst[0], wave_lst[-1])
 
-            has_insert = False
             # now scan the linelist
             for row in self.linelist:
-                wl = row['wave_air']
+                wl      = row['wave_air']
+                element = row['element']
+                ion     = row['ion']
                 if wl < w1:
                     continue
                 if wl > w2:
@@ -859,20 +873,19 @@ class CalibWindow(tk.Frame):
                 if aperture not in self.identlist:
                     self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                item = np.array((aperture, order, wl, i1, i2, center,
-                                amplitude, fwhm, background, q, True, 0.0,
-                                'a'), dtype=identlinetype)
+                item = np.array((aperture, order, element, ion, wl,
+                                 i1, i2, center, amplitude, fwhm, background,
+                                 q, True, 0.0, 'a'), dtype=identlinetype)
 
-                self.identlist[aperture] = np.append(self.identlist[aperture],
-                                            item)
-                has_insert = True
-                #print('insert', aperture, line[0], peak_x, i)
+                # find the insert position
+                insert_pos = np.searchsorted(self.identlist[aperture]['pixel'],
+                                             center)
+
+                self.identlist[aperture] = np.insert(self.identlist[aperture],
+                                                     insert_pos, item)
+
                 n_insert += 1
 
-            # resort this order if there's new line inserted
-            if has_insert:
-                self.identlist[aperture] = np.sort(self.identlist[aperture],
-                                                    order='pixel')
 
         message = '{} new lines inserted'.format(n_insert)
         print(message)
@@ -1354,29 +1367,41 @@ class CalibWindow(tk.Frame):
         std        = self.param['std']
         residuals  = self.param['residuals']
 
+        q = amplitude/std
+
+        # get wavelength, element and ion from line table
         selected_iid_lst = line_frame.line_tree.selection()
         iid = selected_iid_lst[0]
-        wavelength = float(line_frame.line_tree.item(iid, 'values')[0])
+        lineinfo = line_frame.line_tree.item(iid, 'values')
+        wavelength = float(lineinfo[0])
+        species = lineinfo[1]
+        cols = species.split()
+        element = cols[0]
+        if len(cols)>1:
+            ion = cols[1].strip()
+        else:
+            ion = ''
         line_frame.line_tree.selection_remove(selected_iid_lst)
 
-        # find the insert position
-        insert_pos = np.searchsorted(list1['pixel'], pixel)
 
-        if None in [k, offset]:
+        if k is None or offset is None:
             order = 0
         else:
             order = k*aperture + offset
 
+        # add to identlist
+        item = np.array((aperture, order, element, ion, wavelength,
+                         i1, i2, pixel, amplitude, fwhm, background, q,
+                         True, 0.0, 'm'), dtype=identlinetype)
 
-        item = np.array((aperture, order, wavelength, i1, i2, pixel,
-                        amplitude, fwhm, background, -1., True, 0.0,
-                        'm'), dtype=identlinetype)
+        # find the insert position
+        insert_pos = np.searchsorted(list1['pixel'], pixel)
 
         # insert into identified line list
         self.identlist[aperture] = np.insert(self.identlist[aperture],
                                              insert_pos, item)
 
-        # insert into fitfdata
+        # insert into fitdata
         info = {'i1': i1, 'i2': i2, 'center': pixel, 'fitfunc': fitfunc,
                 'param': param, 'std': std, 'residuals': residuals,
                 }
@@ -1567,12 +1592,10 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
         identlist = {}
 
     # load the wavelengths
-    linefilename = search_linelist(linelist)
-    if linefilename is None:
-        print('Error: Cannot find linelist file: %s'%linelist)
-        exit()
-    #line_list = load_linelist(linefilename)
-    line_list = Table.read(linefilename, format='ascii.fixed_width_two_line')
+    if os.path.exists(linelist):
+        line_list = Table.read(linelist, format='ascii.fixed_width_two_line')
+    else:
+        line_list = get_linelist(linelist)
 
     # display an interactive figure
     # reset keyboard shortcuts
@@ -1657,11 +1680,6 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
               'direction':   new_direction,
             }
 
-    # save ident list
-    if len(calibwindow.identlist)>0 and \
-        identfilename is not None and not os.path.exists(identfilename):
-        save_ident(calibwindow.identlist, calibwindow.param['coeff'],
-                    identfilename)
 
     return result
 
@@ -1679,8 +1697,8 @@ if __name__=='__main__':
                         type=int, default=15)
     parser.add_argument('-d', '--dpi', nargs='?', type=int, default=150)
     parser.add_argument('-s', '--size', nargs='?', type=int, default=2500)
-    parser.add_argument('-q', '--quality', nargs='?', type=float, default=10)
-    parser.add_argument('-i', '--identfile', nargs='?')
+    parser.add_argument('-q', '--qthreshold', nargs='?', type=float, default=10)
+    parser.add_argument('-r', '--resume', nargs='?', default=None)
     parser.add_argument('-o', '--output', required=True)
 
     args = parser.parse_args()
@@ -1702,20 +1720,37 @@ if __name__=='__main__':
                 figfilename = figname,
                 title       = os.path.basename(filename),
                 linelist    = args.linelist,
+                identfilename = args.resume,
                 fitfuncname = args.fitfunc,
                 window_size = args.window_size,
                 xorder      = args.xorder,
                 yorder      = args.yorder,
                 maxiter     = 5,
                 clipping    = args.clipping,
-                q_threshold = args.q,
+                q_threshold = args.qthreshold,
                 figsize     = (args.size, args.size*0.6),
                 dpi         = args.dpi,
                 )
 
+    # save ident list as ASCII file
+    # get outfilename
+    # split dir and basename of input filename
+    dirname = os.path.dirname(filename)
+    fname = os.path.basename(filename)
+    # get timestamp
+    now = datetime.datetime.now()
+    suffix = datetime.datetime.strftime(now, '%y%m%d-%H%M%S')
+    outfilename = os.path.join(dirname, 'ident.{}.{}.dat'.format(fname, suffix))
+    # save ident list
+    save_ident(calib['identlist'], outfilename)
+
     # reference the ThAr spectra
     spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
+
+
+
+    # save result as FITS file
     prefix = 'HIERARCH GAMSE WLCALIB '
     for key, value in card_lst:
         head.append((prefix+key, value))
