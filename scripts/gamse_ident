@@ -312,7 +312,7 @@ class LineTable(tk.Frame):
 
         # create line tree
         self.line_tree = ttk.Treeview(master  = self.data_frame,
-                                      columns    = ('wl', 'species', 'status'),
+                                      columns    = ('wl', 'species', 'source'),
                                       show       = 'headings',
                                       style      = 'Treeview',
                                       height     = 13, # 22,
@@ -323,12 +323,12 @@ class LineTable(tk.Frame):
                                       orient = tk.VERTICAL,
                                       width  = 20)
 
-        self.line_tree.column('wl',      width=160)
-        self.line_tree.column('species', width=140)
-        self.line_tree.column('status',  width=width-160-140-20)
+        self.line_tree.column('wl',      width=150)
+        self.line_tree.column('species', width=120)
+        self.line_tree.column('source',  width=width-150-120-20)
         self.line_tree.heading('wl',      text=u'\u03bb in air (\xc5)')
         self.line_tree.heading('species', text='Species')
-        self.line_tree.heading('status',  text='Status')
+        self.line_tree.heading('source',  text='Source')
         self.line_tree.config(yscrollcommand=self.scrollbar.set)
 
         style = ttk.Style()
@@ -339,14 +339,15 @@ class LineTable(tk.Frame):
 
         self.item_lst = []
         for row in linelist:
-            wl = row['wave_air']
+            wl      = row['wave_air']
             element = row['element']
             ion     = row['ion']
+            source  = row['source']
             if ion is np.ma.masked:
                 ion = ''
             species = '{} {}'.format(element, ion).strip()
             iid = self.line_tree.insert('', tk.END,
-                    values=(wl, species, ''), tags='normal')
+                    values=(wl, species, source), tags='normal')
             self.item_lst.append((iid,  wl))
         self.line_tree.tag_configure('normal', font=('Arial', 10))
 
@@ -812,6 +813,7 @@ class CalibWindow(tk.Frame):
                 wl      = row['wave_air']
                 element = row['element']
                 ion     = row['ion']
+                source  = row['source']
                 if wl < w1:
                     continue
                 if wl > w2:
@@ -873,7 +875,7 @@ class CalibWindow(tk.Frame):
                 if aperture not in self.identlist:
                     self.identlist[aperture] = np.array([], dtype=identlinetype)
 
-                item = np.array((aperture, order, element, ion, wl,
+                item = np.array((aperture, order, element, ion, wl, source,
                                  i1, i2, center, amplitude, fwhm, background,
                                  q, True, 0.0, 'a'), dtype=identlinetype)
 
@@ -1381,6 +1383,7 @@ class CalibWindow(tk.Frame):
             ion = cols[1].strip()
         else:
             ion = ''
+        source = lineinfo[2]
         line_frame.line_tree.selection_remove(selected_iid_lst)
 
 
@@ -1390,7 +1393,7 @@ class CalibWindow(tk.Frame):
             order = k*aperture + offset
 
         # add to identlist
-        item = np.array((aperture, order, element, ion, wavelength,
+        item = np.array((aperture, order, element, ion, wavelength, source,
                          i1, i2, pixel, amplitude, fwhm, background, q,
                          True, 0.0, 'm'), dtype=identlinetype)
 

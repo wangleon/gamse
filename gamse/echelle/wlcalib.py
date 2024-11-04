@@ -33,6 +33,7 @@ def get_identlinetype():
             ('element',     'S6'),
             ('ion',         'S6'),
             ('wavelength',  np.float64),
+            ('source',      'S10'),
             ('i1',          np.int16),
             ('i2',          np.int16),
             ('pixel',       np.float32),
@@ -336,6 +337,7 @@ def save_ident(identlist, filename):
         ('element',     str),
         ('ion',         str),
         ('wavelength',  float),
+        ('source',      str),
         ('i1',          int),
         ('i2',          int),
         ('pixel',       float),
@@ -351,7 +353,7 @@ def save_ident(identlist, filename):
             if item['method'].decode('ascii')!='m':
                 continue
             row = (aperture, item['element'], item['ion'], item['wavelength'],
-                   item['i1'], item['i2'],
+                   item['source'], item['i1'], item['i2'],
                    item['pixel'], item['amplitude'], item['fwhm'],
                    item['background'], item['q'], item['mask'],
                    )
@@ -391,8 +393,8 @@ def load_ident(filename):
 
     for row in t:
         item = np.array((row['aperture'], 0, row['element'], row['ion'],
-                         row['wavelength'], -1, -1, row['pixel'], np.NaN,
-                         np.NaN, np.NaN, np.NaN, -1, np.NaN, 'm'),
+                         row['wavelength'], row['source'], -1, -1, row['pixel'],
+                         np.NaN, np.NaN, np.NaN, np.NaN, -1, np.NaN, 'm'),
                         dtype=identlinetype)
 
         if row['aperture'] not in identlist:
@@ -1052,6 +1054,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             wl      = line['wave_air']
             element = line['element']
             ion     = line['ion']
+            source  = line['source']
 
             if wl < w1:
                 continue
@@ -1091,8 +1094,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                 identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            item = np.array((aperture, order, wl, element, ion, i1, i2, center,
-                            amplitude, fwhm, background, q, True, 0.0, 'a'),
+            item = np.array((aperture, order, wl, element, ion, source,
+                             i1, i2, center, amplitude, fwhm, background, q,
+                             True, 0.0, 'a'),
                             dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
