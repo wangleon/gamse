@@ -20,11 +20,11 @@ from . import common
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),
     ('xinglong216hrs',  'Xinglong216',      'HRS'),
-    ('yhrs',            'Lijiang2.4m',      'YHRS'),
     ('hires',           'Keck-I',           'HIRES'),
     ('levy',            'APF',              'Levy'),
     ('hds',             'Subaru',           'HDS'),
     ('lhrs',            'LAMOST',           'HRS'),
+    ('lires',           'Lijiang2.4m',      'LiRES'),
     ('feros',           'MPG/ESO-2.2m',     'FEROS'),
     ('espadons',        'CFHT',             'ESPaDOnS'),
     ('uves',            'VLT',              'UVES'),

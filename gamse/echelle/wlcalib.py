@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import numpy.polynomial as poly
 import astropy.io.fits as fits
-from astropy.table import Table
+from astropy.table import Table, vstack
 import scipy.interpolate as intp
 import scipy.optimize as opt
 
@@ -30,7 +30,10 @@ def get_identlinetype():
     types = [
             ('aperture',    np.int16),
             ('order',       np.int16),
+            ('element',     'S6'),
+            ('ion',         'S6'),
             ('wavelength',  np.float64),
+            ('source',      'S10'),
             ('i1',          np.int16),
             ('i2',          np.int16),
             ('pixel',       np.float32),
@@ -46,6 +49,31 @@ def get_identlinetype():
     return np.dtype({'names': names, 'formats': formats})
 
 identlinetype = get_identlinetype()
+
+def get_linelist(string):
+    names = {
+            'Ar': 'argon',
+            'Fe': 'iron',   
+            'He': 'helium',
+            'Ne': 'neon',
+            'Th': 'thorium',
+             }
+
+    # final table contains the selected columns
+    cols = ['element', 'ion', 'wave_air', 'int', 'source']
+
+    tablelist = []
+    for element, name in names.items():
+        if element in string:
+            filename = os.path.join(os.path.dirname(__file__),
+                                    '../data/linelist/{}.dat'.format(name))
+            t = Table.read(filename, format='ascii.fixed_width_two_line')
+            tablelist.append(t[cols])
+    newtable = vstack(tablelist)
+    # resort the table by wavelength
+    newtable.sort('wave_air')
+    return newtable
+
 
 def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
         fit_filter=None):
@@ -93,17 +121,14 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
     # the following list is used to find the position (aperture, no)
     # of each line
     lineid_lst = []
+
     for aperture, list1 in sorted(identlist.items()):
         order = k*aperture + offset
-        #norm_order = 50./order
-        #norm_order = order/50.
         list1['order'][:] = order
         for iline, item in enumerate(list1):
             norm_pixel = item['pixel']*2/(npixel-1) - 1
             fit_p_lst.append(norm_pixel)
             fit_o_lst.append(order)
-            #fit_o_lst.append(norm_order)
-            #fit_w_lst.append(item['wavelength'])
             fit_w_lst.append(item['wavelength']*order)
             fit_m_lst.append(fit_filter(item))
             lineid_lst.append((aperture, iline))
@@ -115,9 +140,9 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
     mask = fit_m_lst
 
     for nite in range(maxiter):
-        coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask], fit_w_lst[mask],
+        coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask]/50., fit_w_lst[mask],
                           xorder=xorder, yorder=yorder)
-        res_lst = fit_w_lst - polyval2d(fit_p_lst, fit_o_lst, coeff)
+        res_lst = fit_w_lst - polyval2d(fit_p_lst, fit_o_lst/50., coeff)
         res_lst = res_lst/fit_o_lst
 
         mean = res_lst[mask].mean(dtype=np.float64)
@@ -159,9 +184,7 @@ def get_wavelength(coeff, npixel, pixel, order):
     """
     # convert aperture to order
     norm_pixel = pixel*2./(npixel-1) - 1
-    #norm_order  = 50./order
-    #norm_order  = order/50.
-    return polyval2d(norm_pixel, order, coeff)/order
+    return polyval2d(norm_pixel, order/50., coeff)/order
 
 def guess_wavelength(x, aperture, identlist, linelist, param):
     """Guess wavelength according to the identified lines.
@@ -182,8 +205,19 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
     """
     rough_wl = None
 
+    # guess wavelength from global wavelength solution
+    if param['coeff'].size > 0:
+        k      = param['k']
+        coeff  = param['coeff']
+        offset = param['offset']
+        npixel = param['npixel']
+
+        order = k*aperture + offset
+
+        rough_wl = get_wavelength(coeff, npixel, x, order)
+
     # guess wavelength from the identified lines in this order
-    if aperture in identlist:
+    if rough_wl is None and aperture in identlist:
         list1 = identlist[aperture]
         if list1.size >= 2:
             fit_order = min(list1.size-1, 2)
@@ -191,17 +225,12 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
                             deg=fit_order)
             rough_wl = np.polyval(local_coeff, x)
 
-    # guess wavelength from global wavelength solution
-    if rough_wl is None and param['coeff'].size > 0:
-        npixel = param['npixel']
-        order = aperture*param['k'] + param['offset']
-        rough_wl = get_wavelength(param['coeff'], param['npixel'], x, order)
 
     if rough_wl is None:
         return None
     else:
         # now find the nearest wavelength in linelist
-        wave_list = np.array([line[0] for line in linelist])
+        wave_list = np.array(list(linelist['wave_air']))
         iguess = np.abs(wave_list-rough_wl).argmin()
         guess_wl = wave_list[iguess]
         return guess_wl
@@ -254,12 +283,6 @@ def find_order(identlist, npixel):
             continue
         less_half = (list1['pixel'] < npixel/2).sum()>0
         more_half = (list1['pixel'] > npixel/2).sum()>0
-        #less_half, more_half = False, False
-        #for pix, wav in zip(list1['pixel'], list1['wavelength']):
-        #    if pix < npixel/2.:
-        #        less_half = True
-        #    elif pix >= npixel/2.:
-        #        more_half = True
         if less_half and more_half:
             if list1['pixel'].size>2:
                 deg = 2
@@ -271,12 +294,21 @@ def find_order(identlist, npixel):
             wlc_lst.append(wlc)
     aper_lst = np.array(aper_lst)
     wlc_lst  = np.array(wlc_lst)
+
+    # remove order with wlc<0
+    m = wlc_lst > 0
+    aper_lst = aper_lst[m]
+    wlc_lst = wlc_lst[m]
+
     if wlc_lst[0] > wlc_lst[-1]:
         k = 1
     else:
         k = -1
 
-    offset_lst = np.arange(-500, 500)
+    #for a, w in zip(aper_lst, wlc_lst):
+    #    print(a, w)
+
+    offset_lst = np.arange(-300, 300)
     eva_lst = []
     for offset in offset_lst:
         const = (k*aper_lst + offset)*wlc_lst
@@ -286,45 +318,61 @@ def find_order(identlist, npixel):
     eva_lst = np.array(eva_lst)
     offset = offset_lst[eva_lst.argmin()]
 
+    #fig = plt.figure()
+    #ax = fig.gca()
+    #ax.plot(offset_lst, eva_lst)
+    #plt.show()
+
     return k, offset
 
-def save_ident(identlist, coeff, filename):
+def save_ident(identlist, filename):
     """Write the ident line list and coefficients into an ASCII file.
     The existing informations in the ASCII file will not be affected.
     Only the input channel will be overwritten.
 
     Args:
         identlist (dict): Dict of identified lines.
-        coeff (:class:`numpy.ndarray`): Coefficient array.
         result (dict): A dict containing identification results.
         filename (str): Name of the ASCII file.
 
     See also:
         :func:`load_ident`
     """
-    outfile = open(filename, 'w')
 
-    # write identified lines
-    fmtstr = ('LINE {:03d} {:10.4f} {:10.4f} {:10.4f} {:12.5e} {:9.5f}'
-             '{:1d} {:+10.6f} {:1s}')
-    for aper, list1 in sorted(identlist.items()):
-        for row in list1:
-            pix    = row['pixel']
-            wav    = row['wavelength']
-            amp    = row['amplitude']
-            fwhm   = row['fwhm']
-            mask   = int(row['mask'])
-            res    = row['residual']
-            method = row['method'].decode('ascii')
-            outfile.write(fmtstr.format(aper, pix, wav, amp, fwhm,
-                mask, res, method)+os.linesep)
 
-    # write coefficients
-    for irow in range(coeff.shape[0]):
-        string = ' '.join(['{:18.10e}'.format(v) for v in coeff[irow]])
-        outfile.write('COEFF {}'.format(string)+os.linesep)
+    t = Table(dtype=[
+        ('aperture',    int),
+        ('element',     str),
+        ('ion',         str),
+        ('wavelength',  float),
+        ('source',      str),
+        ('i1',          int),
+        ('i2',          int),
+        ('pixel',       float),
+        ('amplitude',   float),
+        ('fwhm',        float),
+        ('background',  float),
+        ('q',           float),
+        ('mask',        int),
+        ], masked=True)
 
-    outfile.close()
+    for aperture, list1 in sorted(identlist.items()):
+        for item in list1:
+            if item['method'].decode('ascii')!='m':
+                continue
+            row = (aperture, item['element'], item['ion'], item['wavelength'],
+                   item['source'], item['i1'], item['i2'],
+                   item['pixel'], item['amplitude'], item['fwhm'],
+                   item['background'], item['q'], item['mask'],
+                   )
+            t.add_row(row)
+    t['wavelength'].info.format='%10.4f'
+    t['pixel'].info.format='%10.4f'
+    t['amplitude'].info.format='%10.4e'
+    t['fwhm'].info.format='%8.4f'
+    t['background'].info.format='%10.4e'
+    t['q'].info.format='%6.1f'
+    t.write(filename, format='ascii.fixed_width_two_line', overwrite=True)
 
 
 def load_ident(filename):
@@ -343,69 +391,48 @@ def load_ident(filename):
         :func:`save_ident`
     """
     identlist = {}
-    coeff = []
 
-    infile = open(filename)
-    for row in infile:
-        row = row.strip()
-        if len(row)==0 or row[0] in '#$%^@!':
-            continue
-        g = row.split()
+    t = Table.read(filename, format='ascii.fixed_width_two_line')
 
-        key = g[0]
-        if key == 'LINE':
-            aperture    = int(g[1])
-            pixel       = float(g[2])
-            wavelength  = float(g[3])
-            amplitude   = float(g[4])
-            fwhm        = float(g[5])
-            mask        = bool(g[6])
-            residual    = float(g[7])
-            method      = g[8].strip()
+    if hasattr(t['element'], 'mask'):
+        t['element'] = t['element'].filled('')
+    if hasattr(t['ion'], 'mask'):
+        t['ion'] = t['ion'].filled('')
 
-            item = np.array((aperture, 0, pixel, wavelength, amplitdue, fwhm,
-                    0., mask, residual, method),dtype=identlinetype)
+    for row in t:
+        item = np.array((row['aperture'], 0, row['element'], row['ion'],
+                         row['wavelength'], row['source'], -1, -1, row['pixel'],
+                         np.NaN, np.NaN, np.NaN, np.NaN, -1, np.NaN, 'm'),
+                        dtype=identlinetype)
 
-            if aperture not in identlist:
-                identlist[aperture] = []
-            identlist[aperture].append(item)
+        if row['aperture'] not in identlist:
+            identlist[row['aperture']] = []
 
-        elif key == 'COEFF':
-            coeff.append([float(v) for v in g[2:]])
-
-        else:
-            pass
-
-    infile.close()
+        identlist[row['aperture']].append(item)
 
     # convert list of every order to numpy structured array
     for aperture, list1 in identlist.items():
         identlist[aperture] = np.array(list1, dtype=identlinetype)
 
-    # convert coeff to numpy array
-    coeff = np.array(coeff)
+    return identlist
 
-    return identlist, coeff
+def gaussian_bkg(A, center, sigma, bkg, x):
+    return A*np.exp(-(x-center)**2/2./sigma**2) + bkg
 
-def gaussian(A,center,fwhm,x):
-    sigma = fwhm/2.35482
-    return A*np.exp(-(x-center)**2/2./sigma**2)
-def errfunc(p,x,y):
-    return y - gaussian(p[0],p[1],p[2],x)
+def gengaussian_bkg(A, center, alpha, beta, bkg, x):
+    return A*np.exp(-np.power(np.abs(x-center)/alpha, beta)) + bkg
 
-def gaussian_bkg(A,center,fwhm,bkg,x):
-    sigma = fwhm/2.35482
-    return bkg + A*np.exp(-(x-center)**2/2./sigma**2)
-def errfunc2(p,x,y):
-    return y - gaussian_bkg(p[0],p[1],p[2],p[3],x)
+def errfunc(p, x, y, fitfunc):
+    return y - fitfunc(p, x)
 
-def find_local_peak(flux, x, width, figname=None):
+def find_local_peak(flux, x, width, funcname, figname=None):
     """Find the central pixel of an emission line.
 
     Args:
         flux (:class:`numpy.ndarray`): Flux array.
         x (int): The approximate coordinate of the peak pixel.
         width (int): Window of profile fitting.
+        funcname (str): Name of fitting function.
 
     Returns:
         tuple: A tuple containing:
@@ -422,8 +449,6 @@ def find_local_peak(flux, x, width, figname=None):
 
     i = int(round(x))
 
-    # find the peak in a narrow range
-
     i1, i2 = max(0, i-half), min(flux.size, i+half+1)
 
     if i2 - i1 <= 4:
@@ -432,55 +457,60 @@ def find_local_peak(flux, x, width, figname=None):
 
     # find the peak position
     imax = flux[i1:i2].argmax() + i1
-    xdata = np.arange(i1,i2)
+    xdata = np.arange(i1, i2)
     ydata = flux[i1:i2]
-    # determine the initial parameters for gaussian fitting + background
-    p0 = [ydata.max()-ydata.min(), imax, 3., ydata.min()]
+    ndata = xdata.size
+
+    # determine the initial parameters
+    if funcname == 'gaussian':
+        p0 = [ydata.max()-ydata.min(), imax, 3., ydata.min()]
+        fitfunc = lambda p, x: gaussian_bkg(p[0], p[1], p[2], p[3], x)
+        fwhmfunc = lambda p: 2.35482*p[2]
+        lower_bounds = [0.,     i1,  0.1,       -np.inf]
+        upper_bounds = [np.inf, i2,  (i2-i1)*2, ydata.max()]
+    elif funcname == 'gengaussian':
+        p0 = [ydata.max()-ydata.min(), imax, 5.0, 3.0, ydata.min()]
+        fitfunc = lambda p, x: gengaussian_bkg(p[0], p[1], p[2], p[3], p[4], x)
+        fwhmfunc = lambda p: 2*p[2]*np.power(np.log(2), 1/p[3])
+        lower_bounds = [0.,     i1,  0.1, 0.1, -np.inf]
+        upper_bounds = [np.inf, i2,  20., 20., ydata.max()]
+    else:
+        raise ValueError
+    npara = len(p0)
+
     # least square fitting
-    #p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
-    p1, cov, info, mesg, ier = opt.leastsq(errfunc2, p0[:],
-                                    args=(xdata, ydata), full_output=True)
+    fitresult = opt.least_squares(errfunc, p0, args=(xdata, ydata, fitfunc),
+                                  bounds=(lower_bounds, upper_bounds))
+    p1 = fitresult.x
+    res = fitresult.fun
 
-    res_lst = errfunc2(p1, xdata, ydata)
-
-    if res_lst.size-len(p0)-1 == 0:
+    if ndata - npara - 1 == 0:
         return None
 
-    std = math.sqrt((res_lst**2).sum()/(res_lst.size-len(p0)-1))
+    std = math.sqrt((res**2).sum()/(ndata-npara-1))
+
+    fwhm = fwhmfunc(p1)
 
     if figname is not None:
-        fig = plt.figure()
-        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.5])
+        fig = plt.figure(dpi=120)
+        ax1 = fig.add_axes([0.1, 0.4, 0.8, 0.50])
         ax2 = fig.add_axes([0.1, 0.1, 0.8, 0.25])
-        ax1.plot(xdata, ydata, 'o', ms=4)
+        ax1.plot(xdata, ydata, 'o', c='C0', ms=4)
         newx = np.arange(xdata[0], xdata[-1], 0.1)
-        newy = gaussian_bkg(p1[0], p1[1], p1[2], p1[3], newx)
-        ax1.plot(newx, newy, '-', lw=0.6)
-        yerr = errfunc2(p1, xdata, ydata)
-        ax2.plot(xdata, yerr, 'o', ms=4)
+        newy = fitfunc(p1, newx)
+        ax1.plot(newx, newy, '-', color='C3', lw=0.6)
+        ax2.plot(xdata, res, 'o', c='C0', ms=4)
+        ax2.axhline(0, color='k', lw=0.5, ls='--', zorder=-1)
+        ax2.axhline(std,  color='C3', lw=0.5, ls=':', zorder=-1)
+        ax2.axhline(-std, color='C3', lw=0.5, ls=':', zorder=-1)
         ax1.set_xlim(xdata[0], xdata[-1])
         ax2.set_xlim(xdata[0], xdata[-1])
         fig.savefig(figname)
         plt.close(fig)
 
-    return i1, i2, p1, std
-
-def recenter(flux, center):
-    """Relocate the profile center of the lines.
-
-    Args:
-        flux (:class:`numpy.ndarray`): Flux array.
-        center (float): Center of the line.
-
-    Returns:
-        float: The new center of the line profile.
-    """
-    y1, y2 = int(center)-3, int(center)+4
-    ydata = flux[y1:y2]
-    xdata = np.arange(y1,y2)
-    p0 = [ydata.min(), ydata.max()-ydata.min(), ydata.argmax()+y1, 2.5]
-    p1,succ = opt.leastsq(errfunc2, p0[:], args=(xdata,ydata))
-    return p1[2]
+    return {'i1': i1, 'i2': i2, 'amplitude': p1[0], 'center': p1[1],
+            'background': p1[-1], 'fwhm': fwhm, 'std': std, 'param': p1,
+            'fitfunc': fitfunc, 'residuals': res}
 
 def search_linelist(linelistname):
     """Search the line list file and load the list.
@@ -512,14 +542,6 @@ def search_linelist(linelistname):
     newname = os.path.join(data_path, linelistname+'.dat')
     if os.path.exists(newname):
         return newname
-
-    # seach GAMSE_DATA path
-    gamse_data = os.getenv('GAMSE_DATA')
-    if len(gamse_data)>0:
-        data_path = os.path.join(gamse_data, 'linelist')
-        newname = os.path.join(data_path, linelistname+'.dat')
-        if os.path.exists(newname):
-            return newname
 
     return None
 
@@ -666,7 +688,7 @@ class CalibFigure(Figure):
         channel (str): Channel name of input spectra.
     """
 
-    def __init__(self, width, height, dpi, title):
+    def __init__(self, width, height, dpi):
         """Constuctor of :class:`CalibFigure`.
         """
         # set figsize and dpi
@@ -681,25 +703,22 @@ class CalibFigure(Figure):
         self._ax2 = self.add_axes([0.655,0.07,0.32,0.40])
         self._ax3 = self.add_axes([0.655,0.54,0.32,0.40])
 
-        # add title
-        self.suptitle(title, fontsize=15)
-
         #draw the aperture number to the corner of ax1
         bbox = self._ax1.get_position()
-        self._ax1._aperture_text = self.text(bbox.x0 + 0.05, bbox.y1-0.1,
-                                  '', fontsize=15)
+        self._ax1._text = self.text(bbox.x0 + 0.05, bbox.y1-0.1,
+                                    '', fontsize=15)
 
         # draw residual and number of identified lines in ax2
-        bbox = self._ax3.get_position()
-        self._ax3._residual_text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
-                                  '', fontsize=13)
+        bbox = self._ax2.get_position()
+        self._ax2._text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
+                                    '', fontsize=13)
 
         # draw fitting parameters in ax3
-        bbox = self._ax2.get_position()
-        self._ax2._fitpar_text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
-                                  '', fontsize=13)
+        bbox = self._ax3.get_position()
+        self._ax3._text = self.text(bbox.x0 + 0.02, bbox.y1-0.03,
+                                    '', fontsize=13)
 
-    def plot_solution(self, identlist, aperture_lst, plot_ax1=False,  **kwargs):
+    def plot_solution(self, identlist, aperture_lst, plot_ax1=False, **kwargs):
         """Plot the wavelength solution.
 
         Args:
@@ -736,8 +755,6 @@ class CalibFigure(Figure):
         #wave_scale = 'linear'
         wave_scale = 'reciprocal'
 
-        #colors = 'rgbcmyk'
-
         self._ax2.cla()
         self._ax3.cla()
 
@@ -750,7 +767,8 @@ class CalibFigure(Figure):
             allwave_lst = {}
             for aperture in aperture_lst:
                 order = k*aperture + offset
-                wave = get_wavelength(coeff, npixel, x, np.repeat(order, x.size))
+                wave = get_wavelength(coeff, npixel, x,
+                                      np.repeat(order, x.size))
                 allwave_lst[aperture] = wave
                 wl_max = max(wl_max, wave.max())
                 wl_min = min(wl_min, wave.min())
@@ -759,7 +777,6 @@ class CalibFigure(Figure):
             self._ax1.plot([0, 0],[wl_min, wl_max], color='none')
             yticks = self._ax1.get_yticks()
             self._ax1.cla()
-
 
         for aperture in aperture_lst:
             order = k*aperture + offset
@@ -809,10 +826,10 @@ class CalibFigure(Figure):
 
         # refresh texts in the residual panels
         text = 'R.M.S. = {:.5f}, N = {}/{}'.format(std, nuse, ntot)
-        self._ax3._residual_text.set_text(text)
+        self._ax3._text.set_text(text)
         text = u'Xorder = {}, Yorder = {}, clipping = \xb1{:g}, Niter = {}'.format(
                 xorder, yorder, clipping, maxiter)
-        self._ax2._fitpar_text.set_text(text)
+        self._ax2._text.set_text(text)
 
         # adjust layout for ax1
         if plot_ax1:
@@ -831,7 +848,7 @@ class CalibFigure(Figure):
             self._ax1.set_ylabel(u'\u03bb (\xc5)', fontsize=label_size)
             self._ax1.grid(True, ls=':', color='gray', alpha=1, lw=0.5)
             self._ax1.set_axisbelow(True)
-            self._ax1._aperture_text.set_text('')
+            self._ax1._text.set_text('')
             for tick in self._ax1.xaxis.get_major_ticks():
                 tick.label1.set_fontsize(tick_size)
             for tick in self._ax1.yaxis.get_major_ticks():
@@ -898,7 +915,7 @@ def select_calib_from_database(index_file, dateobs):
     fileid = row['fileid']  # selected fileid
     md5    = row['md5']
 
-    message = 'Select {} from database index as ThAr reference'.format(fileid)
+    message = 'Select {} from database index as reference'.format(fileid)
     logger.info(message)
 
     filepath = os.path.join('instruments/{}'.format(instrument),
@@ -918,9 +935,10 @@ def select_calib_from_database(index_file, dateobs):
 def wlcalib(*args, **kwargs):
     recalib(*args, **kwargs)
 
-def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
+def recalib(spec, ref_spec, linelist, ref_calib,
         aperture_koffset=(1, 0), pixel_koffset=(1, None),
-        xorder=None, yorder=None, maxiter=None, clipping=None, window_size=None,
+        xorder=None, yorder=None, maxiter=None, clipping=None,
+        fitfuncname=None, window_size=None,
         q_threshold=None, direction=None, fit_filter=None
         ):
     """Re-calibrate the wavelength of an input spectra file using another
@@ -982,8 +1000,9 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         :func:`wlcalib`
     """
 
+    # unpack (k, offset) for aperture and pixel
     aperture_k, aperture_offset = aperture_koffset
-    pixel_k, pixel_offset       = pixel_koffset
+    pixel_k,    pixel_offset    = pixel_koffset
 
     # unpack ref_calib
     k           = ref_calib['k']
@@ -996,6 +1015,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
     clipping    = (clipping, ref_calib['clipping'])[clipping is None]
     window_size = (window_size, ref_calib['window_size'])[window_size is None]
     q_threshold = (q_threshold, ref_calib['q_threshold'])[q_threshold is None]
+    fitfuncname = (fitfuncname, ref_calib['fitfuncname'])[fitfuncname is None]
 
     #if pixel_offset is None:
     if False:
@@ -1014,11 +1034,10 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
     identlist = {}
 
     # load the wavelengths
-    linefilename = search_linelist(linelist)
-    if linefilename is None:
-        print('Error: Cannot find linelist file: %s'%linelist)
-        exit()
-    line_list = load_linelist(linefilename)
+    if os.path.exists(linelist):
+        line_list = Table.read(linelist, format='ascii.fixed_width_two_line')
+    else:
+        line_list = get_linelist(linelist)
 
     x = np.arange(npixel)[::pixel_k] + pixel_k*pixel_offset
 
@@ -1028,42 +1047,65 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
         flux     = row['flux']
         # obtain a rough wavelength array according to the input
         # aperture_koffset and pixel_koffset
-        old_aperture = (aperture - aperture_offset)/aperture_k
+        ref_aperture = (aperture - aperture_offset)/aperture_k
 
-        # now convert the old aperture number to echelle order number (m)
-        order = k*old_aperture + offset
-        wl = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
-        w1 = min(wl[0], wl[-1])
-        w2 = max(wl[0], wl[-1])
+        # convert the ref aperture number to echelle order number (m)
+        # here the ref_aperture, k, and offset are all parameters from the
+        # reference spec. so they can be used to calculate order number
+        order = int(k*ref_aperture + offset)
+        # get the wavelength of all pixels in this order
+        # for xinglong
+        #allwave = get_wavelength(coeff, npixel, x, np.repeat(order*50, npixel))*50
+        # for others
+        allwave = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
+
+        w1 = min(allwave[0], allwave[-1])
+        w2 = max(allwave[0], allwave[-1])
+
+        #if order in ref_spec['order']:
+        #    print(order)
+        #    fig = plt.figure(dpi=200)
+        #    ax = fig.gca()
+        #    ax.plot(flux, lw=0.5)
+        #    m = ref_spec['order']==order
+        #    ax.plot(ref_spec[m][0]['flux'], lw=0.5)
+        #    plt.show()
 
         has_insert = False
         for line in line_list:
-            if line[0] < w1:
+            wl      = line['wave_air']
+            element = line['element']
+            ion     = line['ion']
+            source  = line['source']
+
+            if wl < w1:
                 continue
-            if line[0] > w2:
+            if wl > w2:
                 break
 
             # wavelength in the range of this order
             # find the nearest pixel to the calibration line
-            diff = np.abs(wl - line[0])
+            diff = np.abs(allwave - wl)
             i = diff.argmin()
 
-            result = find_local_peak(flux, i, window_size,
+            result = find_local_peak(flux, i, window_size, fitfuncname,
                     #figname='debug/wlfit_{:03d}_{:9.4f}.png'.format(int(order), line[0])
                     )
             if result is None:
                 continue
-            i1, i2, param, std = result
 
-            keep = auto_line_fitting_filter(param, i1, i2)
+            keep = auto_line_fitting_filter(result)
             if not keep:
                 continue
 
             # unpack the fitted parameters
-            amplitude = param[0]
-            center    = param[1]
-            fwhm      = param[2]
-            back      = param[3]
+            i1          = result['i1']
+            i2          = result['i2']
+            amplitude   = result['amplitude']
+            center      = result['center']
+            std         = result['std']
+            fwhm        = result['fwhm']
+            background  = result['background']
 
             # q = A/std is a proxy of signal-to-noise ratio.
             q = amplitude/std
@@ -1074,12 +1116,20 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                 identlist[aperture] = np.array([], dtype=identlinetype)
 
             # pack the line data
-            item = np.array((aperture, order, line[0], i1, i2, center,
-                            amplitude, fwhm, back, q, True, 0.0, 'a'),
+            item = np.array((aperture, order, element, ion,
+                             wl, source, i1, i2, center,
+                             amplitude, fwhm, background, q,
+                             True, 0.0, 'a'),
                             dtype=identlinetype)
 
             identlist[aperture] = np.append(identlist[aperture], item)
             has_insert = True
+            #if order==108:
+            #    ax0.axvline(wl, ls='--', c='k', lw=0.5)
+
+        #if order==108:
+            #allwave = get_wavelength(coeff, npixel, x, np.repeat(order*50, npixel))
+            #ax0.plot(allwave*50, flux, lw=0.5)
 
         if has_insert:
             identlist[aperture] = np.sort(identlist[aperture], order='pixel')
@@ -1101,7 +1151,6 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
     fig = CalibFigure(width  = fig_width,
                       height = fig_height,
                       dpi    = fig_dpi,
-                      title  = title,
                       )
     #canvas = FigureCanvasAgg(fig)
 
@@ -1120,11 +1169,22 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
                       clipping     = clipping,
                       maxiter      = maxiter,
                       )
-    fig.savefig(figfilename)
-    plt.close(fig)
 
     # refresh the direction code
-    new_direction = direction[0] + {1:'r', -1:'b'}[new_k] + '-+'[wl[0] < wl[-1]]
+    code1 = direction[0]    # code1 is either x or y
+    code2 = {1:'r', -1:'b'}[new_k]  # code2 is either r or b
+    # find code3 the code representing increasing or decreasing wavelength
+    aper = int(np.median(list(identlist.keys())))  # find the middest aperture
+    list1 = identlist[aper]         # get the ident line list of this aperture
+    list2 = list1[list1['mask']==1] # only use lines with mask=1
+    i1 = list2['pixel'].argmin()    # the leftest line
+    i2 = list2['pixel'].argmax()    # the rightest line
+    w1 = list2[i1]['wavelength']    # the wavelength of the leftest line
+    w2 = list2[i2]['wavelength']    # the wavelength of the rightest line
+    code3 = '-+'[w1 < w2]
+    # ge the new direction code, e.g., 'xb+' or 'yr-'
+    new_direction = code1 + code2 + code3
+
     # compare the new direction to the input direction. if not consistent,
     # print a warning
     if direction[1]!='?' and direction[1]!=new_direction[1]:
@@ -1145,6 +1205,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             'nuse':        new_nuse,
             'ntot':        new_ntot,
             'identlist':   identlist,
+            'fitfuncname': fitfuncname,
             'window_size': window_size,
             'xorder':      xorder,
             'yorder':      yorder,
@@ -1152,7 +1213,7 @@ def recalib(spec, figfilename, title, ref_spec, linelist, ref_calib,
             'clipping':    clipping,
             'q_threshold': q_threshold,
             'direction':   new_direction,
-            }
+            }, fig
 
 def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
         aperture_k=None, pixel_k=None, pixel_range=(-30, 30),
@@ -1325,7 +1386,8 @@ def find_caliblamp_offset(spec1, spec2, colname1='flux', colname2='flux',
             for pixel_k in search_pixel_k_lst:
                 tmp = np.array(calc_pixel_shift_lst[pixel_k])
 
-                mean = tmp.mean()
+                #mean = tmp.mean()
+                mean = np.median(tmp)
                 std  = tmp.std()
 
                 mean_lst[(aperture_k, pixel_k)].append(mean)
@@ -1584,47 +1646,71 @@ def get_calib_from_header(header):
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
         coeff[j,i] = header[prefix+'COEFF {:d} {:d}'.format(j, i)]
 
+    fileid      = header.get(prefix+'FILEID', '')
+    exptime     = header.get(prefix+'EXPTIME', -1)
+    obsdate     = header.get(prefix+'OBSDATE', '')
+    npixel      = header.get(prefix+'NPIXEL')
+    k           = header.get(prefix+'K')
+    offset      = header.get(prefix+'OFFSET')
+    std         = header.get(prefix+'STDDEV')
+    nuse        = header.get(prefix+'NUSE')
+    ntot        = header.get(prefix+'NTOT')
+    fitfuncname = header.get(prefix+'FITFUNC', 'GAUSSIAN').lower()
+    window_size = header.get(prefix+'WINDOW_SIZE')
+    maxiter     = header.get(prefix+'MAXITER')
+    clipping    = header.get(prefix+'CLIPPING')
+    q_threshold = header.get(prefix+'Q_THRESHOLD')
+    direction   = header.get(prefix+'DIRECTION')
+
     calib = {
+              'fileid':        fileid,
+              'exptime':       exptime,
+              'obsdate':       obsdate,
               'coeff':         coeff,
-              'npixel':        header[prefix+'NPIXEL'],
-              'k':             header[prefix+'K'],
-              'offset':        header[prefix+'OFFSET'],
-              'std':           header[prefix+'STDDEV'],
-              'nuse':          header[prefix+'NUSE'],
-              'ntot':          header[prefix+'NTOT'],
-#             'identlist':     calibwindow.identlist,
-              'window_size':   header[prefix+'WINDOW_SIZE'],
+              'npixel':        npixel,
+              'k':             k,
+              'offset':        offset,
+              'std':           std,
+              'nuse':          nuse,
+              'ntot':          ntot,
+              #'identlist':     calibwindow.identlist,
+              'fitfuncname':   fitfuncname,
+              'window_size':   window_size,
               'xorder':        xorder,
               'yorder':        yorder,
-              'maxiter':       header[prefix+'MAXITER'],
-              'clipping':      header[prefix+'CLIPPING'],
-              'q_threshold':   header[prefix+'Q_THRESHOLD'],
-              'direction':     header[prefix+'DIRECTION'],
+              'maxiter':       maxiter,
+              'clipping':      clipping,
+              'q_threshold':   q_threshold,
+              'direction':     direction,
             }
     return calib
 
 
-def auto_line_fitting_filter(param, i1, i2):
+def auto_line_fitting_filter(info):
     """A filter function for fitting of a single calibration line.
 
     Args:
-        param ():
-        i1 (int):
-        i2 (int):
-
+        info (dict):
     Return:
         bool:
     """
-    if param[0] <= 0.:
+    i1          = info['i1']
+    i2          = info['i2']
+    amplitude   = info['amplitude']
+    center      = info['center']
+    fwhm        = info['fwhm']
+    background  = info['background']
+
+    if amplitude <= 0:
         # line amplitdue too small
         return False
-    if param[1] < i1 or param[1] > i2:
+    if center < i1 or center > i2:
         # line center not in the fitting range (i1, i2)
         return False
-    if param[2] > 50. or param[2] < 1.0:
+    if fwhm > 50. or fwhm < 1.0:
         # line too broad or too narrow
         return False
-    if param[3] < -0.5*param[0]:
+    if background < -0.5*amplitude:
         # background too low
         return False
     return True
@@ -1641,30 +1727,37 @@ def reference_self_wavelength(spec, calib):
     """
 
     # calculate the wavelength for each aperture
+    k       = calib['k']
+    offset  = calib['offset']
+    npixel  = calib['npixel']
+    xorder  = calib['xorder']
+    yorder  = calib['yorder']
+    coeff   = calib['coeff']
+
     for row in spec:
         aperture = row['aperture']
-        npoints  = len(row['wavelength'])
-        order = aperture*calib['k'] + calib['offset']
-        wavelength = get_wavelength(calib['coeff'], calib['npixel'],
-                    np.arange(npoints), np.repeat(order, npoints))
+        order = k * aperture + offset
+        wavelength = get_wavelength(coeff, npixel, np.arange(npixel),
+                                    np.repeat(order, npixel))
         row['order']      = order
         row['wavelength'] = wavelength
 
     card_lst = []
-    card_lst.append(('K',      calib['k']))
-    card_lst.append(('OFFSET', calib['offset']))
-    card_lst.append(('XORDER', calib['xorder']))
-    card_lst.append(('YORDER', calib['yorder']))
-    card_lst.append(('NPIXEL', calib['npixel']))
+    card_lst.append(('K',       k))
+    card_lst.append(('OFFSET',  offset))
+    card_lst.append(('XORDER',  xorder))
+    card_lst.append(('YORDER',  yorder))
+    card_lst.append(('NPIXEL',  npixel))
 
     # write the coefficients to fits header
-    for j, i in itertools.product(range(calib['yorder']+1),
-                                  range(calib['xorder']+1)):
+    for j, i in itertools.product(range(yorder+1),
+                                  range(xorder+1)):
         key   = 'COEFF {:d} {:d}'.format(j, i)
-        value = calib['coeff'][j,i]
+        value = coeff[j,i]
         card_lst.append((key, value))
 
     # write other information to fits header
+    card_lst.append(('FITFUNC',     calib['fitfuncname'].upper()))
     card_lst.append(('WINDOW_SIZE', calib['window_size']))
     card_lst.append(('MAXITER',     calib['maxiter']))
     card_lst.append(('CLIPPING',    calib['clipping']))
@@ -1804,7 +1897,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     for icalib, (calib, weight) in enumerate(zip(calib_lst, weight_lst)):
         prefix = 'REFERENCE {:d}'.format(icalib+1)
         card_lst.append((prefix+' FILEID',   calib['fileid']))
-        card_lst.append((prefix+' DATE-OBS', calib['date-obs']))
+        card_lst.append((prefix+' OBSDATE', calib['obsdate']))
         card_lst.append((prefix+' EXPTIME',  calib['exptime']))
         card_lst.append((prefix+' WEIGHT',   weight))
         card_lst.append((prefix+' NTOT',     calib['ntot']))

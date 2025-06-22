@@ -658,6 +658,7 @@ def select_calib_from_database(index_file, dateobs):
     hdu_lst.close()
 
     calib = get_calib_from_header(head)
+    calib['fileid'] = fileid
 
     return spec, calib
 
