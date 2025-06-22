@@ -165,8 +165,9 @@ def make_config():
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
     #config.set(sectname, 'database_path',    os.path.join(dbpath, 'wlcalib'))
-    config.set(sectname, 'linelist',         'thar.dat')
+    #config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'no')
+    config.set(sectname, 'fitfunc',          'gaussian')
     config.set(sectname, 'window_size',      str(13))
     config.set(sectname, 'xorder',           str(3))
     config.set(sectname, 'yorder',           str(3))
@@ -532,7 +533,7 @@ def make_obslog():
 
     message = 'Read log from "{}"'.format(logfile)
     print(message)
-    logfilename = 'log.{0:04d}-{1:02d}-{2:02d}.txt'.format(*date)
+    logfilename = 'Xinglong216HRS.{0:04d}-{1:02d}-{2:02d}.txt'.format(*date)
     logtable.write(logfilename, format='ascii.fixed_width_two_line',
                     overwrite=True)
 
@@ -664,7 +665,7 @@ def make_obslog():
         #imgtype = ('sci', 'cal')[objectname.lower().strip() in cal_objects]
 
         # find CCD binning
-        binning = '(1, 1)'
+        binning = '1x1'
 
         # CCD readout amplifier. optional amplifiers are:
         # 'LT&B' (Left Top & Bottom),
@@ -1131,7 +1132,7 @@ def reduce_rawdata():
 
     # read obslog and config
     config = load_config('Xinglong216HRS\S*\.cfg$')
-    logtable = load_obslog('log.\S*\.txt$', fmt='astropy')
+    logtable = load_obslog('Xinglong216HRS.\S*\.txt$', fmt='astropy')
 
     # determine fiber mode ('single'/'double')
     fibermode = 'single'

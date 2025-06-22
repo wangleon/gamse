@@ -479,7 +479,8 @@ def reduce_singlefiber_phase3(config, logtable):
                     calib = wlcalib(spec,
                         figfilename = wlcalib_fig,
                         title       = title,
-                        linelist    = section.get('linelist'),
+                        linelist    = 'ThAr',
+                        fitfuncname = section.get('fitfunc'),
                         window_size = section.getint('window_size'),
                         xorder      = section.getint('xorder'),
                         yorder      = section.getint('yorder'),
@@ -490,7 +491,8 @@ def reduce_singlefiber_phase3(config, logtable):
                 else:
                     # if success, run recalib
                     # determien the direction
-                    message = 'Found archive wavelength calibration file'
+                    message = ('Found archive wavelength calibration file'
+                               ' {}'.format(ref_calib['fileid']))
                     logger.info(message)
                     print(screen_prefix + message)
 
@@ -509,6 +511,19 @@ def reduce_singlefiber_phase3(config, logtable):
                         pixel_k = 1
                     else:
                         pixel_k = -1
+
+                    #fig = plt.figure(dpi=200)
+                    #ax = fig.gca()
+                    #for row in ref_spec:
+                    #    ax.plot(row['flux']+row['aperture']*1000, lw=0.5)
+                    #fig.savefig('ref_spec.png')
+
+                    #fig = plt.figure(dpi=200)
+                    #ax = fig.gca()
+                    #for row in spec:
+                    #    ax.plot(row['flux']+row['aperture']*1e4, lw=0.5)
+                    #fig.savefig('spec.png')
+
 
                     result = find_caliblamp_offset(ref_spec, spec,
                                 aperture_k  = aperture_k,
@@ -530,6 +545,7 @@ def reduce_singlefiber_phase3(config, logtable):
                     yorder      = (section.getint('yorder'), None)[use]
                     maxiter     = (section.getint('maxiter'), None)[use]
                     clipping    = (section.getfloat('clipping'), None)[use]
+                    fitfuncname = (section.get('fitfunc'), None)[use]
                     window_size = (section.getint('window_size'), None)[use]
                     q_threshold = (section.getfloat('q_threshold'), None)[use]
 
@@ -537,7 +553,7 @@ def reduce_singlefiber_phase3(config, logtable):
                         figfilename      = wlcalib_fig,
                         title            = title,
                         ref_spec         = ref_spec,
-                        linelist         = section.get('linelist'),
+                        linelist         = 'ThAr',
                         aperture_koffset = aperture_koffset,
                         pixel_koffset    = pixel_koffset,
                         ref_calib        = ref_calib,
@@ -545,6 +561,7 @@ def reduce_singlefiber_phase3(config, logtable):
                         yorder           = yorder,
                         maxiter          = maxiter,
                         clipping         = clipping,
+                        fitfuncname      = fitfuncname,
                         window_size      = window_size,
                         q_threshold      = q_threshold,
                         direction        = direction,
@@ -559,7 +576,8 @@ def reduce_singlefiber_phase3(config, logtable):
                     figfilename   = wlcalib_fig,
                     title         = title,
                     identfilename = section.get('ident_file', None),
-                    linelist      = section.get('linelist'),
+                    linelist      = 'ThAr',
+                    fitfuncname   = section.get('fitfunc'),
                     window_size   = section.getint('window_size'),
                     xorder        = section.getint('xorder'),
                     yorder        = section.getint('yorder'),
@@ -568,7 +586,7 @@ def reduce_singlefiber_phase3(config, logtable):
                     q_threshold   = section.getfloat('q_threshold'),
                     )
                 message = ('Wavelength calibration finished.'
-                            '(k, offset) = ({}, {})'.format(
+                           '(k, offset) = ({}, {:.3f})'.format(
                             calib['k'], calib['offset']))
                 logger.info(logger_prefix + message)
 
@@ -586,7 +604,7 @@ def reduce_singlefiber_phase3(config, logtable):
                 figfilename      = wlcalib_fig,
                 title            = title,
                 ref_spec         = ref_spec,
-                linelist         = section.get('linelist'),
+                linelist         = 'ThAr',
                 ref_calib        = ref_calib,
                 aperture_koffset = (1, 0),
                 pixel_koffset    = (1, 0),
@@ -594,6 +612,7 @@ def reduce_singlefiber_phase3(config, logtable):
                 yorder           = ref_calib['yorder'],
                 maxiter          = ref_calib['maxiter'],
                 clipping         = ref_calib['clipping'],
+                fitfuncname      = ref_calib['fitfuncname'],
                 window_size      = ref_calib['window_size'],
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
