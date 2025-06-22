@@ -22,7 +22,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 from gamse.pipelines.common import load_config
 from gamse.echelle.wlcalib import (identlinetype, CalibFigure,
         reference_self_wavelength,
-        save_ident, load_ident, load_linelist, get_linelist,
+        save_ident, load_ident, get_linelist,
         is_identified, auto_line_fitting_filter, find_local_peak,
         guess_wavelength, get_wavelength, fit_wavelength)
 
@@ -83,7 +83,6 @@ class PlotFrame(tk.Frame):
         self.fig = CalibFigure(width  = width,
                                height = height,
                                dpi    = dpi,
-                               title  = master.param['title'],
                                )
         self.ax1 = self.fig._ax1
         self.ax2 = self.fig._ax2
@@ -1160,7 +1159,9 @@ class CalibWindow(tk.Frame):
                                             plot_ax1, **kwargs)
 
         self.plot_frame.canvas.draw()
+        self.plot_frame.fig.patch.set_facecolor('#ffffff')
         self.plot_frame.fig.savefig(self.param['figfilename'])
+        self.plot_frame.fig.patch.set_facecolor('#d9d9d9')
         message = 'Wavelength solution plotted in {}'.format(
                     self.param['figfilename'])
         print(message)
