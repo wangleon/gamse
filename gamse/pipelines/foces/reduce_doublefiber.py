@@ -758,7 +758,7 @@ def reduce_doublefiber(config, logtable):
                 ])
     hdu_lst.writeto(flat_file, overwrite=True)
 
-    ############## averaeg cross-order profiles  ###############
+    ############## average cross-order profiles  ###############
     profile = {}
     for ifiber in range(n_fiber):
         fiber = chr(ifiber+65)
@@ -1385,31 +1385,36 @@ def reduce_doublefiber(config, logtable):
         master_flatdsum_0[np.where(master_flatsens == 1.0)] = 1e99 
         variance_map = variance_map + data**2/master_flatdsum_0
 
-        # get background lights
-        background = get_interorder_background(data,
-                        apertureset = master_aperset[fiber])
-        background = median_filter(background, size=(9,1), mode='nearest')
-        background = savitzky_golay_2d(background, window_length=(21, 101),
-                        order=3, mode='nearest')
 
-        # plot stray light
-        figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
-        figfilename = os.path.join(figpath, figname)
-        fig_bkg = BackgroundFigure(data, background,
-                    title   = 'Background Correction for {}'.format(fileid),
-                    figname = figfilename,
-                    )
-        fig_bkg.close()
+        # whether to subtract background. get it from config file
+        subtract = config['reduce.background'].getboolean('subtract')
 
-        data = data - background
-        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
-                    background.max(), background.mean())
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
+        if subtract:
+            # get background lights
+            background = get_interorder_background(data,
+                            apertureset = master_aperset[fiber])
+            background = median_filter(background, size=(9,1), mode='nearest')
+            background = savitzky_golay_2d(background, window_length=(21, 101),
+                            order=3, mode='nearest')
 
-        # get order brightness profile
-        result = get_xdisp_profile(data, master_aperset[fiber])
-        aper_num_lst, aper_pos_lst, aper_brt_lst = result
+            # plot stray light
+            figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
+            figfilename = os.path.join(figpath, figname)
+            fig_bkg = BackgroundFigure(data, background,
+                        title   = 'Background Correction for {}'.format(fileid),
+                        figname = figfilename,
+                        )
+            fig_bkg.close()
+
+            data = data - background
+            message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                        background.max(), background.mean())
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            # get order brightness profile
+            result = get_xdisp_profile(data, master_aperset[fiber])
+            aper_num_lst, aper_pos_lst, aper_brt_lst = result
 
         # calibrate the wavelength of background
         # get weights for calib list
@@ -1428,42 +1433,43 @@ def reduce_doublefiber(config, logtable):
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
 
-        ny, nx = data.shape
-        pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-        # reference the wavelengths of background image
-        results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                    ref_calib_lst[fiber], weight_lst)
-        aper_ord_lst, aper_wav_lst = results
-
-        if objname.lower() in ['comb', 'fp']:
-            objtype = objname.lower()
-        else:
-            objtype = 'star'
-
-        # pack to background list
-        bkg_info = {
-                    'fileid': fileid,
-                    'fiber': fiber,
-                    'object': objname,
-                    'objtype': objtype,
-                    'exptime': exptime,
-                    'date-obs': head[statime_key],
-                    }
-        bkg_obj = BackgroundLight(
-                    info         = bkg_info,
-                    header       = head,
-                    data         = background,
-                    aper_num_lst = aper_num_lst,
-                    aper_ord_lst = aper_ord_lst,
-                    aper_pos_lst = aper_pos_lst,
-                    aper_brt_lst = aper_brt_lst,
-                    aper_wav_lst = aper_wav_lst,
-                    )
-        # save to fits
-        outfilename = os.path.join(midpath, 'bkg_{}.fits'.format(fileid))
-        bkg_obj.savefits(outfilename)
-        # pack to saved_bkg_lst
-        saved_bkg_lst.append(bkg_obj)
+        if subtract:
+            ny, nx = data.shape
+            pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+            # reference the wavelengths of background image
+            results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                        ref_calib_lst[fiber], weight_lst)
+            aper_ord_lst, aper_wav_lst = results
+            
+            if objname.lower() in ['comb', 'fp']:
+                objtype = objname.lower()
+            else:
+                objtype = 'star'
+            
+            # pack to background list
+            bkg_info = {
+                        'fileid': fileid,
+                        'fiber': fiber,
+                        'object': objname,
+                        'objtype': objtype,
+                        'exptime': exptime,
+                        'date-obs': head[statime_key],
+                        }
+            bkg_obj = BackgroundLight(
+                        info         = bkg_info,
+                        header       = head,
+                        data         = background,
+                        aper_num_lst = aper_num_lst,
+                        aper_ord_lst = aper_ord_lst,
+                        aper_pos_lst = aper_pos_lst,
+                        aper_brt_lst = aper_brt_lst,
+                        aper_wav_lst = aper_wav_lst,
+                        )
+            # save to fits
+            outfilename = os.path.join(midpath, 'bkg_{}.fits'.format(fileid))
+            bkg_obj.savefits(outfilename)
+            # pack to saved_bkg_lst
+            saved_bkg_lst.append(bkg_obj)
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1510,17 +1516,18 @@ def reduce_doublefiber(config, logtable):
                     fibercode, len(specraw1d))
         logger.info(logger_prefix + message)
         print(screen_prefix + message)
-            
-        # extract 1d spectra for straylight/background light
-        background1d = extract_aperset(background, mask,
-                        apertureset = apertureset,
-                        lower_limit = lower_limit,
-                        upper_limit = upper_limit,
-                    )
-        message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
-                    fibercode, len(background1d))
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
+        
+        if subtract:
+            # extract 1d spectra for straylight/background light
+            background1d = extract_aperset(background, mask,
+                            apertureset = apertureset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
+                        fibercode, len(background1d))
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
 
         prefix = 'HIERARCH GAMSE EXTRACTION FIBER {} '.format(fiber)
         head.append((prefix + 'LOWER LIMIT', lower_limit))
@@ -1773,109 +1780,115 @@ def reduce_doublefiber(config, logtable):
 
         background = np.zeros_like(data, dtype=data.dtype)
 
-        fiber_obs_bkg_lst = {}
-        fiber_sel_bkg_lst = {}
-        fiber_scale_lst = {}
-        for (ifiber, objname) in fiberobj_lst:
-            fiber = chr(ifiber+65)
-            #fibercode_cmd = struct.pack('>i', -257981040+ifiber).decode()
-            fibercode = '[{}]'.format(fiber)
+        # whether to subtract background. get it from config file
+        subtract = config['reduce.background'].getboolean('subtract')
 
-            result = get_xdisp_profile(data, master_aperset[fiber])
-            aper_num_lst, aper_pos_lst, aper_brt_lst = result
-
-            weight_lst = get_calib_weight_lst(ref_calib_lst[fiber],
-                            obsdate = head[statime_key],
-                            exptime = head[exptime_key],
-                            )
-            ny, nx = data.shape
-            pixel_lst = np.repeat(nx//2, aper_num_lst.size)
-            results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
-                        ref_calib_lst[fiber], weight_lst)
-            aper_ord_lst, aper_wav_lst = results
-
-            obs_bkg_obj = BackgroundLight(
-                            aper_num_lst = aper_num_lst,
-                            aper_pos_lst = aper_pos_lst,
-                            aper_brt_lst = aper_brt_lst,
-                            aper_ord_lst = aper_ord_lst,
-                            aper_wav_lst = aper_wav_lst,
-                            )
-
-            # find objtype to search for the same kind of background light
-            if objname.lower() in ['comb', 'fp']:
-                objtype = objname.lower()
-            else:
-                objtype = 'star'
-
-            find_background = False
-            selected_bkg = find_best_background(saved_bkg_lst, obs_bkg_obj,
-                                fiber, objname, head[statime_key], objtype)
-            if selected_bkg is None:
-                # not found in today's data
-                database_path = config['reduce.background'].get('database_path')
-                database_path = os.path.expanduser(database_path)
-                selected_bkg = select_background_from_database(database_path,
-                                shape     = data.shape,
-                                fiber     = fiber,
-                                direction = config['data'].get('direction'),
-                                objtype   = objtype,
-                                obj       = objname,
+        if subtract:
+            fiber_obs_bkg_lst = {}
+            fiber_sel_bkg_lst = {}
+            fiber_scale_lst = {}
+            for (ifiber, objname) in fiberobj_lst:
+                fiber = chr(ifiber+65)
+                #fibercode_cmd = struct.pack('>i', -257981040+ifiber).decode()
+                fibercode = '[{}]'.format(fiber)
+            
+                result = get_xdisp_profile(data, master_aperset[fiber])
+                aper_num_lst, aper_pos_lst, aper_brt_lst = result
+            
+                weight_lst = get_calib_weight_lst(ref_calib_lst[fiber],
+                                obsdate = head[statime_key],
+                                exptime = head[exptime_key],
                                 )
+                ny, nx = data.shape
+                pixel_lst = np.repeat(nx//2, aper_num_lst.size)
+                results = reference_pixel_wavelength(pixel_lst, aper_num_lst,
+                            ref_calib_lst[fiber], weight_lst)
+                aper_ord_lst, aper_wav_lst = results
+            
+                obs_bkg_obj = BackgroundLight(
+                                aper_num_lst = aper_num_lst,
+                                aper_pos_lst = aper_pos_lst,
+                                aper_brt_lst = aper_brt_lst,
+                                aper_ord_lst = aper_ord_lst,
+                                aper_wav_lst = aper_wav_lst,
+                                )
+            
+                # find objtype to search for the same kind of background light
+                if objname.lower() in ['comb', 'fp']:
+                    objtype = objname.lower()
+                else:
+                    objtype = 'star'
+            
+                find_background = False
+                selected_bkg = find_best_background(saved_bkg_lst, obs_bkg_obj,
+                                    fiber, objname, head[statime_key], objtype)
                 if selected_bkg is None:
-                    # not found either in database
-                    message = 'Error: No background found in the database'
+                    # not found in today's data
+                    database_path = config['reduce.background'].get('database_path')
+                    database_path = os.path.expanduser(database_path)
+                    selected_bkg = select_background_from_database(database_path,
+                                    shape     = data.shape,
+                                    fiber     = fiber,
+                                    direction = config['data'].get('direction'),
+                                    objtype   = objtype,
+                                    obj       = objname,
+                                    )
+                    if selected_bkg is None:
+                        # not found either in database
+                        message = 'Error: No background found in the database'
+                        logger.info(logger_prefix + message)
+                        print(screen_prefix + message)
+                    else:
+                        # background found in database
+                        find_background = True
+                else:
+                    # background found in the same dataset
+                    find_background = True
+            
+                if find_background:
+                    scale = obs_bkg_obj.find_brightness_scale(selected_bkg)
+            
+                    # pack to result list
+                    fiber_obs_bkg_lst[fiber] = obs_bkg_obj
+                    fiber_sel_bkg_lst[fiber] = selected_bkg
+                    fiber_scale_lst[fiber] = scale
+            
+                    message = ('Use background of {} for Fiber {}. '
+                               'scale = {:6.3f}'.format(
+                                selected_bkg.info['fileid'], fibercode, scale))
                     logger.info(logger_prefix + message)
                     print(screen_prefix + message)
-                else:
-                    # background found in database
-                    find_background = True
-            else:
-                # background found in the same dataset
-                find_background = True
+            
+                background = background + selected_bkg.data*scale
+            
+            # plot brightness profile
+            figname = 'bkgbrt_{}.png'.format(fileid)
+            figfilename = os.path.join(figpath, figname)
+            fig_bp = BrightnessProfileFigure(
+                        fiber_obs_bkg_lst,
+                        fiber_sel_bkg_lst,
+                        fiber_scale_lst,
+                        title = 'Brightness Profile of {}'.format(fileid),
+                        filename = figfilename,
+                    )
+            fig_bp.close()
+            
+            # plot stray light
+            figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
+            figfilename = os.path.join(figpath, figname)
+            fig_bkg = BackgroundFigure(data, background,
+                    title = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
+            fig_bkg.close()
+            
+            data = data - background
+            message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                        background.max(), background.mean())
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+        # if subtract ends
 
-            if find_background:
-                scale = obs_bkg_obj.find_brightness_scale(selected_bkg)
-
-                # pack to result list
-                fiber_obs_bkg_lst[fiber] = obs_bkg_obj
-                fiber_sel_bkg_lst[fiber] = selected_bkg
-                fiber_scale_lst[fiber] = scale
-
-                message = ('Use background of {} for Fiber {}. '
-                           'scale = {:6.3f}'.format(
-                            selected_bkg.info['fileid'], fibercode, scale))
-                logger.info(logger_prefix + message)
-                print(screen_prefix + message)
-
-            background = background + selected_bkg.data*scale
-
-        # plot brightness profile
-        figname = 'bkgbrt_{}.png'.format(fileid)
-        figfilename = os.path.join(figpath, figname)
-        fig_bp = BrightnessProfileFigure(
-                    fiber_obs_bkg_lst,
-                    fiber_sel_bkg_lst,
-                    fiber_scale_lst,
-                    title = 'Brightness Profile of {}'.format(fileid),
-                    filename = figfilename,
-                )
-        fig_bp.close()
-
-        # plot stray light
-        figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
-        figfilename = os.path.join(figpath, figname)
-        fig_bkg = BackgroundFigure(data, background,
-                title = 'Background Correction for {}'.format(fileid),
-                figname = figfilename,
-                )
-        fig_bkg.close()
-
-        data = data - background
-        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
-                    background.max(), background.mean())
-        logger.info(logger_prefix + message)
-        print(screen_prefix + message)
 
         # extract 1d spectrum
         section = config['reduce.extract']
@@ -1928,16 +1941,18 @@ def reduce_doublefiber(config, logtable):
             logger.info(logger_prefix + message)
             print(screen_prefix + message)
             
-            # extract 1d spectra for stray light
-            background1d = extract_aperset(background, mask,
-                            apertureset = apertureset,
-                            lower_limit = lower_limit,
-                            upper_limit = upper_limit,
-                        )
-            message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
-                        fibercode, len(background1d))
-            logger.info(logger_prefix + message)
-            print(screen_prefix + message)
+
+            if subtract:
+                # extract 1d spectra for stray light
+                background1d = extract_aperset(background, mask,
+                                apertureset = apertureset,
+                                lower_limit = lower_limit,
+                                upper_limit = upper_limit,
+                            )
+                message = 'Fiber {}: 1D straylight of {} orders extracted'.format(
+                            fibercode, len(background1d))
+                logger.info(logger_prefix + message)
+                print(screen_prefix + message)
 
             prefix = 'HIERARCH GAMSE EXTRACTION FIBER {} '.format(fiber)
             head.append((prefix + 'LOWER LIMIT', lower_limit))
