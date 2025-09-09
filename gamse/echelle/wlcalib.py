@@ -947,8 +947,6 @@ def recalib(spec, ref_spec, linelist, ref_calib,
     Args:
         spec (:class:`numpy.dtype`): The spectral data array to be wavelength
             calibrated.
-        figfilename (str): Filename of the output wavelength figure.
-        title (str): A title to display in the calib figure.
         ref_spec (:class:`numpy.dtype`): Reference spectra.
         linelist (str): Name of wavelength standard file.
         coeff (:class:`numpy.ndarray`): Coefficients of the reference wavelength.
@@ -1058,6 +1056,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         #allwave = get_wavelength(coeff, npixel, x, np.repeat(order*50, npixel))*50
         # for others
         allwave = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
+        #print(aperture, ref_aperture, allwave)
 
         w1 = min(allwave[0], allwave[-1])
         w2 = max(allwave[0], allwave[-1])
@@ -1069,6 +1068,14 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         #    ax.plot(flux, lw=0.5)
         #    m = ref_spec['order']==order
         #    ax.plot(ref_spec[m][0]['flux'], lw=0.5)
+        #    plt.show()
+        #if order in ref_spec['order']:
+        #    fig = plt.figure(dpi=200)
+        #    ax = fig.gca()
+        #    ax.plot(allwave, flux, lw=0.5)
+        #    m = ref_spec['order']==order
+        #    refrow = ref_spec[m][0]
+        #    ax.plot(refrow['wavelength'], refrow['flux'], lw=0.5)
         #    plt.show()
 
         has_insert = False
@@ -1089,7 +1096,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
             i = diff.argmin()
 
             result = find_local_peak(flux, i, window_size, fitfuncname,
-                    #figname='debug/wlfit_{:03d}_{:9.4f}.png'.format(int(order), line[0])
+                    #figname='debug/wlfit_{:03d}_{:9.4f}.png'.format(int(order), wl)
                     )
             if result is None:
                 continue
