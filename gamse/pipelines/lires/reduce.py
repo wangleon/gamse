@@ -36,7 +36,7 @@ def reduce_rawdata():
     """
 
     # read obslog and config
-    config = load_config('YHRS\S*\.cfg$')
+    config = load_config('LiRES\S*\.cfg$')
     logtable = load_obslog('log\.\S*\.txt$', fmt='astropy')
 
     # extract keywords from config file
@@ -85,8 +85,8 @@ def reduce_rawdata():
         bias_card_lst = []
 
         filterfunc = lambda item: item['object'] is not np.ma.masked and \
-                                  item['object'].lower()=='bias' and \
-                                  item['speed'].lower()=='slow'
+                                  item['object'].lower()=='bias' \
+                                  #and item['speed'].lower()=='slow'
 
         bias_items = list(filter(filterfunc, logtable))
         # get the number of bias images
@@ -113,7 +113,8 @@ def reduce_rawdata():
                 fname = '{}.fits'.format(fileid)
                 filename = os.path.join(rawpath, fname)
                 data, head = fits.getdata(filename, header=True)
-                data = correct_overscan(data, head)
+                data = correct_overscan(data,
+                    figname = os.path.join(figpath, 'ovr_{}.png'.format(fileid)))
 
                 # pack the data and fileid list
                 bias_data_lst.append(data)
@@ -245,12 +246,13 @@ def reduce_rawdata():
     #                'flat_N': [fileid1, fileid2, ...]}
 
     for logitem in logtable:
-        speed   = logitem['speed'].lower().strip()
+        speed = logitem['speed'].lower().strip()
+
         if logitem['object'] is np.ma.masked:
             continue
         objname = logitem['object'].lower().strip()
 
-        if objname.lower()=='flat' and speed=='slow':
+        if objname.lower()=='flat': # and speed=='slow':
             flatname = '{:g}sec'.format(logitem['exptime'])
 
             # add flatname to flat_groups
@@ -321,7 +323,8 @@ def reduce_rawdata():
                 allmask += sat_mask
 
                 # correct overscan for flat
-                data = correct_overscan(data, head)
+                data = correct_overscan(data,
+                    figname=os.path.join(figpath, 'ovr_{}.png'.format(fileid)))
 
                 # correct bias for flat, if has bias
                 if bias is None:
@@ -561,8 +564,8 @@ def reduce_rawdata():
 
     # filter ThAr frames
     filter_thar = lambda item: item['object'] is not np.ma.masked and \
-                                item['object'].lower()=='thar' and \
-                                item['speed'].lower()=='slow'
+                                item['object'].lower()=='thar'
+                                #and \ item['speed'].lower()=='slow'
 
     thar_items = list(filter(filter_thar, logtable))
 
@@ -587,7 +590,8 @@ def reduce_rawdata():
         filename = os.path.join(rawpath, fname)
         data, head = fits.getdata(filename, header=True)
         mask = get_mask(data, head)
-        data = correct_overscan(data, head)
+        data = correct_overscan(data,
+                figname=os.path.join(figpath, 'ovr_{}.png'.format(fileid)))
 
         message = 'Overscan corrected.'
         logger.info(logger_prefix + message)
@@ -667,10 +671,8 @@ def reduce_rawdata():
 
                     # if failed, pop up a calibration window and identify
                     # the wavelengths manually
-                    calib = wlcalib(spec,
-                        figfilename = wlcalib_fig,
-                        title       = title,
-                        linelist    = section.get('linelist'),
+                    calib, fig = wlcalib(spec,
+                        linelist    = 'ThAr',
                         window_size = section.getint('window_size'),
                         xorder      = section.getint('xorder'),
                         yorder      = section.getint('yorder'),
@@ -678,6 +680,8 @@ def reduce_rawdata():
                         clipping    = section.getfloat('clipping'),
                         q_threshold = section.getfloat('q_threshold'),
                         )
+                    fig.suptitle(title)
+                    fig.savefig(wlcalib_fig)
                 else:
                     # if success, run recalib
                     # determien the direction
@@ -724,11 +728,9 @@ def reduce_rawdata():
                     window_size = (section.getint('window_size'), None)[use]
                     q_threshold = (section.getfloat('q_threshold'), None)[use]
 
-                    calib = recalib(spec,
-                        figfilename      = wlcalib_fig,
-                        title            = title,
+                    calib, fig = recalib(spec,
                         ref_spec         = ref_spec,
-                        linelist         = section.get('linelist'),
+                        linelist         = 'ThAr',
                         aperture_koffset = aperture_koffset,
                         pixel_koffset    = pixel_koffset,
                         ref_calib        = ref_calib,
@@ -740,17 +742,17 @@ def reduce_rawdata():
                         q_threshold      = q_threshold,
                         direction        = direction,
                         )
+                    fig.suptitle(title)
+                    fig.savefig(wlcalib_fig)
             else:
                 message = 'No database searching. Identify lines manually'
                 logger.info(logger_prefix + message)
                 print(screen_prefix + message)
 
                 # do not search the database
-                calib = wlcalib(spec,
-                    figfilename   = wlcalib_fig,
-                    title         = title,
+                calib, fig = recalib(spec,
                     identfilename = section.get('ident_file', None),
-                    linelist      = section.get('linelist'),
+                    linelist      = 'ThAr',
                     window_size   = section.getint('window_size'),
                     xorder        = section.getint('xorder'),
                     yorder        = section.getint('yorder'),
@@ -758,6 +760,9 @@ def reduce_rawdata():
                     clipping      = section.getfloat('clipping'),
                     q_threshold   = section.getfloat('q_threshold'),
                     )
+                fig.suptitle(title)
+                fig.savefig(wlcalib_fig)
+
                 message = ('Wavelength calibration finished.'
                             '(k, offset) = ({}, {})'.format(
                             calib['k'], calib['offset']))
@@ -772,11 +777,9 @@ def reduce_rawdata():
             message = 'Use reference calib and spec'
             logger.info(logger_prefix + message)
             # for other ThArs, no aperture offset
-            calib = recalib(spec,
-                figfilename      = wlcalib_fig,
-                title            = title,
+            calib, fig = recalib(spec,
                 ref_spec         = ref_spec,
-                linelist         = section.get('linelist'),
+                linelist         = 'ThAr',
                 ref_calib        = ref_calib,
                 aperture_koffset = (1, 0),
                 pixel_koffset    = (1, 0),
@@ -788,6 +791,8 @@ def reduce_rawdata():
                 q_threshold      = ref_calib['q_threshold'],
                 direction        = direction,
                 )
+            fig.suptitle(title)
+            fig.savefig(wlcalib_fig)
 
         # add more infos in calib
         calib['fileid']   = fileid

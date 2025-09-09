@@ -98,7 +98,6 @@ def make_config():
     sectname = 'reduce.wlcalib'
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
-    config.set(sectname, 'linelist',         'thar.dat')
     config.set(sectname, 'use_prev_fitpar',  'yes')
     config.set(sectname, 'window_size',      str(13))
     config.set(sectname, 'xorder',           str(3))
@@ -147,7 +146,7 @@ def make_config():
 def parse_objectstring(string):
 
     pattern = ('count(\d+) speed\-([a-zA-Z]+) gain(\d) '
-                '([a-zA-Z]+)\-(\d+)s bin\-\-(\d)')
+                '([a-zA-Z]+)\-(\d+)s bin\-\-?(\d)')
     mobj = re.match(pattern, string)
     count = int(mobj.group(1))
     speed = mobj.group(2)
@@ -157,98 +156,6 @@ def parse_objectstring(string):
     binning = int(mobj.group(6))
     return {'count': count, 'speed': speed, 'gain': gain, 'mode': mode,
             'exptime': exptime, 'binning': binning}
-
-def parse_logfile(filename, date):
-    logtable = Table(dtype=[
-                    ('frameid', 'i2'),
-                    ('fileid',  'S12'),
-                    ('imgtype', 'S3'),
-                    ('object',  'S50'),
-                    ('exptime', 'f4'),
-                    ('obsdate', 'S23'),
-                    ], masked=True)
-
-    ptn_lst = {
-            'id':       '([a-zA-Z]?[\d\-]+)',                 # for id string
-            'objname':  '([a-zA-Z0-9+-_\[\]\s]+)',            # object name
-            'btime':    '(\d{2}:\d{2}:\d{2})',                # time string
-            'exptime':  '([\.\d]+)',                          # exptime
-            'ra':       '(\d{2}:\d{2}:\d{2}\.?\d?\d?)',       # ra
-            'dec':      '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',   # dec
-            }
-    patterns = {
-            'Bias': '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst),
-            'Flat': '{id}\s*(flat)\s*{btime}\s*{exptime}'.format(**ptn_lst),
-            'ThAr': '{id}\s*(thar)\s*{btime}\s*{exptime}'.format(**ptn_lst),
-            }
-    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
-                    '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-
-    yy, mm, dd = date
-    
-    # open log file with UTF-8 encoding, and ignore any errors.
-    # GBK is not recommanded
-    file1 = open(filename, encoding='utf-8', errors='ignore')
-    for row in file1:
-        row = row.strip()
-
-        # match Bias, Flat and ThAr
-        is_match = False
-        for objname, pattern in patterns.items():
-            # loop over bias, flat, and thar
-            mobj = re.match(pattern, row.lower())
-            if mobj:
-                id_lst = parse_idstring(mobj.group(1))
-                obstime = parse_timestr(mobj.group(3), date)
-                exptime = float(mobj.group(4))
-                for iframe, frameid in enumerate(id_lst):
-                    fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
-                                yy, mm, dd, frameid)
-                    if iframe==0:
-                        item = (frameid, fileid, 'cal', objname,
-                                    exptime, obstime)
-                        mask = (False, False, False, False,
-                                    False, False)
-                    else:
-                        item = (frameid, fileid, 'cal', objname,
-                                    exptime, '')
-                        mask = (False, False, False, False,
-                                    False, True)
-                    logtable.add_row(item)
-                is_match = True
-                break
-
-        if is_match:
-            continue
-
-        # match science objects
-        mobj = re.match(pattern_sci, row)
-        if mobj:
-            id_lst = parse_idstring(mobj.group(1))
-            objname = mobj.group(2).strip()
-            obstime = parse_timestr(mobj.group(3), date)
-            exptime = float(mobj.group(4))
-            for iframe, frameid in enumerate(id_lst):
-                fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
-                                yy, mm, dd, frameid)
-                if iframe==0:
-                    item = (frameid, fileid, 'sci', objname,
-                            exptime, obstime)
-                    mask = (False, False, False, False,
-                            False, False)
-                else:
-                    item = (frameid, fileid, 'sci', objname,
-                            exptime, '')
-                    mask = (False, False, False, False,
-                            False, True)
-                logtable.add_row(item)
-            continue
-
-        print('Match error:', row)
-    file1.close()
-
-    return logtable
-        
 
 def make_obslog():
     """Scan the raw data, and generate a log file containing the detail
@@ -278,144 +185,81 @@ def make_obslog():
     statime_key = config['data'].get('statime_key')
     exptime_key = config['data'].get('exptime_key')
 
-    # read original log file
-    # search file in the current folder
-    logfile = None
-    for fname in os.listdir(rawpath):
-        mobj = re.match('(\d{8})\.txt', fname)
-        if mobj:
-            logfile = os.path.join(rawpath, fname)
-            datestr = mobj.group(1)
-            date = (int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
-            break
+    # initialize logtable
+    logtable = Table(dtype=[
+                #('frameid',     'i2'),
+                ('fileid',      'S12'),
+                ('imgtype',     'S3'),
+                ('object',      'S80'),
+                ('exptime',     'f4'),
+                ('obsdate',     'S23'),
+                ('gain',        'i2'),
+                ('speed',       'S6'),
+                ('binning',     'i2'),
+                ('nsat',        'i4'),
+                ('q95',         'i4'),
+                ], masked=True)
 
-
-    fmt_str = ('  - {:7} {:13s} {:5s} {:<12s} {:>7} {:^23s} '
+    fmt_str = ('  - {:13s} {:5s} {:<12s} {:>7} {:^23s} '
                 '{:4} {:5} {:7} {:>7} {:>5}')
-    head_str = fmt_str.format('frameid', 'fileid', 'type', 'object', 'exptime',
+    head_str = fmt_str.format('fileid', 'type', 'object', 'exptime',
                 'obsdate', 'gain', 'speed', 'binning', 'nsat', 'q95')
     print(head_str)
 
-    if logfile is not None:
-        logtable = parse_logfile(logfile, date)
-
-        maxobjlen = max([len(row['object']) for row in logtable])
-
-        nsat_lst    = []
-        q95_lst     = []
-        binning_lst = []
-        gain_lst    = []
-        speed_lst   = []
-
-        # start scanning the raw files
-        for logitem in logtable:
-            frameid    = logitem['frameid']
-            fileid     = logitem['fileid']
-            imgtype    = logitem['imgtype']
-            objectname = logitem['object']
-            exptime    = logitem['exptime']
-
-            filename = os.path.join(rawpath, '{}.fits'.format(fileid))
-            data, head = fits.getdata(filename, header=True)
-
-            obsdate = head['DATE-OBS']
-            logitem['obsdate'] = obsdate
-
-            ny, nx = data.shape
-            if ny == 4136:
-                bin_y = 1
-            if nx >=4096:
-                bin_x = 1
-                overscan_x = nx - 4096
-
-            data = data[:, 0:overscan_x]
-
-            # determine the total number of saturated pixels
-            nsat = (data>=65535).sum()
+    # start scanning the raw files
+    for fname in sorted(os.listdir(rawpath)):
+        mobj = re.match('(\S+)\.fits', fname)
+        if not mobj:
+            continue
+        filename = os.path.join(rawpath, fname)
+        data, head = fits.getdata(filename, header=True)
     
-            # find the 95% quantile
-            q95 = int(np.round(np.percentile(data, 95)))
-            binning = '{}x{}'.format(bin_x, bin_y)
-            gain = ''
-            speed = ''
+        fileid  = mobj.group(1)
+        exptime = head[exptime_key]
+        info    = parse_objectstring(head['OBJECT'])
+        obsdate = head[statime_key]
 
-            binning_lst.append(binning)
-            gain_lst.append(gain)
-            speed_lst.append(speed)
-            nsat_lst.append(nsat)
-            q95_lst.append(q95)
-
-            # print log item with colors
-            string = fmt_str.format(frameid, fileid,
-                        '({:3s})'.format(imgtype),
-                        objectname, exptime, obsdate,
-                        gain, speed, binning, nsat, q95)
-            print(print_wrapper(string, logitem))
-
-        logtable.add_column(binning_lst, name='binning')
-        logtable.add_column(gain_lst, name='gain')
-        logtable.add_column(speed_lst, name='speed')
-        logtable.add_column(nsat_lst, name='nsat')
-        logtable.add_column(q95_lst, name='q95')
-        logtable['object'].info.format = '%-{}s'.format(maxobjlen)
-
-    else:
-        print('Error: could not find log file')
-        # initialize logtable
-        logtable = Table(dtype=[
-                    ('frameid',     'i2'),
-                    ('fileid',      'S12'),
-                    ('imgtype',     'S3'),
-                    ('object',      'S80'),
-                    ('exptime',     'f4'),
-                    ('obsdate',     'S23'),
-                    ('gain',        'i2'),
-                    ('speed',       'S6'),
-                    ('binning',     'i2'),
-                    ('nsat',        'i4'),
-                    ('q95',         'i4'),
-                    ], masked=True)
-
-        # start scanning the raw files
-        for fname in sorted(os.listdir(rawpath)):
-            #mobj = re.match('(Y\d{6}[A-Z])(\d{4})([a-z])\.fits', fname)
-            mobj = re.match('(\d{6}[A-Z]\d{4})\.fits', fname)
-            if not mobj:
-                continue
-            filename = os.path.join(rawpath, fname)
-            data, head = fits.getdata(filename, header=True)
+        if re.match('bias_?\d+', fileid):
+            objectname = 'Bias'
+            imgtype    = 'cal'
+        elif re.match('flat_?\d+', fileid):
+            objectname = 'Flat'
+            imgtype    = 'cal'
+        elif re.match('thar_?\d+', fileid):
+            objectname = 'ThAr'
+            imgtype    = 'cal'
+        elif re.match('obj(\S*)', fileid):
+            objectname = ''
+            imgtype    = 'sci'
+        else:
+            objectname = ''
+            imgtype = ''
     
-            frameid   = int(mobj.group(1))
-            exptime   = head[exptime_key]
-            info      = parse_objectstring(head['OBJECT'])
+        # determine the total number of saturated pixels
+        saturation = (data>=65535).sum()
     
-            obsdate = head[statime_key]
+        # find the 95% quantile
+        quantile95 = int(np.round(np.percentile(data, 95)))
     
-            if filetype=='o':
-                imgtype = 'sci'
-            else:
-                imgtype = 'cal'
+        item = (fileid, imgtype, objectname, exptime, obsdate,
+                info['gain'], info['speed'], info['binning'],
+                saturation, quantile95)
+        logtable.add_row(item)
     
-            # determine the total number of saturated pixels
-            saturation = (data>=65535).sum()
+        item = logtable[-1]
     
-            # find the 95% quantile
-            quantile95 = int(np.round(np.percentile(data, 95)))
-    
-            item = [frameid, fileid, imgtype, objectname, exptime, obsdate,
+        # print log item with colors
+        string = fmt_str.format(fileid,
+                    '({:3s})'.format(imgtype),
+                    objectname, exptime, obsdate,
                     info['gain'], info['speed'], info['binning'],
-                    saturation, quantile95]
-            logtable.add_row(item)
-    
-            item = logtable[-1]
-    
-            # print log item with colors
-            string = fmt_str.format(frameid, fileid,
-                        '({:3s})'.format(imgtype),
-                        objectname, exptime, obsdate,
-                        info['gain'], info['speed'], info['binning'],
-                        saturation, quantile95)
-            print(print_wrapper(string, item))
+                    saturation, quantile95)
+        print(print_wrapper(string, item))
+
+    # resort logtable
+    logtable.sort('obsdate')
+    frameid_lst = np.arange(1, len(logtable)+1)
+    logtable.add_column(frameid_lst, name='frameid', index=0)
 
     # determine filename of logtable.
     # use the obsdate of the first frame
