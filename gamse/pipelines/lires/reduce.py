@@ -25,6 +25,8 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 FWHMMapFigure, ResolutionFigure,
                                 )
 from ..common import load_obslog, load_config
+from ..xinglong216hrs.common import (get_interorder_background,
+                                     BackgroundFigure)
 from .common import (print_wrapper, correct_overscan, get_mask,
         TraceFigure, AlignFigure, SpatialProfileFigure,
         select_calib_from_database)
@@ -796,7 +798,7 @@ def reduce_rawdata():
 
         # add more infos in calib
         calib['fileid']   = fileid
-        calib['date-obs'] = head[statime_key]
+        calib['obsdate']  = head[statime_key]
         calib['exptime']  = head[exptime_key]
         message = 'Add more info in calib of {}'.format(fileid)
         logger.info(logger_prefix + message)
@@ -891,7 +893,7 @@ def reduce_rawdata():
                             promotion = promotion)
 
     ######## Extract 1d spectra of flat fielding ######
-    extract_flat = True
+    extract_flat = False
     if extract_flat:
 
         # prepar message prefix
@@ -915,3 +917,263 @@ def reduce_rawdata():
         background = median_filter(background, size=(9,5), mode='nearest')
         background = savitzky_golay_2d(background, window_length=(21, 101),
                         order=3, mode='nearest')
+
+        # plot stray light
+        figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
+        figfilename = os.path.join(figpath, figname)
+        fig_bkg = BackgroundFigure(data, background,
+                    title   = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
+        fig_bkg.close()
+
+        data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+        
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        method = section.get('method')
+        if True:
+            lower_limit = section.getfloat('lower_limit')
+            upper_limit = section.getfloat('upper_limit')
+
+            # extract 1d spectra of the object
+            spectra1d = extract_aperset(data, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            norder = len(spectra1d)
+            message = '1D spectra of {} orders extracted'.format(norder)
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            # extract 1d spectra for straylight/background light
+            background1d = extract_aperset(background, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            message = '1D straylight of {} orders extracted'.format(
+                        len(background1d))
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            prefix = 'HIERARCH GAMSE EXTRACTION '
+            head.append((prefix + 'LOWER LIMIT', lower_limit))
+            head.append((prefix + 'UPPER LIMIT', upper_limit))
+
+            # pack spectrum
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                n = flux_sum.size
+                # background 1d flux
+                back_flux = background1d[aper]['flux_sum']
+            
+                row = (aper, 0,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux
+                        np.zeros(n, dtype=np.float32),  # error
+                        back_flux,                      # background
+                        np.zeros(n, dtype=np.int16),    # mask
+                        )
+                spec.append(row)
+            spec = np.array(spec, dtype=spectype)
+
+        # wavelength calibration
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                        obsdate = head[statime_key],
+                        exptime = head[exptime_key],
+                        )
+
+        message_lst = ['Wavelength calibration:']
+        for i, calib in enumerate(ref_calib_lst):
+            string = ' '*len(screen_prefix)
+            string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['obsdate'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix + key, value))
+
+        # pack and save wavelength referenced spectra
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    ])
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(odspath, fname)
+        hdu_lst.writeto(filename, overwrite=True)
+
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+    ######## Extract Science ######
+    for logitem in logtable:
+        if logitem['imgtype']!='sci':
+            continue
+
+        fileid  = logitem['fileid']
+        imgtype = logitem['imgtype']
+        objname = logitem['object']
+        exptime = logitem['exptime']
+
+        # prepare message prefix
+        logger_prefix = 'FileID: {} - '.format(fileid)
+        screen_prefix = '    - '
+
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
+
+        message = 'FileID: {} ({}) OBJECT: {}'.format(
+                    fileid, imgtype, objname)
+        logger.info(message)
+        print(message)
+
+        # read raw data
+        data, head = fits.getdata(filename, header=True)
+        data = correct_overscan(data)
+
+
+        # correct bias
+        if bias is None:
+            message = 'No bias'
+        else:
+            data = data - bias
+            message = 'Bias corrected. Mean = {:.2f}'.format(bias.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+
+        # correct flat for flat
+        data = data/flat_sens
+        message = 'Flat field corrected'
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        # get background light
+        mask = np.zeros_like(data, dtype=np.int16)
+        ny, nx = data.shape
+        allx = np.arange(nx)
+        background = get_interorder_background(data, mask, aperset)
+        #for y in np.arange(ny):
+        #    m = mask[y,:]==0
+        #    f = intp.InterpolatedUnivariateSpline(
+        #                allx[m], background[y,:][m], k=3)
+        #    background[y,:][~m] = f(allx[~m])
+        background = median_filter(background, size=(9,5), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
+
+        # plot stray light
+        figname = 'bkg2d_{}.{}'.format(fileid, fig_format)
+        figfilename = os.path.join(figpath, figname)
+        fig_bkg = BackgroundFigure(data, background,
+                    title   = 'Background Correction for {}'.format(fileid),
+                    figname = figfilename,
+                    )
+        fig_bkg.close()
+
+        data = data - background
+        message = 'Background corrected. Max = {:.2f}; Mean = {:.2f}'.format(
+                    background.max(), background.mean())
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+        
+        # extract 1d spectrum
+        section = config['reduce.extract']
+        method = section.get('method')
+        if True:
+            lower_limit = section.getfloat('lower_limit')
+            upper_limit = section.getfloat('upper_limit')
+
+            # extract 1d spectra of the object
+            spectra1d = extract_aperset(data, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            norder = len(spectra1d)
+            message = '1D spectra of {} orders extracted'.format(norder)
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            # extract 1d spectra for straylight/background light
+            background1d = extract_aperset(background, mask,
+                            apertureset = master_aperset,
+                            lower_limit = lower_limit,
+                            upper_limit = upper_limit,
+                        )
+            message = '1D straylight of {} orders extracted'.format(
+                        len(background1d))
+            logger.info(logger_prefix + message)
+            print(screen_prefix + message)
+
+            prefix = 'HIERARCH GAMSE EXTRACTION '
+            head.append((prefix + 'LOWER LIMIT', lower_limit))
+            head.append((prefix + 'UPPER LIMIT', upper_limit))
+
+            # pack spectrum
+            spec = []
+            for aper, item in sorted(spectra1d.items()):
+                flux_sum = item['flux_sum']
+                n = flux_sum.size
+                # background 1d flux
+                back_flux = background1d[aper]['flux_sum']
+            
+                row = (aper, 0,
+                        np.zeros(n, dtype=np.float64),  # wavelength
+                        flux_sum,                       # flux
+                        np.zeros(n, dtype=np.float32),  # error
+                        back_flux,                      # background
+                        np.zeros(n, dtype=np.int16),    # mask
+                        )
+                spec.append(row)
+            spec = np.array(spec, dtype=spectype)
+
+        # wavelength calibration
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                        obsdate = head[statime_key],
+                        exptime = head[exptime_key],
+                        )
+
+        message_lst = ['Wavelength calibration:']
+        for i, calib in enumerate(ref_calib_lst):
+            string = ' '*len(screen_prefix)
+            string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['obsdate'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)
+
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix + key, value))
+
+        # pack and save wavelength referenced spectra
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    ])
+        fname = '{}_{}.fits'.format(fileid, oned_suffix)
+        filename = os.path.join(odspath, fname)
+        hdu_lst.writeto(filename, overwrite=True)
+
+        message = '1D spectra written to "{}"'.format(filename)
+        logger.info(logger_prefix + message)
+        print(screen_prefix + message)

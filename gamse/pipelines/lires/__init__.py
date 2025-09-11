@@ -99,11 +99,11 @@ def make_config():
     config.add_section(sectname)
     config.set(sectname, 'search_database',  'yes')
     config.set(sectname, 'use_prev_fitpar',  'yes')
-    config.set(sectname, 'window_size',      str(13))
-    config.set(sectname, 'xorder',           str(3))
-    config.set(sectname, 'yorder',           str(3))
+    config.set(sectname, 'window_size',      str(23))
+    config.set(sectname, 'xorder',           str(4))
+    config.set(sectname, 'yorder',           str(4))
     config.set(sectname, 'maxiter',          str(5))
-    config.set(sectname, 'clipping',         str(2.5))
+    config.set(sectname, 'clipping',         str(1.5))
     config.set(sectname, 'q_threshold',      str(10))
     config.set(sectname, 'auto_selection',   'yes')
     config.set(sectname, 'rms_threshold',    str(0.008))
@@ -208,7 +208,7 @@ def make_obslog():
 
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match('(\S+)\.fits', fname)
+        mobj = re.match(r'(\S+)\.fits', fname)
         if not mobj:
             continue
         filename = os.path.join(rawpath, fname)
@@ -219,16 +219,16 @@ def make_obslog():
         info    = parse_objectstring(head['OBJECT'])
         obsdate = head[statime_key]
 
-        if re.match('bias_?\d+', fileid):
+        if re.match(r'bias_?\d+', fileid):
             objectname = 'Bias'
             imgtype    = 'cal'
-        elif re.match('flat_?\d+', fileid):
+        elif re.match(r'flat_?\d+', fileid):
             objectname = 'Flat'
             imgtype    = 'cal'
-        elif re.match('thar_?\d+', fileid):
+        elif re.match(r'thar_?\d+', fileid):
             objectname = 'ThAr'
             imgtype    = 'cal'
-        elif re.match('obj(\S*)', fileid):
+        elif re.match(r'obj(\S*)', fileid):
             objectname = ''
             imgtype    = 'sci'
         else:
