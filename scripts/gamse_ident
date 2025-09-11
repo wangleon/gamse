@@ -1752,12 +1752,12 @@ if __name__=='__main__':
     spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
 
-
-
     # save result as FITS file
     prefix = 'HIERARCH GAMSE WLCALIB '
     for key, value in card_lst:
-        head.append((prefix+key, value))
+        # clear previous WLCALIB cards, if any
+        # make sure there is only one such key in the header
+        head[prefix+key] = value
 
     hdu_lst = fits.HDUList([
                 fits.PrimaryHDU(header=head),

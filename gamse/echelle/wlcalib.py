@@ -1567,7 +1567,7 @@ def get_calib_weight_lst(calib_lst, obsdate, exptime):
     """
     input_datetime = dateutil.parser.parse(obsdate) \
                         + datetime.timedelta(seconds=exptime/2)
-    datetime_lst = [dateutil.parser.parse(calib['date-obs']) \
+    datetime_lst = [dateutil.parser.parse(calib['obsdate']) \
                         + datetime.timedelta(seconds=calib['exptime']/2)
                         for calib in calib_lst]
 
@@ -2236,7 +2236,7 @@ def select_calib_auto(calib_lst, rms_threshold=1e9, group_contiguous=True,
             # if this logitem is in calib_lst, it must be put into the
             # calib_groups, either in an existing group, or a new group
             this_id = frameid
-            this_time = dateutil.parser.parse(calib['date-obs']) + \
+            this_time = dateutil.parser.parse(calib['obsdate']) + \
                         datetime.timedelta(seconds=calib['exptime']/2)
             delta_time = (this_time - prev_time)
 
