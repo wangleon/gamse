@@ -12,7 +12,7 @@ import astropy.io.fits as fits
 import scipy.interpolate as intp
 import scipy.optimize as opt
 import scipy.signal as sg
-from scipy.integrate import simps
+from scipy.integrate import simpson
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
@@ -1868,7 +1868,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspec_lst[aper][x] = simps(flatmod, x=xdata2)
+            flatspec_lst[aper][x] = simpson(flatmod, x=xdata2)
             
             #if aper==0:
             #    print(x, y1, y2, flatmask)
@@ -2188,7 +2188,7 @@ def _get_fiber_flat_aperture(data, mask, aper, positions, bounds,
         # use trapezoidal integration
         # np.trapz(flatmod, x=xdata2)
         # use simpson integration
-        flux1d = simps(flatmod, x=xdata2)
+        flux1d = simpson(flatmod, x=xdata2)
 
         # flatspec 1d would be:
         #flatspec_lst[aper][x] = flux1d

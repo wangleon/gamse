@@ -36,7 +36,7 @@ def print_wrapper(string, item):
     else:
         return string
 
-def correct_overscan(data, head):
+def correct_overscan(data, figname=None):
     """Correct overscan.
 
     Args:
@@ -47,25 +47,43 @@ def correct_overscan(data, head):
         
 
     """
-    scidata = data[:, 0:4096]
-    ovrdata = data[:, 4096:4096+32]
-    ovrmean = ovrdata.mean(axis=1)
 
-    ovrsmooth, _, _, _ = iterative_savgol_filter(ovrmean, winlen=351,
-                               order=3, upper_clip=3.0)
+    ny, nx = data.shape
+    if nx >= 4096:
+        bin_x = 1
+        x1 = np.arange(0, ny//2)
+        scidata1 = data[:ny//2, 0:4096]
+        ovrdata1 = data[:ny//2, 4096+2:]
+        ovrmean1 = ovrdata1.mean(axis=1)
 
-    corrdata = np.zeros((data.shape[0], 4096), dtype=np.float32)
-    corrdata[:, 0:4096] = scidata - ovrsmooth.reshape(-1, 1)
+        x2 = np.arange(ny//2, ny)
+        scidata2 = data[ny//2:, 0:4096]
+        ovrdata2 = data[ny//2:, 4096+2:]
+        ovrmean2 = ovrdata2.mean(axis=1)
 
-    '''
-    import matplotlib.pyplot as plt
-    fig = plt.figure()
-    ax = fig.gca()
-    ax.plot(ovrmean, lw=0.5, alpha=0.8)
-    ax.plot(ovrsmooth, lw=0.5, alpha=0.8)
-    fig.savefig('{}.png'.format(head['DATE-OBS']))
-    plt.close(fig)
-    '''
+        #ovrsmooth1, _, _, _ = iterative_savgol_filter(ovrmean1, winlen=351,
+        #                       order=3, upper_clip=3.0)
+        #ovrsmooth2, _, _, _ = iterative_savgol_filter(ovrmean2, winlen=351,
+        #                       order=3, upper_clip=3.0)
+    
+        c1 = np.polyfit(x1, ovrmean1, deg=1)
+        ovrsmooth1 = np.polyval(c1, x1)
+        c2 = np.polyfit(x2, ovrmean2, deg=1)
+        ovrsmooth2 = np.polyval(c2, x2)
+
+        corrdata = np.zeros((ny, 4096), dtype=np.float32)
+        corrdata[:ny//2, 0:4096] = scidata1 - ovrsmooth1.reshape(-1, 1)
+        corrdata[ny//2:, 0:4096] = scidata2 - ovrsmooth2.reshape(-1, 1)
+
+        if figname is not None:
+            fig = plt.figure(figsize=(10, 4), dpi=200)
+            ax = fig.add_axes([0.05, 0.1, 0.9, 0.8])
+            ax.plot(np.arange(0, ny//2),  ovrmean1, lw=0.5, alpha=0.3, c='C0')
+            ax.plot(np.arange(ny//2, ny), ovrmean2, lw=0.5, alpha=0.3, c='C3')
+            ax.plot(np.arange(0, ny//2), ovrsmooth1, lw=1, alpha=0.8, c='C0')
+            ax.plot(np.arange(ny//2, ny), ovrsmooth2, lw=1, alpha=0.8, c='C3')
+            fig.savefig(figname)
+            plt.close(fig)
 
     return corrdata
 

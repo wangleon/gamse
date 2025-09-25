@@ -10,7 +10,7 @@ from scipy.signal import savgol_filter
 import scipy.interpolate as intp
 import scipy.optimize as opt
 from scipy.interpolate import InterpolatedUnivariateSpline
-from scipy.integrate import simps
+from scipy.integrate import simpson
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
 
@@ -542,7 +542,7 @@ def get_flat2(data, mask, apertureset, nflat,
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspec_lst[aper][y] = simps(flatmod, x=xdata2)
+            flatspec_lst[aper][y] = simpson(flatmod, x=xdata2)
 
         t2 = time.time()
         message = ('Aperture {:3d}: {:2d} group{:1s}; '
@@ -824,7 +824,7 @@ def get_flat(data, aperture_set, mode='normal'):
             flatdata[x, x1:x2] = data[x, x1:x2]/newprofile
             densex = np.arange(x1, x2, 0.1)
             densep = interprofilefunc(densex-c)
-            flatspec_lst[aper][x] = simps(densep*A+b, x=densex)
+            flatspec_lst[aper][x] = simpson(densep*A+b, x=densex)
 
         ratio = min(iaper/(len(aperture_set)-1), 1.0)
         term_size = os.get_terminal_size()
