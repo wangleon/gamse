@@ -128,7 +128,7 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             #    summask = newmask[:,x]>0
             #    samplex = np.arange(data.shape[0])[summask]
             #    if len(samplex)>0:
-            #        fluxp = intg.simps(data[:,x][summask], samplex)
+            #        fluxp = intg.simpson(data[:,x][summask], samplex)
             #    else:
             #        fluxp = 0.0
             #    fluxsum.append(fluxp)
