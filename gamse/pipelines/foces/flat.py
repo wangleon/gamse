@@ -11,7 +11,7 @@ from numpy.polynomial import Chebyshev
 from scipy.signal import savgol_filter
 import scipy.optimize as opt
 from scipy.interpolate import InterpolatedUnivariateSpline
-from scipy.integrate import simps
+from scipy.integrate import simpson
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 import matplotlib.pyplot as plt
@@ -773,7 +773,7 @@ def get_flat(data, mask, apertureset, nflat,
             # use trapezoidal integration
             # np.trapz(flatmod, x=xdata2)
             # use simpson integration
-            flatspec_lst[aper][x] = simps(flatmod, x=xdata2)
+            flatspec_lst[aper][x] = simpson(flatmod, x=xdata2)
 
         t2 = time.time()
         message = ('Aperture {:3d}: {:2d} group{:1s}; '
