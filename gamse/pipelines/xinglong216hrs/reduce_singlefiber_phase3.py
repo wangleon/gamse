@@ -1021,7 +1021,7 @@ def reduce_singlefiber_phase3(config, logtable):
                 error = row['error']
                 back  = row['background']
                 mask  = row['mask']
-                #newflux = np.array([np.NaN]*flux.size)
+                #newflux = np.array([np.nan]*flux.size)
 
                 # smooth the flatspec 
                 m = flat_spec['aperture']==aper
