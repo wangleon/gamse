@@ -402,7 +402,7 @@ def load_ident(filename):
     for row in t:
         item = np.array((row['aperture'], 0, row['element'], row['ion'],
                          row['wavelength'], row['source'], -1, -1, row['pixel'],
-                         np.NaN, np.NaN, np.NaN, np.NaN, -1, np.NaN, 'm'),
+                         np.nan, np.nan, np.nan, np.nan, -1, np.nan, 'm'),
                         dtype=identlinetype)
 
         if row['aperture'] not in identlist:
@@ -900,7 +900,7 @@ def select_calib_from_database(index_file, dateobs):
     """
 
     # get instrument name
-    mobj = re.match('wlcalib_(\S*)\.dat$', os.path.basename(index_file))
+    mobj = re.match(r'wlcalib_(\S*)\.dat$', os.path.basename(index_file))
     instrument = mobj.group(1)
 
     calibtable = Table.read(index_file, format='ascii.fixed_width_two_line')
@@ -2194,7 +2194,7 @@ def get_aperture_coeffs_in_header(head):
 
     coeffs = {}
     for key, value in head.items():
-        exp = '^GAMSE TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
+        exp = r'^GAMSE TRACE CHANNEL [A-Z] APERTURE \d+ COEFF \d+$'
         if re.match(exp, key) is not None:
             g = key.split()
             channel  = g[3]

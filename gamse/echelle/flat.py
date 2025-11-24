@@ -1523,7 +1523,7 @@ def get_fiber_flat(data, mask, apertureset, nflat, slit_step=64,
 
         # loop for every newx. find the fitting parameters for each column
         # prepar the blank parameter for insert
-        blank_p = np.array([np.NaN, np.NaN, np.NaN, np.NaN])
+        blank_p = np.array([np.nan, np.nan, np.nan, np.nan])
 
         for x in newx_lst:
             # central position

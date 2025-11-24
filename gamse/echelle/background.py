@@ -654,7 +654,7 @@ def find_background(data, mask, aperturesets, ncols, distance,
 
         if plot_section and x in plot_cols:
             _yplot = np.copy(xsection)
-            _yplot[~intermask] = np.NaN
+            _yplot[~intermask] = np.nan
             ax1.plot(_yplot, '-', color='C0', lw=0.7, alpha=0.5)
 
         notnanindex = np.nonzero(intermask)[0]
@@ -1181,21 +1181,21 @@ class BackgroundLight(object):
         aper_brt_lst = []
         aper_wav_lst = []
         for key, value in head.items():
-            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) ORDER', key)
+            m = re.match(r'^GAMSE BACKGROUNDLIGHT APERTURE (\d+) ORDER', key)
             if m:
                 aper = int(m.group(1))
                 aper_num_lst.append(aper)
                 aper_ord_lst.append(value)
                 continue
-            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) POSITION', key)
+            m = re.match(r'^GAMSE BACKGROUNDLIGHT APERTURE (\d+) POSITION', key)
             if m:
                 aper_pos_lst.append(value)
                 continue
-            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) BRIGHTNESS', key)
+            m = re.match(r'^GAMSE BACKGROUNDLIGHT APERTURE (\d+) BRIGHTNESS', key)
             if m:
                 aper_brt_lst.append(value)
                 continue
-            m = re.match('^GAMSE BACKGROUNDLIGHT APERTURE (\d+) WAVELENGTH', key)
+            m = re.match(r'^GAMSE BACKGROUNDLIGHT APERTURE (\d+) WAVELENGTH', key)
             if m:
                 aper_wav_lst.append(value)
                 continue

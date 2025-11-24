@@ -401,8 +401,8 @@ def extract_aperset_optimal(data, mask, background, apertureset,
         flux_err = np.zeros(ndisp, dtype=np.float32)
         back_sum = np.zeros(ndisp, dtype=np.float32)
         back_opt = np.zeros(ndisp, dtype=np.float32)
-        dcen_lst = np.array([np.NaN]*ndisp)
-        qsnr_lst = np.array([np.NaN]*ndisp)
+        dcen_lst = np.array([np.nan]*ndisp)
+        qsnr_lst = np.array([np.nan]*ndisp)
 
         if recenter:
             # loop over the x along the dispersion direction

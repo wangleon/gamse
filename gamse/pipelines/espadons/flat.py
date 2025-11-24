@@ -266,7 +266,7 @@ def get_flat2(data, mask, apertureset, nflat,
 
         # loop for every newx. find the fitting parameters for each column
         # prepar the blank parameter for insert
-        blank_p = np.array([np.NaN, np.NaN, np.NaN])
+        blank_p = np.array([np.nan, np.nan, np.nan])
 
         for iy, y in enumerate(newy_lst):
             pos      = aper_position[y]
