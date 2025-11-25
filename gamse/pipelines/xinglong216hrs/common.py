@@ -320,7 +320,7 @@ def combine_bias(config, logtable):
         # append the overscan information of each bias frame to
         # bias_card_lst
         for keyword, value in card_lst:
-            mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
+            mobj = re.match(r'^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
             if mobj:
                 newkey = prefix + ' ' + mobj.group(1)
                 bias_card_lst.append((newkey, value))

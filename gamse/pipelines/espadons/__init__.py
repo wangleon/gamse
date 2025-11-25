@@ -167,7 +167,7 @@ def make_obslog():
     prev_frameid = -1
 
     for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match('(\d{7}[a-z])\.fits', fname)
+        mobj = re.match(r'(\d{7}[a-z])\.fits', fname)
         if not mobj:
             continue
         fileid  = mobj.group(1)
@@ -187,7 +187,7 @@ def make_obslog():
         obsdate = obsdt.isoformat()[0:23]
 
         # find instmode, obsmode, and resolution
-        mobj = re.match('([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', head['INSTMODE'])
+        mobj = re.match(r'([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', head['INSTMODE'])
         if mobj:
             instmode   = mobj.group(1)
             obsmode    = mobj.group(2)

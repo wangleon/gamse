@@ -204,7 +204,7 @@ def make_obslog():
     # allocate frameid
     prev_frameid = -1
     for logitem in logtable:
-        if re.match('[a-zA-Z_]*\d+$', logitem['fileid']):
+        if re.match(r'[a-zA-Z_]*\d+$', logitem['fileid']):
             frameid = int(logitem['fileid'][-3:])
         else:
             frameid = 0

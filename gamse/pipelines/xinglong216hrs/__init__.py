@@ -243,7 +243,7 @@ def get_regular_calname(objectname):
 
 
 def parse_timestr(timestr, date):
-    mobj = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+    mobj = re.match(r'(\d{2}):(\d{2}):(\d{2})', timestr)
     yy, mm, dd = date
     h = int(mobj.group(1))
     m = int(mobj.group(2))
@@ -280,7 +280,7 @@ def parse_logfile_singlefiber(filename, date):
             'Flat': '{id}\s*(flat)\s*{btime}\s*{exptime}'.format(**ptn_lst),
             'ThAr': '{id}\s*(thar)\s*{btime}\s*{exptime}'.format(**ptn_lst),
             }
-    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+    pattern_sci = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
 
     yy, mm, dd = date
@@ -371,11 +371,11 @@ def parse_logfile_doublefiber(filename, date):
             'dec':     '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',   # dec
             }
 
-    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
-    pattern_sci = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+    pattern_bias = r'{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = (r'{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
                     '\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-    pattern_cal = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+    pattern_cal = (r'{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
                     '\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     yy, mm, dd = date
@@ -512,7 +512,7 @@ def make_obslog():
     # search file in the current folder
     logfile = None
     for fname in os.listdir('./'):
-        mobj = re.match('(\d{8})\.txt', fname)
+        mobj = re.match(r'(\d{8})\.txt', fname)
         if mobj:
             logfile = fname
             datestr = mobj.group(1)
@@ -806,12 +806,12 @@ def parse_logfile(filename, date):
             }
 
     # determine 3 types of match patterns
-    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
-    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+    pattern_bias = r'{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-    pattern_2obj = ('\[A\]\s*{objname2}\s*'
+    pattern_2obj = (r'\[A\]\s*{objname2}\s*'
                     '\[B\]\s*{objname2}').format(**ptn_lst)
-    pattern_cal = ('{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
+    pattern_cal = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     # pattern cal can also match pattern_sci and pattern_bias. so match
     # pattern_bias first, thn pattern_sci, and finally pattern_cal
@@ -978,13 +978,13 @@ def read_logfile(filename):
     pattern4 = '([\d\.]+)'                  # pattern for exptime
     pattern5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # pattern for ra
     pattern6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # pattern for dec
-    pattern_bias = '{}\s*(bias)\s*{}\s*{}'.format(
+    pattern_bias = r'{}\s*(bias)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_thar = '{}\s*(thar)\s*{}\s*{}'.format(
+    pattern_thar = r'{}\s*(thar)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_flat = '{}\s*(flat)\s*{}\s*{}'.format(
+    pattern_flat = r'{}\s*(flat)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_star = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
+    pattern_star = r'{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
             pattern1, pattern2, pattern3, pattern4, pattern5, pattern6)
 
     # open log file with UTF-8 encoding, and ignore any errors.
@@ -1042,7 +1042,7 @@ def read_logfile(filename):
             frameid2 = frameid1
 
         # parse begin time of exposure
-        m1 = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+        m1 = re.match(r'(\d{2}):(\d{2}):(\d{2})', timestr)
         hour   = int(m1.group(1))
         minute = int(m1.group(2))
         second = int(m1.group(3))
@@ -1056,7 +1056,7 @@ def read_logfile(filename):
         if mobj_star:
             # convert ra string to float in degree
             rastr = mobj.group(5)
-            m2 = re.match('(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', rastr)
+            m2 = re.match(r'(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', rastr)
             rah = int(m2.group(1))
             ram = int(m2.group(2))
             ras = float(m2.group(3))
@@ -1064,7 +1064,7 @@ def read_logfile(filename):
 
             # convert dec string to float in degree
             decstr = mobj.group(6)
-            m3 = re.match('([+-])(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', decstr)
+            m3 = re.match(r'([+-])(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', decstr)
             ded = int(m3.group(2))
             dem = int(m3.group(3))
             des = float(m3.group(4))
@@ -1137,7 +1137,7 @@ def reduce_rawdata():
     # determine fiber mode ('single'/'double')
     fibermode = 'single'
     for logitem in logtable:
-        if re.match('\[A\][\s\S]*\[B\][\s\S]*', logitem['object']):
+        if re.match(r'\[A\][\s\S]*\[B\][\s\S]*', logitem['object']):
             fibermode = 'double'
             break
 

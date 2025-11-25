@@ -85,7 +85,7 @@ def reduce_singlefiber(config, logtable):
         objname = logitem['object'].lower().strip()
         # above only valid for single fiber
 
-        if re.match('^flat[\s\S]*', objname):
+        if re.match(r'^flat[\s\S]*', objname):
             # the object name of the channel matches "flat ???"
 
             # find a proper name for this flat
@@ -674,6 +674,7 @@ def reduce_singlefiber(config, logtable):
         # add more infos in calib
         calib['fileid']   = fileid
         calib['date-obs'] = head[statime_key]
+        # change to obsdate? see LIRES
         calib['exptime']  = head[exptime_key]
         message = 'Add more info in calib of {}'.format(fileid)
         logger.info(logger_prefix + message)

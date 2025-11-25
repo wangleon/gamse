@@ -36,7 +36,7 @@ def make_metatable(rawpath, verbose=True):
         ], masked=True)
 
     for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match('HDSA(\d{8})\.fits$', fname)
+        mobj = re.match(r'HDSA(\d{8})\.fits$', fname)
         if not mobj:
             continue
 
@@ -209,7 +209,7 @@ def make_obslog():
     frameid = 0
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
-        if not re.match('HDSA\d{8}\.fits$', fname):
+        if not re.match(r'HDSA\d{8}\.fits$', fname):
             continue
         # check the both CCD frames are exist
         framenum = int(fname[4:12])

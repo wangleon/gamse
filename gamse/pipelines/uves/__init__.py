@@ -63,7 +63,7 @@ def make_metatable(rawpath):
                         ('progid',  'S30'),
                         ('pi',      'S50'),
                 ], masked=True)
-    pattern = '(UVES\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
+    pattern = r'(UVES\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
     for fname in sorted(os.listdir(rawpath)):
         mobj = re.match(pattern, fname)
         if not mobj:
@@ -161,7 +161,7 @@ def make_obslog():
     print(head_str)
 
     prev_frameid = -1
-    pattern = '(UVES\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
+    pattern = r'(UVES\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
     for fname in fname_lst:
         mobj = re.match(pattern, fname)
         if not mobj:

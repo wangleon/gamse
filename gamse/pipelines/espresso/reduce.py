@@ -54,7 +54,7 @@ def reduce_data(config, logtable):
     # determine mode and binning
     instmode = logtable[0]['mode']
     binning = logtable[0]['binning']
-    mobj = re.match('\((\d), (\d)\)', binning)
+    mobj = re.match(r'\((\d), (\d)\)', binning)
     binx = mobj.group(1)
     biny = mobj.group(2)
     instconfig = '{}_{}x{}'.format(instmode, binx, biny)

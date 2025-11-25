@@ -147,7 +147,7 @@ def reduce_doublefiber(config, logtable):
         fiber = chr(ifiber+65)
         objname = objname.lower()
 
-        if re.match('^flat[\s\S]*', objname):
+        if re.match(r'^flat[\s\S]*', objname):
             # the object name of the channel matches "flat ???"
 
             # find a proper name (flatname) for this flat
