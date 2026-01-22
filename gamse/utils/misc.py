@@ -8,19 +8,10 @@ import getpass
 import platform
 import subprocess
 
-import distro
-
 import numpy
 import scipy
 import astropy
 import matplotlib
-
-if sys.version_info[0] < 3:
-    import Tkinter as tk
-    import ttk
-else:
-    import tkinter as tk
-    import tkinter.ttk as ttk
 
 from .. import __version__
 
@@ -72,7 +63,8 @@ def write_system_info():
     #distribution = ' '.join(platform.dist())
     # platform.dist() has been deprecated in Python 3.5. use
     # distro.linux_distribution() instead.
-    distribution = ' '.join(distro.linux_distribution())
+    # distro was removed from gamse.
+    # distribution = ' '.join(distro.linux_distribution())
 
     username = getpass.getuser()
     node = platform.node()
@@ -85,7 +77,7 @@ def write_system_info():
                                     processor_number, processor, cores),
             'System:                {:s} {:s} {:s}'.format(
                                     system, release, machine),
-            'Distribution:          {:s}'.format(distribution),
+            #'Distribution:          {:s}'.format(distribution),
             'Memory:                {:s}'.format(memory),
             'Username:              {:s}'.format(username),
             'Python version:        {:s}'.format(python_version),
@@ -93,7 +85,6 @@ def write_system_info():
             'Scipy version:         {:s}'.format(scipy.__version__),
             'Astropy version:       {:s}'.format(astropy.__version__),
             'Matplotlib version:    {:s}'.format(matplotlib.__version__),
-            'Tkinter.ttk version:   {:s}'.format(ttk.__version__),
             'Gamse version:         {:s}'.format(__version__),
             'Working directory:     {:s}'.format(abspath),
             ]
