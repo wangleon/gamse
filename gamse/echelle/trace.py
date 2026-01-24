@@ -769,7 +769,7 @@ def create_tracefig(datashape, figsize, dpi=150):
 
     return fig, axes
 
-def adjust_tracefig(fig, axes):
+def adjust_tracefig(axes):
     """Adjust the positions of ax2, ax3, and ax4 relative to the ax1.
     """
     # get actual positions of ax1
@@ -789,6 +789,55 @@ def adjust_tracefig(fig, axes):
         bbox3.x0, y0, bbox3.width, bbox3.height
         ])
 
+    # adjust the axes
+    for tickline in axes['separation'].yaxis.get_ticklines():
+        tickline.set_color('gray')
+        tickline.set_alpha(0.8)
+    for tick in axes['separation'].yaxis.get_major_ticks():
+        tick.label2.set_color('gray')
+        tick.label2.set_alpha(0.8)
+    axes['peaks'].set_xlabel('Y')
+    axes['profile'].set_ylabel('Detected Peaks')
+    axes['separation'].set_ylabel('Order Separation (Pixel)',
+                                  c='gray', alpha=0.8)
+    for axname in ['profile', 'peaks', 'separation']:
+        # set tickers
+        axes[axname].xaxis.set_major_locator(tck.MultipleLocator(500))
+        axes[axname].xaxis.set_minor_locator(tck.MultipleLocator(100))
+
+
+def create_alignfig(figsize=(12, 6), dpi=150):
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+
+    axes = {
+            'before': fig.add_axes([0.08, 0.1, 0.4, 0.8]),
+            'after':  fig.add_axes([0.55, 0.1, 0.4, 0.8]),
+            }
+
+    return fig, axes
+
+def adjust_alignfig(axes):
+    """Adjust the relatvie positions of axes in align figure.
+    """
+
+    # keep the x and y ranges the same for ax1 and ax2
+    _x11, _x12 = axes['before'].get_xlim()
+    _x21, _x22 = axes['after'].get_xlim()
+    _x1 = min(_x11, _x21)
+    _x2 = max(_x12, _x22)
+
+    _y11, _y12 = axes['before'].get_ylim()
+    _y21, _y22 = axes['after'].get_ylim()
+    _y1 = min(_y11, _y21)
+    _y2 = max(_y12, _y22)
+
+    for axname in ['before', 'after']:
+        axes[axname].set_xlim(_x1, _x2)
+        axes[axname].set_xlim(_y1, _y2)
+        axes[axname].grid(True, ls='--', lw=0.5, alpha=0.2)
+        axes[axname].set_axisbelow(True)
+        axes[axname].xaxis.set_major_locator(tck.MultipleLocator(500))
+        axes[axname].xaxis.set_minor_locator(tck.MultipleLocator(100))
 
 class TraceFigureCommon(Figure):
     """Figure to plot the order tracing.
@@ -854,7 +903,7 @@ class AlignFigureCommon(Figure):
 def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
         separation=20, align_deg=2, filling=0.3, degree=3, conv_core='auto',
         fill=False, fill_tol=10, recenter='parabola',
-        fig_trace=None, fig_align=None, **kwargs):
+        **kwargs):
     """Find the positions of apertures on a CCD image.
 
     Args:
@@ -1138,7 +1187,6 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
     # normalize the convolution core
     if core is not None:
         core /= core.sum()
-    
 
     while(True):
         # scan the image along X axis starting from the middle column
@@ -1195,7 +1243,7 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
             csec_maxlst[i1:i2] = np.maximum(csec_maxlst[i1:i2],linflux1)
 
             # plot in the order alignment figure
-            if fig_align is not None:
+            if align_axes:
                 # define a transfrom function that converts flux to plotted
                 # curves in the alignment figure
                 q01 = np.percentile(flux1, 1)
@@ -1209,9 +1257,9 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                 plottrans = lambda flux: (flux - q01)/(q99 - q01)*amp
 
                 # use the transform function
-                fig_align.ax1.plot(ally, plottrans(flux1)+x1,
+                align_axes['before'].plot(ally, plottrans(flux1)+x1,
                         c='C0', lw=0.5)
-                fig_align.ax2.plot(ally, plottrans(flux1)+x1,
+                align_axes['after'].plot(ally, plottrans(flux1)+x1,
                         c='C0', lw=0.5)
         else:
             # aperture alignment of each selected column, described by param
@@ -1256,15 +1304,15 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                         '-', lw=0.5, alpha=0.2)
 
             # plot in the order alignment figure
-            if fig_align is not None:
+            if align_axes:
                 # calculate the ally after alignment
                 aligned_ally = ally.copy()
                 for param in param_lst[direction][::-1]:
                     aligned_ally = backward(aligned_ally, param)
                 # plot in the align figure
-                fig_align.ax1.plot(ally, plottrans(flux1)+x1,
+                align_axes['before'].plot(ally, plottrans(flux1)+x1,
                         c='k', lw=0.5, alpha=0.2)
-                fig_align.ax2.plot(aligned_ally, plottrans(flux1)+x1,
+                align_axes['after'].plot(aligned_ally, plottrans(flux1)+x1,
                         c='k', lw=0.5, alpha=0.2)
 
         nodes_lst[x1] = np.array(nodes_lst[x1])
@@ -1635,22 +1683,8 @@ def find_apertures(data, mask, transpose=False, scan_step=50, minimum=1e-3,
                                       alpha=0.2, zorder=-1)
         # adjust the axes
         trace_axes['separation'].set_xlim(0, h-1)
-        for tickline in trace_axes['separation'].yaxis.get_ticklines():
-            tickline.set_color('gray')
-            tickline.set_alpha(0.8)
-        for tick in trace_axes['separation'].yaxis.get_major_ticks():
-            tick.label2.set_color('gray')
-            tick.label2.set_alpha(0.8)
-        trace_axes['profile'].set_xlabel('Y')
-        trace_axes['profile'].set_ylabel('Detected Peaks')
-        trace_axes['separation'].set_ylabel('Order Separation (Pixel)',
-                                            c='gray', alpha=0.8)
-        for name in ['profile', 'peaks', 'separation']:
-            ax = trace_axes[name]
-            ax.set_xlim(csec_ylst[istart], csec_ylst[iend])
-            # set tickers
-            ax.xaxis.set_major_locator(tck.MultipleLocator(500))
-            ax.xaxis.set_minor_locator(tck.MultipleLocator(100))
+        for axname in ['profile', 'peaks', 'separation']:
+            trace_axes[axname].set_xlim(csec_ylst[istart], csec_ylst[iend])
 
     if plot_paper_fig:
         # adjust figure 1 in paper
@@ -1757,7 +1791,7 @@ def load_aperture_set_from_header(header, fiber=None, channel=None):
         prefix += ' FIBER '+fiber
     if channel is not None:
         prefix += ' CHANNEL '+channel
-    
+
     aperture_set = ApertureSet()
     coeff = []
     prev_aper = None
