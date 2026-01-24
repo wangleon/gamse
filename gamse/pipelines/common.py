@@ -6,6 +6,7 @@ import configparser
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as tck
+import astropy.io.fits as fits
 
 from ..utils.obslog import read_obslog
 
@@ -165,3 +166,66 @@ def plot_spectra1d():
             fig.savefig(os.path.join(image_path, 'spec_%s_%02d.png'%(item.fileid, int(io/10.))))
             plt.close(fig)
 
+
+FITS_PREFIX = 'HIERARCH GAMSE '
+
+def _get_cards_from_header(head):
+    card_lst = []
+    for _key, _value in head.items():
+        if _key.startswith(FITS_PREFIX):
+            _key = _key[len(FITS_PREFIX):].strip()
+            card_lst.append((_key, _value))
+    return card_lst
+
+def _save_fits_image(data, card_lst, outfile):
+
+    head = fits.Header()
+    for _key, _value in card_lst:
+        _key = FITS_PREFIX + _key
+        head.append((_key, _value))
+
+    hdulst = fits.HDUList([
+                fits.PrimaryHDU(data=data, header=head)
+                ])
+    hdulst.writeto(outfile, overwrite=True)
+
+def _save_fits_table(data, card_lst, outfile):
+
+    head = fits.Header()
+    for _key, _value in card_lst:
+        _key = FITS_PREFIX + _key
+        head.append((_key, _value))
+
+    hdulst = fits.HDUList([
+                fits.PrimaryHDU(header=head)
+                fits.BinTableHDU(data=data)
+                ])
+    hdulst.writeto(outfile, overwrite=True)
+
+
+def save_fits(data, card_lst, outfile):
+    if data.dtype.kind in ('i', 'f'):
+        #  data is a normal array. save it as image
+        _save_fits_image(data, card_lst, outfile)
+    elif data.dtype.kind == 'V':
+        # data is a structured array. save it as table in the first extension
+        _save_fits_table(data, card_lst, outifle)
+    else:
+        print('Data type error')
+        raise ValueError
+
+def get_specdtype(ndisp):
+    types = [
+            ('aperture',    np.int16),
+            ('order',       np.int16),
+            ('x',           (np.float32, nx)),
+            ('y',           (np.float32, nx)),
+            ('wavelength',  (np.float64, nx)),
+            ('flux',        (np.float32, nx)),
+            ('error',       (np.float32, nx)),
+            ('background',  (np.float32, nx)),
+            ('mask',        (np.int16,   nx)),
+            ]
+    names, formats = list(zip(*types))
+    spectype = np.dtype({'names': names, 'formats': formats})
+    return spectype
