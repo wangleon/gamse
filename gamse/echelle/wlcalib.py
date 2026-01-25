@@ -139,10 +139,24 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
 
     mask = fit_m_lst
 
+    # find maximum order number
+    maxorder = fit_o_lst.max()
+    # determine the order normalization factor
+    if maxorder >= 200:
+        onorm = 200
+    elif maxorder >= 50:
+        onorm = 100
+    elif maxorder >= 15:
+        onorm = 20
+    elif maxorder >= 5:
+        onorm = 10
+    else:
+        onorm = 1
+
     for nite in range(maxiter):
-        coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask]/50., fit_w_lst[mask],
+        coeff = polyfit2d(fit_p_lst[mask], fit_o_lst[mask]/onorm, fit_w_lst[mask],
                           xorder=xorder, yorder=yorder)
-        res_lst = fit_w_lst - polyval2d(fit_p_lst, fit_o_lst/50., coeff)
+        res_lst = fit_w_lst - polyval2d(fit_p_lst, fit_o_lst/onorm, coeff)
         res_lst = res_lst/fit_o_lst
 
         mean = res_lst[mask].mean(dtype=np.float64)
@@ -164,9 +178,9 @@ def fit_wavelength(identlist, npixel, xorder, yorder, maxiter, clipping,
     # number of lines and used lines
     nuse = mask.sum()
     ntot = fit_w_lst.size
-    return coeff, std, k, offset, nuse, ntot
+    return coeff, onorm, std, k, offset, nuse, ntot
 
-def get_wavelength(coeff, npixel, pixel, order):
+def get_wavelength(coeff, npixel, onorm, pixel, order):
     """Get wavelength.
 
     Args:
@@ -184,7 +198,7 @@ def get_wavelength(coeff, npixel, pixel, order):
     """
     # convert aperture to order
     norm_pixel = pixel*2./(npixel-1) - 1
-    return polyval2d(norm_pixel, order/50., coeff)/order
+    return polyval2d(norm_pixel, order/onorm, coeff)/order
 
 def guess_wavelength(x, aperture, identlist, linelist, param):
     """Guess wavelength according to the identified lines.
@@ -211,10 +225,11 @@ def guess_wavelength(x, aperture, identlist, linelist, param):
         coeff  = param['coeff']
         offset = param['offset']
         npixel = param['npixel']
+        onorm  = param['onorm']
 
         order = k*aperture + offset
 
-        rough_wl = get_wavelength(coeff, npixel, x, order)
+        rough_wl = get_wavelength(coeff, npixel, onorm, x, order)
 
     # guess wavelength from the identified lines in this order
     if rough_wl is None and aperture in identlist:
@@ -741,6 +756,7 @@ class CalibFigure(Figure):
         k        = kwargs.pop('k')
         offset   = kwargs.pop('offset')
         npixel   = kwargs.pop('npixel')
+        onorm    = kwargs.pop('onorm')
         std      = kwargs.pop('std')
         nuse     = kwargs.pop('nuse')
         ntot     = kwargs.pop('ntot')
@@ -767,7 +783,7 @@ class CalibFigure(Figure):
             allwave_lst = {}
             for aperture in aperture_lst:
                 order = k*aperture + offset
-                wave = get_wavelength(coeff, npixel, x,
+                wave = get_wavelength(coeff, npixel, onorm, x,
                                       np.repeat(order, x.size))
                 allwave_lst[aperture] = wave
                 wl_max = max(wl_max, wave.max())
@@ -1007,6 +1023,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
     offset      = ref_calib['offset']
     coeff       = ref_calib['coeff']
     npixel      = ref_calib['npixel']
+    onorm       = ref_calib['onorm']
     xorder      = (xorder, ref_calib['xorder'])[xorder is None]
     yorder      = (yorder, ref_calib['yorder'])[yorder is None]
     maxiter     = (maxiter,  ref_calib['maxiter'])[maxiter is None]
@@ -1053,9 +1070,9 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         order = int(k*ref_aperture + offset)
         # get the wavelength of all pixels in this order
         # for xinglong
-        #allwave = get_wavelength(coeff, npixel, x, np.repeat(order*50, npixel))*50
+        #allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order*50, npixel))*50
         # for others
-        allwave = get_wavelength(coeff, npixel, x, np.repeat(order, npixel))
+        allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order, npixel))
         #print(aperture, ref_aperture, allwave)
 
         w1 = min(allwave[0], allwave[-1])
@@ -1141,7 +1158,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         if has_insert:
             identlist[aperture] = np.sort(identlist[aperture], order='pixel')
 
-    new_coeff, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
+    new_coeff, new_onorm, new_std, new_k, new_offset, new_nuse, new_ntot = fit_wavelength(
         identlist = identlist,
         npixel    = npixel,
         xorder    = xorder,
@@ -1165,6 +1182,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
                       aperture_lst = spec['aperture'],
                       plot_ax1     = True,
                       coeff        = new_coeff,
+                      onorm        = new_onorm,
                       k            = new_k,
                       offset       = new_offset,
                       npixel       = npixel,
@@ -1206,6 +1224,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
     return {
             'coeff':       new_coeff,
             'npixel':      npixel,
+            'onorm':       new_onorm,
             'k':           new_k,
             'offset':      new_offset,
             'std':         new_std,
@@ -1502,13 +1521,14 @@ def reference_wl_new(spec, calib, head, channel, include_identlist):
     offset = calib['offset']
     xorder = calib['xorder']
     yorder = calib['yorder']
+    norm   = calib['onorm']
     coeff  = calib['coeff']
 
     for row in spec:
        aperture = row['aperture']
        npixel   = row['points']
        order = aperture*k + offset
-       wavelength = get_wavelength(coeff, npixel,
+       wavelength = get_wavelength(coeff, npixel, onorm,
                         np.arange(npixel),
                         np.repeat(order, npixel))
        row['order']      = order
@@ -1613,13 +1633,15 @@ def combine_calib(calib_lst, weight_lst):
     xorder = calib_lst[0]['xorder']
     yorder = calib_lst[0]['yorder']
     npixel = calib_lst[0]['npixel']
+    onorm  = calib_lst[0]['onorm']
 
     for calib in calib_lst:
         if     calib['k']      != k \
             or calib['offset'] != offset \
             or calib['xorder'] != xorder \
             or calib['yorder'] != yorder \
-            or calib['npixel'] != npixel:
+            or calib['npixel'] != npixel \
+            or calib['onorm']  != onorm:
             print('Error: calib list is not self-consistent')
             raise ValueError
 
@@ -1657,6 +1679,7 @@ def get_calib_from_header(header):
     exptime     = header.get(prefix+'EXPTIME', -1)
     obsdate     = header.get(prefix+'OBSDATE', '')
     npixel      = header.get(prefix+'NPIXEL')
+    onorm       = header.get(prefix+'ONORM')
     k           = header.get(prefix+'K')
     offset      = header.get(prefix+'OFFSET')
     std         = header.get(prefix+'STDDEV')
@@ -1675,6 +1698,7 @@ def get_calib_from_header(header):
               'obsdate':       obsdate,
               'coeff':         coeff,
               'npixel':        npixel,
+              'onorm':         onorm,
               'k':             k,
               'offset':        offset,
               'std':           std,
@@ -1737,6 +1761,7 @@ def reference_self_wavelength(spec, calib):
     k       = calib['k']
     offset  = calib['offset']
     npixel  = calib['npixel']
+    onorm   = calib['onorm']
     xorder  = calib['xorder']
     yorder  = calib['yorder']
     coeff   = calib['coeff']
@@ -1744,7 +1769,7 @@ def reference_self_wavelength(spec, calib):
     for row in spec:
         aperture = row['aperture']
         order = k * aperture + offset
-        wavelength = get_wavelength(coeff, npixel, np.arange(npixel),
+        wavelength = get_wavelength(coeff, npixel, onorm, np.arange(npixel),
                                     np.repeat(order, npixel))
         row['order']      = order
         row['wavelength'] = wavelength
@@ -1755,6 +1780,7 @@ def reference_self_wavelength(spec, calib):
     card_lst.append(('XORDER',  xorder))
     card_lst.append(('YORDER',  yorder))
     card_lst.append(('NPIXEL',  npixel))
+    card_lst.append(('ONORM',   onorm))
 
     # write the coefficients to fits header
     for j, i in itertools.product(range(yorder+1),
@@ -1872,6 +1898,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     xorder = combined_calib['xorder']
     yorder = combined_calib['yorder']
     npixel = combined_calib['npixel']
+    onorm  = combined_claib['onorm']
     coeff  = combined_calib['coeff']
 
     # calculate the wavelength for each aperture
@@ -1879,7 +1906,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
         aperture = row['aperture']
         npoints  = len(row['wavelength'])
         order = aperture*k + offset
-        wavelength = get_wavelength(coeff, npixel,
+        wavelength = get_wavelength(coeff, npixel, onorm,
                         np.arange(npoints), np.repeat(order, npoints))
         row['order']      = order
         row['wavelength'] = wavelength
@@ -1893,6 +1920,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     card_lst.append(('XORDER', xorder))
     card_lst.append(('YORDER', yorder))
     card_lst.append(('NPIXEL', npixel))
+    card_lst.append(('ONORM',  onorm))
 
     # write the coefficients to fits header
     for j, i in itertools.product(range(yorder+1), range(xorder+1)):
@@ -1955,10 +1983,11 @@ def reference_pixel_wavelength(pixels, apertures, calib, weight=None):
     xorder = used_calib['xorder']
     yorder = used_calib['yorder']
     npixel = used_calib['npixel']
+    onorm  = used_calib['onorm']
     coeff  = used_calib['coeff']
 
     orders = apertures*k + offset
-    wavelengths = get_wavelength(coeff, npixel, pixels, orders)
+    wavelengths = get_wavelength(coeff, npixel, onorm, pixels, orders)
     return orders, wavelengths
 
 def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
@@ -2048,6 +2077,7 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
         offset = calib['offset']
         xorder = calib['xorder']
         yorder = calib['yorder']
+        onorm  = calib['onorm']
 
         if self_reference:
             coeff = calib['coeff']
@@ -2086,7 +2116,8 @@ def reference_wl(infilename, outfilename, regfilename, frameid, calib_lst):
             aperture = row['aperture']
             npixel   = len(row['wavelength'])
             order = aperture*k + offset
-            wl = get_wavelength(coeff, npixel, np.arange(npixel), np.repeat(order, npixel))
+            wl = get_wavelength(coeff, npixel, onorm,
+                                np.arange(npixel), np.repeat(order, npixel))
 
             # add wavelength into FITS table
             item = list(row)
