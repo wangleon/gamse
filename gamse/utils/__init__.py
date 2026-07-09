@@ -1,5 +1,6 @@
 from . import config
 from . import obslog
+from . import table
 from . import regression
 from . import regression2d
 from . import onedarray
