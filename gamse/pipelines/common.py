@@ -2,6 +2,8 @@ import os
 import re
 import time
 import configparser
+from typing import List, Tuple, Any, Protocol, runtime_checkable
+from abc import ABC, abstractmethod
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -197,7 +199,7 @@ def _save_fits_table(data, card_lst, outfile):
         head.append((_key, _value))
 
     hdulst = fits.HDUList([
-                fits.PrimaryHDU(header=head)
+                fits.PrimaryHDU(header=head),
                 fits.BinTableHDU(data=data)
                 ])
     hdulst.writeto(outfile, overwrite=True)
@@ -229,3 +231,24 @@ def get_specdtype(ndisp):
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
     return spectype
+
+class Frame(ABC):
+
+    cards: List[Tuple[str, Any]] = []
+
+    @abstractmethod
+    def save(self, filepath):
+        pass
+
+    @classmethod
+    @abstractmethod
+    def read(cls, filepath):
+        pass
+
+@runtime_checkable
+class Processor(Protocol):
+
+    name: str
+
+    def process(self):
+        ...

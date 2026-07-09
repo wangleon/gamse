@@ -6,6 +6,9 @@ import logging
 logger = logging.getLogger(__name__)
 import configparser
 import importlib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Union, Optional, ClassVar, Any
 
 import numpy as np
 import astropy.io.fits as fits
@@ -58,7 +61,7 @@ def reduce_echelle():
         file1 = open(log_filename)
         for row in file1:
             # find the first time string in the contents
-            mobj = re.search('(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', row)
+            mobj = re.search(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})', row)
             if mobj:
                 time_str = mobj.group()
                 break
@@ -493,3 +496,118 @@ def convert_onedspec():
 
         print('Convert {} to {} files with ASCII formats in {}'.format(
                 filename, len(data), target_path))
+
+
+@dataclass
+class PipelineConfig:
+    rawdata_path: Union[str, Path]
+    midproc_path: Optional[Union[str, Path]] = './'
+    figure_path: Optional[Union[str, Path]] = './'
+    verbose: bool = True
+
+    # cache yaml module
+    _yaml_module: ClassVar[Any] = None
+
+    def __post_init__(self):
+        self.rawdata_path = self._str_to_path(self.rawdata_path)
+        self.midproc_path = self._str_to_path(self.midproc_path)
+        self.figure_path  = self._str_to_path(self.figure_path)
+
+        for path in [self.rawdata_path, self.midproc_path, self.figure_path]:
+            if path:
+                path.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _str_to_path(input_path):
+        if isinstance(input_path, str):
+            path1 = os.path.expandvars(input_path)
+            path2 = os.path.expanduser(path1)
+            return Path(path2).resolve()
+        else:
+            return input_path
+
+    def to_dict(self):
+        """Convert to dict.
+
+        """
+        result = {
+            'rawdata_path': str(self.rawdata_path),
+            'midproc_path': str(self.midproc_path),
+            'figure_path': str(self.figure_path),
+            'verbose': self.verbose,
+            }
+
+        return result
+
+    @classmethod
+    def from_dict(cls, config_dict):
+        """
+
+        Args:
+            config_dict:
+
+
+        Returns:
+            PipelineConfig
+        """
+        # creat a copy of config_dict
+        kwargs = config_dict.copy()
+
+        return cls(**kwargs)
+
+    @classmethod
+    def _get_yaml_module(cls):
+        """
+        """
+        if cls._yaml_module is None:
+            try:
+                import yaml as yaml_module
+                cls._yaml_module = yaml_module
+            except ImportError as e:
+                raise ImportError(
+                        'Do not have PyYAML.'
+                        ) from e
+        return cls._yaml_module
+
+    @classmethod
+    def from_yaml(cls, yaml_path):
+        yaml = cls._get_yaml_module()
+
+        yaml_path_obj = Path(yaml_path)
+        if not yaml_path_obj.exists():
+            raise FileNotFoundError('Config file does not exist')
+
+        with open(yaml_path_obj, 'r', encoding='utf-8') as f:
+            config_dict = yaml.safe_load(f)
+
+        if config_dict is None:
+            config_dict = {}
+
+        return cls.from_dict(config_dict)
+
+    def to_yaml(self, yaml_path):
+        """
+        Args:
+            yaml_path:
+
+        Returns:
+        
+        Raises:
+            ImportError: PyYAML is not installed
+        """
+        yaml = cls._get_yaml_module()
+        config_dict = self.to_dict()
+
+        yaml_str = yaml.dump(config_dict,
+                             default_flow_style = False,
+                             allow_unicode      = True,
+                             sort_keys          = False,
+                             )
+        if yaml_path is not None:
+            yaml_path_obj = Path(yaml_path)
+            yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            with open(yaml_path_obj, 'w', encoding='utf-8') as f:
+                f.write(yaml_str)
+            return None
+        else:
+            return yaml_str
