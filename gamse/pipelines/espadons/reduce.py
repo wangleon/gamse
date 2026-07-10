@@ -18,7 +18,7 @@ from ...echelle.wlcalib import (wlcalib, recalib,
 from ...echelle.background import get_interorder_background
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from .common import (correct_overscan, select_calib_from_database,
-                    BackgroundFigure, SpatialProfileFigure)
+                    BackgroundFigure, SpatialProfileFigure, ESPADONSFrame)
 from .trace import find_apertures
 from .flat import get_flat, get_flat2, smooth_aperpar_A, smooth_aperpar_c, smooth_aperpar_bkg
 
@@ -399,6 +399,7 @@ def reduce_rawdata(config, logtable):
 
                 ref_spec, ref_calib = select_calib_from_database(
                             index_file, obsdate)
+                ref_calib['onorm'] = 50
 
                 if ref_spec is None or ref_calib is None:
 
@@ -465,9 +466,7 @@ def reduce_rawdata(config, logtable):
                     window_size = (section.getint('window_size'), None)[use]
                     q_threshold = (section.getfloat('q_threshold'), None)[use]
 
-                    calib = recalib(spec,
-                        figfilename      = wlcalib_fig,
-                        title            = title,
+                    calib, fig = recalib(spec,
                         ref_spec         = ref_spec,
                         linelist         = section.get('linelist'),
                         aperture_koffset = aperture_koffset,
@@ -482,6 +481,9 @@ def reduce_rawdata(config, logtable):
                         direction        = direction,
                         fit_filter       = wlfit_filter,
                         )
+                    fig.suptitle(title)
+                    fig.savefig(wlcalib_fig)
+                    plt.close(fig)
             else:
                 message = 'No database searching. Identify lines manually'
                 logger.info(logger_prefix + message)
@@ -514,9 +516,7 @@ def reduce_rawdata(config, logtable):
             message = 'Use reference calib and spec'
             logger.info(logger_prefix + message)
             # for other ThArs, no aperture offset
-            calib = recalib(spec,
-                figfilename      = wlcalib_fig,
-                title            = title,
+            calib, fig = recalib(spec,
                 ref_spec         = ref_spec,
                 linelist         = section.get('linelist'),
                 ref_calib        = ref_calib,
@@ -531,6 +531,9 @@ def reduce_rawdata(config, logtable):
                 direction        = direction,
                 fit_filter       = wlfit_filter,
                 )
+            fig.suptitle(title)
+            fig.savefig(wlcalib_fig)
+            plt.close(fig)
 
         # add more infos in calib
         calib['fileid']   = fileid
@@ -692,8 +695,76 @@ def reduce_rawdata(config, logtable):
             result = extract_aperset_optimal(data, mask,
                         background  = background,
                         apertureset = aperset_A,
+                        main_disp   = 'y',
                         gain        = 1.3,
                         ron         = 4.15,
                         profilex    = profilex,
                         disp_x_lst  = yc_lst,
                         )
+
+
+def _combine_bias(config, logtable, condition):
+
+    bias_data_lst = []
+    
+    for item in logtable.filter(condition):
+        fileid = item['fileid']
+        binning = item['binning']
+        gain    = item['gain']
+        rdnoise = item['rdnoise']
+        fname = '{}.fits.fz'.format(fileid)
+        rawfilename = config.rawdata_path / fname
+        print(rawfilename, binning, gain, rdnoise)
+        frame = ESPADONSFrame.read(rawfilename)
+        frame.correct_overscan()
+
+        bias_data_lst.append(frame.data)
+
+    n_bias = len(bias_data_lst)
+    # combine bias images
+    bias_data_lst = np.array(bias_data_lst)
+
+    combine_mode = 'mean'
+    cosmic_clip  = 10
+    maxiter      = 5
+    maskmode    = (None, 'max')[n_bias>=3]
+
+
+    # determine number of cores to be used
+    ncores = os.cpu_count()
+
+    bias_combine = combine_images(bias_data_lst,
+            mode        = combine_mode,
+            upper_clip  = cosmic_clip,
+            maxiter     = maxiter,
+            maskmode    = maskmode,
+            ncores      = ncores,
+            )
+
+    return bias_combine
+
+
+
+class Pipeline(object):
+
+    def __init__(self, config, logtable):
+        self.config = config
+        self.logtable = logtable
+
+    def set_filter(self, condition):
+        self.condition = condition
+
+    def combine_bias(self):
+
+        bias_combine = _combine_bias(
+                            self.config,
+                            self.logtable.filter(self.condition),
+                            {'obstype':'=BIAS'},
+                            )
+        
+        # create the hdu list to be saved
+        hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(data=bias_combine),
+                    ])
+        bias_file = self.config.midproc_path / 'bias.fits'
+        hdu_lst.writeto(bias_file, overwrite=True)

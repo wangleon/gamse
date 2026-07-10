@@ -13,6 +13,7 @@ import matplotlib.ticker as tck
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
+from ..common import Frame
 from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
@@ -20,7 +21,42 @@ from ...utils.regression import get_clip_mean
 from ...utils.onedarray import iterative_savgol_filter
 from ...utils.download import get_file
 
-def correct_overscan(data, header):
+class ESPADONSFrame(Frame):
+
+    def __init__(self, data: np.ndarray, head: fits.Header, mask=None):
+        self.data = data
+        if mask is None:
+            mask = np.zeros_like(data, dtype=np.int16)
+        self.mask = mask
+        self.head = head
+        self.cards = []
+
+    @classmethod
+    def read(cls, filepath):
+        hdulst = fits.open(filepath)
+        data = hdulst[1].data
+        head = hdulst[1].header
+        mask = None
+        hdulst.close()
+        return cls(data=data, mask=mask, head=head)
+
+    def save(self, filepath, overwrite=False):
+        hdulst = fits.HDUList([
+                    fits.PrimaryHDU(head=self.head, data=self.data),
+                    fits.ImageHDU(data=self.mask),
+                ])
+        if os.path.exists(filepath) and not overwrite:
+            print('Error: {} exists. use overwrite=True'.format(filepath))
+        else:
+            hdulst.writeto(filepath, overwrite=True)
+
+    def correct_overscan(self):
+        ovrdata, mask = correct_overscan(self.data, self.head)
+        self.data = ovrdata
+        self.mask = mask
+
+
+def correct_overscan(data, header, verbose=True):
     """Correct overscan.
 
     Args:
@@ -86,6 +122,10 @@ def correct_overscan(data, header):
     ovrdata[:, nx1//2:nx1] = scidata2 - ovrimage2
 
     mask = mask[:,20:nx-20]
+
+    if verbose:
+        print('Overscan', ovr1.mean(), ovr2.mean())
+
     return ovrdata, mask
 
 class ProfileNormalizer(ProfileNormalizerCommon):

@@ -14,6 +14,7 @@ from ...utils.misc import extract_date
 from ..common import load_obslog, load_config
 from .common import print_wrapper
 from .reduce import reduce_rawdata as _reduce_rawdata
+from .reduce import Pipeline
 
 def make_config():
     """Generate a config file for reducing the data taken with CFHT/ESPaDOnS.
@@ -457,3 +458,4 @@ def reduce_rawdata():
     logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     _reduce_rawdata(config, logtable)
+
