@@ -870,7 +870,7 @@ def smooth_aperpar_A(newx_lst, ypara, fitmask, group_lst, npoints):
         for ite in range(3):
             f = InterpolatedUnivariateSpline(xpiece[_m], ypiece[_m], k=3)
             ypiece2 = f(xpiece)
-            win_len = (11, 21)[ypiece2.size>23]
+            win_len = 21 if ypiece2.size>23 else 11
             ysmooth = savgol_filter(ypiece2, window_length=win_len, polyorder=3)
             res = ypiece - ysmooth
             std = res.std()
@@ -1187,7 +1187,7 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
             elif xspan > npoints/8: deg = 2
             else:                   deg = 1
 
-            scale = ('linear','log')[(ypiece<=0).sum()==0]
+            scale = 'log' if (ypiece<=0).sum()==0 else 'linear'
             if scale=='log':
                 ypiece = np.log(ypiece)
 

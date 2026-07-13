@@ -882,8 +882,8 @@ class Pipeline(object):
         fig_spatial.close()
 
         hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(flat_data),
-                    fits.ImageHDU(flat_sens),
+                    #fits.PrimaryHDU(flat_data),
+                    fits.PrimaryHDU(flat_sens),
                     #fits.BinTableHDU(flatspectable),
                 ])
         sens_file = self.config.midproc_path / 'sens.fits'
