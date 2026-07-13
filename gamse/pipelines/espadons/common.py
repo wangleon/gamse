@@ -123,8 +123,8 @@ def correct_overscan(data, header, verbose=True):
 
     mask = mask[:,20:nx-20]
 
-    if verbose:
-        print('Overscan', ovr1.mean(), ovr2.mean())
+    #if verbose:
+    #    print('Overscan', ovr1.mean(), ovr2.mean())
 
     return ovrdata, mask
 
@@ -197,6 +197,7 @@ def find_local_peak(x, y):
     x0 = n/2
     i0 = int(round(x0))
     i1, i2 = i0-3, i0+3
+    
     func = intp.InterpolatedUnivariateSpline(np.arange(i1, i2), y[i1:i2],
                 k=3, ext=3)
     result = opt.minimize(func, x0)

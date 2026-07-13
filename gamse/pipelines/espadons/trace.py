@@ -103,6 +103,8 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         v = np.percentile(section[i1:i2], percent)
         idx = np.nonzero(section[i1:i2]>v)[0]
         winmask[idx+i1] = False
+
+
     
     bkgmask = winmask.copy()
     maxiter = 10
@@ -111,7 +113,7 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
         newy = np.polyval(c, allx)
         resy = np.log(section) - newy
         std = resy[bkgmask].std()
-        newbkgmask = resy < 3*std
+        newbkgmask = resy < 2.5*std
         if newbkgmask.sum() == bkgmask.sum():
             break
         bkgmask = newbkgmask
@@ -121,6 +123,20 @@ def find_order_locations(section, y, aligned_allx=None, mode='normal'):
     
     gap_mask = ~aper_mask
     gap_idx = np.nonzero(gap_mask)[0]
+
+    ######
+    if False:
+        fig0 = plt.figure()
+        ax0 = fig0.gca()
+        ax0.plot(np.arange(section.size), section)
+        i = np.nonzero(winmask)[0]
+        ax0.plot(np.arange(section.size)[i], section[i], 'o', ms=1.5)
+        i = np.nonzero(bkgmask)[0]
+        ax0.plot(np.arange(section.size)[i], section[i], 'x', ms=2)
+        ax0.plot(allx, np.exp(newy), '-')
+        ax0.plot(allx, np.exp(newy+3*std), '-')
+        ax0.set_yscale('log')
+        plt.show()
 
     # determine the order edges
 

@@ -706,6 +706,8 @@ def reduce_rawdata(config, logtable):
 def _combine_bias(config, logtable, condition):
 
     bias_data_lst = []
+
+    data_config = ''
     
     for item in logtable.filter(condition):
         fileid = item['fileid']
@@ -714,7 +716,6 @@ def _combine_bias(config, logtable, condition):
         rdnoise = item['rdnoise']
         fname = '{}.fits.fz'.format(fileid)
         rawfilename = config.rawdata_path / fname
-        print(rawfilename, binning, gain, rdnoise)
         frame = ESPADONSFrame.read(rawfilename)
         frame.correct_overscan()
 
@@ -745,6 +746,52 @@ def _combine_bias(config, logtable, condition):
 
 
 
+
+
+def _combine_flat(config, logtable, condition, bias):
+
+    flat_data_lst = []
+
+    data_config = ''
+    
+    for item in logtable.filter(condition):
+        fileid = item['fileid']
+        instmode = item['instmode']
+        binning = item['binning']
+        gain    = item['gain']
+        rdnoise = item['rdnoise']
+        fname = '{}.fits.fz'.format(fileid)
+        rawfilename = config.rawdata_path / fname
+        print(fileid, instmode, binning, gain, rdnoise)
+        frame = ESPADONSFrame.read(rawfilename)
+        frame.correct_overscan()
+
+        flat_data_lst.append(frame.data)
+
+    n_flat = len(flat_data_lst)
+    # combine flat images
+    flat_data_lst = np.array(flat_data_lst)
+
+    combine_mode = 'mean'
+    cosmic_clip  = 10
+    maxiter      = 5
+    maskmode    = (None, 'max')[n_flat>=3]
+
+    # determine number of cores to be used
+    ncores = os.cpu_count()
+
+    flat_combine = combine_images(flat_data_lst,
+            mode        = combine_mode,
+            upper_clip  = cosmic_clip,
+            maxiter     = maxiter,
+            maskmode    = maskmode,
+            ncores      = ncores,
+            )
+
+    return flat_combine - bias.data
+    
+
+
 class Pipeline(object):
 
     def __init__(self, config, logtable):
@@ -766,5 +813,78 @@ class Pipeline(object):
         hdu_lst = fits.HDUList([
                         fits.PrimaryHDU(data=bias_combine),
                     ])
+
+        # need to add config string in the filename here
         bias_file = self.config.midproc_path / 'bias.fits'
         hdu_lst.writeto(bias_file, overwrite=True)
+
+        self.bias = bias_combine
+
+    def combine_flat(self):
+
+        flat_combine = _combine_flat(
+                            self.config,
+                            self.logtable.filter(self.condition),
+                            {'obstype':'=FLAT', 'instmode':'=spec'},
+                            bias = self.bias,
+                            )
+        
+        # create the hdu list to be saved
+        hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(data=flat_combine),
+                    ])
+
+
+        self.flat = flat_combine
+        # need to add config string in the filename here
+        flat_file = self.config.midproc_path / 'flat.fits'
+        hdu_lst.writeto(flat_file, overwrite=True)
+
+    def trace_orders(self):
+        
+        aperset, aperset_A, aperset_B = find_apertures(
+                        self.flat,
+                        scan_step = 100,
+                        align_deg = 2,
+                        degree    = 4,
+                        mode      = 'normal',
+                        figpath   = self.config.figure_path,
+                        )
+
+        trac_file  = self.config.midproc_path / 'trace.txt'
+        tracA_file = self.config.midproc_path / 'trace_A.txt'
+        tracB_file = self.config.midproc_path / 'trace_B.txt'
+
+        aperset.save_txt(trac_file)
+        aperset_A.save_txt(tracA_file)
+        aperset_B.save_txt(tracB_file)
+
+        self.aperset = aperset
+
+    def get_sens(self):
+        flat_data = self.flat
+
+        flat_mask = np.zeros_like(flat_data, dtype=np.int16)
+        fig_spatial = SpatialProfileFigure()
+        flat_sens, flatspec_lst = get_flat2(flat_data, flat_mask,
+                    apertureset     = self.aperset,
+                    nflat           = 10,
+                    smooth_A_func   = smooth_aperpar_A,
+                    smooth_c_func   = smooth_aperpar_c,
+                    smooth_bkg_func = smooth_aperpar_bkg,
+                    mode            = 'debug',
+                    fig_spatial = fig_spatial,
+                    )
+        figname = 'spatial_profile_flat.png'
+        title = 'Spatial Profile of flat'
+        fig_spatial.suptitle(title)
+        fig_spatial.savefig(figname)
+        fig_spatial.close()
+
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(flat_data),
+                    fits.ImageHDU(flat_sens),
+                    #fits.BinTableHDU(flatspectable),
+                ])
+        sens_file = self.config.midproc_path / 'sens.fits'
+        hdu_lst.writeto(sens_file, overwrite=True)
