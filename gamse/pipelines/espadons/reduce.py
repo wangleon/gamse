@@ -1,12 +1,14 @@
 import os
 import logging
 logger = logging.getLogger(__name__)
+from pathlib import Path
 
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import median_filter
 
+from ... import ObslogTable
 from ...echelle.trace import load_aperture_set
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.wlcalib import (wlcalib, recalib,
@@ -715,7 +717,7 @@ def _combine_bias(config, logtable, condition):
         gain    = item['gain']
         rdnoise = item['rdnoise']
         fname = '{}.fits.fz'.format(fileid)
-        rawfilename = config.rawdata_path / fname
+        rawfilename = config['rawdata_path'] / fname
         frame = ESPADONSFrame.read(rawfilename)
         frame.correct_overscan()
 
@@ -761,7 +763,7 @@ def _combine_flat(config, logtable, condition, bias):
         gain    = item['gain']
         rdnoise = item['rdnoise']
         fname = '{}.fits.fz'.format(fileid)
-        rawfilename = config.rawdata_path / fname
+        rawfilename = config['rawdata_path'] / fname
         print(fileid, instmode, binning, gain, rdnoise)
         frame = ESPADONSFrame.read(rawfilename)
         frame.correct_overscan()
@@ -791,21 +793,107 @@ def _combine_flat(config, logtable, condition, bias):
     return flat_combine - bias.data
     
 
-
 class Pipeline(object):
 
-    def __init__(self, config, logtable):
-        self.config = config
-        self.logtable = logtable
+    _yaml_module = None
+
+    def __init__(self, **kwargs):
+
+        rawdata_path = kwargs.pop('rawdata_path')
+        self.rawdata_path = Path(rawdata_path).expanduser().resolve()
+
+        # get reduction path
+        reduction_path = kwargs.pop('reduction_path', None)
+        if reduction_path is None:
+            self.reduction_path = Path.cwd()
+        else:
+            self.reduction_path = Path(reduction_path).expanduser()
+
+        # get midproc path
+        midproc_path = kwargs.pop('midproc_path', None)
+        if midproc_path is None:
+            self.midproc_path = self.reduction_path / 'midproc'
+        else:
+            self.midproc_path = Path(midproc_path).expanduser()
+        # create midproc path if not exist
+        self.midproc_path.mkdir(parents=True, exist_ok=True)
+
+        # get figure path
+        figure_path = kwargs.pop('figure_path', None)
+        if figure_path is None:
+            self.figure_path = self.reduction_path / 'figures'
+        else:
+            self.figure_path = Path(figure_path).expanduser()
+        # create figure path if not exist
+        self.figure_path.mkdir(parents=True, exist_ok=True)
+
+        self.config = {
+                'rawdata_path': self.rawdata_path,
+                'figure_path':  self.figure_path,
+                'midproc_path': self.midproc_path,
+                }
+
+        # read logtable
+        logtablename = kwargs.pop('logtable_path')
+        self.logtable_path = Path(logtablename).expanduser().resolve()
+        self.logtable = ObslogTable.read(self.logtable_path,
+                                   format='ascii.fixed_width_two_line')
+
+        # read condtions
+        self.data_filter = kwargs.pop('data_filter', None)
+
+        # read bias
+        self.bias_path = kwargs.pop('bias_path', None)
+        if self.bias_path is None:
+            self.bias = None
+        else:
+            self.bias = fits.getdata(self.bias_path)
+
+        # read flat
+        self.flat_path = kwargs.pop('flat_path', None)
+        if self.flat_path is None:
+            self.flat = None
+        else:
+            self.flat = fits.getdata(self.flat_path)
+
+        # read sens
+        self.sens_path = kwargs.pop('sens_path', None)
+        if self.sens_path is None:
+            self.sens = None
+        else:
+            self.sens = fits.getdata(self.sens_path)
+
+
+        # read aperset
+        self.aperset_path = kwargs.pop('aperset_path', None)
+        if self.aperset_path is None:
+            self.aperset = None
+        else:
+            self.aperset = load_aperture_set(self.aperset_path)
+
+        # read aperset A
+        self.aperset_A_path = kwargs.pop('aperset_A_path', None)
+        if self.aperset_A_path is None:
+            self.aperset_A = None
+        else:
+            self.aperset_A = load_aperture_set(self.aperset_A_path)
+
+        # read aperset B
+        self.aperset_B_path = kwargs.pop('aperset_B_path', None)
+        if self.aperset_B_path is None:
+            self.aperset_B = None
+        else:
+            self.aperset_B = load_aperture_set(self.aperset_B_path)
+
 
     def set_filter(self, condition):
-        self.condition = condition
+        self.data_filter = condition
 
     def combine_bias(self):
 
         bias_combine = _combine_bias(
                             self.config,
-                            self.logtable.filter(self.condition),
+                            self.logtable.filter(self.data_filter),
                             {'obstype':'=BIAS'},
                             )
         
@@ -815,17 +903,19 @@ class Pipeline(object):
                     ])
 
         # need to add config string in the filename here
-        bias_file = self.config.midproc_path / 'bias.fits'
-        hdu_lst.writeto(bias_file, overwrite=True)
+        bias_path = self.midproc_path / 'bias.fits'
+        hdu_lst.writeto(bias_path, overwrite=True)
 
+        # register
         self.bias = bias_combine
+        self.bias_path = bias_path
 
     def combine_flat(self):
 
         flat_combine = _combine_flat(
                             self.config,
-                            self.logtable.filter(self.condition),
-                            {'obstype':'=FLAT', 'instmode':'=spec'},
+                            self.logtable.filter(self.data_filter),
+                            {'obstype':'=FLAT'},
                             bias = self.bias,
                             )
         
@@ -835,10 +925,13 @@ class Pipeline(object):
                     ])
 
 
-        self.flat = flat_combine
         # need to add config string in the filename here
-        flat_file = self.config.midproc_path / 'flat.fits'
-        hdu_lst.writeto(flat_file, overwrite=True)
+        flat_path = self.midproc_path / 'flat.fits'
+        hdu_lst.writeto(flat_path, overwrite=True)
+
+        # register
+        self.flat = flat_combine
+        self.flat_path = flat_path
 
     def trace_orders(self):
         
@@ -848,25 +941,31 @@ class Pipeline(object):
                         align_deg = 2,
                         degree    = 4,
                         mode      = 'normal',
-                        figpath   = self.config.figure_path,
+                        figpath   = self.figure_path,
                         )
 
-        trac_file  = self.config.midproc_path / 'trace.txt'
-        tracA_file = self.config.midproc_path / 'trace_A.txt'
-        tracB_file = self.config.midproc_path / 'trace_B.txt'
+        trac_file  = self.midproc_path / 'trace.txt'
+        tracA_file = self.midproc_path / 'trace_A.txt'
+        tracB_file = self.midproc_path / 'trace_B.txt'
 
         aperset.save_txt(trac_file)
         aperset_A.save_txt(tracA_file)
         aperset_B.save_txt(tracB_file)
 
         self.aperset = aperset
+        self.aperset_A = aperset_A
+        self.aperset_B = aperset_B
+
+        self.aperset_path = trac_file
+        self.aperset_A_path = tracA_file
+        self.aperset_B_path = tracB_file
 
     def get_sens(self):
         flat_data = self.flat
 
         flat_mask = np.zeros_like(flat_data, dtype=np.int16)
         fig_spatial = SpatialProfileFigure()
-        flat_sens, flatspec_lst = get_flat2(flat_data, flat_mask,
+        sens, flatspec_lst = get_flat2(flat_data, flat_mask,
                     apertureset     = self.aperset,
                     nflat           = 10,
                     smooth_A_func   = smooth_aperpar_A,
@@ -883,8 +982,110 @@ class Pipeline(object):
 
         hdu_lst = fits.HDUList([
                     #fits.PrimaryHDU(flat_data),
-                    fits.PrimaryHDU(flat_sens),
+                    fits.PrimaryHDU(sens),
                     #fits.BinTableHDU(flatspectable),
                 ])
-        sens_file = self.config.midproc_path / 'sens.fits'
-        hdu_lst.writeto(sens_file, overwrite=True)
+        sens_path = self.midproc_path / 'sens.fits'
+        hdu_lst.writeto(sens_path, overwrite=True)
+
+        self.sens = sens
+        self.sens_path = sens_path
+
+    @classmethod
+    def _get_yaml_module(cls):
+        """
+        """
+        if cls._yaml_module is None:
+            try:
+                import yaml as yaml_module
+                cls._yaml_module = yaml_module
+            except ImportError as e:
+                raise ImportError(
+                        'Do not have PyYAML.'
+                        ) from e
+        return cls._yaml_module
+
+    def to_dict(self):
+        """Convert to dict.
+
+        """
+        result = {
+                'logtable_path':    str(self.logtable_path),
+                'rawdata_path':     str(self.rawdata_path),
+                'reduction_path':   str(self.reduction_path),
+                'midproc_path':     str(self.midproc_path),
+                'figure_path':      str(self.figure_path),
+                #'verbose': self.verbose,
+                'data_filter':      str(self.data_filter),
+                'bias_path':        str(self.bias_path),
+                'flat_path':        str(self.flat_path),
+                'sens_path':        str(self.sens_path),
+                'aperset_path':     str(self.aperset_path),
+                'aperset_A_path':   str(self.aperset_A_path),
+                'aperset_B_path':   str(self.aperset_B_path),
+                }
+
+        return result
+    
+    def to_yaml(self, yaml_path):
+        yaml = self._get_yaml_module()
+        
+        pipeline_dict = self.to_dict()
+
+        yaml_str = yaml.dump(pipeline_dict,
+                             default_flow_style = False,
+                             allow_unicode      = True,
+                             sort_keys          = False,
+                             )
+
+        if yaml_path is not None:
+            yaml_path_obj = Path(yaml_path)
+            yaml_path_obj.parent.mkdir(parents=True, exist_ok=True)
+            with open(yaml_path_obj, 'w', encoding='utf-8') as f:
+                f.write(yaml_str)
+            return None
+        else:
+            return yaml_str
+
+    @classmethod
+    def from_yaml(cls, yaml_path):
+        yaml = cls._get_yaml_module()
+        
+        yaml_path_obj = Path(yaml_path)
+        if not yaml_path_obj.exists():
+            raise FileNotFoundError('Config file does not exist')
+
+        with open(yaml_path_obj, 'r', encoding='utf-8') as f:
+            config_dict = yaml.safe_load(f)
+
+        if config_dict is None:
+            config_dict = {}
+
+        return cls.from_dict(config_dict)
+
+    @classmethod
+    def from_dict(cls, pipeline_dict):
+        """
+
+        Args:
+            config_dict:
+
+
+        Returns:
+            PipelineConfig
+        """
+        # creat a copy of config_dict
+        kwargs = pipeline_dict.copy()
+        print(kwargs)
+
+        return cls(**kwargs)
+
+    def process_comparison(self):
+        condition = {'obstype':'=COMPARISON'}
+
+        newtable = self.logtable.filter(self.data_filter).filter(condition)
+        print(newtable)
+
+
+    def extract_onedspec(self, dataframe, correct_background=False):
+        pass

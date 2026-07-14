@@ -4,6 +4,7 @@ import sys
 import datetime
 import dateutil.parser
 import configparser
+from pathlib import Path
 
 import numpy as np
 import astropy.io.fits as fits
@@ -161,19 +162,25 @@ def make_obslog(rawpath):
 
     print(head_str)
 
+
+    rawpath = Path(rawpath).expanduser()
+
+    file_lst = sorted([p for p in rawpath.iterdir()
+                       if p.is_file()], key=lambda p: p.name)
+
     prev_frameid = -1
 
-    for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match(r'(\d{7}[a-z])\.fits', fname)
-        if not mobj:
+    for filepath in file_lst:
+
+        if not (mobj := re.match(r'^(\d{7}[a-z])\.fits', filepath.name)):
             continue
+
         fileid  = mobj.group(1)
 
         # surffix with i, and p are data product, not raw data
         if fileid[-1] in ['i', 'p']:
             continue
-        filename = os.path.join(rawpath, fname)
-        data, head = fits.getdata(filename, header=True)
+        data, head = fits.getdata(filepath, header=True)
 
 
         # data checker
@@ -230,9 +237,9 @@ def make_obslog(rawpath):
                 resolution = ''
 
         if instmode == 'Spectroscopy':
-            instmode = 'spec'
+            instmode = 'SPEC'
         elif instmode == 'Polarimetry':
-            instmode = 'polar'
+            instmode = 'POLAR'
         else:
             instmode = ''
 
@@ -241,7 +248,7 @@ def make_obslog(rawpath):
         binx     = head['CCDBIN1']
         biny     = head['CCDBIN2']
         # get CCD amplifers
-        amp      = head['AMPLIST']
+        amp      = head['AMPLIST'].replace(',','').upper()
         # get CCD Gain
         gain1    = head['GAINA']
         gain2    = head['GAINB']
