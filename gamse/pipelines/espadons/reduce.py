@@ -1,4 +1,5 @@
 import os
+import ast
 import logging
 logger = logging.getLogger(__name__)
 from pathlib import Path
@@ -840,7 +841,11 @@ class Pipeline(object):
                                    format='ascii.fixed_width_two_line')
 
         # read condtions
-        self.data_filter = kwargs.pop('data_filter', None)
+        data_filter = kwargs.pop('data_filter', None)
+        if data_filter is not None:
+            self.data_filter = ast.literal_eval(data_filter)
+        else:
+            self.data_filter = {}
 
         # read bias
         self.bias_path = kwargs.pop('bias_path', None)
@@ -884,6 +889,9 @@ class Pipeline(object):
             self.aperset_B = None
         else:
             self.aperset_B = load_aperture_set(self.aperset_B_path)
+
+        # prepare for onedspec
+        self.spectype = None
 
 
     def set_filter(self, condition):
@@ -1076,16 +1084,174 @@ class Pipeline(object):
         """
         # creat a copy of config_dict
         kwargs = pipeline_dict.copy()
-        print(kwargs)
 
         return cls(**kwargs)
 
+    def init_spectype(self, ndisp):
+        types = [
+                ('aperture',   np.int16),
+                ('order',      np.int16),
+                ('x',          (np.float32, ndisp)),
+                ('y',          (np.float32, ndisp)),
+                ('wavelength', (np.float64, ndisp)),
+                ('flux',       (np.float32, ndisp)),
+                ('error',      (np.float32, ndisp)),
+                ('background', (np.float32, ndisp)),
+                ('mask',       (np.int32,   ndisp)),
+                ]
+        names, formats = list(zip(*types))
+        self.spectype = np.dtype({'names': names, 'formats': formats})
+
+    def correct_bias(self, dataframe):
+        dataframe.data = dataframe.data - self.bias
+
+    def correct_sens(self, dataframe):
+        satmask = (dataframe.mask==4)
+        data1 = dataframe.data / self.sens
+        dataframe.data[~satmask] = data1[~satmask]
+
     def process_comparison(self):
         condition = {'obstype':'=COMPARISON'}
-
         newtable = self.logtable.filter(self.data_filter).filter(condition)
-        print(newtable)
 
+        direction = 'yr+'  # default direction for ESPADONS
+
+        wlfit_filter = lambda item: item['pixel'] < 4200
+
+        for i, item in enumerate(newtable):
+            fileid = item['fileid']
+            obsdate = item['obsdate']
+            fname = '{}.fits.fz'.format(fileid)
+            rawpath = self.config['rawdata_path'] / fname
+            frame = ESPADONSFrame.read(rawpath)
+            frame.correct_overscan()
+
+            self.correct_bias(frame)
+
+            self.correct_sens(frame)
+
+            # extract
+            spec = self.extract_onedspec(frame, correct_background=False)
+
+            fname = 'spec_{}.fits'.format(fileid)
+            filepath = self.midproc_path / fname
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(),
+                        fits.BinTableHDU(data=spec),
+                        ])
+            hdu_lst.writeto(filepath, overwrite=True)
+            print('onedspec saved to', filepath)
+            continue
+
+            if i == 0:
+                index_file = os.path.join(os.path.dirname(__file__),
+                                '../../data/calib/wlcalib_espadons.dat')
+
+                message = ('Searching for archive wavelength calibration '
+                           'file in "{}"'.format(os.path.basename(index_file)))
+                #logger.info(logger_prefix + message)
+                #print(screen_prefix + message)
+
+                ref_spec, ref_calib = select_calib_from_database(
+                            index_file, obsdate)
+                ref_calib['onorm'] = 50
+
+                ref_direction = ref_calib['direction']
+
+
+                if direction[1] == '?':
+                    aperture_k = None
+                elif direction[1] == ref_direction[1]:
+                    aperture_k = 1
+                else:
+                    aperture_k = -1
+
+                if direction[2] == '?':
+                    pixel_k = None
+                elif direction[2] == ref_direction[2]:
+                    pixel_k = 1
+                else:
+                    pixel_k = -1
+
+                result = find_caliblamp_offset(ref_spec, spec,
+                                               aperture_k  = aperture_k,
+                                               pixel_k     = pixel_k,
+                                               pixel_range = (-30, 30),
+                                               max_order_offset = 10,
+                                               mode        = 'debug',
+                                              )
+
+                aperture_koffset = (result[0], result[1])
+                pixel_koffset    = (result[2], result[3])
+
+                message = 'Aperture offset = {} ; Pixel offset = {}'
+                message = message.format(aperture_koffset,
+                                         pixel_koffset)
+                print(message)
+
+                use_prev_fitpar = False
+                xorder      = None if use_prev_fitpar else 3
+                yorder      = None if use_prev_fitpar else 3
+                maxiter     = None if use_prev_fitpar else 5
+                clipping    = None if use_prev_fitpar else 3
+                window_size = None if use_prev_fitpar else 13
+                q_threshold = None if use_prev_fitpar else 10
+
+                calib, fig = recalib(spec,
+                    ref_spec         = ref_spec,
+                    linelist         = 'ThAr',
+                    aperture_koffset = aperture_koffset,
+                    pixel_koffset    = pixel_koffset,
+                    ref_calib        = ref_calib,
+                    xorder           = xorder,
+                    yorder           = yorder,
+                    maxiter          = maxiter,
+                    clipping         = clipping,
+                    window_size      = window_size,
+                    q_threshold      = q_threshold,
+                    direction        = direction,
+                    fit_filter       = wlfit_filter,
+                    )
+
+                title = '{}.fits'.format(fileid)
+                fig.suptitle(title)
+                figname = 'wlcalib_{}.{}'.format(fileid, 'png')
+                figpath = self.figure_path / figname
+                fig.savefig(figpath)
+                plt.close(fig)
+                print('wlcalib figure saved to ', figpath)
+            
 
     def extract_onedspec(self, dataframe, correct_background=False):
-        pass
+
+        spectra1d = extract_aperset(dataframe.data, dataframe.mask,
+                        apertureset = self.aperset,
+                        lower_limit = 15,
+                        upper_limit = 15,
+                        )
+
+        if self.spectype is None:
+            ny, nx = dataframe.data.shape
+            self.init_spectype(ny)
+
+        # pack to a structured array
+        spec = []
+        for aper, item in sorted(spectra1d.items()):
+            flux_sum = item['flux_sum']
+            xloc = item['x']
+            yloc = item['y']
+            n = flux_sum.size
+
+            # pack to table
+            row = (aper, 0,                         # aperture and order number
+                    xloc,                           # x
+                    yloc,                           # y
+                    np.zeros(n, dtype=np.float64),  # wavelength
+                    flux_sum,                       # flux
+                    np.zeros(n, dtype=np.float32),  # error
+                    np.zeros(n, dtype=np.float32),  # background
+                    np.zeros(n, dtype=np.int16),    # mask
+                    )
+            spec.append(row)
+        spec = np.array(spec, dtype=self.spectype)
+        return spec

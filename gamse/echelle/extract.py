@@ -53,6 +53,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
     for aper, aper_loc in sorted(apertureset.items()):
         if aper_loc.direct==0:
             position = aper_loc.position(ally)
+            xloc = position
+            yloc = ally
             lower_line = position - lower_limit
             upper_line = position + upper_limit
             lower_line = np.maximum(lower_line, -0.5)
@@ -87,6 +89,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             d1, d2 = int(domain[0]), int(domain[1])+1
             newx = np.arange(d1, d2)
             position = aper_loc.position(newx)
+            xloc = newx
+            yloc = position
             lower_line = position - lower_limit
             upper_line = position + upper_limit
             lower_line = np.maximum(lower_line, -0.5)
@@ -144,11 +148,13 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
         fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
             
         spectra1d[aper] = {
-            'flux_sum':  fluxsum,
-            'flux_mean': fluxmean,
-            'mask':      ~_m,
-            'nsum':      weight_sum,
-            'mask_sat':  fluxsat,
+                'x': xloc,
+                'y': yloc,
+                'flux_sum':  fluxsum,
+                'flux_mean': fluxmean,
+                'mask':      ~_m,
+                'nsum':      weight_sum,
+                'mask_sat':  fluxsat,
             }
             
     return spectra1d

@@ -198,6 +198,7 @@ def get_wavelength(coeff, npixel, onorm, pixel, order):
     """
     # convert aperture to order
     norm_pixel = pixel*2./(npixel-1) - 1
+    #norm_pixel = pixel/(npixel-1)
     return polyval2d(norm_pixel, order/onorm, coeff)/order
 
 def guess_wavelength(x, aperture, identlist, linelist, param):
@@ -1073,7 +1074,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         #allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order*50, npixel))*50
         # for others
         allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order, npixel))
-        #print(aperture, ref_aperture, allwave)
+        print(aperture, ref_aperture, allwave)
 
         w1 = min(allwave[0], allwave[-1])
         w2 = max(allwave[0], allwave[-1])
@@ -1653,7 +1654,7 @@ def combine_calib(calib_lst, weight_lst):
             coeff[j, i] += calib['coeff'][j, i]*weight
 
     return {'k': k, 'offset': offset, 'xorder': xorder, 'yorder': yorder,
-            'npixel': npixel, 'coeff': coeff}
+            'onorm': onorm, 'npixel': npixel, 'coeff': coeff}
 
 
 def get_calib_from_header(header):
@@ -1898,7 +1899,7 @@ def reference_spec_wavelength(spec, calib_lst, weight_lst):
     xorder = combined_calib['xorder']
     yorder = combined_calib['yorder']
     npixel = combined_calib['npixel']
-    onorm  = combined_claib['onorm']
+    onorm  = combined_calib['onorm']
     coeff  = combined_calib['coeff']
 
     # calculate the wavelength for each aperture
