@@ -1074,7 +1074,14 @@ def recalib(spec, ref_spec, linelist, ref_calib,
         #allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order*50, npixel))*50
         # for others
         allwave = get_wavelength(coeff, npixel, onorm, x, np.repeat(order, npixel))
-        print(aperture, ref_aperture, allwave)
+
+        # plot the wavelength difference of coeff in calib and spec
+        #w = ref_spec[ref_spec['order']==order][0]['wavelength']
+        #fig = plt.figure()
+        #ax = fig.gca()
+        #ax.plot(allwave - w)
+        #plt.show()
+        #plt.close(fig)
 
         w1 = min(allwave[0], allwave[-1])
         w2 = max(allwave[0], allwave[-1])

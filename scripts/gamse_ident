@@ -804,7 +804,7 @@ class CalibWindow(tk.Frame):
 
             # generated the wavelengths for every pixel in this order
             pix_lst = np.arange(npixel)
-            wave_lst = get_wavelength(coeff, onorm, npixel, pix_lst,
+            wave_lst = get_wavelength(coeff, npixel, onorm, pix_lst,
                                       np.repeat(order, npixel))
             # get wavelength range of this order
             w1 = min(wave_lst[0], wave_lst[-1])
@@ -830,9 +830,10 @@ class CalibWindow(tk.Frame):
                 diff = np.abs(wave_lst - wl)
                 i = diff.argmin()
                 result = find_local_peak(flux, i, window_size, fitfuncname)
+                if result is None:
+                    continue
                 center = result['center']
                 result = find_local_peak(flux, center, window_size, fitfuncname)
-
                 if result is None:
                     # fitting failed. probably because of too few points
                     continue
@@ -880,6 +881,20 @@ class CalibWindow(tk.Frame):
                 item = np.array((aperture, order, element, ion, wl, source,
                                  i1, i2, center, amplitude, fwhm, background,
                                  q, True, 0.0, 'a'), dtype=identlinetype)
+
+                message = ' '.join([
+                    'Aper {:3d}'.format(aperture),
+                    'Ord {:3d}'.format(order),
+                    '{:2s}'.format(element) if element is not np.ma.masked else '--',
+                    '{:3s}'.format(ion) if ion is not np.ma.masked else '---',
+                    '{:10.4f}'.format(wl),
+                    '{:4d}-{:4d}'.format(i1, i2),
+                    '{:10.5f}'.format(center),
+                    '{:8.4f}'.format(fwhm),
+                    'q={:6.2f}'.format(q),
+                    ])
+                print(message)
+
 
                 # find the insert position
                 insert_pos = np.searchsorted(self.identlist[aperture]['pixel'],
@@ -1662,7 +1677,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
 
     aper = spec['aperture'][0]
     order = k*aper + offset
-    wl = get_wavelength(coeff, onorm, npixel, np.arange(npixel), order)
+    wl = get_wavelength(coeff, npixel, onorm, np.arange(npixel), order)
     # refresh the direction code
     if wl[0] < wl[-1]:
         sign = '+'
