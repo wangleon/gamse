@@ -14,6 +14,7 @@ from ...echelle.trace import load_aperture_set
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
+                                get_calib_from_header,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
                                 select_calib_auto, select_calib_manu,
@@ -539,9 +540,9 @@ def reduce_rawdata(config, logtable):
             plt.close(fig)
 
         # add more infos in calib
-        calib['fileid']   = fileid
-        calib['date-obs'] = obsdate
-        calib['exptime']  = exptime
+        calib['fileid']  = fileid
+        calib['obsdate'] = obsdate
+        calib['exptime'] = exptime
         message = 'Add more info in calib of {}'.format(fileid)
         logger.info(logger_prefix + message)
 
@@ -808,14 +809,14 @@ class Pipeline(object):
         if reduction_path is None:
             self.reduction_path = Path.cwd()
         else:
-            self.reduction_path = Path(reduction_path).expanduser()
+            self.reduction_path = Path(reduction_path).expanduser().resolve()
 
         # get midproc path
         midproc_path = kwargs.pop('midproc_path', None)
         if midproc_path is None:
             self.midproc_path = self.reduction_path / 'midproc'
         else:
-            self.midproc_path = Path(midproc_path).expanduser()
+            self.midproc_path = Path(midproc_path).expanduser().resolve()
         # create midproc path if not exist
         self.midproc_path.mkdir(parents=True, exist_ok=True)
 
@@ -824,14 +825,25 @@ class Pipeline(object):
         if figure_path is None:
             self.figure_path = self.reduction_path / 'figures'
         else:
-            self.figure_path = Path(figure_path).expanduser()
+            self.figure_path = Path(figure_path).expanduser().resolve()
         # create figure path if not exist
         self.figure_path.mkdir(parents=True, exist_ok=True)
+
+        # get onedspec path
+        onedspec_path = kwargs.pop('onedspec_path', None)
+        if onedspec_path is None:
+            self.onedspec_path = self.reduction_path / 'onedspec'
+        else:
+            self.onedspec_path = Path(onedspec_path).expanduser().resolve()
+        # create onedspec path if not exist
+        self.onedspec_path.mkdir(parents=True, exist_ok=True)
+
 
         self.config = {
                 'rawdata_path': self.rawdata_path,
                 'figure_path':  self.figure_path,
                 'midproc_path': self.midproc_path,
+                'onedspec_path': self.onedspec_path,
                 }
 
         # read logtable
@@ -1023,6 +1035,7 @@ class Pipeline(object):
                 'reduction_path':   str(self.reduction_path),
                 'midproc_path':     str(self.midproc_path),
                 'figure_path':      str(self.figure_path),
+                'onedspec_path':    str(self.onedspec_path),
                 #'verbose': self.verbose,
                 'data_filter':      str(self.data_filter),
                 'bias_path':        str(self.bias_path),
@@ -1114,9 +1127,10 @@ class Pipeline(object):
         condition = {'obstype':'=COMPARISON'}
         newtable = self.logtable.filter(self.data_filter).filter(condition)
 
-        direction = 'yr+'  # default direction for ESPADONS
 
         wlfit_filter = lambda item: item['pixel'] < 4200
+
+        self.comp_lst = []
 
         for i, item in enumerate(newtable):
             fileid = item['fileid']
@@ -1131,7 +1145,7 @@ class Pipeline(object):
             self.correct_sens(frame)
 
             # extract
-            spec = self.extract_onedspec(frame, correct_background=False)
+            spec = self.extract_onedspec(frame, self.aperset)
 
             fname = 'spec_{}.fits'.format(fileid)
             filepath = self.midproc_path / fname
@@ -1141,94 +1155,248 @@ class Pipeline(object):
                         ])
             hdu_lst.writeto(filepath, overwrite=True)
             print('onedspec saved to', filepath)
+
+            self.comp_lst.append(fileid)
             continue
 
-            if i == 0:
-                index_file = os.path.join(os.path.dirname(__file__),
-                                '../../data/calib/wlcalib_espadons.dat')
+    def process_science(self):
+        condition = {'obstype': '=OBJECT'}
+        
+        newtable = self.logtable.filter(self.data_filter).filter(condition)
 
-                message = ('Searching for archive wavelength calibration '
-                           'file in "{}"'.format(os.path.basename(index_file)))
-                #logger.info(logger_prefix + message)
-                #print(screen_prefix + message)
-
-                ref_spec, ref_calib = select_calib_from_database(
-                            index_file, obsdate)
-                ref_calib['onorm'] = 50
-
-                ref_direction = ref_calib['direction']
+        for i, item in enumerate(newtable):
+            fileid  = item['fileid']
+            obsdate = item['obsdate']
+            exptime = item['exptime']
 
 
-                if direction[1] == '?':
-                    aperture_k = None
-                elif direction[1] == ref_direction[1]:
-                    aperture_k = 1
-                else:
-                    aperture_k = -1
+            fname = '{}.fits.fz'.format(fileid)
+            rawpath = self.config['rawdata_path'] / fname
+            frame = ESPADONSFrame.read(rawpath)
+            frame.correct_overscan()
 
-                if direction[2] == '?':
-                    pixel_k = None
-                elif direction[2] == ref_direction[2]:
-                    pixel_k = 1
-                else:
-                    pixel_k = -1
+            self.correct_bias(frame)
 
-                result = find_caliblamp_offset(ref_spec, spec,
-                                               aperture_k  = aperture_k,
-                                               pixel_k     = pixel_k,
-                                               pixel_range = (-30, 30),
-                                               max_order_offset = 10,
-                                               mode        = 'debug',
-                                              )
+            self.correct_sens(frame)
 
-                aperture_koffset = (result[0], result[1])
-                pixel_koffset    = (result[2], result[3])
+            background = self.correct_background(frame)
 
-                message = 'Aperture offset = {} ; Pixel offset = {}'
-                message = message.format(aperture_koffset,
-                                         pixel_koffset)
-                print(message)
+            bkg_fig = self.plot_background(frame, background)
 
-                use_prev_fitpar = False
-                xorder      = None if use_prev_fitpar else 3
-                yorder      = None if use_prev_fitpar else 3
-                maxiter     = None if use_prev_fitpar else 5
-                clipping    = None if use_prev_fitpar else 3
-                window_size = None if use_prev_fitpar else 13
-                q_threshold = None if use_prev_fitpar else 10
+            bkg_fig.suptitle('Background Correction for {}'.format(fileid))
+            figpath = self.figure_path / 'bkg2d_{}.png'.format(fileid)
+            bkg_fig.savefig(figpath)
+            plt.close(bkg_fig)
 
-                calib, fig = recalib(spec,
-                    ref_spec         = ref_spec,
-                    linelist         = 'ThAr',
-                    aperture_koffset = aperture_koffset,
-                    pixel_koffset    = pixel_koffset,
-                    ref_calib        = ref_calib,
-                    xorder           = xorder,
-                    yorder           = yorder,
-                    maxiter          = maxiter,
-                    clipping         = clipping,
-                    window_size      = window_size,
-                    q_threshold      = q_threshold,
-                    direction        = direction,
-                    fit_filter       = wlfit_filter,
-                    )
+            # extract
+            spec = self.extract_onedspec_optimal(frame, self.aperset_A,
+                                         background=background,
+                                         )
 
-                title = '{}.fits'.format(fileid)
-                fig.suptitle(title)
-                figname = 'wlcalib_{}.{}'.format(fileid, 'png')
-                figpath = self.figure_path / figname
-                fig.savefig(figpath)
-                plt.close(fig)
-                print('wlcalib figure saved to ', figpath)
-            
+            # reference wavelength
+            spec = self.reference_wavelength(spec, obsdate, exptime)
 
-    def extract_onedspec(self, dataframe, correct_background=False):
+            fname = 'spec_{}.fits'.format(fileid)
+            filepath = self.onedspec_path / fname
+            hdu_lst = fits.HDUList([
+                        fits.PrimaryHDU(),
+                        fits.BinTableHDU(data=spec),
+                        ])
+            hdu_lst.writeto(filepath, overwrite=True)
+            print('onedspec saved to', filepath)
+            break
+
+    def correct_background(self, frame):
+
+        background = get_interorder_background(frame.data, frame.mask,
+                                               self.aperset_A,
+                                               distance=8)
+        background = median_filter(background, size=(9, 1), mode='nearest')
+        background = savitzky_golay_2d(background, window_length=(21, 101),
+                        order=3, mode='nearest')
+
+        frame.data = frame.data - background
+        return background
+
+
+    def plot_background(self, frame, background):
+
+        fig_bkg = BackgroundFigure(frame.data, background)
+        return fig_bkg
+
+
+    def select_wlcalib_reference(self, filepath):
+        """
+        """
+
+        filepath = Path(filepath).expanduser().resolve()
+
+
+        # load spec, calib, and aperset from selected FITS file
+        hdu_lst = fits.open(filepath)
+        head = hdu_lst[0].header
+        spec = hdu_lst[1].data
+        hdu_lst.close()
+
+        calib = get_calib_from_header(head)
+
+        # register the reference files
+        self.ref_path = filepath
+        self.ref_spec = spec
+        self.ref_calib = calib
+
+    def parse_multi_inputs(self, *args):
+
+        item_lst = []
+        tab = self.logtable.filter(self.data_filter)
+
+        for _arg in args:
+            if isinstance(_arg, int):
+                for item in tab:
+                    if item['frameid']==_arg or item['fileid']==_arg:
+                        item_lst.append(item)
+            elif isinstance(_arg, str):
+                for item in tab:
+                    if item['fileid']==_arg:
+                        item_lst.append(item)
+            else:
+                pass
+
+        return item_lst
+
+
+    def calib_wavelength(self, *args):
+        
+        if len(args)==1 and args[0].lower()=='all':
+            cond = {'obstype': '=COMPARISON'}
+            logitems = self.logtable.filter(self.data_filter).filter(cond)
+            print(logitems)
+        else:
+            logitems = self.parse_multi_inputs(*args)
+
+        self.calib_lst = {}
+
+        self.direction = 'yr+'  # default direction for ESPADONS
+
+        for logitem in logitems:
+            self._calib_wavelength(logitem)
+
+
+
+    def _calib_wavelength(self, logitem):
+
+        frameid = logitem['frameid']
+        fileid  = logitem['fileid']
+        obsdate = logitem['obsdate']
+        exptime = logitem['exptime']
+
+        
+        fname = 'spec_{}.fits'.format(fileid)
+        filepath = self.midproc_path / fname
+        hdu_lst = fits.open(filepath)
+        spec = hdu_lst[1].data
+        hdu_lst.close()
+
+        wlfit_filter = lambda item: item['pixel'] < 4200
+
+        ref_direction = self.ref_calib['direction']
+
+        if self.direction[1] == '?':
+            aperture_k = None
+        elif self.direction[1] == ref_direction[1]:
+            aperture_k = 1
+        else:
+            aperture_k = -1
+
+        if self.direction[2] == '?':
+            pixel_k = None
+        elif self.direction[2] == ref_direction[2]:
+            pixel_k = 1
+        else:
+            pixel_k = -1
+
+        result = find_caliblamp_offset(self.ref_spec, spec,
+                                       aperture_k  = aperture_k,
+                                       pixel_k     = pixel_k,
+                                       pixel_range = (-30, 30),
+                                       max_order_offset = 10,
+                                       mode        = 'debug',
+                                      )
+
+        aperture_koffset = (result[0], result[1])
+        pixel_koffset    = (result[2], result[3])
+        
+        message = 'Aperture offset = {} ; Pixel offset = {}'
+        message = message.format(aperture_koffset,
+                                 pixel_koffset)
+        print(message)
+
+        use_prev_fitpar = False
+        xorder      = None if use_prev_fitpar else 4
+        yorder      = None if use_prev_fitpar else 3
+        maxiter     = None if use_prev_fitpar else 5
+        clipping    = None if use_prev_fitpar else 3
+        window_size = None if use_prev_fitpar else 11
+        q_threshold = None if use_prev_fitpar else 10
+
+        calib, fig = recalib(spec,
+            ref_spec         = self.ref_spec,
+            linelist         = 'ThAr',
+            aperture_koffset = aperture_koffset,
+            pixel_koffset    = pixel_koffset,
+            ref_calib        = self.ref_calib,
+            xorder           = xorder,
+            yorder           = yorder,
+            maxiter          = maxiter,
+            clipping         = clipping,
+            window_size      = window_size,
+            q_threshold      = q_threshold,
+            direction        = self.direction,
+            fit_filter       = wlfit_filter,
+            )
+
+        title = '{}.fits'.format(fileid)
+        fig.suptitle(title)
+        figname = 'wlcalib_{}.{}'.format(fileid, 'png')
+        figpath = self.figure_path / figname
+        fig.savefig(figpath)
+        plt.close(fig)
+        print('wlcalib figure saved to ', figpath)
+
+        # add more infos in calib
+        calib['fileid']  = fileid
+        calib['obsdate'] = obsdate
+        calib['exptime'] = exptime
+
+        # reference the ThAr spectra
+        spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+
+        head = fits.Header() # temporary
+        prefix = 'HIERARCH GAMSE WLCALIB '
+        for key, value in card_lst:
+            head.append((prefix+key, value))
+
+        hdu_lst = fits.HDUList([
+                    fits.PrimaryHDU(header=head),
+                    fits.BinTableHDU(spec),
+                    fits.BinTableHDU(identlist),
+                    ])
+
+        # save in midproc path as a wlcalib reference file
+        fname = 'wlcalib_{}.fits'.format(fileid)
+        filepath = self.midproc_path / fname
+        hdu_lst.writeto(filepath, overwrite=True)
+
+        self.calib_lst[frameid] = calib
+
+
+    def extract_onedspec(self, dataframe, aperset):
 
         spectra1d = extract_aperset(dataframe.data, dataframe.mask,
-                        apertureset = self.aperset,
-                        lower_limit = 15,
-                        upper_limit = 15,
-                        )
+                    apertureset = aperset,
+                    lower_limit = 15,
+                    upper_limit = 15,
+                    )
 
         if self.spectype is None:
             ny, nx = dataframe.data.shape
@@ -1255,3 +1423,138 @@ class Pipeline(object):
             spec.append(row)
         spec = np.array(spec, dtype=self.spectype)
         return spec
+
+    def extract_onedspec_optimal(self, dataframe, aperset, background):
+        
+        ny, nx = dataframe.data.shape
+
+        profilex = np.arange(-8, 8+1e-5, 0.5)
+
+        yc_lst = np.arange(384, ny, 384)
+        # ny = 4608. now yc_lst has 11 elements
+        yc_lst = np.insert(yc_lst, 0, 30)
+        # now yc_lst has 12 elements
+        #yc_lst = np.append(yc_lst, ny-30) # deprecated
+
+        result = extract_aperset_optimal(dataframe.data, dataframe.mask,
+                                         background  = background,
+                                         apertureset = aperset,
+                                         main_disp   = 'y',
+                                         gain        = 1.3,
+                                         ron         = 4.15,
+                                         profilex    = profilex,
+                                         disp_x_lst  = yc_lst,
+                                         recenter    = False,
+                                         #mode        = 'debug',
+                                         )
+        flux_opt_lst = result[0]
+        flux_err_lst = result[1]
+        back_opt_lst = result[2]
+        flux_sum_lst = result[3]
+        back_sum_lst = result[4]
+
+        if self.spectype is None:
+            ny, nx = dataframe.data.shape
+            self.init_spectype(ny)
+
+        # pack to a structured array
+        yloc = np.arange(ny)
+        spec = []
+        for aper in sorted(flux_opt_lst.keys()):
+            xloc = aperset[aper].position(yloc)
+            item = (aper, 0,
+                    xloc,
+                    yloc,
+                    np.zeros(ny, dtype=np.float64),
+                    flux_opt_lst[aper],
+                    flux_err_lst[aper],
+                    back_sum_lst[aper],
+                    np.zeros(ny, dtype=np.int16),
+                    )
+            spec.append(item) 
+        spec = np.array(spec, dtype=self.spectype)
+
+        # compare optimal and standard extraction
+        #for aper in sorted(flux_opt_lst.keys()):
+        #    fig_comp = plt.figure(figsize=(12,6), dpi=150)
+        #    ax_comp1 = fig_comp.add_axes([0.1,0.4,0.8,0.5])
+        #    ax_comp2 = fig_comp.add_axes([0.1,0.1,0.8,0.25])
+        #    ax_comp1.plot(flux_sum_lst[aper],
+        #            lw=0.6, color='C0', alpha=0.6, label='Standard')
+        #    ax_comp1.plot(flux_opt_lst[aper],
+        #            lw=0.6, color='C3', alpha=0.6, label='Optimal')
+        #    ax_comp2.plot(back_sum_lst[aper],
+        #            lw=0.6, color='C0', alpha=0.6, label='Standard background')
+        #    for ax in fig_comp.get_axes():
+        #        ax.set_xlim(0, ny-1)
+        #        ax.grid(True, ls='--', lw=0.5)
+        #        ax.set_axisbelow(True)
+        #        ax.legend(loc='upper right')
+        #    fig_comp.savefig('flux_comp_{:03d}.png'.format(aper))
+        #    plt.close(fig_comp)
+
+        return spec
+
+    def reference_wavelength(self, spec, obsdate, exptime):
+        rms_threshold    = 0.006
+        group_contiguous = True
+        time_diff        = 120
+
+        ref_calib_lst = select_calib_auto(self.calib_lst,
+                            rms_threshold    = rms_threshold,
+                            group_contiguous = group_contiguous,
+                            time_diff        = time_diff,
+                        )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+
+        fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
+
+        # print comparison summary and selected calib
+        for frameid, calib in sorted(self.calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            if calib['fileid'] in ref_fileid_lst:
+                string = '\033[91m{} [selected]\033[0m'.format(string)
+            print(string)
+
+        # wavelength calibration
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                        obsdate = obsdate,
+                        exptime = exptime,
+                        )
+
+        message_lst = ['Wavelength calibration:']
+        for i, calib in enumerate(ref_calib_lst):
+            #string = ' '*len(screen_prefix)
+            string = ' '*6
+            string =  string + '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['obsdate'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        #print(screen_prefix + message)
+        print(message)
+
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+        #prefix = 'HIERARCH GAMSE WLCALIB '
+        #for key, value in card_lst:
+        #    head.append((prefix + key, value))
+
+        return spec
+
+    def plot(self, *args):
+
+        fig = plt.figure(figsize=(12, 9), dpi=200)
+        ax = fig.gca()
+
+        for iarg, arg in enumerate(args):
+            c = 'C{}'.format(iarg%10)
+            spec = fits.getdata(arg)
+            for row in spec:
+                wave = row['wavelength']
+                flux = row['flux']
+                
+                ax.plot(wave, flux, color=c, lw=0.5)
+        plt.show()
