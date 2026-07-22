@@ -1204,7 +1204,6 @@ class Pipeline(object):
                         ])
             hdu_lst.writeto(filepath, overwrite=True)
             print('onedspec saved to', filepath)
-            break
 
     def correct_background(self, frame):
 
