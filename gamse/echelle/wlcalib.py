@@ -1205,7 +1205,8 @@ def recalib(spec, ref_spec, linelist, ref_calib,
 
     # refresh the direction code
     code1 = direction[0]    # code1 is either x or y
-    code2 = {1:'r', -1:'b'}[new_k]  # code2 is either r or b
+    code2 = 'r' if new_k == 1 else 'b'   # new_k is either +1 or -1,
+                                         # code2 is either r or b
     # find code3 the code representing increasing or decreasing wavelength
     aper = int(np.median(list(identlist.keys())))  # find the middest aperture
     list1 = identlist[aper]         # get the ident line list of this aperture
@@ -1214,7 +1215,7 @@ def recalib(spec, ref_spec, linelist, ref_calib,
     i2 = list2['pixel'].argmax()    # the rightest line
     w1 = list2[i1]['wavelength']    # the wavelength of the leftest line
     w2 = list2[i2]['wavelength']    # the wavelength of the rightest line
-    code3 = '-+'[w1 < w2]
+    code3 = '+' if w1 < w2 else '-'
     # ge the new direction code, e.g., 'xb+' or 'yr-'
     new_direction = code1 + code2 + code3
 
