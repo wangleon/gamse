@@ -232,19 +232,6 @@ def get_specdtype(ndisp):
     spectype = np.dtype({'names': names, 'formats': formats})
     return spectype
 
-class Frame(ABC):
-
-    cards: List[Tuple[str, Any]] = []
-
-    @abstractmethod
-    def save(self, filepath):
-        pass
-
-    @classmethod
-    @abstractmethod
-    def read(cls, filepath):
-        pass
-
 @runtime_checkable
 class Processor(Protocol):
 

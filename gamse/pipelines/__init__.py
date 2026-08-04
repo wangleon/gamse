@@ -19,6 +19,7 @@ from ..utils.obslog import read_obslog
 from ..utils.misc   import write_system_info
 
 from . import common
+from . import base
 
 instrument_lst = [
     ('foces',           'Fraunhofer',       'FOCES'),

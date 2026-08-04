@@ -61,8 +61,8 @@ class Pipeline:
         for name in ts.static_order():
             cfg = pipeline_steps[name]
             clsname = cfg['class']
-            cls = self.instrument.PIPELINE_STEPS[clsname]
-            obj = cls(self, name, self.config)
+            PipelineStepClass = self.instrument.PIPELINE_STEPS[clsname]
+            obj = PipelineStepClass(self, name, self.config)
             obj.run(cfg, context)
 
 
@@ -71,7 +71,7 @@ class PipelineStep(ABC):
         self.parent = parent
         self.name   = name
         self.config = config
-        self.frame_engine = FrameEngine(parent, config)
+        self.frame_engine = FrameEngine(self, config)
 
     @abstractmethod
     def run(self, cfg, context):
@@ -172,22 +172,23 @@ class FrameEngine:
             ### find the corresponding FrameStep
             if name in self._class_cache:
                 # class in cache
-                StepClass = self._class_cache[name]
+                FrameStepClass = self._class_cache[name]
             else:
                 # not in cache
                 if '.' not in name:
                     # get internal class from registrated steps in each
                     # instrument
-                    StepClass = self.parent.instrument.FRAME_STEPS[clsname]
+                    instrument = self.parent.parent.instrument
+                    FrameStepClass = instrument.FRAME_STEPS[clsname]
                 else:
                     # external class
                     module_name, class_name = name.rsplit('.', 1)
                     module = import_module(module_name)
-                    StepClass = getattr(module, class_name)
+                    FrameStepClass = getattr(module, class_name)
 
-                self._class_cache[name] = StepClass
+                self._class_cache[name] = FrameStepClass
 
-            step = StepClass()
+            step = FrameStepClass(parent=self)
 
             options = {k:v for k,v in op.items() if k != 'step'}
 
@@ -196,6 +197,12 @@ class FrameEngine:
 
 
 class FrameStep(ABC):
+    def __init__(self, parent):
+        self.parent = parent
+        # self.parent is the FrameEngine class
+        # self.parent.parent is the PipelineStep
+        # self.parent.parent.parent is the Pipeline
+
     @abstractmethod
     def run(self, dataframe, context, **options):
         ...
