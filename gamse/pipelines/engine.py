@@ -207,6 +207,24 @@ class FrameStep(ABC):
     def run(self, dataframe, context, **options):
         ...
 
+
+class FrameResult:
+
+    def __init__(self, frame):
+        self.frame = frame
+        self.outputs = {}
+
+    def __getitem__(self, key):
+        if key == 'frame':
+            return self.frame
+        return self.outputs[key]
+
+    def __setitem__(self, key, value):
+        if key === 'frame':
+            self.frame = value
+        else:
+            self.outputs[key] = value
+
 class DataContext:
 
     def __init__(self, **kwargs):
