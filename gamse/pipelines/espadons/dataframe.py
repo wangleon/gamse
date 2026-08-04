@@ -3,44 +3,48 @@ from pathlib import Path
 import numpy as np
 import astropy.io.fits as fits
 
-from ..base import DataFrame
+from ..base import DataFrame, ImageFrame, SpectrumFrame
 
-def get_rawdata_mask(data, head):
-    sat_mask = data >= 65535
-    mask = np.int16(sat_mask)*4
-    return mask
+def read_dataframe(filepath):
 
-class ESPADONSFrame(DataFrame):
+    FRAME_CLASSES = (
+            RawImageFrame,
+            ImageFrame,
+            SpectrumFrame,
+            )
 
-    def __init__(self, data: np.ndarray, head: fits.Header, mask=None, info=[],
-                 is_raw=False):
-        self.data = data
-        if mask is None:
-            mask = np.zeros_like(data, dtype=np.int16)
-        self.mask = mask
-        self.head = head
-        self.info = info
+    with fits.open(filepath) as hdulst:
+        for cls in FRAME_CLASSES:
+            if cls.match(hdulst):
+                return cls.from_hdulst(hdulst)
 
-        if is_raw:
-            self.extract_info_remove_cards()
+    raise TypeError('Unknown FITS format')
 
-    def extract_info_remove_cards(self):
+
+class RawImageFrame(ImageFrame):
+
+    def __init__(self, data: np.ndarray, head: fits.Header, mask=None):
+
+        super().__init__(data, head, mask=mask)
+
+        self._clean_header()
+
+    def _clean_header(self):
         new_cards = []
-
-        self.info = []        
+        new_info = []        
         for card in self.head.cards:
             keyword = card.keyword
             value   = card.value
             comment = card.comment
 
-            # extract GAMSE key and put them into self.info
-            if (mobj := re.match(r'^HIERARCH GAMSE (\s\S)*', keyword)):
-                cardname    = mobj.group(1).strip()
-                cardvalue   = value
-                cardcomment = comment
-                # append into self.info
-                self.info.append((cardname, cardvalue, cardcomment))
-                continue
+            ## extract GAMSE key and put them into self.info
+            #if (mobj := re.match(r'^HIERARCH GAMSE (\s\S)*', keyword)):
+            #    cardname    = mobj.group(1).strip()
+            #    cardvalue   = value
+            #    cardcomment = comment
+            #    # append into info
+            #    new_info.append((cardname, cardvalue, cardcomment))
+            #    continue
 
             # remove COMMENT cards with "Reseved space."
             if keyword == 'COMMENT' and value.startswith(' Reserved space.'):
@@ -56,44 +60,31 @@ class ESPADONSFrame(DataFrame):
         for card in new_cards:
             self.head.append(card, end=True)
 
+        # append new info
+        for item in new_info:
+            self.info.append(item)
+
+
     @classmethod
-    def read(cls, filepath):
-        hdulst = fits.open(filepath)
-        # generate mask for raw image and other images
-        if hdulst[0].data is None and len(hdulst)==2 \
-            and hdulst[1].data.dtype==np.uint16:
-            # the input file is a raw image
-            data = hdulst[1].data
-            head = hdulst[1].header
-            mask = get_rawdata_mask(data, head)
-            is_raw = True
-        else:
-            # first HDU is image, second HDU is mask
-            data = hdulst[0].data
-            head = hdulst[0].header
-            if len(hdulst)>1:
-                mask = hdulst[1].data
-            else:
-                mask = np.zeros_like(data, dtype=np.int16)
-            is_raw = False
-        hdulst.close()
-        return cls(data=data, head=head, mask=mask, is_raw=is_raw)
+    def match(cls, hdulst):
+        return (hdulst[0].data is None
+                and len(hdulst)==2
+                and hdulst[1].data.dtype == np.uint16
+                and hdulst[1].data.ndim == 2
+                )
 
-    def save(self, filename, overwrite=False):
-        head = self.head.copy()
-        if len(self.info)>0:
-            for key, value in self.info:
-                head.append(('HIERARCH GAMSE '+key, value))
+    @classmethod
+    def from_hdulst(cls, hdulst):
+        data = hdulst[1].data
+        head = hdulst[1].header
+        mask = cls._make_raw_mask(data)
+        return cls(data, head, mask=mask)
 
-        hdulst = fits.HDUList([
-                    fits.PrimaryHDU(header=head, data=self.data),
-                    fits.ImageHDU(data=self.mask),
-                ])
-        filepath = Path(filename).resolve()
-        if filepath.exists() and not overwrite:
-            print('Error: {} exists. use overwrite=True'.format(filepath))
-        else:
-            hdulst.writeto(filepath, overwrite=True)
+    @staticmethod
+    def _make_raw_mask(data):
+        sat_mask = data >= 65535
+        mask = np.int16(sat_mask)*4
+        return mask
 
     def print_to_console(self):
 
@@ -121,3 +112,4 @@ class ESPADONSFrame(DataFrame):
                 f'  INSTMODE: {self.head["INSTMODE"]:<30s}'
                 '\033[0m'
                 )
+
