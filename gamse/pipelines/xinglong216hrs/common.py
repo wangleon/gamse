@@ -738,14 +738,14 @@ def print_wrapper(string, item):
         str: The color-coded string.
 
     """
-    imgtype = item['imgtype']
+    obstype = item['obstype']
     obj     = item['object']
 
     if len(obj)>=4 and obj[0:4].lower()=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='sci':
+    elif obstype=='sci':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 
