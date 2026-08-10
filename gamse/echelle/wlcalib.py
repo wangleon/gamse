@@ -1025,13 +1025,13 @@ def recalib(spec, ref_spec, linelist, ref_calib,
     coeff       = ref_calib['coeff']
     npixel      = ref_calib['npixel']
     onorm       = ref_calib['onorm']
-    xorder      = (xorder, ref_calib['xorder'])[xorder is None]
-    yorder      = (yorder, ref_calib['yorder'])[yorder is None]
-    maxiter     = (maxiter,  ref_calib['maxiter'])[maxiter is None]
-    clipping    = (clipping, ref_calib['clipping'])[clipping is None]
-    window_size = (window_size, ref_calib['window_size'])[window_size is None]
-    q_threshold = (q_threshold, ref_calib['q_threshold'])[q_threshold is None]
-    fitfuncname = (fitfuncname, ref_calib['fitfuncname'])[fitfuncname is None]
+    xorder      = ref_calib['xorder'] if xorder is None else xorder
+    yorder      = ref_calib['yorder'] if yorder is None else yorder
+    maxiter     = ref_calib['maxiter'] if maxiter is None else maxiter
+    clipping    = ref_calib['clipping'] if clipping is None else clipping
+    window_size = ref_calib['window_size'] if window_size is None else window_size
+    q_threshold = ref_calib['q_threshold'] if q_threshold is None else q_threshold
+    fitfuncname = ref_calib['fitfuncname'] if fitfuncname is None else fitfuncname
 
     #if pixel_offset is None:
     if False:
