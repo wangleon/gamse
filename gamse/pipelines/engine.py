@@ -41,6 +41,19 @@ def resolve_reference(value, context=None):
         return [resolve_reference(v, context)
                     for v in value]
 
+def resolve_reference_alt(value, context=None):
+    if isinstance(value, str):
+        if not value.startswith("@"):
+            return value
+        key = value[1:]
+        return product[key]
+    elif isinstance(value, dict):
+        return {k: resolve_reference(v, context)
+                    for k, v in value.items()}
+    elif isinstance(value, list):
+        return [resolve_reference(v, context)
+                    for v in value]
+
 
 class Pipeline:
     def __init__(self, instrument, filename):
@@ -49,6 +62,10 @@ class Pipeline:
             self.config = yaml.safe_load(f)
 
     def run(self, context):
+
+        # pass instrument to data context
+        context.set_instrument(self.instrument)
+
         pipeline_steps = self.config['pipeline']
 
         # resolve dependencies and generate DAG
@@ -63,6 +80,7 @@ class Pipeline:
             clsname = cfg['class']
             PipelineStepClass = self.instrument.PIPELINE_STEPS[clsname]
             obj = PipelineStepClass(self, name, self.config)
+            #print('run pipeline:', name)
             obj.run(cfg, context)
 
 
@@ -102,14 +120,20 @@ class CollectionPipelineStep(PipelineStep):
             filepath = context.find_rawdata_path(logitem)
 
             # read raw data 
-            dataframe = self.parent.instrument.read(filepath)
+            dataframe = self.parent.instrument.read(filepath, logitem)
+
+            # print to console
             dataframe.print_to_console()
             
+
+            # claim a FrameResult instance
+            result = FrameResult(frame=dataframe)
+
             # run step
-            dataframe = self.frame_engine.run(operations, dataframe, context)
+            result = self.frame_engine.run(operations, result, context)
 
             # append the new results
-            results.append(dataframe)
+            results.append(result)
 
         return self.finish(results, context, inputs, **options)
 
@@ -132,10 +156,23 @@ class StreamingPipelineStep(PipelineStep):
         options = cfg.get('options', {})
 
         for logitem in logitems:
-            # read data frame here
-            dataframe = np.zeros((10,10))
-            self.frame_engine.run(operations, dataframe, context)
-            self.process_frame(dataframe, context)
+
+            # get filepath to raw data
+            filepath = context.find_rawdata_path(logitem)
+
+            # read raw data 
+            dataframe = self.parent.instrument.read(filepath, logitem)
+
+            # print to console
+            dataframe.print_to_console()
+
+            # claim a FrameResult instance
+            result = FrameResult(frame=dataframe)
+
+            # run step
+            result = self.frame_engine.run(operations, result, context)
+
+            #self.process_frame(dataframe, context)
 
         return self.finish(context)
 
@@ -163,7 +200,7 @@ class FrameEngine:
         self.step_cfg = config['steps']
         self._class_cache = {}
 
-    def run(self, operations, dataframe, context):
+    def run(self, operations, result, context):
 
         for op in operations:
             name = op['step']
@@ -188,12 +225,15 @@ class FrameEngine:
 
                 self._class_cache[name] = FrameStepClass
 
+            # clainm this FrameStep
             step = FrameStepClass(parent=self)
 
+            # pack options, remove 'step' option
             options = {k:v for k,v in op.items() if k != 'step'}
 
-            dataframe = step.run(dataframe, context, **options)
-        return dataframe
+            #print('Run Framestep:', name, options)
+            result = step.run(result, context, **options)
+        return result
 
 
 class FrameStep(ABC):
@@ -220,10 +260,46 @@ class FrameResult:
         return self.outputs[key]
 
     def __setitem__(self, key, value):
-        if key === 'frame':
+        if key == 'frame':
             self.frame = value
         else:
             self.outputs[key] = value
+
+class ProductRecord:
+    def __init__(self, parent, value=None, path=None, dtype=None):
+        self.parent = parent
+        self.value = value
+
+        if path is None:
+            self.path = None
+        elif isinstance(path, str) or isinstance(path, Path):
+            self.path = Path(path)
+        elif isinstance(path, list):
+            self.path  = [Path(_path) for _path in path]
+        else:
+            raise ValueError
+
+
+        self.dtype = dtype
+
+    @property
+    def loaded(self):
+        return self.value is not None
+
+    def load(self):
+        if self.loaded:
+            return self.value
+
+        if self.path is None:
+            raise RuntimeError
+
+        if self.dtype == 'image':
+            cls = self.parent.instrument
+            return cls.read_dataframe(self.path)
+        else:
+            print(self.parent.instrument)
+
+        return self.value
 
 class DataContext:
 
@@ -290,18 +366,19 @@ class DataContext:
             self.rawdata_patterns = ast.literal_eval(rawdata_patterns)
 
     def reset(self):
+        self.instrument     = None
         self.logtable_path  = ''
         self.rawdata_path   = ''
         self.reduction_path = ''
         self.midproc_path   = ''
         self.figure_path    = ''
         self.onedspec_path  = ''
-        self.bias_path      = ''
-        self.flat_path      = ''
-        self.sens_path      = ''
-        self.aperset_path   = ''
-        self.aperset_A_path = ''
-        self.aperset_B_path = ''
+        #self.bias_path      = ''
+        #self.flat_path      = ''
+        #self.sens_path      = ''
+        #self.aperset_path   = ''
+        #self.aperset_A_path = ''
+        #self.aperset_B_path = ''
         self.data_filter = {}
         self.rawdata_patterns = []
         self._products = {}
@@ -320,6 +397,9 @@ class DataContext:
         """
         self.data_filter = condition
 
+    def set_instrument(self, instrument):
+        self.instrument = instrument
+
     def set_rawdata_patterns(self, patterns):
         self.rawdata_patterns = patterns
 
@@ -335,6 +415,7 @@ class DataContext:
 
         """
         result = {
+                'instrument':       '' if self.instrument is None else self.instrument.name,
                 'logtable_path':    str(self.logtable_path),
                 'rawdata_path':     str(self.rawdata_path),
                 'reduction_path':   str(self.reduction_path),
@@ -342,12 +423,12 @@ class DataContext:
                 'figure_path':      str(self.figure_path),
                 'onedspec_path':    str(self.onedspec_path),
                 #'verbose': self.verbose,
-                'bias_path':        str(self.bias_path),
-                'flat_path':        str(self.flat_path),
-                'sens_path':        str(self.sens_path),
-                'aperset_path':     str(self.aperset_path),
-                'aperset_A_path':   str(self.aperset_A_path),
-                'aperset_B_path':   str(self.aperset_B_path),
+                #'bias_path':        str(self.bias_path),
+                #'flat_path':        str(self.flat_path),
+                #'sens_path':        str(self.sens_path),
+                #'aperset_path':     str(self.aperset_path),
+                #'aperset_A_path':   str(self.aperset_A_path),
+                #'aperset_B_path':   str(self.aperset_B_path),
                 'data_filter':      str(self.data_filter),
                 'rawdata_patterns': str(self.rawdata_patterns),
                 }
@@ -403,3 +484,11 @@ class DataContext:
         kwargs = context_dict.copy()
 
         return cls(**kwargs)
+
+    def register(self, stepname, productname, value, path, dtype):
+        product = ProductRecord(parent = self,
+                                value  = value,
+                                path   = path,
+                                dtype  = dtype,
+                                )
+        self._products[stepname] = {productname: product}

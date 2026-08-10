@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import List, Tuple, Any
+#from typing import List, Tuple, Any
 from abc import ABC, abstractmethod
 import numpy as np
 import astropy.io.fits as fits
@@ -16,31 +16,32 @@ class Instrument(ABC):
 
 class DataFrame(ABC):
 
-    info: List[Tuple[str, Any]] = []
+    #info: List[Tuple[str, Any]] = []
 
     @abstractmethod
     def save(self, filepath):
         pass
 
-    def _extract_info(self):
-        """Extract info from header and put them into the self.info.
+    def _extract_head(self):
+        """Extract extra_head from header and put them into the self.extra_head.
 
         """
         
-        new_cards = []
-        new_info = []        
+        new_cards = []      # new_cards is for the self.head after shuffling
+        extra_cards = []    # extra_cards is for the self.extra_head
         for card in self.head.cards:
             keyword = card.keyword
             value   = card.value
             comment = card.comment
 
-            # extract GAMSE key and put them into self.info
-            if (mobj := re.match(r'^HIERARCH GAMSE (\s\S)*', keyword)):
-                cardname    = mobj.group(1).strip()
+            # extract GAMSE key and put them into self.extra_head
+            if (mobj := re.match(r'^HIERARCH REDUCTION (\s\S*)', keyword)):
+                #cardname    = mobj.group(1).strip()
+                cardname    = keyword
                 cardvalue   = value
                 cardcomment = comment
-                # append into info
-                new_info.append((cardname, cardvalue, cardcomment))
+                # append into extra_cards
+                extra_cards.append((cardname, cardvalue, cardcomment))
                 continue
 
             # for other cards, append them into the new header
@@ -55,13 +56,18 @@ class DataFrame(ABC):
             # put them into the end. if end=False all COMMENT cards will be put
             # into the end
 
-        # append new info
-        for item in new_info:
-            self.info.append(item)
+        # append extra_cards into self.extra_head
+        for card in extra_cards:
+            self.extra_head.append(card, end=True)
 
 class ImageFrame(DataFrame):
 
-    def __init__(self, data: np.ndarray, head: fits.Header, mask=None, info=[]):
+    def __init__(self,
+                 data: np.ndarray,
+                 head: fits.Header,
+                 mask = None,
+                 extra_head = None,
+                 ):
 
         self.data = data
 
@@ -70,9 +76,13 @@ class ImageFrame(DataFrame):
 
         self.mask = mask
         self.head = head
-        self.info = info
 
-        self._extract_info()
+        if extra_head is None:
+            self.extra_head = fits.Header()
+        else:
+            self.extra_head = extra_head
+
+        self._extract_head()
 
     @classmethod
     def match(cls, hdulst):
@@ -94,9 +104,9 @@ class ImageFrame(DataFrame):
 
         head = self.head.copy()
 
-        if len(self.info)>0:
-            for key, value in self.info:
-                head.append(('HIERARCH GAMSE '+key, value))
+        if len(self.extra_head)>0:
+            for card in self.extra_head.cards:
+                head.append(card, end=True)
 
         hdulst = fits.HDUList([
                     fits.PrimaryHDU(header=head, data=self.data),
@@ -110,13 +120,19 @@ class ImageFrame(DataFrame):
 
 class SpectrumFrame(DataFrame):
 
-    def __init__(self, data, head, info=[], ident_lst=None):
+    def __init__(self, data, head, extra_head=None, ident_lst=None):
         self.data = data
         self.head = head
-        self.info = info
+
+
+        if extra_head is None:
+            self.extra_head = fits.Header()
+        else:
+            self.extra_head = extra_head
+
         self.ident_lst = ident_lst
 
-        self._extract_info()
+        self._extract_head()
 
     @classmethod
     def match(cls, hdulst):
@@ -134,15 +150,15 @@ class SpectrumFrame(DataFrame):
         data = hdulst[1].data
         if len(hdu_lst)>2:
             ident_lst = hdulst[2].data
-        return cls(data, head, info=[], ident_lst=ident_lst)
+        return cls(data, head, ident_lst=ident_lst)
 
     def save(self, filepath, overwrite=False):
 
         head = self.head.copy()
 
-        if len(self.info)>0:
-            for key, value in self.info:
-                head.append(('HIERARCH GAMSE '+key, value))
+        if len(self.extra_head)>0:
+            for card in self.extra_head.cards:
+                head.append(card, end=True)
 
         hdulst = fits.HDUList([
                     fits.PrimaryHDU(header=head),
@@ -152,7 +168,7 @@ class SpectrumFrame(DataFrame):
         if self.ident_lst is not None:
             hdulst.append(fits.BinTableHDU(data=self.ident_lst))
 
-        filepath = Path(filename).resolve()
+        filepath = Path(filepath).resolve()
         if filepath.exists() and not overwrite:
             print('Error: {} exists. use overwrite=True'.format(filepath))
         else:
