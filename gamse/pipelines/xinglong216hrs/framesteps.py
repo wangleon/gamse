@@ -9,6 +9,7 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_from_header,
                                 reference_spec_wavelength,
                                 reference_self_wavelength,
+                                select_calib_auto,
                                 )
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from ..engine import FrameStep, resolve_reference, FrameResult
@@ -67,7 +68,25 @@ class BiasSubtractionStep(FrameStep):
 
 class FlatCorrectionStep(FrameStep):
     def run(self, result, context, **options):
-        pass
+        sens_product = resolve_reference(options['input'], context)
+        sens_frame = sens_product.value
+
+        dataframe = result.frame
+
+        data = dataframe.data / sens_frame.data
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH FLAT '
+        extra_head.append((prefix+'CORRECTED', True))
+
+        new_dataframe = ImageFrame(data = data,
+                                   head = dataframe.head,
+                                   mask = dataframe.mask,
+                                   extra_head = extra_head,
+                                   )
+        new_result = FrameResult(frame = new_dataframe)
+
+        return new_result
 
 class ExtractionStep(FrameStep):
     def run(self, result, context, **options):
@@ -147,7 +166,6 @@ class ExtractionStep(FrameStep):
         
 class CalibrateWavelengthStep(FrameStep):
     def run(self, result, context, **options):
-        print("Calibrate Wavelength Frame Step")
 
         dataframe = result.frame
 
@@ -253,9 +271,77 @@ class CalibrateWavelengthStep(FrameStep):
         
 
 class ApplyWavelengthStep(FrameStep):
-    def run(self, dataframe, context, **options):
+
+    def run(self, result, context, **options):
 
         print("Apply Wavelength")
+
+        wave_product = resolve_reference(options['input'], context)
+        calib_lst = wave_product.value
+
+        dataframe = result.frame
+        spec   = dataframe.data
+        fileid = dataframe.extra_head['LOGINFO FILEID']
+
+        rms_threshold    = 0.005
+        group_contiguous = True
+        time_diff        = 120
+
+        ref_calib_lst = select_calib_auto(calib_lst,
+                                          rms_threshold    = rms_threshold,
+                                          group_contiguous = group_contiguous,
+                                          time_diff        = time_diff,
+                                          )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+
+        # print ThAr summary and selected calib
+        fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
+        for frameid, calib in sorted(calib_lst.items()):
+            string = fmt_string.format(frameid, calib['fileid'],
+                        calib['exptime'], calib['nuse'], calib['ntot'],
+                        calib['std'])
+            if calib['fileid'] in ref_fileid_lst:
+                string = '\033[91m{} [selected]\033[0m'.format(string)
+            print(string)
+
+        obsdate = dataframe.extra_head['LOGINFO OBSDATE']
+        exptime = dataframe.extra_head['LOGINFO EXPTIME']
+
+        # wavelength calibration
+        weight_lst = get_calib_weight_lst(ref_calib_lst,
+                                          obsdate = obsdate,
+                                          exptime = exptime,
+                                          )
+
+        message_lst = ['Wavelength calibration:']
+        for i, calib in enumerate(ref_calib_lst):
+            string = '{} ({:4g} sec) {} weight = {:5.3f}'.format(
+                        calib['fileid'], calib['exptime'], calib['obsdate'],
+                        weight_lst[i])
+            message_lst.append(string)
+        message = os.linesep.join(message_lst)
+        print(message)
+
+        spec, card_lst = reference_spec_wavelength(spec,
+                            ref_calib_lst, weight_lst)
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION WLCALIB '
+        for key, value in card_lst:
+            extra_head.append((prefix + key, value))
+
+        specframe = SpectrumFrame(data = spec,
+                                  head = dataframe.head,
+                                  extra_head = extra_head,
+                                  )
+        filepath = context.onedspec_path / 'spec_{}.fits'.format(fileid)
+        specframe.save(filepath, overwrite=True)
+        print('spec saved to', filepath)
+        new_result = FrameResult(frame = specframe)
+
+        return new_result
+
+
 
 
 def correct_overscan(data, binning, amp):

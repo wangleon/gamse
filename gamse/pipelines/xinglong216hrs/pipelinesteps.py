@@ -243,18 +243,19 @@ class CalibrateWavelength(CollectionPipelineStep):
     def finish(self, results, context, inputs, **options):
 
         print('Calibrate Wavelength')
-        calib_lst = []
+        calib_lst = {}
         fname_lst = []
         for result in results:
             dataframe = result.frame
             calib     = result['calib']
-            calib_lst.append(calib)
+            fileid    = calib['fileid']
+            calib_lst[fileid] = calib
             fileid = dataframe.extra_head['LOGINFO FILEID']
 
             # save 1d calibrated spectrum
             fname = 'wlcalib_{}.fits'.format(fileid)
             filepath = context.midproc_path / fname
-            dataframe.save(filepath)
+            dataframe.save(filepath, overwrite=True)
 
             fname_lst.append(filepath)
             print('ThAr spectrum saved to ', filepath)
