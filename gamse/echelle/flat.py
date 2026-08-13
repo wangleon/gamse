@@ -2775,6 +2775,49 @@ class ProfileNormalizerCommon(object):
     def errfunc(self, param, x, y):
         return y - self.fitfunc(param, x)
 
+
+class CrossProfile:
+    def __init__(self, disp_lst, p1, p2, pstep, profile):
+        self.disp_lst = disp_lst
+        self.p1 = p1
+        self.p2 = p2
+        self.pstep = pstep
+        self.x = np.arange(p1, p2+1e-5, pstep)
+        self.profile_lst = profile
+
+    def save(self, filepath):
+        head = fits.Header()
+        head.append(('NDISP', self.disp_lst.size))
+        for ix, x in enumerate(self.disp_lst):
+            head.append(('IDISP{:02d}'.format(ix), x))
+
+        head.append(('P_START', self.p1))
+        head.append(('P_END',   self.p2))
+        head.append(('P_STEP',  self.pstep))
+    
+        hdulst = fits.HDUList([
+                    fits.PrimaryHDU(self.profile_lst, header=head)
+                    ])
+        hdulst.writeto(filepath, overwrite=True)
+
+    @classmethod
+    def from_fits(cls, filepath):
+
+        data, head = fits.getdata(filepath, header=True)
+        ndisp = head['NDISP']
+        disp_x_lst = []
+        for i in range(ndisp):
+            key = 'IDISP{:02d}'.format(i)
+            disp_x_lst.append(head[key])
+        disp_x_lst = np.array(disp_x_lst)
+
+        p1    = head['P_START']
+        p2    = head['P_END']
+        pstep = head['P_STEP']
+        profile = data
+        return cls(disp_x_lst, p1, p2, pstep, profile)
+
+
 def save_crossprofile(filename, disp_x_lst, p1, p2, pstep, profile):
 
     head = fits.Header()

@@ -491,4 +491,6 @@ class DataContext:
                                 path   = path,
                                 dtype  = dtype,
                                 )
-        self._products[stepname] = {productname: product}
+        if stepname not in self._products:
+            self._products[stepname] = {}
+        self._products[stepname][productname] = product
