@@ -20,9 +20,12 @@ class Xinglong216HRS(Instrument):
         'OverscanSubtraction':  OverscanSubtractionStep,
         'BiasSubtraction':      BiasSubtractionStep,
         'FlatCorrection':       FlatCorrectionStep,
+        'ScatterSubtraction':   ScatterSubtractionStep,
         'Extraction':           ExtractionStep,
+        'OptimalExtraction':    OptimalExtractionStep,
         'CalibrateWavelength':  CalibrateWavelengthStep,
         'ApplyWavelength':      ApplyWavelengthStep,
+        'SaveSpectrum':         SaveSpectrumStep,
         }
 
     def read(self, filepath, logitem):

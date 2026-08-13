@@ -23,6 +23,8 @@ def read_dataframe(filepath, logitem=None):
                     for col in logitem.colnames:
                         value = logitem[col]
                         key = 'HIERARCH LOGINFO ' + col.upper()
+                        if value is np.ma.masked:
+                            value = ''
                         obj.extra_head.append((key, value))
                 return obj
 
@@ -59,8 +61,8 @@ class RawImageFrame(ImageFrame):
 
         print(
                 f'* -'
-                f'  FILEID: {fileid}'
-                f'  OBSTYPE: {obstype}'
-                f'  OBJECT: {objname}'
-                f'  EXPTIME: {exptime}'
+                f' FILEID: {fileid}'
+                f' OBSTYPE: {obstype}'
+                f' OBJECT: {objname}'
+                f' EXPTIME: {exptime}'
                 )

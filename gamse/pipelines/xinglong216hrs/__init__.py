@@ -788,6 +788,9 @@ def parse_logfile(filename, date):
                     ('object',      'S80'),
                     ('object_A',    'S50'),
                     ('object_B',    'S50'),
+                    ('ra',          str),
+                    ('dec',         str),
+                    ('epoch',       float),
                     ('exptime',     'f4'),
                     ('obsdate',     'S23'),
             ], masked=True)
@@ -836,16 +839,41 @@ def parse_logfile(filename, date):
             for iframe, frameid in enumerate(id_lst):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, 'cal', 'Bias', '', '',
-                            exptime, obstime)
-                    mask = (False, False, False, False, False, False,
-                            False, False)
+                    record = [(frameid, False),
+                              (fileid,  False),
+                              ('cal',   False),
+                              ('Bias',  False),
+                              ('',      False), # object A
+                              ('',      False), # object B
+                              ('',      True),  # ra
+                              ('',      True),  # dec
+                              (0.0,     True),  # epoch
+                              (exptime, False), # exptime
+                              (obstime, False), # obstime
+                              ]
+                    #item = (frameid, fileid, 'cal', 'Bias', '', '',
+                    #        exptime, obstime)
+                    #mask = (False, False, False, False, False, False,
+                    #        False, False)
                 else:
-                    item = (frameid, fileid, 'cal', 'Bias', '', '',
-                            exptime, '')
-                    mask = (False, False, False, False, False, False,
-                            False, True)
-                logtable.add_row(item)
+                    record = [(frameid, False),
+                              (fileid,  False),
+                              ('cal',   False),
+                              ('Bias',  False),
+                              ('',      False), # object A
+                              ('',      False), # object B
+                              ('',      True),  # ra
+                              ('',      True),  # dec
+                              (0.0,     True),  # epoch
+                              (exptime, False), # exptime
+                              ('',      True),  # obstime
+                              ]
+                    #item = (frameid, fileid, 'cal', 'Bias', '', '',
+                    #        exptime, '')
+                    #mask = (False, False, False, False, False, False,
+                    #        False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match sci frames (any rows with ra, dec coordinates)
@@ -855,6 +883,9 @@ def parse_logfile(filename, date):
             objname = mobj.group(2).strip()
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
+            ra      = mobj.group(5)
+            dec     = mobj.group(6)
+            epoch   = 2000.0
             obstype = 'sci'
 
             mobj2 = re.match(pattern_2obj, objname)
@@ -879,16 +910,41 @@ def parse_logfile(filename, date):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, obstype, objname,
-                            objname_A, objname_B, exptime, obstime)
-                    mask = (False, False, False, False,
-                            False, False, False, False)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              (ra,          False),
+                              (dec,         False),
+                              (epoch,       False),
+                              (exptime,     False),
+                              (obstime,     False),
+                              ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, obstime)
+                    #mask = (False, False, False, False,
+                    #        False, False, False, False)
                 else:
-                    item = (frameid, fileid, obstype, objname,
-                            objname_A, objname_B, exptime, '')
-                    mask = (False, False, False, False,
-                            False, False, False, True)
-                logtable.add_row(item)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              (ra,          False),
+                              (dec,         False),
+                              (epoch,       False),
+                              (exptime,     False),
+                              ('',          True),
+                              ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, '')
+                    #mask = (False, False, False, False,
+                    #        False, False, False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match cal frames (any rows without coordinates)
@@ -926,16 +982,41 @@ def parse_logfile(filename, date):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, obstype, objname,
-                            objname_A, objname_B, exptime, obstime)
-                    mask = (False, False, False, False,
-                            False, False, False, False)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              ('',          True),  # ra
+                              ('',          True),  # dec
+                              (0.0,         True),  # epoch
+                              (exptime,     False), # exptime
+                              (obstime,     False), # obstime
+                            ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, obstime)
+                    #mask = (False, False, False, False,
+                    #        False, False, False, False)
                 else:
-                    item = (frameid, fileid, obstype, objname,
-                            objname_A, objname_B, exptime, '')
-                    mask = (False, False, False, False,
-                            False, False, False, True)
-                logtable.add_row(item)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              ('',          True),  # ra
+                              ('',          True),  # dec
+                              (0.0,         True),  # epoch
+                              (exptime,     False), # exptime
+                              ('',          True),  # obstime
+                            ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, '')
+                    #mask = (False, False, False, False,
+                    #        False, False, False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match is over. row does not match any case above
@@ -1117,6 +1198,7 @@ def make_obslog(rawpath, logfile=None):
                     print('Warning: Inconsistent Date for',filepath.name)
 
     logtable, fibermode = parse_logfile(logfile, date)
+    print(logtable)
 
     key_statime = 'DATE-OBS'
     key_exptime = 'EXPOSURE'
@@ -1127,7 +1209,6 @@ def make_obslog(rawpath, logfile=None):
     amp_lst     = []
     gain_lst    = []
     speed_lst   = []
-
 
     maxobjlen = max([len(row['object']) for row in logtable])
 
