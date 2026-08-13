@@ -8,14 +8,23 @@ steps:
   correct_flat:
     class: FlatCorrection
 
+  subtract_scatter:
+    class: ScatterSubtraction
+
   extract:
     class: Extraction
+
+  optimal_extract:
+    class: OptimalExtraction
 
   calibrate_wavelength:
     class: CalibrateWavelength
 
   apply_wavelength:
     class: ApplyWavelength
+
+  save_spectrum:
+    class: SaveSpectrum
 
 pipeline:
 
@@ -66,6 +75,7 @@ pipeline:
       trace: "@trace.trace"
     outputs:
       - sens
+      - profile
 
   wavelength:
     class: CalibrateWavelength
@@ -78,9 +88,8 @@ pipeline:
       - step: extract
         input: "@trace.trace"
       - step: calibrate_wavelength
-    options:
-      xorder: 3
-      yorder: 3
+        xorder: 3
+        yorder: 3
     outputs:
       - wave
 
@@ -94,7 +103,13 @@ pipeline:
         input: "@master_bias.bias"
       - step: correct_flat
         input: "@sens.sens"
-      - step: extract
+      - step: subtract_scatter
         input: "@trace.trace"
+      - step: optimal_extract
+        input:
+          trace: "@trace.trace"
+          profile: "@sens.profile"
       - step: apply_wavelength
         input: "@wavelength.wave"
+      - step: save_spectrum
+        filepath: "spec_{fileid}.fits"

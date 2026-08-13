@@ -2,9 +2,13 @@ import os
 import numpy as np
 import astropy.io.fits as fits
 import matplotlib.pyplot as plt
+
 from ...echelle import trace
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ...echelle.trace import find_apertures
+from ...echelle.flat import CrossProfile
+from ...echelle.wlcalib import select_calib_auto
+
 from ..engine import (CollectionPipelineStep, AnalysisPipelineStep,
                        StreamingPipelineStep)
 from ..base import ImageFrame
@@ -233,7 +237,14 @@ class GetSensMap(AnalysisPipelineStep):
         sens_frame.save(sens_path, overwrite=True)
         print('sens image saved to', sens_path)
 
+        crossprofile = CrossProfile(disp_x_lst, p1, p2, pstep, profile_lst)
+        # save cross-profiles
+        profile_path = context.midproc_path / 'cross_profile.fits'
+        crossprofile.save(profile_path)
+
+
         context.register(self.name, 'sens', sens_frame, sens_path, 'image')
+        context.register(self.name, 'profile', crossprofile, profile_path, 'profile')
         
         #context[self.name] = {
         #        'sens': sens_frame
@@ -247,9 +258,10 @@ class CalibrateWavelength(CollectionPipelineStep):
         fname_lst = []
         for result in results:
             dataframe = result.frame
+            frameid   = dataframe.extra_head['LOGINFO FRAMEID']
             calib     = result['calib']
             fileid    = calib['fileid']
-            calib_lst[fileid] = calib
+            calib_lst[frameid] = calib
             fileid = dataframe.extra_head['LOGINFO FILEID']
 
             # save 1d calibrated spectrum
@@ -260,7 +272,30 @@ class CalibrateWavelength(CollectionPipelineStep):
             fname_lst.append(filepath)
             print('ThAr spectrum saved to ', filepath)
 
-        context.register(self.name, 'wave', calib_lst, fname_lst, 'wave')
+        rms_threshold    = 0.005
+        group_contiguous = True
+        time_diff        = 120
+
+        ref_calib_lst = select_calib_auto(calib_lst,
+                                          rms_threshold    = rms_threshold,
+                                          group_contiguous = group_contiguous,
+                                          time_diff        = time_diff,
+                                          )
+        ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
+
+        # print ThAr summary and selected calib
+        for frameid, calib in sorted(calib_lst.items()):
+            string = (f' [{frameid:3d}] {calib["fileid"]}'
+                      f' - ({calib["exptime"]:4g} sec)'
+                      f' - {calib["nuse"]:4d}/{calib["ntot"]:4d}'
+                      f' RMS = {calib["std"]:7.5f}'
+                      )
+            if calib['fileid'] in ref_fileid_lst:
+                color = '\033[91m'
+                string = color + string + ' [selected]\033[0m'
+            print(string)
+
+        context.register(self.name, 'wave', ref_calib_lst, fname_lst, 'wave')
 
 class ReduceScience(StreamingPipelineStep):
     def process_frame(self, frame, context):
