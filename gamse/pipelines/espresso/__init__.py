@@ -33,7 +33,7 @@ def make_metatable(rawpath):
                         ('progid',   'S30'),
                         ('pi',       'S50'),
                 ], masked=True)
-    pattern = '(ESPRE\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
+    pattern = r'(ESPRE\.\d{4}\-\d{2}\-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3})\.fits'
     for fname in sorted(os.listdir(rawpath)):
         mobj = re.match(pattern, fname)
         if not mobj:
@@ -97,7 +97,7 @@ def make_metatable(rawpath):
 
 def split_obslog():
     for fname in sorted(os.listdir(os.curdir)):
-        mobj = re.match('ESPRESSO.(\d{4}\-\d{2}\-\d{2}).dat', fname)
+        mobj = re.match(r'ESPRESSO.(\d{4}\-\d{2}\-\d{2}).dat', fname)
         if mobj:
             logfilename = fname
             datestr     = mobj.group(1)
@@ -116,7 +116,7 @@ def split_obslog():
     for config, tab in config_lst.items():
         mode    = config[0]
         binning = config[1]
-        mobj = re.match('\((\d), (\d)\)', binning)
+        mobj = re.match(r'\((\d), (\d)\)', binning)
         binx = mobj.group(1)
         biny = mobj.group(2)
         newname = 'ESPRESSO.{}.{}.{}x{}.dat'.format(datestr, mode, binx, biny)
@@ -136,7 +136,7 @@ def split_obslog():
     for config in config_lst:
         mode    = config[0]
         binning = config[1]
-        mobj = re.match('\((\d), (\d)\)', binning)
+        mobj = re.match(r'\((\d), (\d)\)', binning)
         binx = mobj.group(1)
         biny = mobj.group(2)
         newname = 'ESPRESSO.{}.{}.{}x{}.dat'.format(datestr, mode, binx, biny)

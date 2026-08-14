@@ -53,6 +53,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
     for aper, aper_loc in sorted(apertureset.items()):
         if aper_loc.direct==0:
             position = aper_loc.position(ally)
+            xloc = position
+            yloc = ally
             lower_line = position - lower_limit
             upper_line = position + upper_limit
             lower_line = np.maximum(lower_line, -0.5)
@@ -87,6 +89,8 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
             d1, d2 = int(domain[0]), int(domain[1])+1
             newx = np.arange(d1, d2)
             position = aper_loc.position(newx)
+            xloc = newx
+            yloc = position
             lower_line = position - lower_limit
             upper_line = position + upper_limit
             lower_line = np.maximum(lower_line, -0.5)
@@ -144,11 +148,13 @@ def extract_aperset(data, mask, apertureset, lower_limit=5, upper_limit=5,
         fluxmean[_m] = fluxsum[_m]/weight_sum[_m]
             
         spectra1d[aper] = {
-            'flux_sum':  fluxsum,
-            'flux_mean': fluxmean,
-            'mask':      ~_m,
-            'nsum':      weight_sum,
-            'mask_sat':  fluxsat,
+                'x': xloc,
+                'y': yloc,
+                'flux_sum':  fluxsum,
+                'flux_mean': fluxmean,
+                'mask':      ~_m,
+                'nsum':      weight_sum,
+                'mask_sat':  fluxsat,
             }
             
     return spectra1d
@@ -219,8 +225,12 @@ def extract_aperset_optimal(data, mask, background, apertureset,
 
     # determine pixel number along the main-dispersion and cross-dispesion
     # directions
-    ndisp = {'x':nx, 'y':ny}[main_disp]
-    ncros = {'x':ny, 'y':nx}[main_disp]
+    if main_disp == 'x':
+        ndisp, ncros = nx, ny
+    elif main_disp == 'y':
+        ndisp, ncros = ny, nx
+    else:
+        raise ValueError
 
     # left and right ends of profile sampling
     p1 = profilex[0]
@@ -383,8 +393,14 @@ def extract_aperset_optimal(data, mask, background, apertureset,
         sys.stdout.flush()
 
     # generate idisp_lst, from center to the limbs
-    a = allx[0:ndisp//2]
-    b = allx[ndisp//2:]
+    if main_disp == 'x':
+        a = allx[0:ndisp//2]
+        b = allx[ndisp//2:]
+    elif main_disp == 'y':
+        a = ally[0:ndisp//2]
+        b = ally[ndisp//2:]
+    else:
+        raise ValueError
     idisp_lst = np.transpose(np.vstack((a[::-1],b))).flatten()
 
     # initialize result arrays
@@ -470,7 +486,12 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 biny = np.array(biny)
 
                 coeff = np.polyfit(binx/ndisp, biny, deg=min(binx.size-1, deg))
-                newdcen = np.polyval(coeff, allx/ndisp)
+                if main_disp == 'x':
+                    newdcen = np.polyval(coeff, allx/ndisp)
+                elif main_disp == 'y':
+                    newdcen = np.polyval(coeff, ally/ndisp)
+                else:
+                    raise ValueError
                 yres = dcen_lst - newdcen
                 std = yres[m].std()
                 newm = m*(yres<3*std)*(yres>-3*std)
@@ -478,17 +499,30 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                     break
                 m = newm
 
+
             #loglikelihood = (-(yres[m]/std)**2/2).sum()
             #bic = -2*loglikelihood + (deg+1)*np.log(m.sum())
             if mode == 'debug':
                 fig3 = plt.figure(figsize=(8,4))
                 ax3 = fig3.add_axes([0.1, 0.1, 0.8, 0.8])
-                ax3.plot(allx[m], dcen_lst[m], lw=0.5, color='C0',
+                if main_disp=='x':
+                    plotx = allx[m]
+                elif main_disp=='y':
+                    plotx = ally[m]
+                else:
+                    raise ValueError
+                ax3.plot(plotx, dcen_lst[m], lw=0.5, color='C0',
                         alpha=0.8, zorder=3)
                 _y1, _y2 = ax3.get_ylim()
                 #_y1 = max(_y1, -1.8)
                 #_y2 = min(_y2, +1.8)
-                ax3.plot(allx, dcen_lst, lw=0.5, color='C0',
+                if main_disp=='x':
+                    plotx = allx
+                elif main_disp=='y':
+                    plotx = ally
+                else:
+                    raise ValueError
+                ax3.plot(plotx, dcen_lst, lw=0.5, color='C0',
                         alpha=0.2, zorder=1)
                 ax3.plot(binx, biny, 'o', ms=3, color='C1',
                         alpha=0.8, zorder=4)
@@ -508,6 +542,9 @@ def extract_aperset_optimal(data, mask, background, apertureset,
                 fig3.savefig('debug/fitcen_{:03d}.png'.format(aper), dpi=150)
                 plt.close(fig3)
 
+        else:
+            newdcen = np.zeros(ndisp, dtype=np.float32)
+        # if recenter end
 
         count = 0
         prev_para = None

@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 logger = logging.getLogger(__name__)
 import dateutil.parser
@@ -17,76 +18,14 @@ from ...echelle.flat import ProfileNormalizerCommon
 from ...echelle.background import BackgroundFigureCommon
 from ...echelle.wlcalib import get_calib_from_header
 from ...utils.regression import get_clip_mean
-from ...utils.onedarray import iterative_savgol_filter
 from ...utils.download import get_file
 
-def correct_overscan(data, header):
-    """Correct overscan.
 
-    Args:
-        data ():
-        header ():
-    Returns:
+def correct_overscan(self):
+    ovrdata, mask = correct_overscan(self.data, self.head)
+    self.data = ovrdata
+    self.mask = mask
 
-    """
-    ny, nx = data.shape
-
-    # get mask
-    satmask = data >= 65535
-    mask = np.int16(satmask)*4
-
-    winlen = 501
-
-    mean1 = data[:,0:20].mean(axis=1)
-    mean1_ext = np.zeros((mean1.size+2*winlen),dtype=mean1.dtype)
-    mean1_ext[winlen:winlen+mean1.size] = mean1
-    mean1_ext[0:winlen] = mean1[0:winlen][::-1]
-    mean1_ext[mean1.size+winlen:] = mean1[-winlen:][::-1]
-    ovr1,_,_,_ = iterative_savgol_filter(mean1_ext,
-                    winlen=winlen, order=3, upper_clip=3)
-    ovr1 = ovr1[winlen:winlen+mean1.size]
-
-    mean2 = data[:,nx-20:nx].mean(axis=1)
-    mean2_ext = np.zeros((mean2.size+2*winlen),dtype=mean1.dtype)
-    mean2_ext[winlen:winlen+mean2.size] = mean2
-    mean2_ext[0:winlen] = mean2[0:winlen][::-1]
-    mean2_ext[mean2.size+winlen:] = mean2[-winlen:][::-1]
-    ovr2,_,_,_ = iterative_savgol_filter(mean2_ext,
-                    winlen=winlen, order=3, upper_clip=3)
-    ovr2 = ovr2[winlen:winlen+mean1.size]
-
-
-
-    '''
-    fig = plt.figure()
-    ax1 = fig.add_subplot(211)
-    ax2 = fig.add_subplot(212)
-
-    ax1.plot(mean1, lw=0.6, alpha=0.5)
-    ax1.plot(ovr1, lw=0.6)
-
-    ax2.plot(mean2, lw=0.6, alpha=0.6)
-    ax2.plot(ovr2, lw=0.6)
-
-    ax1.set_xlim(0,ny-1)
-    ax2.set_xlim(0,ny-1)
-    fig.savefig('{}_ovr.png'.format(fileid))
-    plt.close(fig)
-    '''
-
-    scidata1 = data[:,20:nx//2]
-    scidata2 = data[:,nx//2:nx-20]
-
-    ovrimage1 = np.repeat([ovr1], scidata1.shape[1], axis=0).T
-    ovrimage2 = np.repeat([ovr2], scidata2.shape[1], axis=0).T
-
-    ovrdata = np.zeros((ny, nx-40), dtype=np.float64)
-    ny1, nx1 = ovrdata.shape
-    ovrdata[:, 0:nx1//2]   = scidata1 - ovrimage1
-    ovrdata[:, nx1//2:nx1] = scidata2 - ovrimage2
-
-    mask = mask[:,20:nx-20]
-    return ovrdata, mask
 
 class ProfileNormalizer(ProfileNormalizerCommon):
     def __init__(self, xdata, ydata, mask):
@@ -157,6 +96,7 @@ def find_local_peak(x, y):
     x0 = n/2
     i0 = int(round(x0))
     i1, i2 = i0-3, i0+3
+    
     func = intp.InterpolatedUnivariateSpline(np.arange(i1, i2), y[i1:i2],
                 k=3, ext=3)
     result = opt.minimize(func, x0)

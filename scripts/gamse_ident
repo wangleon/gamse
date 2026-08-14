@@ -631,6 +631,7 @@ class CalibWindow(tk.Frame):
             # wavelength fitting results
             'std':          0,
             'coeff':        np.array([]),
+            'onorm':        None,
             'nuse':         0,
             'ntot':         0,
             'direction':    '',
@@ -686,7 +687,7 @@ class CalibWindow(tk.Frame):
         """Fit the wavelength and plot the solution in the figure.
         """
 
-        coeff, std, k, offset, nuse, ntot = fit_wavelength(
+        coeff, onorm, std, k, offset, nuse, ntot = fit_wavelength(
                 identlist   = self.identlist,
                 npixel      = self.param['npixel'],
                 xorder      = self.param['xorder'],
@@ -698,6 +699,7 @@ class CalibWindow(tk.Frame):
 
         # update self.param by new fitting results
         self.param['coeff']  = coeff
+        self.param['onorm']  = onorm
         self.param['std']    = std
         self.param['k']      = k
         self.param['offset'] = offset
@@ -788,6 +790,7 @@ class CalibWindow(tk.Frame):
         offset      = self.param['offset']
         coeff       = self.param['coeff']
         npixel      = self.param['npixel']
+        onorm       = self.param['onorm']
         window_size = self.param['window_size']
         fitfuncname = self.param['fitfuncname']
 
@@ -801,7 +804,7 @@ class CalibWindow(tk.Frame):
 
             # generated the wavelengths for every pixel in this order
             pix_lst = np.arange(npixel)
-            wave_lst = get_wavelength(coeff, npixel, pix_lst,
+            wave_lst = get_wavelength(coeff, npixel, onorm, pix_lst,
                                       np.repeat(order, npixel))
             # get wavelength range of this order
             w1 = min(wave_lst[0], wave_lst[-1])
@@ -827,9 +830,10 @@ class CalibWindow(tk.Frame):
                 diff = np.abs(wave_lst - wl)
                 i = diff.argmin()
                 result = find_local_peak(flux, i, window_size, fitfuncname)
+                if result is None:
+                    continue
                 center = result['center']
                 result = find_local_peak(flux, center, window_size, fitfuncname)
-
                 if result is None:
                     # fitting failed. probably because of too few points
                     continue
@@ -877,6 +881,20 @@ class CalibWindow(tk.Frame):
                 item = np.array((aperture, order, element, ion, wl, source,
                                  i1, i2, center, amplitude, fwhm, background,
                                  q, True, 0.0, 'a'), dtype=identlinetype)
+
+                message = ' '.join([
+                    'Aper {:3d}'.format(aperture),
+                    'Ord {:3d}'.format(order),
+                    '{:2s}'.format(element) if element is not np.ma.masked else '--',
+                    '{:3s}'.format(ion) if ion is not np.ma.masked else '---',
+                    '{:10.4f}'.format(wl),
+                    '{:4d}-{:4d}'.format(i1, i2),
+                    '{:10.5f}'.format(center),
+                    '{:8.4f}'.format(fwhm),
+                    'q={:6.2f}'.format(q),
+                    ])
+                print(message)
+
 
                 # find the insert position
                 insert_pos = np.searchsorted(self.identlist[aperture]['pixel'],
@@ -1047,12 +1065,13 @@ class CalibWindow(tk.Frame):
         k       = self.param['k']
         offset  = self.param['offset']
         coeff   = self.param['coeff']
+        onorm   = self.param['onorm']
         if len(coeff)>0 and k is not None and offset is not None:
             # get the order nomalization factros order1 and order2, which are
             #required by the get_wavelength() function
             pix_lst = np.arange(npixel)
             order = k*aperture + offset
-            wave_lst = get_wavelength(coeff, npixel, pix_lst,
+            wave_lst = get_wavelength(coeff, npixel, onorm, pix_lst,
                                       np.repeat(order, npixel))
             diffwave_lst = np.diff(wave_lst)
             if (diffwave_lst>0).sum()==0 or (diffwave_lst<0).sum()==0:
@@ -1138,6 +1157,7 @@ class CalibWindow(tk.Frame):
 
         kwargs = {
                 'offset':   self.param['offset'],
+                'onorm':    self.param['onorm'],
                 'k':        self.param['k'],
                 'coeff':    self.param['coeff'],
                 'npixel':   self.param['npixel'],
@@ -1650,13 +1670,14 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     master.mainloop()
 
     coeff  = calibwindow.param['coeff']
+    onorm  = calibwindow.param['onorm']
     npixel = calibwindow.param['npixel']
     k      = calibwindow.param['k']
     offset = calibwindow.param['offset']
 
     aper = spec['aperture'][0]
     order = k*aper + offset
-    wl = get_wavelength(coeff, npixel, np.arange(npixel), order)
+    wl = get_wavelength(coeff, npixel, onorm, np.arange(npixel), order)
     # refresh the direction code
     if wl[0] < wl[-1]:
         sign = '+'
@@ -1668,6 +1689,7 @@ def ident_wavelength(spec, figfilename, title, linelist, identfilename=None,
     result = {
               'coeff':       coeff,
               'npixel':      npixel,
+              'onorm':       onorm,
               'k':           k,
               'offset':      offset,
               'std':         calibwindow.param['std'],

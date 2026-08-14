@@ -320,7 +320,7 @@ def combine_bias(config, logtable):
         # append the overscan information of each bias frame to
         # bias_card_lst
         for keyword, value in card_lst:
-            mobj = re.match('^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
+            mobj = re.match(r'^HIERARCH GAMSE (OVERSCAN[\s\S]*)', keyword)
             if mobj:
                 newkey = prefix + ' ' + mobj.group(1)
                 bias_card_lst.append((newkey, value))
@@ -738,14 +738,14 @@ def print_wrapper(string, item):
         str: The color-coded string.
 
     """
-    imgtype = item['imgtype']
+    obstype = item['obstype']
     obj     = item['object']
 
     if len(obj)>=4 and obj[0:4].lower()=='bias':
         # bias images, use dim (2)
         return '\033[2m'+string.replace('\033[0m', '')+'\033[0m'
 
-    elif imgtype=='sci':
+    elif obstype=='sci':
         # sci images, use highlights (1)
         return '\033[1m'+string.replace('\033[0m', '')+'\033[0m'
 

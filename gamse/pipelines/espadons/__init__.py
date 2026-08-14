@@ -4,15 +4,18 @@ import sys
 import datetime
 import dateutil.parser
 import configparser
+from pathlib import Path
 
 import numpy as np
 import astropy.io.fits as fits
 from astropy.table import Table
 
+from ...utils.table import FilterableTable
 from ...utils.misc import extract_date
 from ..common import load_obslog, load_config
 from .common import print_wrapper
 from .reduce import reduce_rawdata as _reduce_rawdata
+from .reduce import Pipeline
 
 def make_config():
     """Generate a config file for reducing the data taken with CFHT/ESPaDOnS.
@@ -126,7 +129,194 @@ def make_config():
 
     print('Config file written to {}'.format(filename))
 
-def make_obslog():
+def make_obslog(rawpath):
+
+    logtable = FilterableTable(dtype=[
+                        ('frameid',  int),
+                        ('fileid',   str),
+                        ('obstype',  str),
+                        ('object',   str),
+                        ('ra',       str),
+                        ('dec',      str),
+                        ('epoch',    float),
+                        ('exptime',  float),
+                        ('obsdate',  str),
+                        ('instmode', str),
+                        ('obsmode',  str),
+                        ('binning' , str),
+                        ('amp',      str),
+                        ('gain',     str),
+                        ('rdnoise',  str),
+                        ('nsat',     int),
+                        ('q95',      int),
+                        ('runid',    str),
+                        ('pi',       str),
+                        #('observer', 'S15'),
+                ], masked=True)
+
+    fmt_str = ('  -{:5s} {:8s} {:12s} {:15s} {:>7} {:23s} {:14s} {:8s}'
+            ' {:>7} {:>5} {:>6s} {:<15s}')
+    head_str = fmt_str.format('frameid', 'fileid', 'obstype', 'object',
+                            'exptime', 'obsdate', 'instmode', 'obsmode',
+                            'nsta', 'q95', 'runid', 'pi')
+
+    print(head_str)
+
+
+    rawpath = Path(rawpath).expanduser()
+
+    file_lst = sorted([p for p in rawpath.iterdir()
+                       if p.is_file()], key=lambda p: p.name)
+
+    prev_frameid = -1
+
+    for filepath in file_lst:
+
+        if not (mobj := re.match(r'^(\d{7}[a-z])\.fits', filepath.name)):
+            continue
+
+        fileid  = mobj.group(1)
+
+        # surffix with i, and p are data product, not raw data
+        if fileid[-1] in ['i', 'p']:
+            continue
+        data, head = fits.getdata(filepath, header=True)
+
+
+        # data checker
+        for key, value in [('DETECTOR', 'OLAPA'),
+                           ('PIXSIZE',   13.5),
+                           ('SATURATE', 65535),
+                           ('INSTRUME', 'ESPaDOnS'),
+                           ]:
+            if head[key] != value:
+                print('WARNING:', key, head[key])
+
+        frameid = prev_frameid + 1
+        obstype    = head['OBSTYPE']
+
+        # get object information
+        objectname = head['OBJECT']
+        if obstype == 'OBJECT':
+            ra    = head['OBJRA']
+            dec   = head['OBJDEC']
+            epoch = head['OBJEQUIN']
+            mask_epoch = False
+        else:
+            ra    = ''
+            dec   = ''
+            epoch = 0.0
+            mask_epoch = True
+
+        exptime    = head['EXPTIME']
+
+        if objectname == 'Nowhere':
+            objectname = ''
+    
+        # get obsdat as a string with iso format of 23 characters
+        obsdate_str = '{}T{}'.format(head['DATE-OBS'], head['UTC-OBS'])
+        obsdt = dateutil.parser.parse(obsdate_str)
+        obsdate = obsdt.isoformat()[0:23]
+
+        # find instmode, obsmode, and resolution
+        instmode_str = head['INSTMODE']
+        mobj = re.match(r'([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', instmode_str)
+        if mobj:
+            instmode   = mobj.group(1)
+            obsmode    = mobj.group(2)
+            resolution = mobj.group(3)
+        else:
+            mobj = re.match(r'([a-zA-Z]+),\s*R=([\d,]+)', instmode_str)
+            if mobj:
+                instmode   = mobj.group(1)
+                obsmode    = ''
+                resolution = mobj.group(2)
+            else:
+                instmode   = ''
+                obsmode    = ''
+                resolution = ''
+
+        if instmode == 'Spectroscopy':
+            instmode = 'SPEC'
+        elif instmode == 'Polarimetry':
+            instmode = 'POLAR'
+        else:
+            instmode = ''
+
+
+        # get CCD binning
+        binx     = head['CCDBIN1']
+        biny     = head['CCDBIN2']
+        # get CCD amplifers
+        amp      = head['AMPLIST'].replace(',','').upper()
+        # get CCD Gain
+        gain1    = head['GAINA']
+        gain2    = head['GAINB']
+        # get CCD readout noise
+        rdnoise1 = head['RDNOISEA']
+        rdnoise2 = head['RDNOISEB']
+        rdtime   = head['RDTIME']
+
+        binning = '{}x{}'.format(binx, biny)
+        gain = '{},{}'.format(gain1, gain2)
+        rdnoise = '{},{}'.format(rdnoise1, rdnoise2)
+
+        # sequence
+        nseq = head.get('CMPLTEXP', None)
+        iseq = head.get('NEXP', None)
+
+        # determine the total number of saturated pixels
+        nsat = (data>=head['SATURATE']).sum()
+
+        # find the 95% quantile
+        q95 = int(np.round(np.percentile(data, 95)))
+
+        runid = head['RUNID']
+        pi    = head['PI_NAME']
+        observer = head['OBSERVER']
+
+        item = [
+                (frameid,       False),
+                (fileid,        False),
+                (obstype,       False),
+                (objectname,    False),
+                (ra,            False),
+                (dec,           False),
+                (epoch,         mask_epoch),
+                (exptime,       False),
+                (obsdate,       False),
+                (instmode,      False),
+                (obsmode,       False),
+                (binning,       False),
+                (amp,           False),
+                (gain,          False),
+                (rdnoise,       False),
+                (nsat,          False),
+                (q95,           False),
+                (runid,         False),
+                (pi,            False),
+                #(observer,     False),
+                ]
+        value, mask = list(zip(*item))
+        logtable.add_row(value, mask=mask)
+
+        item = logtable[-1]
+
+        # print log item
+        string = fmt_str.format(
+                    '[{:d}]'.format(frameid), fileid, '({})'.format(obstype),
+                    objectname, exptime, obsdate, instmode, obsmode,
+                    nsat, q95, runid, pi)
+        print(print_wrapper(string, item))
+
+        prev_frameid = frameid
+
+    # sort by fileid
+    logtable.sort('fileid')
+    logtable['exptime'].info.format = 'g'
+    return logtable
+
+def make_obslog_old():
     """Scan the raw data, and generate a log file containing the detail
     information for each frame.
 
@@ -167,7 +357,7 @@ def make_obslog():
     prev_frameid = -1
 
     for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match('(\d{7}[a-z])\.fits', fname)
+        mobj = re.match(r'(\d{7}[a-z])\.fits', fname)
         if not mobj:
             continue
         fileid  = mobj.group(1)
@@ -187,7 +377,7 @@ def make_obslog():
         obsdate = obsdt.isoformat()[0:23]
 
         # find instmode, obsmode, and resolution
-        mobj = re.match('([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', head['INSTMODE'])
+        mobj = re.match(r'([a-zA-Z]+),\s*(\S+),\s*R=([\d,]+)', head['INSTMODE'])
         if mobj:
             instmode   = mobj.group(1)
             obsmode    = mobj.group(2)
@@ -275,3 +465,4 @@ def reduce_rawdata():
     logtable = load_obslog('\S*\.obslog$', fmt='astropy')
 
     _reduce_rawdata(config, logtable)
+

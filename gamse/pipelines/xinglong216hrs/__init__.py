@@ -4,6 +4,7 @@ import sys
 import datetime
 import dateutil.parser
 import configparser
+from pathlib import Path
 
 import numpy as np
 import astropy.io.fits as fits
@@ -12,12 +13,14 @@ import matplotlib.pyplot as plt
 
 from ...utils.misc import extract_date
 from ...utils.obslog import read_obslog, write_obslog
+from ...utils.table import FilterableTable
 from ..common import load_obslog, load_config
 from .common import get_sci_region, print_wrapper, plot_time_offset
 from .reduce_singlefiber import reduce_singlefiber
 from .reduce_doublefiber import reduce_doublefiber
 from .reduce_singlefiber_phase3 import reduce_singlefiber_phase3
 from .reduce_doublefiber_phase3 import reduce_doublefiber_phase3
+from .instrument import Xinglong216HRS
 
 def make_config():
     """Generate a config file for reducing the data taken with Xinglong 2.16m
@@ -243,7 +246,7 @@ def get_regular_calname(objectname):
 
 
 def parse_timestr(timestr, date):
-    mobj = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+    mobj = re.match(r'(\d{2}):(\d{2}):(\d{2})', timestr)
     yy, mm, dd = date
     h = int(mobj.group(1))
     m = int(mobj.group(2))
@@ -280,7 +283,7 @@ def parse_logfile_singlefiber(filename, date):
             'Flat': '{id}\s*(flat)\s*{btime}\s*{exptime}'.format(**ptn_lst),
             'ThAr': '{id}\s*(thar)\s*{btime}\s*{exptime}'.format(**ptn_lst),
             }
-    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+    pattern_sci = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
 
     yy, mm, dd = date
@@ -371,11 +374,11 @@ def parse_logfile_doublefiber(filename, date):
             'dec':     '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',   # dec
             }
 
-    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
-    pattern_sci = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+    pattern_bias = r'{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = (r'{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
                     '\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-    pattern_cal = ('{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
+    pattern_cal = (r'{id}\s*\[A\]\s*{objname}\s*\[B\]\s*{objname}'
                     '\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     yy, mm, dd = date
@@ -489,7 +492,7 @@ def parse_logfile_doublefiber(filename, date):
 
 
 
-def make_obslog():
+def make_obslog_old():
     """Scan the raw data, and generate a log file containing the detail
     information for each frame.
 
@@ -512,7 +515,7 @@ def make_obslog():
     # search file in the current folder
     logfile = None
     for fname in os.listdir('./'):
-        mobj = re.match('(\d{8})\.txt', fname)
+        mobj = re.match(r'(\d{8})\.txt', fname)
         if mobj:
             logfile = fname
             datestr = mobj.group(1)
@@ -781,37 +784,40 @@ def parse_logfile(filename, date):
     logtable = Table(dtype=[
                     ('frameid',     'i2'),
                     ('fileid',      'S12'),
-                    ('imgtype',     'S3'),
+                    ('obstype',     'S3'),
                     ('object',      'S80'),
                     ('object_A',    'S50'),
                     ('object_B',    'S50'),
+                    ('ra',          str),
+                    ('dec',         str),
+                    ('epoch',       float),
                     ('exptime',     'f4'),
                     ('obsdate',     'S23'),
             ], masked=True)
 
     ptn_lst = {
             # id sting
-            'id':       '([a-zA-Z]?[\d\-]+)',
+            'id':       r'([a-zA-Z]?[\d\-]+)',
             # object name including double-fiber objects
-            'objname':  '([a-zA-Z0-9+-_\[\]\s]+)',
+            'objname':  r'([a-zA-Z0-9+-_\[\]\s]+)',
             # object name excluding double-fiber objects
-            'objname2': '([a-zA-Z0-9+-_\s]*)',
+            'objname2': r'([a-zA-Z0-9+-_\s]*)',
             # begin time string
-            'btime':    '(\d{2}:\d{2}:\d{2})',
+            'btime':    r'(\d{2}:\d{2}:\d{2})',
             # exptime
-            'exptime':  '([\.\d]+)',
+            'exptime':  r'([\.\d]+)',
             # ra and dec
-            'ra':       '(\d{2}:\d{2}:\d{2}\.?\d?\d?)',
-            'dec':      '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',
+            'ra':       r'(\d{2}:\d{2}:\d{2}\.?\d?\d?)',
+            'dec':      r'([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)',
             }
 
     # determine 3 types of match patterns
-    pattern_bias = '{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
-    pattern_sci = ('{id}\s*{objname}\s*{btime}\s*{exptime}'
+    pattern_bias = r'{id}\s*(bias)\s*{btime}\s*{exptime}'.format(**ptn_lst)
+    pattern_sci = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'
                     '\s*{ra}\s*{dec}\s*2000'.format(**ptn_lst))
-    pattern_2obj = ('\[A\]\s*{objname2}\s*'
+    pattern_2obj = (r'\[A\]\s*{objname2}\s*'
                     '\[B\]\s*{objname2}').format(**ptn_lst)
-    pattern_cal = ('{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
+    pattern_cal = (r'{id}\s*{objname}\s*{btime}\s*{exptime}'.format(**ptn_lst))
 
     # pattern cal can also match pattern_sci and pattern_bias. so match
     # pattern_bias first, thn pattern_sci, and finally pattern_cal
@@ -833,16 +839,41 @@ def parse_logfile(filename, date):
             for iframe, frameid in enumerate(id_lst):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, 'cal', 'Bias', '', '',
-                            exptime, obstime)
-                    mask = (False, False, False, False, False, False,
-                            False, False)
+                    record = [(frameid, False),
+                              (fileid,  False),
+                              ('cal',   False),
+                              ('Bias',  False),
+                              ('',      False), # object A
+                              ('',      False), # object B
+                              ('',      True),  # ra
+                              ('',      True),  # dec
+                              (0.0,     True),  # epoch
+                              (exptime, False), # exptime
+                              (obstime, False), # obstime
+                              ]
+                    #item = (frameid, fileid, 'cal', 'Bias', '', '',
+                    #        exptime, obstime)
+                    #mask = (False, False, False, False, False, False,
+                    #        False, False)
                 else:
-                    item = (frameid, fileid, 'cal', 'Bias', '', '',
-                            exptime, '')
-                    mask = (False, False, False, False, False, False,
-                            False, True)
-                logtable.add_row(item)
+                    record = [(frameid, False),
+                              (fileid,  False),
+                              ('cal',   False),
+                              ('Bias',  False),
+                              ('',      False), # object A
+                              ('',      False), # object B
+                              ('',      True),  # ra
+                              ('',      True),  # dec
+                              (0.0,     True),  # epoch
+                              (exptime, False), # exptime
+                              ('',      True),  # obstime
+                              ]
+                    #item = (frameid, fileid, 'cal', 'Bias', '', '',
+                    #        exptime, '')
+                    #mask = (False, False, False, False, False, False,
+                    #        False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match sci frames (any rows with ra, dec coordinates)
@@ -852,7 +883,10 @@ def parse_logfile(filename, date):
             objname = mobj.group(2).strip()
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
-            imgtype = 'sci'
+            ra      = mobj.group(5)
+            dec     = mobj.group(6)
+            epoch   = 2000.0
+            obstype = 'sci'
 
             mobj2 = re.match(pattern_2obj, objname)
             if mobj2:
@@ -876,16 +910,41 @@ def parse_logfile(filename, date):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, imgtype, objname,
-                            objname_A, objname_B, exptime, obstime)
-                    mask = (False, False, False, False,
-                            False, False, False, False)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              (ra,          False),
+                              (dec,         False),
+                              (epoch,       False),
+                              (exptime,     False),
+                              (obstime,     False),
+                              ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, obstime)
+                    #mask = (False, False, False, False,
+                    #        False, False, False, False)
                 else:
-                    item = (frameid, fileid, imgtype, objname,
-                            objname_A, objname_B, exptime, '')
-                    mask = (False, False, False, False,
-                            False, False, False, True)
-                logtable.add_row(item)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              (ra,          False),
+                              (dec,         False),
+                              (epoch,       False),
+                              (exptime,     False),
+                              ('',          True),
+                              ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, '')
+                    #mask = (False, False, False, False,
+                    #        False, False, False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match cal frames (any rows without coordinates)
@@ -895,7 +954,7 @@ def parse_logfile(filename, date):
             objname = mobj.group(2).strip()
             obstime = parse_timestr(mobj.group(3), date)
             exptime = float(mobj.group(4))
-            imgtype = 'cal'
+            obstype = 'cal'
 
             mobj2 = re.match(pattern_2obj, objname)
             if mobj2:
@@ -923,16 +982,41 @@ def parse_logfile(filename, date):
                 fileid  = '{:04d}{:02d}{:02d}{:04d}'.format(
                                 yy, mm, dd, frameid)
                 if iframe==0:
-                    item = (frameid, fileid, imgtype, objname,
-                            objname_A, objname_B, exptime, obstime)
-                    mask = (False, False, False, False,
-                            False, False, False, False)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              ('',          True),  # ra
+                              ('',          True),  # dec
+                              (0.0,         True),  # epoch
+                              (exptime,     False), # exptime
+                              (obstime,     False), # obstime
+                            ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, obstime)
+                    #mask = (False, False, False, False,
+                    #        False, False, False, False)
                 else:
-                    item = (frameid, fileid, imgtype, objname,
-                            objname_A, objname_B, exptime, '')
-                    mask = (False, False, False, False,
-                            False, False, False, True)
-                logtable.add_row(item)
+                    record = [(frameid,     False),
+                              (fileid,      False),
+                              (obstype,     False),
+                              (objname,     False),
+                              (objname_A,   False),
+                              (objname_B,   False),
+                              ('',          True),  # ra
+                              ('',          True),  # dec
+                              (0.0,         True),  # epoch
+                              (exptime,     False), # exptime
+                              ('',          True),  # obstime
+                            ]
+                    #item = (frameid, fileid, obstype, objname,
+                    #        objname_A, objname_B, exptime, '')
+                    #mask = (False, False, False, False,
+                    #        False, False, False, True)
+                item, mask = list(zip(*record))
+                logtable.add_row(item, mask=mask)
             continue
 
         # match is over. row does not match any case above
@@ -978,13 +1062,13 @@ def read_logfile(filename):
     pattern4 = '([\d\.]+)'                  # pattern for exptime
     pattern5 = '(\d{2}:\d{2}:\d{2}\.?\d?\d?)'       # pattern for ra
     pattern6 = '([+-]\d{2}:\d{2}:\d{2}\.?\d?\d?)'   # pattern for dec
-    pattern_bias = '{}\s*(bias)\s*{}\s*{}'.format(
+    pattern_bias = r'{}\s*(bias)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_thar = '{}\s*(thar)\s*{}\s*{}'.format(
+    pattern_thar = r'{}\s*(thar)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_flat = '{}\s*(flat)\s*{}\s*{}'.format(
+    pattern_flat = r'{}\s*(flat)\s*{}\s*{}'.format(
             pattern1, pattern3, pattern4)
-    pattern_star = '{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
+    pattern_star = r'{}\s*{}\s*{}\s*{}\s*{}\s*{}\s*2000'.format(
             pattern1, pattern2, pattern3, pattern4, pattern5, pattern6)
 
     # open log file with UTF-8 encoding, and ignore any errors.
@@ -1042,7 +1126,7 @@ def read_logfile(filename):
             frameid2 = frameid1
 
         # parse begin time of exposure
-        m1 = re.match('(\d{2}):(\d{2}):(\d{2})', timestr)
+        m1 = re.match(r'(\d{2}):(\d{2}):(\d{2})', timestr)
         hour   = int(m1.group(1))
         minute = int(m1.group(2))
         second = int(m1.group(3))
@@ -1056,7 +1140,7 @@ def read_logfile(filename):
         if mobj_star:
             # convert ra string to float in degree
             rastr = mobj.group(5)
-            m2 = re.match('(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', rastr)
+            m2 = re.match(r'(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', rastr)
             rah = int(m2.group(1))
             ram = int(m2.group(2))
             ras = float(m2.group(3))
@@ -1064,7 +1148,7 @@ def read_logfile(filename):
 
             # convert dec string to float in degree
             decstr = mobj.group(6)
-            m3 = re.match('([+-])(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', decstr)
+            m3 = re.match(r'([+-])(\d{2}):(\d{2}):(\d{2}\.?\d?\d?)', decstr)
             ded = int(m3.group(2))
             dem = int(m3.group(3))
             des = float(m3.group(4))
@@ -1088,6 +1172,134 @@ def read_logfile(filename):
     return loginfo
 
 
+def make_obslog(rawpath, logfile=None):
+
+    rawpath = Path(rawpath).expanduser().resolve()
+
+    if logfile is not None:
+        logfilepath = Path(logfile).expanduser().resolve()
+
+    #loginfo = read_logfile(logfilepath)
+    #for frameid, info in loginfo.items():
+    #    print(frameid, info)
+
+    # find date
+    date = None
+    for filepath in rawpath.iterdir():
+        if not filepath.is_file():
+            continue
+        if mobj := re.match(r'(\d{8})\d+\.fits', filepath.name):
+            if mobj:
+                datestr = mobj.group(1)
+                _date = (int(datestr[0:4]), int(datestr[4:6]), int(datestr[6:8]))
+                if date is None:
+                    date = _date
+                elif date != _date:
+                    print('Warning: Inconsistent Date for',filepath.name)
+
+    logtable, fibermode = parse_logfile(logfile, date)
+    print(logtable)
+
+    key_statime = 'DATE-OBS'
+    key_exptime = 'EXPOSURE'
+
+    nsat_lst    = []
+    q95_lst     = []
+    binning_lst = []
+    amp_lst     = []
+    gain_lst    = []
+    speed_lst   = []
+
+    maxobjlen = max([len(row['object']) for row in logtable])
+
+    fmt_str = ('  - {:7s} {:11s} {:5s} ' + '{{:<{}s}}'.format(maxobjlen) +
+                #' {:1s}I2 {:>7} {:23s} {:>7} {:>5}')
+                ' {:>7} {:23s} {:<7} {:<4} {:<4} {:>5} {:>7} {:>5}')
+    head_str = fmt_str.format('frameid', 'fileid', 'type', 'object',
+                'exptime', 'obsdate', 'binning', 'amp', 'gain', 'speed',
+                'nsat', 'q95')
+    print(head_str)
+
+    # start scanning the raw files
+    for logitem in logtable:
+        frameid    = logitem['frameid']
+        fileid     = logitem['fileid']
+        obstype    = logitem['obstype']
+        objname    = logitem['object']
+        exptime    = logitem['exptime']
+
+        filename = os.path.join(rawpath, '{}.fits'.format(fileid))
+        data, head = fits.getdata(filename, header=True)
+
+        # get science region
+        y1, y2, x1, x2 = get_sci_region(head)
+        data = data[y1:y2, x1:x2]
+
+
+        # get exposure time from FITS header
+        exptime_fits = head[key_exptime]
+        if abs(exptime - exptime_fits)>1.0:
+            print(('Error: FileID {}: '
+                    'Exposure time do not match. '
+                    '{} in log, {} in FITS').format(
+                    fileid, exptime, exptime_fits))
+
+        # get obsdate from FITS header
+        obsdate = dateutil.parser.parse(head[key_statime])
+
+        # update obsdate into log file
+        obsdatestr = obsdate.isoformat()[0:23]
+        if len(obsdatestr)==19:
+            obsdatestr += '.000'
+        logitem['obsdate'] = obsdatestr
+
+        # find CCD binning
+        binning = '1x1'
+
+        # CCD readout amplifier. optional amplifiers are:
+        # 'LT&B' (Left Top & Bottom),
+        # 'LBRT' (Left Bottom & Right Top)
+        amp = 'LTB'
+
+        # CCD readout gain
+        gain = 'STD'
+
+        # readout speed. optional modes are: 50k, 100k, 200k, 500k, 1M
+        speed = '100k'
+
+        # determine the total number of saturated pixels
+        nsat = (data>=65535).sum()
+
+        # find the 95% quantile
+        q95 = int(np.round(np.percentile(data, 95)))
+
+        binning_lst.append(binning)
+        amp_lst.append(amp)
+        gain_lst.append(gain)
+        speed_lst.append(speed)
+        nsat_lst.append(nsat)
+        q95_lst.append(q95)
+
+        # print log item with colors
+        string = fmt_str.format(
+                    '[{:d}]'.format(frameid), fileid,
+                    '({:3s})'.format(obstype),
+                    objname, exptime, obsdate.isoformat()[0:23],
+                    binning, amp, gain, speed, nsat, q95)
+        print(print_wrapper(string, logitem))
+
+    # sort by obsdate
+    #logtable.sort('obsdate')
+    logtable.add_column(binning_lst, name='binning')
+    logtable.add_column(amp_lst, name='amp')
+    logtable.add_column(gain_lst, name='gain')
+    logtable.add_column(speed_lst, name='speed')
+    logtable.add_column(nsat_lst, name='nsat')
+    logtable.add_column(q95_lst, name='q95')
+    logtable['object'].info.format = '%-{}s'.format(maxobjlen)
+
+    return logtable
+        
 
 def read_obsinfo(filename):
     """Read obsinfo file and convert it to a Astropy table.
@@ -1137,7 +1349,7 @@ def reduce_rawdata():
     # determine fiber mode ('single'/'double')
     fibermode = 'single'
     for logitem in logtable:
-        if re.match('\[A\][\s\S]*\[B\][\s\S]*', logitem['object']):
+        if re.match(r'\[A\][\s\S]*\[B\][\s\S]*', logitem['object']):
             fibermode = 'double'
             break
 

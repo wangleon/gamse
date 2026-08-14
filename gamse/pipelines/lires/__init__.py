@@ -145,7 +145,7 @@ def make_config():
 
 def parse_objectstring(string):
 
-    pattern = ('count(\d+) speed\-([a-zA-Z]+) gain(\d) '
+    pattern = (r'count(\d+) speed\-([a-zA-Z]+) gain(\d) '
                 '([a-zA-Z]+)\-(\d+)s bin\-\-?(\d)')
     mobj = re.match(pattern, string)
     count = int(mobj.group(1))

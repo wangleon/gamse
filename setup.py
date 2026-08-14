@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 from distutils.core import setup
-from gamse import __version__
 
 setup(
     name         = 'gamse',
-    version      = __version__,
+    version      = '0.98',
     description  = 'Data Reduction Software for High-resolution Echelle Spectrographs',
     author       = 'Liang Wang',
-    author_email = 'lwang@mpe.mpg.de',
+    author_email = 'wang.leon@gmail.com',
     license      = 'Apache-2.0',
     zip_safe     = False,
     scripts      = ['scripts/gamse',

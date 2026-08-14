@@ -1,0 +1,115 @@
+steps:
+  subtract_overscan:
+    class: OverscanSubtraction
+
+  subtract_bias:
+    class: BiasSubtraction
+
+  correct_flat:
+    class: FlatCorrection
+
+  subtract_scatter:
+    class: ScatterSubtraction
+
+  extract:
+    class: Extraction
+
+  optimal_extract:
+    class: OptimalExtraction
+
+  calibrate_wavelength:
+    class: CalibrateWavelength
+
+  apply_wavelength:
+    class: ApplyWavelength
+
+  save_spectrum:
+    class: SaveSpectrum
+
+pipeline:
+
+  master_bias:
+    class: ProcessBias
+    selector:
+      object: =Bias
+    operations:
+      - step: subtract_overscan
+    options:
+      mode: mean
+      cosmic_clip: 10
+      maxiter: 5
+      file: bias.fits
+    outputs:
+      - bias
+
+  master_flat:
+    class: ProcessFlat
+    selector:
+      object: =Flat
+    operations:
+      - step: subtract_overscan
+      - step: subtract_bias
+        input: "@master_bias.bias"
+    options:
+      mode: mean
+      cosmic_clip: 10
+      maxiter: 5
+      file: flat.fits
+    outputs:
+      - flat
+
+  trace:
+    class: TraceOrder
+    input: "@master_flat.flat"
+    options:
+      scan_step: 100
+      align_deg: 2
+      fig_deg: 4
+    outputs:
+      - trace
+
+  sens:
+    class: GetSensMap
+    input:
+      frame: "@master_flat.flat"
+      trace: "@trace.trace"
+    outputs:
+      - sens
+      - profile
+
+  wavelength:
+    class: CalibrateWavelength
+    selector:
+      object: =ThAr
+    operations:
+      - step: subtract_overscan
+      - step: subtract_bias
+        input: "@master_bias.bias"
+      - step: extract
+        input: "@trace.trace"
+      - step: calibrate_wavelength
+        xorder: 3
+        yorder: 3
+    outputs:
+      - wave
+
+  reduce_science:
+    class: ReduceScience
+    selector:
+      obstype: =sci
+    operations:
+      - step: subtract_overscan
+      - step: subtract_bias
+        input: "@master_bias.bias"
+      - step: correct_flat
+        input: "@sens.sens"
+      - step: subtract_scatter
+        input: "@trace.trace"
+      - step: optimal_extract
+        input:
+          trace: "@trace.trace"
+          profile: "@sens.profile"
+      - step: apply_wavelength
+        input: "@wavelength.wave"
+      - step: save_spectrum
+        filepath: "spec_{fileid}.fits"

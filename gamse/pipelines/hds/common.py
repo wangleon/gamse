@@ -22,7 +22,7 @@ def get_metadata(filename):
     # read data
     fname = os.path.basename(filename)
     
-    mobj = re.match('(HDSA\d{8})\.fits$', fname)
+    mobj = re.match(r'(HDSA\d{8})\.fits$', fname)
     frameid = mobj.group(1)
 
     head = fits.getheader(filename)

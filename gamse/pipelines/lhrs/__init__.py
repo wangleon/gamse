@@ -158,7 +158,7 @@ def make_obslog():
 
     # start scanning the raw files
     for fname in sorted(os.listdir(rawpath)):
-        mobj = re.match('(LHRS\d{6}[A-Z])(\d{4})([a-z])\.fits', fname)
+        mobj = re.match(r'(LHRS\d{6}[A-Z])(\d{4})([a-z])\.fits', fname)
         if not mobj:
             continue
         filename = os.path.join(rawpath, fname)
