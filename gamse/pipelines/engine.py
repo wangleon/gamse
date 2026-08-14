@@ -1,5 +1,6 @@
 import ast
 import yaml
+import inspect
 from pathlib import Path
 from importlib import import_module
 from abc import ABC, abstractmethod
@@ -58,8 +59,29 @@ def resolve_reference_alt(value, context=None):
 class Pipeline:
     def __init__(self, instrument, filename):
         self.instrument = instrument
-        with open(filename) as f:
+        
+        yaml_file = self.find_yamlfile(filename)
+
+        with open(yaml_file) as f:
             self.config = yaml.safe_load(f)
+
+    def find_yamlfile(self, filename):
+
+        yaml_path = Path(filename).expanduser().resolve()
+
+        if yaml_path.exists():
+            return yaml_path
+        else:
+            # get file of class
+            clsfile = inspect.getfile(type(self.instrument))
+            fname = 'pipeline_{}.yaml'.format(filename)
+            yaml_path = Path(clsfile).parent / fname
+            if yaml_path.exists():
+                return yaml_path
+
+        raise ValueError
+
+
 
     def run(self, context):
 
