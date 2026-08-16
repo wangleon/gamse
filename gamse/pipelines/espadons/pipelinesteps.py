@@ -4,7 +4,7 @@ import astropy.io.fits as fits
 from ...echelle.imageproc import combine_images, savitzky_golay_2d
 from ..engine import (CollectionPipelineStep, AnalysisPipelineStep,
                        StreamingPipelineStep)
-from .dataframe import ESPADONSFrame
+from ..base import ImageFrame
 from .common import (select_calib_from_database,
                     BackgroundFigure, SpatialProfileFigure)
 from .trace import find_apertures
@@ -16,7 +16,8 @@ class ProcessBias(CollectionPipelineStep):
         print('Process Bias')
 
         n_bias = len(results)
-        bias_data_lst = np.array([dataframe.data for dataframe in results])
+
+        bias_data_lst = np.array([result.frame.data for result in results])
         
         mode         = options.get('mode', 'mean')
         cosmic_clip  = options.get('cosmic_clip', 10)
@@ -37,15 +38,15 @@ class ProcessBias(CollectionPipelineStep):
 
         info = []
         info.append(('BIAS NFILE', n_bias))
-        for iframe, dataframe in enumerate(results):
+        for iframe, result in enumerate(results):
             key1   = 'BIAS FILEID {:03d}'.format(iframe+1)
-            value1 = dataframe.head['FILENAME']
+            value1 = result.frame.head['FILENAME']
             info.append((key1, value1))
         info.append(('BIAS COMBINE_MODE', mode))
         info.append(('BIAS COSMIC_CLIP', cosmic_clip))
         info.append(('BIAS MAXITER', maxiter))
 
-        bias_frame = ESPADONSFrame(
+        bias_frame = ImageFrame(
                         data = bias_combine,
                         head = fits.Header(),
                         mask = np.zeros_like(bias_combine, dtype=np.int16),
@@ -67,7 +68,7 @@ class ProcessFlat(CollectionPipelineStep):
         print('Process Flat')
 
         n_flat = len(results)
-        flat_data_lst = np.array([dataframe.data for dataframe in results])
+        flat_data_lst = np.array([result.frame.data for result in results])
 
         mode         = options.get('mode', 'mean')
         cosmic_clip  = options.get('cosmic_clip', 10)
@@ -87,15 +88,15 @@ class ProcessFlat(CollectionPipelineStep):
                 )
         info = []
         info.append(('FLAT NFILE', n_flat))
-        for iframe, dataframe in enumerate(results):
+        for iframe, result in enumerate(results):
             key1   = 'FLAT FILEID {:03d}'.format(iframe+1)
-            value1 = dataframe.head['FILENAME']
+            value1 = result.frame.head['FILENAME']
             info.append((key1, value1))
         info.append(('FLAT COMBINE_MODE', mode))
         info.append(('FLAT COSMIC_CLIP', cosmic_clip))
         info.append(('FLAT MAXITER', maxiter))
 
-        flat_frame = ESPADONSFrame(
+        flat_frame = ImageFrame(
                 data = flat_combine,
                 head = fits.Header(),
                 mask = np.zeros_like(flat_combine, dtype=np.int16),
@@ -141,9 +142,9 @@ class TraceOrder(AnalysisPipelineStep):
         aperset_A.save_txt(tracA_file)
         aperset_B.save_txt(tracB_file)
 
-        self.aperset = aperset
-        self.aperset_A = aperset_A
-        self.aperset_B = aperset_B
+        #self.aperset = aperset
+        #self.aperset_A = aperset_A
+        #self.aperset_B = aperset_B
 
         context[self.name] = {
                 'trace': aperset,
@@ -176,11 +177,11 @@ class GetSensMap(AnalysisPipelineStep):
         fig_spatial.close()
 
         head = fits.Header()
-        sens_frame = ESPADONSFrame(data = sens,
-                                   head = head,
-                                   mask = flat_mask,
-                                   info = flat_frame.info,
-                                   )
+        sens_frame = ImageFrame(data = sens,
+                                head = head,
+                                mask = flat_mask,
+                                info = flat_frame.info,
+                                )
 
         sens_path = context.midproc_path / 'sens.fits'
         sens_frame.save(sens_path, overwrite=True)
@@ -191,8 +192,18 @@ class GetSensMap(AnalysisPipelineStep):
 
 class CalibrateWavelength(CollectionPipelineStep):
 
-    def finish(self, result, context, inputs, **options):
-        print('Do Calibrate Wavelength')
+    def finish(self, results, context, inputs, **options):
+
+        calib_lst = []
+        for result in results:
+            dataframe = result.frame
+            calib     = result['calib']
+            calib_lst.append(calib)
+            fileid = dataframe.head['FILENAME']
+            fname = 'wlcalib_{}.fits'.format(fileid)
+            filename = context.onedspec_path / fname
+            dataframe.save(filename, overwrite=True)
+            print('spectrum saved to', filename)
         context[self.name] = {
                 'wave': np.ones((2,2)),
                 }
@@ -200,5 +211,3 @@ class CalibrateWavelength(CollectionPipelineStep):
 class ReduceScience(StreamingPipelineStep):
     def process_frame(self, frame, context):
         print('Reduce Science')
-
-
