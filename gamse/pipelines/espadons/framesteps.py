@@ -12,46 +12,30 @@ from ...echelle.wlcalib import (wlcalib, recalib,
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from ..engine import FrameStep, resolve_reference, FrameResult
 from ..base import ImageFrame, SpectrumFrame
+from ..common import get_spectype
 from .dataframe import read_dataframe
 
 class OverscanSubtractionStep(FrameStep):
     def run(self, result, context, **options):
         # get dataframe from input result
         dataframe = result.frame
+        data = dataframe.data
+        mask = dataframe.mask
 
-        data, mask = correct_overscan(dataframe.data, dataframe.mask, **options)
-        info = dataframe.info.copy()
-        info.append(('OVERSCAN', True))
+        data, mask = correct_overscan(data, mask, **options)
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION OVERSCAN '
+        extra_head.append((prefix + 'CORRECTED', True))
 
         new_dataframe = ImageFrame(data = data,
                                    head = dataframe.head,
                                    mask = mask,
-                                   info = info,
+                                   extra_head = extra_head,
                                    )
         new_result = FrameResult(frame = new_dataframe)
         return new_result
         
-
-class BiasSubtractionStep(FrameStep):
-    def run(self, result, context, **options):
-        bias_frame = resolve_reference(options['input'], context)
-
-        dataframe = result.frame
-
-        data = dataframe.data - bias_frame.data
-
-        info = dataframe.info.copy()
-        info.append(('BIAS', True))
-        info.append(('BIAS MEAN', bias_frame.data.mean()))
-        info.append(('BIAS MEDIAN', np.median(bias_frame.data)))
-
-        new_dataframe = ImageFrame(data = data,
-                          head = dataframe.head,
-                          mask = dataframe.mask,
-                          info = info,
-                          )
-        new_result = FrameResult(frame = new_dataframe)
-        return new_result
 
 class FlatCorrectionStep(FrameStep):
     def run(self, result, context, **options):
@@ -59,20 +43,21 @@ class FlatCorrectionStep(FrameStep):
 
 class ExtractionStep(FrameStep):
     def run(self, result, context, **options):
-        aperset = resolve_reference(options['input'], context)
+        product = resolve_reference(options['input'], context)
+        aperset = product.value
 
         lower_limit = 15
         upper_limit = 15
 
         dataframe = result.frame
+        data = dataframe.data
+        mask = dataframe.mask
 
-        spectra1d = extract_aperset(
-                dataframe.data,
-                dataframe.mask,
-                apertureset = aperset,
-                lower_limit = lower_limit,
-                upper_limit = upper_limit,
-                )
+        spectra1d = extract_aperset(data, mask,
+                                    apertureset = aperset,
+                                    lower_limit = lower_limit,
+                                    upper_limit = upper_limit,
+                                    )
 
         ######### initialize spectype
         ny, nx = dataframe.data.shape
@@ -83,19 +68,7 @@ class ExtractionStep(FrameStep):
         else:
             raise ValueError
 
-        types = [
-                ('aperture',   np.int16),
-                ('order',      np.int16),
-                ('x',          (np.float32, ndisp)),
-                ('y',          (np.float32, ndisp)),
-                ('wavelength', (np.float64, ndisp)),
-                ('flux',       (np.float32, ndisp)),
-                ('error',      (np.float32, ndisp)),
-                ('background', (np.float32, ndisp)),
-                ('mask',       (np.int32,   ndisp)),
-                ]
-        names, formats = list(zip(*types))
-        spectype = np.dtype({'names': names, 'formats': formats})
+        spectype = get_spectype(ndisp)
 
         # pack to a structured array
         spec = []
@@ -118,16 +91,17 @@ class ExtractionStep(FrameStep):
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
-        info = dataframe.info.copy()
-        info.append(('EXTRACTION', True))
-        info.append(('EXTRACTION METHOD', 'SUM'))
-        info.append(('EXTRACTION LOWERLIM', lower_limit))
-        info.append(('EXTRACTION UPPERLIM', upper_limit))
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION EXTRACTION '
+        extra_head.append((prefix + 'METHOD', 'SUM'))
+        extra_head.append((prefix + 'LOWERLIM', lower_limit))
+        extra_head.append((prefix + 'UPPERLIM', upper_limit))
 
         specframe = SpectrumFrame(data = spec,
                                   head = dataframe.head,
-                                  info = info,
+                                  extra_head = extra_head,
                                   )
+        print('  - Extraction Finished. {} orders extracted'.format(len(spec)))
         new_result = FrameResult(frame = specframe)
 
         return new_result
