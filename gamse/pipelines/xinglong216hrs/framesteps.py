@@ -17,6 +17,7 @@ from ...echelle.wlcalib import (wlcalib, recalib,
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
 from ..engine import FrameStep, resolve_reference, FrameResult
 from ..base import ImageFrame, SpectrumFrame
+from ..common import get_spectype
 
 from .common import (select_calib_from_database,
                      get_interorder_background,
@@ -45,31 +46,6 @@ class OverscanSubtractionStep(FrameStep):
         new_result = FrameResult(frame = new_dataframe)
         return new_result
 
-
-class BiasSubtractionStep(FrameStep):
-    def run(self, result, context, **options):
-
-        dataframe = result.frame
-
-        # get bias from from context
-        bias_product = resolve_reference(options['input'], context)
-        bias_frame = bias_product.value
-
-        data = dataframe.data - bias_frame.data
-
-        extra_head = dataframe.extra_head.copy()
-        prefix = 'HIERARCH REDUCTION BIAS '
-        extra_head.append((prefix+'CORRECTED', True))
-        extra_head.append((prefix+'MEAN', bias_frame.data.mean()))
-        extra_head.append((prefix+'MEDIAN', np.median(bias_frame.data)))
-
-        new_dataframe = ImageFrame(data = data,
-                          head = dataframe.head,
-                          mask = dataframe.mask,
-                          extra_head = extra_head,
-                          )
-        new_result = FrameResult(frame = new_dataframe)
-        return new_result
 
 class FlatCorrectionStep(FrameStep):
     def run(self, result, context, **options):
@@ -422,28 +398,6 @@ class ApplyWavelengthStep(FrameStep):
         obsdate = dataframe.extra_head['LOGINFO OBSDATE']
         exptime = dataframe.extra_head['LOGINFO EXPTIME']
 
-        #rms_threshold    = 0.005
-        #group_contiguous = True
-        #time_diff        = 120
-
-        #ref_calib_lst = select_calib_auto(calib_lst,
-        #                                  rms_threshold    = rms_threshold,
-        #                                  group_contiguous = group_contiguous,
-        #                                  time_diff        = time_diff,
-        #                                  )
-        #ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
-
-        ## print ThAr summary and selected calib
-        #fmt_string = ' [{:3d}] {} - ({:4g} sec) - {:4d}/{:4d} RMS = {:7.5f}'
-        #for frameid, calib in sorted(calib_lst.items()):
-        #    string = fmt_string.format(frameid, calib['fileid'],
-        #                calib['exptime'], calib['nuse'], calib['ntot'],
-        #                calib['std'])
-        #    if calib['fileid'] in ref_fileid_lst:
-        #        string = '\033[91m{} [selected]\033[0m'.format(string)
-        #    print(string)
-
-
         # wavelength calibration
         weight_lst = get_calib_weight_lst(ref_calib_lst,
                                           obsdate = obsdate,
@@ -471,9 +425,6 @@ class ApplyWavelengthStep(FrameStep):
                                   head = dataframe.head,
                                   extra_head = extra_head,
                                   )
-        #filepath = context.onedspec_path / 'newspec_{}.fits'.format(fileid)
-        #specframe.save(filepath, overwrite=True)
-        #print('spec saved to', filepath)
         new_result = FrameResult(frame = specframe)
 
         return new_result
@@ -499,22 +450,6 @@ class SaveSpectrumStep(FrameStep):
 
         return result
 
-
-def get_spectype(ndisp):
-    types = [
-            ('aperture',   np.int16),
-            ('order',      np.int16),
-            ('x',          (np.float32, ndisp)),
-            ('y',          (np.float32, ndisp)),
-            ('wavelength', (np.float64, ndisp)),
-            ('flux',       (np.float32, ndisp)),
-            ('error',      (np.float32, ndisp)),
-            ('background', (np.float32, ndisp)),
-            ('mask',       (np.int32,   ndisp)),
-            ]
-    names, formats = list(zip(*types))
-    spectype = np.dtype({'names': names, 'formats': formats})
-    return spectype
 
 def correct_overscan(data, binning, amp):
 
