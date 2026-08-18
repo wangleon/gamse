@@ -1,4 +1,5 @@
 from ..base import Instrument
+from ..common import BiasSubtractionStep
 from .pipelinesteps import *
 from .framesteps import *
 from .dataframe import read_dataframe

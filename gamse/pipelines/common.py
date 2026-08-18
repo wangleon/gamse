@@ -12,6 +12,9 @@ import astropy.io.fits as fits
 
 from ..utils.obslog import read_obslog
 
+from .engine import FrameStep, resolve_reference, FrameResult
+from .base import ImageFrame
+
 def load_config(pattern, verbose=True):
     """Load the config file.
 
@@ -216,17 +219,17 @@ def save_fits(data, card_lst, outfile):
         print('Data type error')
         raise ValueError
 
-def get_specdtype(ndisp):
+def get_spectype(n):
     types = [
             ('aperture',    np.int16),
             ('order',       np.int16),
-            ('x',           (np.float32, nx)),
-            ('y',           (np.float32, nx)),
-            ('wavelength',  (np.float64, nx)),
-            ('flux',        (np.float32, nx)),
-            ('error',       (np.float32, nx)),
-            ('background',  (np.float32, nx)),
-            ('mask',        (np.int16,   nx)),
+            ('x',           (np.float32, n)),
+            ('y',           (np.float32, n)),
+            ('wavelength',  (np.float64, n)),
+            ('flux',        (np.float32, n)),
+            ('error',       (np.float32, n)),
+            ('background',  (np.float32, n)),
+            ('mask',        (np.int16,   n)),
             ]
     names, formats = list(zip(*types))
     spectype = np.dtype({'names': names, 'formats': formats})
@@ -239,3 +242,28 @@ class Processor(Protocol):
 
     def process(self):
         ...
+
+class BiasSubtractionStep(FrameStep):
+    def run(self, result, context, **options):
+
+        dataframe = result.frame
+
+        # get bias from from context
+        bias_product = resolve_reference(options['input'], context)
+        bias_frame = bias_product.value
+
+        data = dataframe.data - bias_frame.data
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION BIAS '
+        extra_head.append((prefix+'CORRECTED', True))
+        extra_head.append((prefix+'MEAN', bias_frame.data.mean()))
+        extra_head.append((prefix+'MEDIAN', np.median(bias_frame.data)))
+
+        new_dataframe = ImageFrame(data = data,
+                                   head = dataframe.head,
+                                   mask = dataframe.mask,
+                                   extra_head = extra_head,
+                                   )
+        new_result = FrameResult(frame = new_dataframe)
+        return new_result

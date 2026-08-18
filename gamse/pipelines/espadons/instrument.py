@@ -1,7 +1,7 @@
 from ..base import Instrument
 from .pipelinesteps import *
 from .framesteps import *
-from .dataframe import ESPADONSFrame
+from .dataframe import read_dataframe
 
 class ESPADONS(Instrument):
     name = 'ESPADONS'
@@ -13,7 +13,7 @@ class ESPADONS(Instrument):
         'ProcessFlat':          ProcessFlat,
         'TraceOrder':           TraceOrder,
         'GetSensMap':           GetSensMap,
-        'CalibrateWavelength':   CalibrateWavelength,
+        'CalibrateWavelength':  CalibrateWavelength,
         'ReduceScience':        ReduceScience,
         }
     FRAME_STEPS = {
@@ -26,6 +26,5 @@ class ESPADONS(Instrument):
         }
 
     def read(self, filepath):
-        dataframe = ESPADONSFrame.read(filepath)
-        return dataframe
+        return read_dataframe(filepath)
 

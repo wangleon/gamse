@@ -1,5 +1,7 @@
+import dateutil.parser
 import numpy as np
 import astropy.io.fits as fits
+import matplotlib.pyplot as plt
 from ...utils.onedarray import iterative_savgol_filter
 from ...echelle.wlcalib import (wlcalib, recalib,
                                 get_calib_weight_lst, find_caliblamp_offset,
@@ -8,46 +10,54 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 reference_self_wavelength,
                                 )
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
-from ..engine import FrameStep, resolve_reference
-from .dataframe import ESPADONSFrame
+from ..engine import FrameStep, resolve_reference, FrameResult
+from ..base import ImageFrame, SpectrumFrame
+from ..common import get_spectype
+from .dataframe import read_dataframe
 
 class OverscanSubtractionStep(FrameStep):
-    def run(self, dataframe, context, **options):
-        data, mask = correct_overscan(dataframe.data, dataframe.mask, **options)
-        info = dataframe.info.copy()
-        return ESPADONSFrame(data = data,
-                             head = dataframe.head,
-                             mask = mask,
-                             info = info,
-                             )
+    def run(self, result, context, **options):
+        # get dataframe from input result
+        dataframe = result.frame
+        data = dataframe.data
+        mask = dataframe.mask
 
-class BiasSubtractionStep(FrameStep):
-    def run(self, dataframe, context, **options):
-        bias_frame = resolve_reference(options['input'], context)
-        data = dataframe.data - bias_frame.data
-        info = dataframe.info.copy()
-        return ESPADONSFrame(data = data,
-                             head = dataframe.head,
-                             mask = dataframe.mask,
-                             info = info,
-                             )
+        data, mask = correct_overscan(data, mask, **options)
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION OVERSCAN '
+        extra_head.append((prefix + 'CORRECTED', True))
+
+        new_dataframe = ImageFrame(data = data,
+                                   head = dataframe.head,
+                                   mask = mask,
+                                   extra_head = extra_head,
+                                   )
+        new_result = FrameResult(frame = new_dataframe)
+        return new_result
+        
 
 class FlatCorrectionStep(FrameStep):
-    def run(self, dataframe, context, **options):
+    def run(self, result, context, **options):
         print("This is a flat correction for a single frame")
 
 class ExtractionStep(FrameStep):
-    def run(self, dataframe, context, **options):
-        aperset = resolve_reference(options['input'], context)
+    def run(self, result, context, **options):
+        product = resolve_reference(options['input'], context)
+        aperset = product.value
 
-        # extract ThAr spectra
-        spectra1d = extract_aperset(
-                dataframe.data,
-                dataframe.mask,
-                apertureset = aperset,
-                lower_limit = 15,
-                upper_limit = 15,
-                )
+        lower_limit = 15
+        upper_limit = 15
+
+        dataframe = result.frame
+        data = dataframe.data
+        mask = dataframe.mask
+
+        spectra1d = extract_aperset(data, mask,
+                                    apertureset = aperset,
+                                    lower_limit = lower_limit,
+                                    upper_limit = upper_limit,
+                                    )
 
         ######### initialize spectype
         ny, nx = dataframe.data.shape
@@ -58,20 +68,7 @@ class ExtractionStep(FrameStep):
         else:
             raise ValueError
 
-        types = [
-                ('aperture',   np.int16),
-                ('order',      np.int16),
-                ('x',          (np.float32, ndisp)),
-                ('y',          (np.float32, ndisp)),
-                ('wavelength', (np.float64, ndisp)),
-                ('flux',       (np.float32, ndisp)),
-                ('error',      (np.float32, ndisp)),
-                ('background', (np.float32, ndisp)),
-                ('mask',       (np.int32,   ndisp)),
-                ]
-        names, formats = list(zip(*types))
-        spectype = np.dtype({'names': names, 'formats': formats})
-
+        spectype = get_spectype(ndisp)
 
         # pack to a structured array
         spec = []
@@ -94,15 +91,30 @@ class ExtractionStep(FrameStep):
             spec.append(row)
         spec = np.array(spec, dtype=spectype)
 
-        return spec
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION EXTRACTION '
+        extra_head.append((prefix + 'METHOD', 'SUM'))
+        extra_head.append((prefix + 'LOWERLIM', lower_limit))
+        extra_head.append((prefix + 'UPPERLIM', upper_limit))
+
+        specframe = SpectrumFrame(data = spec,
+                                  head = dataframe.head,
+                                  extra_head = extra_head,
+                                  )
+        print('  - Extraction Finished. {} orders extracted'.format(len(spec)))
+        new_result = FrameResult(frame = specframe)
+
+        return new_result
 
 
 class CalibrateWavelengthStep(FrameStep):
-    def run(self, spec, context, **options):
+    def run(self, result, context, **options):
         print("Calibrate Wavelength")
-        
-        filepath = 'new.fits'
 
+        dataframe = result.frame
+
+        # get reference spec and calib
+        filepath = 'new.fits'
         hdu_lst = fits.open(filepath)
         head = hdu_lst[0].header
         spec = hdu_lst[1].data
@@ -114,7 +126,13 @@ class CalibrateWavelengthStep(FrameStep):
         ref_calib = calib
 
         ref_direction = ref_calib['direction']
-        print(self.parent.instrument.direction)
+
+        # self.parent is the FrameEngine
+        # self.parent.parent is the PipelineStep
+        # self.parent.parent is the Pipeline
+        pipeline = self.parent.parent.parent
+        instrument = pipeline.instrument
+        direction = instrument.direction
 
         if direction[1] == '?':
             aperture_k = None
@@ -130,15 +148,15 @@ class CalibrateWavelengthStep(FrameStep):
         else:
             pixel_k = -1
 
-        result = find_caliblamp_offset(self.ref_spec, spec,
-                                       aperture_k       = aperture_k,
-                                       pixel_k          = pixel_k,
-                                       pixel_range      = (-30, 30),
-                                       max_order_offset = 10,
-                                       mode             = 'debug',
-                                      )
-        aperture_koffset = (result[0], float(result[1]))
-        pixel_koffset    = (result[2], float(result[3]))
+        _result = find_caliblamp_offset(ref_spec, dataframe.data,
+                                        aperture_k       = aperture_k,
+                                        pixel_k          = pixel_k,
+                                        pixel_range      = (-30, 30),
+                                        max_order_offset = 10,
+                                        mode             = 'debug',
+                                       )
+        aperture_koffset = (_result[0], float(_result[1]))
+        pixel_koffset    = (_result[2], float(_result[3]))
 
         use_prev_fitpar = False
         xorder      = None if use_prev_fitpar else 4
@@ -150,50 +168,60 @@ class CalibrateWavelengthStep(FrameStep):
 
         wlfit_filter = lambda item: item['pixel'] < 4200
         
-        calib, fig = recalib(spec,
-            ref_spec         = ref_spec,
-            linelist         = 'ThAr',
-            aperture_koffset = aperture_koffset,
-            pixel_koffset    = pixel_koffset,
-            ref_calib        = ref_calib,
-            xorder           = xorder,
-            yorder           = yorder,
-            maxiter          = maxiter,
-            clipping         = clipping,
-            window_size      = window_size,
-            q_threshold      = q_threshold,
-            direction        = direction,
-            fit_filter       = wlfit_filter,
-            )
+        calib, fig = recalib(dataframe.data,
+                             ref_spec         = ref_spec,
+                             linelist         = 'ThAr',
+                             aperture_koffset = aperture_koffset,
+                             pixel_koffset    = pixel_koffset,
+                             ref_calib        = ref_calib,
+                             xorder           = xorder,
+                             yorder           = yorder,
+                             maxiter          = maxiter,
+                             clipping         = clipping,
+                             window_size      = window_size,
+                             q_threshold      = q_threshold,
+                             direction        = direction,
+                             fit_filter       = wlfit_filter,
+                             )
+
+        fileid   = dataframe.head['FILENAME']
+        date_obs = dataframe.head['DATE-OBS']
+        utc_obs  = dataframe.head['UTC-OBS']
+        exptime  = dataframe.head['EXPTIME']
+        # get obsdate
+        obsdate_str = date_obs + 'T' + utc_obs
+        obsdt = dateutil.parser.parse(obsdate_str)
+        obsdate = obsdt.isoformat()[0:23]
 
         
-        #title = '{}.fits'.format(fileid)
-        #fig.suptitle(title)
-        #figname = 'wlcalib_{}.png'.format(fileid)
-        figname = 'wlcalib_xxx.png'
+        title = '{}.fits'.format(fileid)
+        fig.suptitle(title)
+        figname = 'wlcalib_{}.png'.format(fileid)
         figpath = context.figure_path / figname
         fig.savefig(figpath)
         plt.close(fig)
         print('wlcalib figure saved to ', figpath)
 
         # add more infos in calib
-        #calib['fileid']  = fileid
-        #calib['obsdate'] = obsdate
-        #calib['exptime'] = exptime
+        calib['fileid']  = fileid
+        calib['obsdate'] = obsdate
+        calib['exptime'] = exptime
         
         # reference the ThAr spectra
         spec, card_lst, identlist = reference_self_wavelength(spec, calib)
 
-        head = fits.Header() # temporary
-        prefix = 'HIERARCH GAMSE WLCALIB '
+        info = dataframe.info.copy()
         for key, value in card_lst:
-            head.append((prefix+key, value))
+            info.append(('WLCALIB '+key, value))
 
-        hdu_lst = fits.HDUList([
-                    fits.PrimaryHDU(header=head),
-                    fits.BinTableHDU(spec),
-                    fits.BinTableHDU(identlist),
-                    ])
+        spec_frame = SpectrumFrame(data = spec,
+                                   head = dataframe.head,
+                                   info = info,
+                                   ident_lst = identlist,
+                                   )
+        new_result = FrameResult(frame = spec_frame)
+        new_result['calib'] = calib
+        return new_result
 
 class ApplyWavelengthStep(FrameStep):
     def run(self, dataframe, context, **options):

@@ -5,7 +5,7 @@ import astropy.io.fits as fits
 
 from ..base import DataFrame, ImageFrame, SpectrumFrame
 
-def read_dataframe(filepath):
+def read_dataframe(filepath, logitem=None):
 
     FRAME_CLASSES = (
             RawImageFrame,
@@ -16,7 +16,16 @@ def read_dataframe(filepath):
     with fits.open(filepath) as hdulst:
         for cls in FRAME_CLASSES:
             if cls.match(hdulst):
-                return cls.from_hdulst(hdulst)
+                obj = cls.from_hdulst(hdulst)
+
+                # append logitem into extra_head
+                if logitem is not None:
+                    for col in logitem.colnames:
+                        value = logitem[col]
+                        key = 'HIERARCH LOGINFO ' + col.upper()
+                        obj.extra_head.append((key, value))
+                return obj
+
 
     raise TypeError('Unknown FITS format')
 
@@ -69,8 +78,8 @@ class RawImageFrame(ImageFrame):
     def match(cls, hdulst):
         return (hdulst[0].data is None
                 and len(hdulst)==2
-                and hdulst[1].data.dtype == np.uint16
                 and hdulst[1].data.ndim == 2
+                and hdulst[1].data.dtype == np.uint16
                 )
 
     @classmethod
