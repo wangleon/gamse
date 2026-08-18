@@ -33,25 +33,24 @@ class ProcessBias(CollectionPipelineStep):
         # determine number of cores to be used
         ncores = os.cpu_count()
 
-        bias_combine = combine_images(
-                bias_data_lst,
-                mode        = mode,
-                upper_clip  = cosmic_clip,
-                maxiter     = maxiter,
-                maskmode    = maskmode,
-                ncores      = ncores,
-                )
+        bias_combine = combine_images(bias_data_lst,
+                                      mode       = mode,
+                                      upper_clip = cosmic_clip,
+                                      maxiter    = maxiter,
+                                      maskmode   = maskmode,
+                                      ncores     = ncores,
+                                      )
 
         extra_head = fits.Header()
         prefix = 'HIERARCH REDUCTION BIAS '
-        extra_head.append((prefix+'NFILE', n_bias))
+        extra_head.append((prefix + 'NFRAMES', n_bias))
         for iframe, result in enumerate(results):
             key1   = prefix + 'FILEID {:03d}'.format(iframe+1)
             value1 = result.frame.extra_head['LOGINFO FILEID']
             extra_head.append((key1, value1))
-        extra_head.append((prefix+'COMBINE_MODE', mode))
-        extra_head.append((prefix+'COSMIC_CLIP', cosmic_clip))
-        extra_head.append((prefix+'MAXITER', maxiter))
+        extra_head.append((prefix + 'COMBINE_MODE', mode))
+        extra_head.append((prefix + 'COSMIC_CLIP', cosmic_clip))
+        extra_head.append((prefix + 'MAXITER', maxiter))
 
         bias_frame = ImageFrame(
                         data = bias_combine,
@@ -67,9 +66,6 @@ class ProcessBias(CollectionPipelineStep):
             print('Bias saved to ', filepath)
 
         context.register(self.name, 'bias', bias_frame, filepath, 'image')
-        #context[self.name] = {
-        #        'bias': bias_frame
-        #        }
 
 class ProcessFlat(CollectionPipelineStep):
     def finish(self, results, context, inputs, **options):
@@ -97,14 +93,14 @@ class ProcessFlat(CollectionPipelineStep):
 
         extra_head = fits.Header()
         prefix = 'HIERARCH REDUCTION FLAT '
-        extra_head.append((prefix+'NFILE', n_flat))
+        extra_head.append((prefix + 'NFRAMES', n_flat))
         for iframe, result in enumerate(results):
             key1   = prefix + 'FILEID {:03d}'.format(iframe+1)
             value1 = result.frame.extra_head['LOGINFO FILEID']
             extra_head.append((key1, value1))
-        extra_head.append((prefix+'COMBINE_MODE', mode))
-        extra_head.append((prefix+'COSMIC_CLIP', cosmic_clip))
-        extra_head.append((prefix+'MAXITER', maxiter))
+        extra_head.append((prefix + 'COMBINE_MODE', mode))
+        extra_head.append((prefix + 'COSMIC_CLIP', cosmic_clip))
+        extra_head.append((prefix + 'MAXITER', maxiter))
 
         flat_frame = ImageFrame(
                 data = flat_combine,
@@ -120,9 +116,6 @@ class ProcessFlat(CollectionPipelineStep):
             print('Flat saved to ', filepath)
 
         context.register(self.name, 'flat', flat_frame, filepath, 'image')
-        #context[self.name] = {
-        #        'flat': flat_frame,
-        #        }
 
 class TraceOrder(AnalysisPipelineStep):
     def process(self, context, inputs, **options):
@@ -185,9 +178,7 @@ class TraceOrder(AnalysisPipelineStep):
         aperset.save_txt(aperset_filename)
         aperset.save_reg(aperset_regname)
 
-
         context.register(self.name, 'trace', aperset, aperset_filename, 'aperset')
-        #context[self.name] = {'trace': aperset}
 
 class GetSensMap(AnalysisPipelineStep):
     def process(self, context, inputs, **options):
@@ -242,14 +233,9 @@ class GetSensMap(AnalysisPipelineStep):
         profile_path = context.midproc_path / 'cross_profile.fits'
         crossprofile.save(profile_path)
 
-
         context.register(self.name, 'sens', sens_frame, sens_path, 'image')
         context.register(self.name, 'profile', crossprofile, profile_path, 'profile')
         
-        #context[self.name] = {
-        #        'sens': sens_frame
-        #        }
-
 class CalibrateWavelength(CollectionPipelineStep):
     def finish(self, results, context, inputs, **options):
 
