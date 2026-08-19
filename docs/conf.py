@@ -273,7 +273,7 @@ intersphinx_mapping = {
 
 #numpydoc_show_class_members = False
 
-from sphinx.apidoc import main
+from sphinx.ext.apidoc import main
 
 def run_apidoc(_):
     sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
