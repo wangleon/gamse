@@ -101,7 +101,7 @@ def extract_date(string):
         string (str):
         
     """
-    date_exp = re.compile('(\d{4})[-]?(\d{2})[-]?(\d{2})')
+    date_exp = re.compile(r'(\d{4})[-]?(\d{2})[-]?(\d{2})')
     mobj = date_exp.match(string)
     if mobj is None:
         return None

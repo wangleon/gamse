@@ -277,9 +277,9 @@ def show_onedspec():
         # if not a filename, try to find the corresponding items in obslog
         else:
             if config is None:
-                config = common.load_config('\S*\.cfg$')
+                config = common.load_config(r'\S*\.cfg$')
             if logtable is None:
-                logtable = common.load_obslog('\S*\.obslog$')
+                logtable = common.load_obslog(r'\S*\.obslog$')
 
             # if arg is a number, find the corresponding filename in obslog
             if arg.isdigit():
@@ -426,8 +426,8 @@ def plot_spectra1d():
 def convert_onedspec():
     """Convert one-dimensional spectra.
     """
-    config = common.load_config('\S*\.cfg$', verbose=False)
-    logtable = common.load_obslog('\S*\.obslog$', fmt='astropy', verbose=False)
+    config = common.load_config(r'\S*\.cfg$', verbose=False)
+    logtable = common.load_obslog(r'\S*\.obslog$', fmt='astropy', verbose=False)
 
     section = config['reduce']
     odspath     = section.get('odspath', None)
@@ -451,7 +451,7 @@ def convert_onedspec():
                     arg = int(arg)
                 for logitem in logtable:
                     if arg == logitem['frameid'] or arg == logitem['fileid']:
-                        pattern = str(logitem['fileid'])+'\S*'
+                        pattern = str(logitem['fileid'])+r'\S*'
                         for fname in sorted(os.listdir(odspath)):
                             filename = os.path.join(odspath, fname)
                             if os.path.isfile(filename) \
