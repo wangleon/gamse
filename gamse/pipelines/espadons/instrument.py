@@ -1,4 +1,5 @@
 from ..base import Instrument
+from ..common import BiasSubtractionStep, FlatCorrectionStep
 from .pipelinesteps import *
 from .framesteps import *
 from .dataframe import read_dataframe
@@ -25,6 +26,6 @@ class ESPADONS(Instrument):
         'ApplyWavelength':      ApplyWavelengthStep,
         }
 
-    def read(self, filepath):
-        return read_dataframe(filepath)
+    def read(self, filepath, logitem):
+        return read_dataframe(filepath, logitem)
 

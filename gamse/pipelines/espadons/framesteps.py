@@ -37,10 +37,6 @@ class OverscanSubtractionStep(FrameStep):
         return new_result
         
 
-class FlatCorrectionStep(FrameStep):
-    def run(self, result, context, **options):
-        print("This is a flat correction for a single frame")
-
 class ExtractionStep(FrameStep):
     def run(self, result, context, **options):
         product = resolve_reference(options['input'], context)
@@ -208,15 +204,17 @@ class CalibrateWavelengthStep(FrameStep):
         calib['exptime'] = exptime
         
         # reference the ThAr spectra
-        spec, card_lst, identlist = reference_self_wavelength(spec, calib)
+        spec, card_lst, identlist = reference_self_wavelength(
+                                        dataframe.data, calib)
 
-        info = dataframe.info.copy()
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION WLCALIB '
         for key, value in card_lst:
-            info.append(('WLCALIB '+key, value))
+            extra_head.append((prefix+key, value))
 
         spec_frame = SpectrumFrame(data = spec,
                                    head = dataframe.head,
-                                   info = info,
+                                   extra_head = extra_head,
                                    ident_lst = identlist,
                                    )
         new_result = FrameResult(frame = spec_frame)

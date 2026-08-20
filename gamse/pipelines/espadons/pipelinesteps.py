@@ -36,21 +36,22 @@ class ProcessBias(CollectionPipelineStep):
                 ncores      = ncores,
                 )
 
-        info = []
-        info.append(('BIAS NFILE', n_bias))
+        extra_head = fits.Header()
+        prefix = 'HIERARCH REDUCTION BIAS '
+        extra_head.append((prefix + 'NFRAMES', n_bias))
         for iframe, result in enumerate(results):
-            key1   = 'BIAS FILEID {:03d}'.format(iframe+1)
+            key1   = prefix + 'FILEID {:03d}'.format(iframe+1)
             value1 = result.frame.head['FILENAME']
-            info.append((key1, value1))
-        info.append(('BIAS COMBINE_MODE', mode))
-        info.append(('BIAS COSMIC_CLIP', cosmic_clip))
-        info.append(('BIAS MAXITER', maxiter))
+            extra_head.append((key1, value1))
+        extra_head.append((prefix + 'COMBINE_MODE', mode))
+        extra_head.append((prefix + 'COSMIC_CLIP', cosmic_clip))
+        extra_head.append((prefix + 'MAXITER', maxiter))
 
         bias_frame = ImageFrame(
                         data = bias_combine,
                         head = fits.Header(),
                         mask = np.zeros_like(bias_combine, dtype=np.int16),
-                        info = info,
+                        extra_head = extra_head,
                         )
 
         filename = options.get('file', None)
@@ -59,9 +60,7 @@ class ProcessBias(CollectionPipelineStep):
             bias_frame.save(filepath, overwrite=True)
             print('Bias saved to ', filepath)
 
-        context[self.name] = {
-                'bias': bias_frame
-                }
+        context.register(self.name, 'bias', bias_frame, filepath, 'image')
 
 class ProcessFlat(CollectionPipelineStep):
     def finish(self, results, context, inputs, **options):
@@ -86,21 +85,23 @@ class ProcessFlat(CollectionPipelineStep):
                 maskmode    = maskmode,
                 ncores      = ncores,
                 )
-        info = []
-        info.append(('FLAT NFILE', n_flat))
+
+        extra_head = fits.Header()
+        prefix = 'HIERARCH REDUCTION FLAT '
+        extra_head.append((prefix + 'NFRAMES', n_flat))
         for iframe, result in enumerate(results):
-            key1   = 'FLAT FILEID {:03d}'.format(iframe+1)
+            key1   = prefix + 'FILEID {:03d}'.format(iframe+1)
             value1 = result.frame.head['FILENAME']
-            info.append((key1, value1))
-        info.append(('FLAT COMBINE_MODE', mode))
-        info.append(('FLAT COSMIC_CLIP', cosmic_clip))
-        info.append(('FLAT MAXITER', maxiter))
+            extra_head.append((key1, value1))
+        extra_head.append((prefix + 'COMBINE_MODE', mode))
+        extra_head.append((prefix + 'COSMIC_CLIP', cosmic_clip))
+        extra_head.append((prefix + 'MAXITER', maxiter))
 
         flat_frame = ImageFrame(
                 data = flat_combine,
                 head = fits.Header(),
                 mask = np.zeros_like(flat_combine, dtype=np.int16),
-                info = info,
+                extra_head = extra_head,
                 )
 
         filename = options.get('file', None)
@@ -109,13 +110,11 @@ class ProcessFlat(CollectionPipelineStep):
             flat_frame.save(filepath, overwrite=True)
             print('Flat saved to ', filepath)
 
-        context[self.name] = {
-                'flat': flat_frame,
-                }
+        context.register(self.name, 'flat', flat_frame, filepath, 'image')
 
 class TraceOrder(AnalysisPipelineStep):
     def process(self, context, inputs, **options):
-        image = inputs.data
+        image = inputs.value.data
 
         scan_step = options.get('scan_step', 100)
         align_deg = options.get('align_deg', 2)
@@ -134,42 +133,32 @@ class TraceOrder(AnalysisPipelineStep):
         tracA_file = context.midproc_path / 'trace_A.txt'
         tracB_file = context.midproc_path / 'trace_B.txt'
 
-        context.aperset_path = trac_file
-        context.aperset_A_path = tracA_file
-        context.aperset_B_path = tracB_file
-
         aperset.save_txt(trac_file)
         aperset_A.save_txt(tracA_file)
         aperset_B.save_txt(tracB_file)
 
-        #self.aperset = aperset
-        #self.aperset_A = aperset_A
-        #self.aperset_B = aperset_B
-
-        context[self.name] = {
-                'trace': aperset,
-                'trace_A': aperset_A,
-                'trace_B': aperset_B,
-                }
+        context.register(self.name, 'trace',   aperset,   trac_file, 'aperset')
+        context.register(self.name, 'trace_A', aperset_A, tracA_file, 'aperset')
+        context.register(self.name, 'trace_B', aperset_B, tracB_file, 'aperset')
 
 class GetSensMap(AnalysisPipelineStep):
     def process(self, context, inputs, **options):
-        flat_frame = inputs['frame']
-        aperset    = inputs['trace']
+        dataframe = inputs['frame'].value
+        aperset   = inputs['trace'].value
 
-        flat_data = flat_frame.data
-        flat_mask = flat_frame.mask
+        data = dataframe.data
+        mask = dataframe.mask
 
         fig_spatial = SpatialProfileFigure()
-        sens, flatspec_lst = get_flat2(flat_data, flat_mask,
-                    apertureset     = aperset,
-                    nflat           = 10,
-                    smooth_A_func   = smooth_aperpar_A,
-                    smooth_c_func   = smooth_aperpar_c,
-                    smooth_bkg_func = smooth_aperpar_bkg,
-                    mode            = 'normal',
-                    fig_spatial = fig_spatial,
-                    )
+        sens, flatspec_lst = get_flat2(data, mask,
+                                       apertureset     = aperset,
+                                       nflat           = 10,
+                                       smooth_A_func   = smooth_aperpar_A,
+                                       smooth_c_func   = smooth_aperpar_c,
+                                       smooth_bkg_func = smooth_aperpar_bkg,
+                                       mode            = 'normal',
+                                       fig_spatial     = fig_spatial,
+                                       )
         figname = 'spatial_profile_flat.png'
         title = 'Spatial Profile of flat'
         fig_spatial.suptitle(title)
@@ -179,15 +168,14 @@ class GetSensMap(AnalysisPipelineStep):
         head = fits.Header()
         sens_frame = ImageFrame(data = sens,
                                 head = head,
-                                mask = flat_mask,
-                                info = flat_frame.info,
+                                mask = mask,
+                                extra_head = dataframe.extra_head,
                                 )
 
         sens_path = context.midproc_path / 'sens.fits'
         sens_frame.save(sens_path, overwrite=True)
-        context[self.name] = {
-                'sens': sens_frame
-                }
+
+        context.register(self.name, 'sens', sens_frame, sens_path, 'image')
 
 
 class CalibrateWavelength(CollectionPipelineStep):
@@ -204,9 +192,8 @@ class CalibrateWavelength(CollectionPipelineStep):
             filename = context.onedspec_path / fname
             dataframe.save(filename, overwrite=True)
             print('spectrum saved to', filename)
-        context[self.name] = {
-                'wave': np.ones((2,2)),
-                }
+
+        #context.register(self.name, 'wave', calib_lst, fname_lst, 'wave')
 
 class ReduceScience(StreamingPipelineStep):
     def process_frame(self, frame, context):
