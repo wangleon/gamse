@@ -182,8 +182,8 @@ class TraceOrder(AnalysisPipelineStep):
 
 class GetSensMap(AnalysisPipelineStep):
     def process(self, context, inputs, **options):
-        dataframe  = inputs['frame'].value
-        aperset    = inputs['trace'].value
+        dataframe = inputs['frame'].value
+        aperset   = inputs['trace'].value
 
         data = dataframe.data
         mask = dataframe.mask
