@@ -1,10 +1,13 @@
 [build-system]
-requires = ["setuptools >= 77.0.3"]
+requires = [
+    "setuptools >= 77.0.3",
+    "setuptools-scm[simple]>=9.2",
+]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gamse"
-version = "1.0"
+dynamic = ["version"]
 authors = [
   { name="Liang Wang", email="wang.leon@gmail.com" },
 ]
@@ -16,6 +19,14 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 license = { text = "Apache-2.0" }
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.8.0",
+    "matplotlib>=3.4.1",
+    "astropy>=5.1",
+    "scikit-learn>=1.1.2",
+    "PyYAML>=6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/wangleon/gamse"
