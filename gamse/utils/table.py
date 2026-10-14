@@ -6,7 +6,7 @@ class FilterableTable(Table):
 
     def __init__(self, *args, **kwargs):
         """
-        Initialize ObslogTable.
+        Initialize FilterableTable.
         """
 
         super().__init__(*args, **kwargs)
@@ -19,7 +19,7 @@ class FilterableTable(Table):
             condtions: dict
 
         Returns:
-            ObslogTable
+            FilterableTable
 
         """
         if not conditions:
@@ -308,7 +308,7 @@ class FilterableTable(Table):
             **kwargs: 
 
         Returns:
-            ObslogTable:
+            FilterableTable:
 
         """
         if 'format' not in kwargs:

@@ -21,8 +21,8 @@ from ...echelle.wlcalib import (wlcalib, recalib,
                                 )
 from ...echelle.background import get_interorder_background
 from ...echelle.extract import extract_aperset, extract_aperset_optimal
-from .common import (correct_overscan, select_calib_from_database,
-                    BackgroundFigure, SpatialProfileFigure, ESPADONSFrame)
+from .common import (select_calib_from_database,
+                    BackgroundFigure, SpatialProfileFigure)
 from .trace import find_apertures
 from .flat import get_flat, get_flat2, smooth_aperpar_A, smooth_aperpar_c, smooth_aperpar_bkg
 

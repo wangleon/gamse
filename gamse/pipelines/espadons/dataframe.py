@@ -17,15 +17,7 @@ def read_dataframe(filepath, logitem=None):
         for cls in FRAME_CLASSES:
             if cls.match(hdulst):
                 obj = cls.from_hdulst(hdulst)
-
-                # append logitem into extra_head
-                if logitem is not None:
-                    for col in logitem.colnames:
-                        value = logitem[col]
-                        key = 'HIERARCH LOGINFO ' + col.upper()
-                        obj.extra_head.append((key, value))
                 return obj
-
 
     raise TypeError('Unknown FITS format')
 
@@ -71,7 +63,7 @@ class RawImageFrame(ImageFrame):
 
         # append new info
         for item in new_info:
-            self.info.append(item)
+            self.extra_head.append(item)
 
 
     @classmethod

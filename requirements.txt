@@ -1,6 +1,0 @@
-numpy>=1.24
-scipy>=1.8.0
-matplotlib>=3.4.1
-astropy>=5.1
-scikit-learn>=1.1.2
-PyYAML>=6.0

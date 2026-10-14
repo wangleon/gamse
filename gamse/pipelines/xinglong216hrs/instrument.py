@@ -1,5 +1,5 @@
 from ..base import Instrument
-from ..common import BiasSubtractionStep
+from ..common import BiasSubtractionStep, FlatCorrectionStep
 from .pipelinesteps import *
 from .framesteps import *
 from .dataframe import read_dataframe

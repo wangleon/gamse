@@ -15,7 +15,7 @@ from ...utils.misc import extract_date
 from ..common import load_obslog, load_config
 from .common import print_wrapper
 from .reduce import reduce_rawdata as _reduce_rawdata
-from .reduce import Pipeline
+from .instrument import ESPADONS
 
 def make_config():
     """Generate a config file for reducing the data taken with CFHT/ESPaDOnS.
@@ -145,8 +145,9 @@ def make_obslog(rawpath):
                         ('obsmode',  str),
                         ('binning' , str),
                         ('amp',      str),
-                        ('gain',     str),
-                        ('rdnoise',  str),
+                        #('gain',     str),
+                        #('rdnoise',  str),
+                        ('rdmode',   str),
                         ('nsat',     int),
                         ('q95',      int),
                         ('runid',    str),
@@ -158,13 +159,15 @@ def make_obslog(rawpath):
             ' {:>7} {:>5} {:>6s} {:<15s}')
     head_str = fmt_str.format('frameid', 'fileid', 'obstype', 'object',
                             'exptime', 'obsdate', 'instmode', 'obsmode',
-                            'nsta', 'q95', 'runid', 'pi')
+                            'nsat', 'q95', 'runid', 'pi')
 
     print(head_str)
 
-
+    # resolve the full path of raw data
     rawpath = Path(rawpath).expanduser()
 
+    # scan the rawdata path, sort the files alphabetically
+    # and remove the folders
     file_lst = sorted([p for p in rawpath.iterdir()
                        if p.is_file()], key=lambda p: p.name)
 
@@ -177,15 +180,18 @@ def make_obslog(rawpath):
 
         fileid  = mobj.group(1)
 
-        # surffix with i, and p are data product, not raw data
+        # surffix with i, and p are data products, not raw data
         if fileid[-1] in ['i', 'p']:
             continue
         data, head = fits.getdata(filepath, header=True)
 
+        if head['FILENAME'] != fileid:
+            print('fileid does not match with FITS header for', filepath)
+            raise ValueError
 
         # data checker
         for key, value in [('DETECTOR', 'OLAPA'),
-                           ('PIXSIZE',   13.5),
+                           ('PIXSIZE',  13.5),
                            ('SATURATE', 65535),
                            ('INSTRUME', 'ESPaDOnS'),
                            ]:
@@ -275,6 +281,15 @@ def make_obslog(rawpath):
         pi    = head['PI_NAME']
         observer = head['OBSERVER']
 
+        # get readout mode, readout noise, gain, and readout time from EREADSPD
+        mobj = re.match('([a-zA-Z]+): ([\d\.]+)e noise, ([\d\.]+)e/ADU, (\d+)s',
+                        head['EREADSPD'])
+        rdmode = mobj.group(1)
+        # mode   speed, noise,  gain
+        # Fast   25,   7.4-7.7,  1.7
+        # Normal 40,   4.0-4.5,  1.3
+        # Slow   67,   3.0-3.4,  1.15
+
         item = [
                 (frameid,       False),
                 (fileid,        False),
@@ -289,8 +304,9 @@ def make_obslog(rawpath):
                 (obsmode,       False),
                 (binning,       False),
                 (amp,           False),
-                (gain,          False),
-                (rdnoise,       False),
+                #(gain,          False),
+                #(rdnoise,       False),
+                (rdmode,        False),
                 (nsat,          False),
                 (q95,           False),
                 (runid,         False),

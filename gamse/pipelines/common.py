@@ -267,3 +267,25 @@ class BiasSubtractionStep(FrameStep):
                                    )
         new_result = FrameResult(frame = new_dataframe)
         return new_result
+
+class FlatCorrectionStep(FrameStep):
+    def run(self, result, context, **options):
+        sens_product = resolve_reference(options['input'], context)
+        sens_frame = sens_product.value
+
+        dataframe = result.frame
+
+        data = dataframe.data / sens_frame.data
+
+        extra_head = dataframe.extra_head.copy()
+        prefix = 'HIERARCH REDUCTION FLAT '
+        extra_head.append((prefix+'CORRECTED', True))
+
+        new_dataframe = ImageFrame(data = data,
+                                   head = dataframe.head,
+                                   mask = dataframe.mask,
+                                   extra_head = extra_head,
+                                   )
+        new_result = FrameResult(frame = new_dataframe)
+
+        return new_result
