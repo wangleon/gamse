@@ -262,11 +262,12 @@ class CalibrateWavelength(CollectionPipelineStep):
         group_contiguous = True
         time_diff        = 120
 
-        ref_calib_lst = select_calib_auto(calib_lst,
-                                          rms_threshold    = rms_threshold,
-                                          group_contiguous = group_contiguous,
-                                          time_diff        = time_diff,
-                                          )
+        ref_calib_lst = select_calib_auto(
+                calib_lst,
+                rms_threshold    = rms_threshold,
+                group_contiguous = group_contiguous,
+                time_diff        = time_diff,
+                )
         ref_fileid_lst = [calib['fileid'] for calib in ref_calib_lst]
 
         # print ThAr summary and selected calib

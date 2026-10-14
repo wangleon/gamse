@@ -66,6 +66,13 @@ class Pipeline:
             self.config = yaml.safe_load(f)
 
     def find_yamlfile(self, filename):
+        """Find YAML file.
+
+        Args:
+            filename (str):
+        Returns:
+
+        """
 
         yaml_path = Path(filename).expanduser().resolve()
 
@@ -80,8 +87,6 @@ class Pipeline:
                 return yaml_path
 
         raise ValueError
-
-
 
     def run(self, context):
 
@@ -300,7 +305,6 @@ class ProductRecord:
             self.path  = [Path(_path) for _path in path]
         else:
             raise ValueError
-
 
         self.dtype = dtype
 
