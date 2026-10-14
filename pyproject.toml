@@ -1,13 +1,12 @@
 [build-system]
 requires = [
     "setuptools >= 77.0.3",
-    "setuptools-scm[simple]>=9.2",
 ]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gamse"
-dynamic = ["version"]
+version = "1.0.6"
 authors = [
   { name="Liang Wang", email="wang.leon@gmail.com" },
 ]
