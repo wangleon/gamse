@@ -31,3 +31,6 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/wangleon/gamse"
 Issues = "https://github.com/wangleon/gamse/issues"
+
+[tool.setuptools.package-data]
+gamse = ["**/*.yaml"]

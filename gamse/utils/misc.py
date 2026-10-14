@@ -13,8 +13,6 @@ import scipy
 import astropy
 import matplotlib
 
-from .. import __version__
-
 def write_system_info():
     """Get system information, and write them into running log.
     """
