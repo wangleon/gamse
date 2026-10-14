@@ -1370,7 +1370,8 @@ def smooth_aperpar_bkg(newx_lst, ypara, fitmask, group_lst, npoints):
             elif xspan > npoints/8: deg = 2
             else:                   deg = 1
 
-            scale = ('linear','log')[(ypiece<=0).sum()==0]
+            scale = 'log' if (ypiece<=0).sum()==0 else 'linear'
+
             if scale=='log':
                 ypiece = np.log(ypiece)
 

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gamse"
-version = "1.0.6"
+version = "1.0.7"
 authors = [
   { name="Liang Wang", email="wang.leon@gmail.com" },
 ]
@@ -32,4 +32,4 @@ Homepage = "https://github.com/wangleon/gamse"
 Issues = "https://github.com/wangleon/gamse/issues"
 
 [tool.setuptools.package-data]
-gamse = ["**/*.yaml"]
+gamse = ["data/**/*.dat", "**/*.yaml"]
